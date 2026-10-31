@@ -69,7 +69,7 @@
      所有容器一律 10 列，扩容只增加行数（纵向滚动）。 */
   var COLS = 10, SLOT = 34, GAP = 6;
   /* UNI_W=700 格区缩放归一已随 v1.8.4 撤除（拖拽落点错位+酿酒桶缩格，见 render 网格块注释）；
-     壳宽=官方格自然宽+20，Bug2 只增不减锁由 st.railMinW 承担 */
+     壳宽=官方格自然宽+20 纯跟随（syncRailWidth；Bug2 只增不减锁已随 v1.8.4 缺陷#5 退役） */
   /* 格子尺寸跟官方（缺陷⑥，v1.8.1）：SCENES.cell = 逐页官方源码取证值
      （Brew/Dye 38、Cooking/RatCage/DroneHub/Compressor/Greenhouse 40、Shredder 45、
      ToolTable/Trade/BackpackUI 56px），旁挂侧栏与 bagonly 生效；列数按 428 壳宽自适应。
@@ -1350,15 +1350,47 @@
     }
     if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
   }
-  /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点），官方改格后重算角标 */
+  /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点），官方改格后重算角标；
+     v1.8.4 缺陷#5 加宽同步——官方格 cols 异步回推变宽时壳重测跟随（防滚动条压末列） */
   function ensureBadgeObserver() {
     var host = el.srGridHost;
     if (!host || host.__srBadgeMO) return;
     try {
       var V = host.ownerDocument.defaultView.MutationObserver;
-      host.__srBadgeMO = new V(function () { setTimeout(applyBadges, 50); });
+      host.__srBadgeMO = new V(function () { setTimeout(function () { applyBadges(); syncRailWidth(); }, 50); });
       host.__srBadgeMO.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     } catch (e) { }
+  }
+  /* 壳宽同步（v1.8.4 缺陷#5 从 render 抽出，双路调用：render 主路 + badge MO 官方重渲染路）：
+     量官方格布局宽（childG.offsetWidth——官方格 inline px 定宽，与本壳宽度无关，e594832 口径）
+     → 壳宽=格宽+20+滚动条宽 **纯跟随**。历史：v1.8.2.4 Bug2 的「只增不减锁」（st.railMinW）已随本缺陷
+     退役——它防的是 scrollWidth 量宽反馈塌缩（量宿主自家→越量越窄死循环），e594832 改量官方格
+     自身后反馈源已断；而锁在混宽时代（三道门后 6/8/10/12/15 列并存）两头作恶：契约包先到、
+     官方 BagMsg（新列数）后到时，render 锁住旧宽 → 切窄格右侧空白 / 官方格变宽后滚动条压末列。
+     幂等：宽度没变零 style 写入（自家 MO 观察 host 的 style 属性，写入即回调——必须防回环）；
+     官方格瞬时拆建（nat≤40）不动宽度防抖。 */
+  function syncRailWidth() {
+    if (!el.rail || !el.srGridHost) return;
+    var childG = el.srGridHost.firstElementChild;
+    var nat = childG ? (childG.offsetWidth || 0) : 0;
+    if (nat <= 40) return;
+    /* 滚动条计入壳宽（症状②根因）：sr-body overflow-x:hidden 下格区横向溢出恒为
+       壳内衬（rail padding20+border2+body border2=24）+滚动条宽。不加 sb 时 WebView2
+       经典滚动条(≈8px)溢出 12px>格区自带右内边距 9px → 末列右缘被啃进滚动条底下；
+       +sb 后溢出恒 4px≤9px，末列与滚动条粗细无关地安全。sb 量当前态（vscroll 未现=0，
+       行数增长当帧 MO 回调补量收敛）。 */
+    var sb = 0;
+    try { var body = el.rail.querySelector('.sr-body'); if (body) sb = Math.max(0, body.offsetWidth - body.clientWidth); } catch (e) { }
+    var wantHost = nat + 'px';
+    if (el.srGridHost.style.width !== wantHost) el.srGridHost.style.width = wantHost;
+    var rw2 = (nat + 20 + sb) + 'px';
+    if (el.rail.style.width !== rw2) {
+      try {
+        el.rail.style.setProperty('width', rw2, 'important');
+        el.rail.style.setProperty('min-width', rw2, 'important');
+        el.rail.style.setProperty('max-width', rw2, 'important');
+      } catch (e) { }
+    }
   }
 
   /* ---- 主渲染（Produces：render）——setData 到达/视图态变化后全量刷新 ---- */
@@ -1433,27 +1465,16 @@
          再 /CELL(56 布局常数)（BackpackUI.html @6384 cachedZoom 路），rect 会带 transform
          但除数不带 → 光标→格子换算被放大 kk 倍，离格原点越远偏移越大（kk>1 向右下偏）。
          scale 归一是 v1.8.2.2（16 列时代）的视觉一致性机器，与 §0 红线「拖拽移动/落点预览
-         官方动作原生存活（一票否决）」和 §2「mod 不改格子几何」冲突，格子回归官方原尺寸
-         （对齐已批原型：机器侧栏 12×34px 原生格、壳宽 494=格宽+20，不再恒 720）。
-         壳宽保留 Bug2「只增不减锁」：st.railMinW 记本帧挂载以来的最大格宽，切窄格不回缩。 */
+         官方动作原生存活（一票否决）」和 §2「mod 不改格子几何」冲突，格子回归官方原尺寸。
+         宽度逻辑 v1.8.4 缺陷#5 起抽出=syncRailWidth()（壳宽=格宽+20 逐容器跟随，见其注释）。 */
       el.srGridHost.style.transform = 'none';
-      el.srGridHost.style.width = '';
-      var railW = 0;
-      if (el.srGridHost.firstElementChild) {
-        var childG = el.srGridHost.firstElementChild;
-        var nat = childG.offsetWidth || 0;
-        if (nat > 40) {
-          el.srGridHost.style.width = nat + 'px';
-          railW = nat + 20;
-        }
-        try {
-          st.railMinW = Math.max(st.railMinW || 0, railW);
-          var rw2 = (st.railMinW || railW || 720) + 'px';
-          el.rail.style.setProperty('width', rw2, 'important');
-          el.rail.style.setProperty('min-width', rw2, 'important');
-          el.rail.style.setProperty('max-width', rw2, 'important');
-        } catch (e) { }
-      }
+      /* v1.8.4 缺陷#5（作者实测：SizeEngine 三道门后共包柜回原宽，6/8/10/12/15 列并存——
+         ① 旧「只增不减锁」st.railMinW 会话级不重置：看过宽格后切窄格，壳仍锁最大宽 → 窄格
+         右侧一片空白；② 契约包先到 render 锁旧宽、官方 BagMsg（新列数）后到格变宽 → 壳比格
+         窄 → sr-body 滚动条+overflow-x:hidden 压掉末列。修复=壳宽「格宽+20」**纯跟随**
+         （syncRailWidth，render 主路+badge MO 官方重渲染路双调；锁退役——e594832 已改量官方格
+         自身 offsetWidth，反馈塌缩源早断，锁只剩害处） */
+      syncRailWidth();
       try { applyBadges(); } catch (e) { } /* v13.7 角标（壳层 overlay，官方格重渲染由观察器跟随） */
     } else {
       el.srGridHost.hidden = true; el.srList.hidden = false;
