@@ -220,6 +220,7 @@ internal static class RailCommands
             case "tidy": OpTidy(c); break;
             case "sortBy": OpSortBy(c); break; // v13.5-v13.8 设施排序：数据层重排（见 OpSortBy 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
+            case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
@@ -531,18 +532,38 @@ internal static class RailCommands
         }
         catch (Exception e) { WarnOnce("uiShow:call", "uiShow 异常: " + e.Message); }
     }
-    private static Il2CppSystem.Type UiTypeOf(string key)  /* Ac_OpenUI.SendAction 形参=Il2CppSystem.Type（Il2CppType.From 直出） */
+    /// <summary>
+    /// uiClose{key}（调试专用，[Rail] AllowDebugUiShow=true 才生效）：官方 Ac_CloseUI 重放——
+    /// uiShow 前清场。实锤：Ac_OpenUI 开新页不自动关旧页，双 UI 活跃时 RailData.ActivePage()
+    /// 取到残留旧页 → 契约 ctx.page 错 → rail 按错误场景渲染（2026-11-01 实机验证踩坑）。
+    /// </summary>
+    private static void OpUiClose(Cmd c)
+    {
+        if (CabinetEverywherePlugin.AllowDebugUiShow?.Value != true) { WarnOnce("uiClose:gate", "uiClose 丢弃：[Rail] AllowDebugUiShow=false"); return; }
+        try
+        {
+            var uiType = UiTypeOf(c.Key);
+            if (uiType == null) { WarnOnce("uiClose:key", "uiClose 未知页: " + c.Key); return; }
+            GameCore.HotUpdate.ReduxUI.Ac_CloseUI.SendAction(uiType);
+            VLog(c.Op, c.Key + " (Ac_CloseUI)");
+        }
+        catch (Exception e) { WarnOnce("uiClose:call", "uiClose 异常: " + e.Message); }
+    }
+
+    private static Il2CppSystem.Type UiTypeOf(string key)  /* Ac_OpenUI/Ac_CloseUI.SendAction 形参=Il2CppSystem.Type（Il2CppType.From 直出） */
     {
         try
         {
             switch (key)
             {
+                case "BackpackUI": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)); /* 2026-11-01 实机踩坑补：缺此映射=uiClose 关不掉背包→ActivePage 被霸占全跑偏 */
                 case "Cooking": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Cooking));
                 case "BrewPanel": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew));
                 case "RatCage": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage));
                 case "DyePanel": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye));
                 case "Compressor": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Compressor));
                 case "Shredder": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Shredder));
+                case "GreenhouseBuild": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_GreenhouseBuild));
                 case "ToolTable": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_ToolTable));
                 case "Trade": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_TradeUI));
                 case "DroneHub": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub));
@@ -554,65 +575,80 @@ internal static class RailCommands
     }
 
     /// <summary>
-    /// sortBy{owner,key}（v13.5-v13.8 作者执行令：设施属性排序 + 交易页默认交易价值排序）。
+    /// sortBy{owner,key}（v13.5-v13.8 作者执行令；2026-11-01 缺陷单#1 修复：数值口径
+    /// 整体换 RailSortMath=ProjectCook 移植——实例效果值+天赋管线 / 交易损耗×鉴定（Trade 页
+    /// 加需求 Boost/半价）/ 保质期 DaysLeft 状态机升序（快坏在前，腐败<过期<正常，不腐=null）。
+    /// 无键物品（非食物无属性/不腐坏/无价）**排最后**（ProjectCook order() 语义，旧实现混排）。
     /// key=official → 官方 SortContainerForHub（=「默认（官方）」，与一键整理同源官方排序）；
-    /// 其余（sat/mind/en/hp/value/shelf）→ 自算顺序 + 逐叠落位（数据层重排，官方管线重渲染）：
+    /// 其余 → 排序值 RailSortMath.Of 现算 + 逐叠落位（数据层重排，官方管线重渲染）：
     ///   ① OwnerCache 取该 owner 全部 ItemData（白名单 owner，绝不越权）；
-    ///   ② 维度值（VD_MAP 同 icfg）：sat/mind/en/hp=Config_Item.ValueDisplay1/2/3/5（配置级）、
-    ///      value=TradeValue×ItemCount、shelf=TimeLeft（逐叠）；降序稳定（LogicId 升序 tiebreak）；
+    ///   ② 降序（shelf 升序）稳定（InstanceId 升序 tiebreak）；
     ///   ③ 占用网格贪心首放（宽 GetOwnerBagSize 优先，兜底 12；ItemSize w×h；放不下=原地不动）；
     ///   ④ 与 BagPos 不同才落位：OnSetBagPos（私有 reducer，interop public 包装直调——tidy 的
     ///      MergeStacksForHub 同款先例），异常回退 SetBagPosSafe；我们算的是完整无重叠布局，
     ///      中间态重叠可容忍（同一主帧批次内完成，Pump 末尾 RefreshActivePage+ForceRepublish）。
-    /// 非破坏性操作：任何异常=该叠跳过（宁少动勿错动），不做失败标记。
+    /// 结果回执（缺陷单#1「排序不生效静默」修复）：RailData.ReportSortAck 一次性标志 →
+    /// ctx.lastSortAck=[key,ok,moved,skip] → JS settle toast（成功带 moved 数/失败明确报错）。
+    /// 非破坏性操作：任何异常=该叠跳过（宁少动勿错动）。
     /// </summary>
     private static void OpSortBy(Cmd c)
     {
-        if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] sortBy 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
+        if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] sortBy 丢弃：owner={c.Owner} 不在白名单（红线2）"); RailData.ReportSortAck(c.Key, false, 0, 0); return; }
         var im = RailData.ItemMgr();
-        if (im == null) { WarnOnce("sortBy:noim", "sortBy 丢弃：ItemManager 不可得"); return; }
-        if (string.IsNullOrEmpty(c.Key)) { WarnOnce("sortBy:nokey", "sortBy 丢弃：缺 key"); return; }
+        if (im == null) { WarnOnce("sortBy:noim", "sortBy 丢弃：ItemManager 不可得"); RailData.ReportSortAck(c.Key, false, 0, 0); return; }
+        if (string.IsNullOrEmpty(c.Key)) { WarnOnce("sortBy:nokey", "sortBy 丢弃：缺 key"); RailData.ReportSortAck(c.Key, false, 0, 0); return; }
         if (c.Key == "official")
         {
-            try { im.SortContainerForHub(c.Owner); VLog(c.Op, $"owner={c.Owner} key=official 官方排序已调"); }
-            catch (Exception e) { WarnOnce("sortBy:official", "sortBy official 异常: " + e.Message); }
+            try { im.SortContainerForHub(c.Owner); VLog(c.Op, $"owner={c.Owner} key=official 官方排序已调"); RailData.ReportSortAck(c.Key, true, 0, 0); }
+            catch (Exception e) { WarnOnce("sortBy:official", "sortBy official 异常: " + e.Message); RailData.ReportSortAck(c.Key, false, 0, 0); }
             return;
         }
         try
         {
             var oc = im.OwnerCache;
             Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
-            try { if (!oc.TryGetValue(c.Owner, out inner) || inner == null) return; } catch { return; }
+            try { if (!oc.TryGetValue(c.Owner, out inner) || inner == null) { RailData.ReportSortAck(c.Key, true, 0, 0); return; } } catch { RailData.ReportSortAck(c.Key, true, 0, 0); return; }
             var items = new List<GameCore.HotUpdate.Battle.Logic.ItemData>();
             foreach (var pair in inner) if (pair.Value != null) items.Add(pair.Value);
-            if (items.Count < 2) return; // 0/1 叠无需排序
+            if (items.Count < 2) { RailData.ReportSortAck(c.Key, true, 0, 0); return; } // 0/1 叠无需排序
+            try { items.Sort((a, b) => a.InstanceId.CompareTo(b.InstanceId)); } catch { } // 基序=InstanceId（字典枚举序不定）
 
             var itemDict = RailData.ItemDict();
-            int vi = c.Key == "sat" ? 1 : c.Key == "mind" ? 2 : c.Key == "en" ? 3 : c.Key == "hp" ? 5 : 0;
+            if (itemDict == null) WarnOnce("sortBy:nodict", "sortBy：Config_Item 表未就绪（数值全按无键排尾）");
             bool byValue = c.Key == "value", byShelf = c.Key == "shelf";
-            if (vi == 0 && !byValue && !byShelf) { WarnOnce("sortBy:key", $"sortBy 丢弃：未知 key={c.Key}"); return; }
-            long Dim(GameCore.HotUpdate.Battle.Logic.ItemData it)
+            int statIdx = c.Key == "sat" ? 0 : c.Key == "mind" ? 1 : c.Key == "en" ? 2 : c.Key == "hp" ? 3 : -1;
+            if (statIdx < 0 && !byValue && !byShelf) { WarnOnce("sortBy:key", $"sortBy 丢弃：未知 key={c.Key}"); RailData.ReportSortAck(c.Key, false, 0, 0); return; }
+
+            float now = RailSortMath.NowHours();
+            bool tradeScene = RailData.ActivePage() == "Trade";
+            float KeyOf(GameCore.HotUpdate.Battle.Logic.ItemData it, out bool has)
             {
+                has = false;
                 GameCore.HotUpdate.Config_Item ic = null;
                 try { itemDict?.TryGetValue(it.ItemConfigId, out ic); } catch { }
-                if (ic == null) return 0;
-                try
-                {
-                    if (vi == 1) return (long)Math.Round(ic.ValueDisplay1 * 100);
-                    if (vi == 2) return (long)Math.Round(ic.ValueDisplay2 * 100);
-                    if (vi == 3) return (long)Math.Round(ic.ValueDisplay3 * 100);
-                    if (vi == 5) return (long)Math.Round(ic.ValueDisplay5 * 100);
-                    if (byValue) return (long)ic.TradeValue * Math.Max(1, it.ItemCount);
-                    if (byShelf) return it.TimeLeft;
-                }
-                catch { }
-                return 0;
+                if (ic == null) return 0f;
+                var n = RailSortMath.Of(it, ic, tradeScene && byValue, now);
+                if (statIdx >= 0) { if (n.Stats[statIdx].HasValue) { has = true; return n.Stats[statIdx].Value; } return 0f; }
+                if (byValue) { if (n.Trade.HasValue) { has = true; return n.Trade.Value; } return 0f; }
+                if (n.DaysKey.HasValue) { has = true; return n.DaysKey.Value; }
+                return 0f;
             }
-            items.Sort((a, b) =>
+            var keys = new float[items.Count];
+            var hasK = new bool[items.Count];
+            for (int i = 0; i < items.Count; i++) keys[i] = KeyOf(items[i], out hasK[i]);
+            int dir = byShelf ? 1 : -1; // 保质期升序（快坏在前）；属性/交易降序（高在前）
+            // 预排序索引（List.Sort 不稳定 → 先记原序，再显式稳定比较）
+            var order = new int[items.Count];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            var snapshot = new List<GameCore.HotUpdate.Battle.Logic.ItemData>(items);
+            Array.Sort(order, (x, y) =>
             {
-                var d = Dim(b) - Dim(a);
-                return d != 0 ? (d > 0 ? 1 : -1) : a.InstanceId.CompareTo(b.InstanceId);
+                if (hasK[x] != hasK[y]) return hasK[x] ? -1 : 1;            // 无键排最后
+                if (hasK[x] && keys[x] != keys[y]) { var d = (keys[y] - keys[x]) * dir; return d > 0 ? 1 : -1; }
+                return x.CompareTo(y);                                        // 原序稳定（InstanceId 序）
             });
+            items.Clear();
+            for (int i = 0; i < order.Length; i++) items.Add(snapshot[order[i]]);
 
             // 网格尺寸：官方 bag 配置优先（v13.8 统一 12 列由 SizeEngine 落表），兜底 12 列
             int W = 12, H = Math.Max(4, (items.Count * 2 + W - 1) / W);
@@ -647,10 +683,12 @@ internal static class RailCommands
                 }
             }
             VLog(c.Op, $"owner={c.Owner} key={c.Key} items={items.Count} moved={moved} skip={skipped} grid={W}x{H}");
+            RailData.ReportSortAck(c.Key, moved > 0 || skipped == 0, moved, skipped);
         }
         catch (Exception e)
         {
             WarnOnce("sortBy:call", "sortBy 重排异常: " + e.Message);
+            RailData.ReportSortAck(c.Key, false, 0, 0);
         }
     }
 

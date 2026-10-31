@@ -66,7 +66,16 @@ function check(name, ok, detail) {
   const capSort = await page.evaluate(() => window.__SORTCAP.filter((c) => c[0] === 'sortBy').pop());
   check('bp:sortBy-owner-bag', !!(capSort && capSort[1] && capSort[1].key === 'sat' && String(capSort[1].owner) === '900001'), JSON.stringify(capSort && capSort[1]));
   check('bp:pop-closed-on-pick', await fr.evaluate(() => document.getElementById('srnSortPop').hidden), '选完即关（机器页同款）');
-  check('bp:fsort-persist', (await fr.evaluate(() => { try { return JSON.parse(localStorage.getItem('srp_fsort_BackpackUI') || 'null'); } catch (e) { return null; } })) === 'sat', 'srp_fsort_BackpackUI=sat（lsSet JSON 口径）');
+  /* 2026-11-01 缺陷单#1：fsort 持久化退役（§4.11「切场景重置为默认」）——localStorage 不再写；
+     改断言重置语义=进页沿重置+周期间保持（nbMount 每周期重跑，重置只许发生在进页/换页沿） */
+  check('bp:fsort-no-persist', (await fr.evaluate(() => { try { return localStorage.getItem('srp_fsort_BackpackUI'); } catch (e) { return 'x'; } })) === null, 'srp_fsort_BackpackUI 不再持久化');
+  check('bp:fsort-kept-across-cycles', await fr.evaluate(() => {
+    document.getElementById('srnSortBtn').click();
+    var p = document.getElementById('srnSortPop');
+    var act = p && !p.hidden ? [...p.querySelectorAll('.srn-opt')].find((b) => b.classList.contains('active')) : null;
+    if (p) p.hidden = true;
+    return !!(act && act.getAttribute('data-k') === 'sat');
+  }), 'scan 周期后 NB.fsort=sat 保持（进页沿才重置）');
 
   /* ③ 角标：#srnBadges 在官方 .grid-container 内，值=icfg 维度（901=cfg1 饱腹15、903=cfg5 0→—） */
   await page.waitForTimeout(500); /* forge 刷新+观察器 50ms 防抖 */

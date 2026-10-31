@@ -537,9 +537,9 @@ ctx.lastTidyFail 一次性标志（推出即清）让 JS toast 降级文案。
 |---|---|---|---|
 | 1 | Backpack/MaterialRack iframe id | T8 | 开页看 `[CERail] scene mounted: <键> (iframe#<id>)`；'Backpack' 别名归一已覆盖；实测既非 'BackpackUI' 亦非 'Backpack' → 回填 SCENES/ID_ALIAS（一行） |
 | 2 | PlayerBagOwnerId 兜底链 | T6 | Verbose 下一条日志定案 8 页直读值==PlayerId 假设；不等则以会话缓存为唯一兜底（代码顺序已如此） |
-| 3 | TimeLeft 单位 | T6 | json 头 7200 类值即秒；若实为小时，改 ItemFlags 常量与注释一行 |
-| 4 | 缩放挂层 | T8 裁定5 | 小窗口开烹饪/交易页看 rail 是否随官方 zoom、有无恒定抖动；抖动 → wrap 改挂 zoom 容器外层（注释留改法） |
-| 5 | VD_MAP 四物核对 | T1/T6 | 面包 2502=[20,3,0,0,0]、急救绷带 2400=[0,0,0,0,20]、西瓜汁(完美) 12417=[102,51,0,0,9]、咖啡 7=[0,5,20,0,0] 逐项对照实际 v1..v5（有 InstanceVD 的实例以 Config 值出） |
+| 3 | TimeLeft 单位 | T6 | **2026-11-01 定案=游戏小时**（ProjectCook DaysLeftOf ÷24 成天同源；ItemFlags 86400 常量已改 24；缺陷单#1 随 RailSortMath 移植一并定案） |
+| 4 | 缩放挂层 | T8 裁定5 | 小窗口开烹饪/交易页看 rail 是否随官方 zoom、有无恒定抖动；抖动 → wrap 改挂 zoom 容器外层（注释留改法）；角标 zoom 归一已按 rect/offsetWidth 比值（nbBadges 同款，缺陷单#1） |
+| 5 | VD_MAP 四物核对 | T1/T6 | **2026-11-01 起排序/角标数值口径=RailSortMath（ProjectCook 移植：实例 InstanceEffectEnd/InstanceVD→配置效果→天赋管线），不再用裸 Config VD**；icfg v1..v5 仍为配置级（列表/兜底用）；对照以 ProjectCook 角标并排为准 |
 | 6 | SetRule TryCast 门 | T7 | 首测 setTags 即验（`kept=N ok=True`）；代理转换不命中 → 翻 set_TagIds 直写（OpSetTags 注释已留备选）；putTag 读 TagIds 同通道一并验（按标签放入后柜收件+moved>0=读取路成立） |
 | 7 | SortContainerForHub 合并实效 | T7/T12 | 两叠同名同柜 tidy：叠数减少=路线成立；不变（调用成功不合并）→ 翻 OpTidy 降级③置失败标记（一行改动，JS 降级 toast 已就位） |
 | 8 | silent 参数 | T7 | TryQuickMoveItems SilentQuickMove=true（无官方 toast，结果经数据回推自渲染）；实测期望官方 toast UX → 翻 false |

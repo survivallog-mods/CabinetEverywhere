@@ -11,12 +11,19 @@ namespace SurvivalLog.CabinetEverywhere;
 /// CERail 数据层（T6）：把游戏状态组装成 railui.page.js 消费的**数据契约 v4** JSON 并直推
 /// （RailUi.Tick 0.5s 快通道，rev 门控——rev 未变不推）。
 ///
-/// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，与 railui.page.js setData 逐字段对齐）：
-///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,lastTidyFail}, bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
+/// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，2026-11-01 缺陷单#1/#2 增补 ctx.view/tradePrefs/
+/// lastSortAck 与物品行数值段，与 railui.page.js setData 逐字段对齐）：
+///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,view,tradePrefs,lastSortAck,lastTidyFail},
+///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
 ///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5]],
-///     items:{ "bag":[[logicId,cfgId,count,timeLeftSec,x,y,w,h,flags]], "&lt;ownerId&gt;":[...] } }
-///   flags: bit0=污染 bit1=过期 bit2=临期。
+///     items:{ "bag":[[id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days]], "&lt;ownerId&gt;":[...] } }
+///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
+///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
+///   trade=整叠计算后交易价值（null=无价）、days=保质排序键（null=不腐；-100001 腐败/
+///   -100000 过期/(-100000,0) 过期计天/>0 剩余天数——角标文本 JS 由键推导）。
+///   view=当前页场景视图（food/material/browser，TagFilter.ViewStr 同源）；tradePrefs=[[分类名,加成]…]；
+///   lastSortAck=[key,ok,moved,skip] 一次性回执（JS settle toast）。
 ///
 /// 取证依据（docs/superpowers/plans/2026-10-30-cerail-spike-findings.md，字段语义以它为准）：
 ///   §1 VD_MAP  v1=饱食 v2=心态 v3=精力 v4=恒0 v5=生命；thirst 退役（不产出）。
@@ -244,6 +251,46 @@ internal static class RailData
         _tidyFailPending = true;
     }
 
+    /// <summary>sortBy 回执（RailCommands.OpSortBy 置位，2026-11-01 缺陷单#1）：下一包
+    /// ctx.lastSortAck=["key",ok,moved,skip] 带出即清；JS settle 后 toast（治排序不生效静默）。</summary>
+    internal static void ReportSortAck(string key, bool ok, int moved, int skip)
+    {
+        _sortAckPending = "[\"" + EscapeJs(key ?? "") + "\"," + (ok ? "true" : "false") + "," + moved + "," + skip + "]";
+        _forcePending = true; // 回执即推（不等差量）
+    }
+
+    /// <summary>
+    /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
+    /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
+    /// </summary>
+    private static string ScenarioViewOf(string page)
+    {
+        var v = SurvivalLog.CabinetEverywhere.ScenarioView.Browser;
+        try
+        {
+            switch (page)
+            {
+                case "Cooking": v = CabinetEverywherePlugin.ViewCooking?.Value ?? v; break;
+                case "RatCage": v = CabinetEverywherePlugin.ViewRatCage?.Value ?? v; break;
+                case "BrewPanel": v = CabinetEverywherePlugin.ViewBrewPanel?.Value ?? v; break;
+                case "DyePanel": v = CabinetEverywherePlugin.ViewDyePanel?.Value ?? v; break;
+                case "Compressor": v = CabinetEverywherePlugin.ViewCompressor?.Value ?? v; break;
+                case "ToolTable": v = CabinetEverywherePlugin.ViewToolTable?.Value ?? v; break;
+                case "Shredder": v = CabinetEverywherePlugin.ViewShredder?.Value ?? v; break;
+                case "GreenhouseBuild": v = CabinetEverywherePlugin.ViewGreenhouseBuild?.Value ?? v; break;
+                case "Trade": v = CabinetEverywherePlugin.ViewTrade?.Value ?? v; break;
+                case "DroneHub": v = CabinetEverywherePlugin.ViewDroneHub?.Value ?? v; break;
+            }
+        }
+        catch { }
+        return v switch
+        {
+            SurvivalLog.CabinetEverywhere.ScenarioView.Food => "food",
+            SurvivalLog.CabinetEverywhere.ScenarioView.Material => "material",
+            _ => "browser",
+        };
+    }
+
     /// <summary>
     /// 组装契约 v4 JSON。返回 (null, rev) = 背包 owner 不可得 → 整包不推（findings §4 兜底③）。
     /// 容器 0 个/物品 0 件照常可推（JS 空态已就绪，T6 裁定 4）。
@@ -280,6 +327,13 @@ internal static class RailData
         sb.Append(",\"bpBag\":").Append(BpBagDyn() ? "true" : "false");
         sb.Append(",\"rackOwner\":").Append(rackOwner);
         sb.Append(",\"bagCap\":").Append(Math.Max(0, _bagCap));
+        // 2026-11-01 缺陷单#2：机器页页签逐页语义（v1.7.0 场景视图口径）——ctx.view 供 JS
+        // railCtns 收窄（food=冰箱全显+柜子按食物域标签；material=材料/工具柜+架子；browser=全显）
+        sb.Append(",\"view\":\"").Append(ScenarioViewOf(sc?.Page)).Append('"');
+        // 2026-11-01 缺陷单#1：Trade 买家喜好条 chips（State_Web_TradeUI 当前需求，RailSortMath 读）
+        RailSortMath.AppendTradePrefs(sb);
+        // sortBy 回执（一次性标志：[key,ok,moved,skip]；JS settle toast——治「排序不生效静默」）
+        sb.Append(",\"lastSortAck\":").Append(_sortAckPending ?? "null");
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
         sb.Append('}');
@@ -320,15 +374,20 @@ internal static class RailData
         }
         sb.Append(']');
 
-        // ---- items：{"bag":[...],"<ownerId>":[...]}，行 [instanceId,cfgId,count,timeLeftSec,x,y,w,h,flags] ----
+        // ---- items：{"bag":[...],"<ownerId>":[...]}，行 [id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days] ----
+        // （缺陷单#1：s1..s4=饱腹/心态/精力/生命 数值（RailSortMath 实例+天赋口径，0/缺=null）、
+        //   trade=整叠计算后交易价值（null=无价）、days=保质排序键（null=不腐；-100001 腐败/
+        //   -100000 过期/(-100000,0) 过期计天/>0 剩余天数——角标文本 JS 由键推导，省字符串段）
+        float nowHours = RailSortMath.NowHours();
+        bool tradeScene = sc?.Page == "Trade";
         sb.Append(",\"items\":{");
         sb.Append("\"bag\":");
-        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict);
+        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict, nowHours, tradeScene);
         itemRows += n;
         for (int i = 0; i < ownerIds.Count; i++)
         {
             sb.Append(",\"").Append(ownerIds[i]).Append("\":");
-            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict);
+            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene);
             itemRows += n;
         }
         sb.Append('}');
@@ -336,6 +395,7 @@ internal static class RailData
 
         _forcePending = false;
         _tidyFailPending = false; // 推出即清（一次性标志）
+        _sortAckPending = null;   // 同上（lastSortAck 带出即清）
         _rev++;
         _lastSig = ComputeSig();
         _lastJsonHead = sb.Length > 200 ? sb.ToString(0, 200) : sb.ToString();
@@ -523,7 +583,8 @@ internal static class RailData
         StringBuilder sb,
         Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
         long owner,
-        Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict)
+        Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
+        float nowHours, bool tradeScene)
     {
         Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
         try { if (!oc.TryGetValue(owner, out inner) || inner == null) { sb.Append("[]"); return 0; } } catch { sb.Append("[]"); return 0; }
@@ -553,11 +614,19 @@ internal static class RailData
                 try { orig = it.OriginalTimeLeft; } catch { }
                 int flags = ItemFlags(life, timeLeft, orig, polluted);
 
+                // 缺陷单#1：逐叠排序数值（RailSortMath=ProjectCook 口径；任一环失败该维 null）
+                var nums = RailSortMath.Of(it, ic, tradeScene, nowHours);
+
                 if (rows > 0) sb.Append(',');
                 sb.Append('[').Append(id).Append(',').Append(cfg).Append(',').Append(count)
-                  .Append(',').Append(timeLeft) /* timeLeftSec：TimeLeft 原样（单位校准点 T14） */
+                  .Append(',').Append(timeLeft) /* TimeLeft 原样（单位=游戏小时，RailSortMath 定案） */
                   .Append(',').Append(x).Append(',').Append(y).Append(',').Append(w).Append(',').Append(h)
-                  .Append(',').Append(flags).Append(']');
+                  .Append(',').Append(flags)
+                  .Append(',').Append(NumOrNull(nums.Stats[0])).Append(',').Append(NumOrNull(nums.Stats[1]))
+                  .Append(',').Append(NumOrNull(nums.Stats[2])).Append(',').Append(NumOrNull(nums.Stats[3]))
+                  .Append(',').Append(NumOrNull(nums.Trade))
+                  .Append(',').Append(nums.DaysKey.HasValue ? nums.DaysKey.Value.ToString("0.###", CultureInfo.InvariantCulture) : "null")
+                  .Append(']');
                 rows++;
             }
         }
@@ -566,11 +635,13 @@ internal static class RailData
         return rows;
     }
 
+    private static string NumOrNull(int? v) => v.HasValue ? v.Value.ToString(CultureInfo.InvariantCulture) : "null";
+
     /// <summary>
     /// flags：bit0=污染 bit1=过期 bit2=临期。
     /// 过期=可腐坏（Life&gt;0）且 TimeLeft≤0；临期照 FoodPreservationRules.IsNearExpiry 公式形状
     /// （剩余 ≤ maxDays，或 ≤ ratio×原始保质——ratio 项用 OriginalTimeLeft 比值，单位无关）。
-    /// TimeLeft 单位静态未定案：maxDays 项按秒换算（86400），校准点 T14。
+    /// TimeLeft 单位已定案=游戏小时（RailSortMath DaysLeftOf ÷24 成天；2026-11-01 缺陷单#1）。
     /// </summary>
     private static int ItemFlags(int life, int timeLeft, int origTimeLeft, bool polluted)
     {
@@ -585,7 +656,7 @@ internal static class RailData
         if (ratio < 0f) ratio = 0.2f;
         if (maxDays <= 0f) maxDays = 3f;
         if (origTimeLeft > 0 && timeLeft <= ratio * origTimeLeft) flags |= 4;
-        else if (timeLeft <= maxDays * 86400f) flags |= 4;
+        else if (timeLeft <= maxDays * 24f) flags |= 4;
         return flags;
     }
 
@@ -923,6 +994,7 @@ internal static class RailData
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）
+    private static volatile string _sortAckPending; // sortBy 回执一次性 JSON（ReportSortAck 置位，BuildJson 推出即清）
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>

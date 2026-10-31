@@ -3,6 +3,44 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版（2026-11-01，缺陷单#1 排序 + #2 机器页页签；版本号待作者定）
+
+**缺陷#1「排序不生效/具体数据不显示/显示错误」——数值口径整体移植 ProjectCook.dll
+（作者令：参考或直接复用；游戏内同装可并排对照）+ 角标结构性修复：**
+
+- 新增 `RailSortMath.cs`（ProjectCook SortData/SortLogic/EatLogic/EatInputs 反编译移植）：
+  属性维（饱腹/心态/精力/生命）=实例 `InstanceEffectEnd`→配置 `Config_Effect`→**天赋管线**
+  （旧实现=裸 Config ValueDisplay 配置级，随机属性物品全错=「显示错误」主因）；交易价值=
+  `单价×使用损耗×数量×(1+鉴定)`；Trade 页=`单价×数量×需求加成(Boost)×半价品类`
+  （State_Web_TradeUI，旧实现缺买家因子=规格级错误）；保质期=DaysLeftOf 状态机
+  （不腐/过期/腐败+PresetShelfScale/TimeScale 换算，旧实现=TimeLeft 原值降序+秒假设角标
+  恒 `0h`）；**TimeLeft 单位定案=游戏小时**（T14 校准点#3 关闭）；无键物品**排最后**
+  （ProjectCook order() 语义，旧实现混排）。
+- 契约物品行尾增 `[s1,s2,s3,s4,trade,days]` 逐叠数值段；角标三路匹配（id 精确→**位序 zip**
+  （官方格视觉序↔契约行网格序；Vue 页 .item 无 id=旧实现交易/保质角标**结构性永不显示**，
+  此路根治）→图标尾段配置级兜底）；机器页角标 zoom 归一（rect/offsetWidth，nbBadges 同款）。
+- 排序回执：C# `ctx.lastSortAck=[key,ok,moved,skip]` 一次性回执 → JS settle toast
+  「已按「X」排序 · N 叠重排」（旧实现 C# 执行前抢跑 toast+失败全静默=「不生效无感」）。
+- §4.11 定版回归：**切场景重置为默认**（localStorage 持久化退役；原生页进页沿重置——
+  nbMount 每周期重跑的无条件重置缺陷同步修复）；同场景切柜**续排**（排序态跨容器持续）。
+- uiShow/uiClose 调试命令补 BackpackUI 映射（Ac_OpenUI 重放不自动关旧页，缺映射=
+  ActivePage 被残留页霸占——实机验证踩坑实锤）。
+
+**缺陷#2「9 机器页页签栏柜子显示错误/未显示」——按 v1.7.0 验证过的逐页语义收窄
+（67ef77e 全量容器上栏的回归修复；CERail 定版壳要素零改动）：**
+
+- `railCtns()` 机器页两道收窄：①`ctx.view` 视图谓词（C# View_* cfg 同源，tagfilter
+  viewAllows 移植：food=冰箱全显+柜子按食物域标签；material=材料/工具标签柜+材料架、
+  冰箱藏；browser=全显）②`TABS[scene]` 官方页签数组成员门（不在官方可切集=点了也不切
+  →宁可不显示不错显；Compressor 由此回到 v1.7.0 原状=冰箱族）。
+- 页签行平铺**本页语义全集**（默认前 4 截断=「未显示」根源，退役；拖拽记忆序保留）；
+  ▾ 容器菜单同源收窄。
+- 实机验证（v187 矩阵 88 断言）：Cooking/Brew/RatCage/Compressor/Dye=「背包+储物柜+
+  冰箱+冰柜×2」（Food 集）；Shredder/ToolTable=「背包+置物架+工具柜+材料架」（Material 集）；
+  DroneHub=34 签全量（Browser 含 SUV）；BackpackUI 排序角标 78 个真值（15/17/25…）；
+  排序回执「76/78 叠重排」实机落地。遗留观察：uiShow 重放打开的页面官方格无数据流
+  （自然开页正常）；Trade 页 uiShow 不开（需交易对象上下文，待作者自然路径复核）。
+
 ## v1.8.4（2026-10-31）
 
 **背包页 mod 按钮对：⇅排序 ▾ + 📦一键入库 回归原生背包页（作者缺陷单#1「背包界面缺失 排序、

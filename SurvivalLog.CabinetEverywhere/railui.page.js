@@ -1,5 +1,13 @@
 /* CERail 储物侧栏 —— 游戏内 WebView 注入版（railui.page.js）。
    fork 自 design-proto/rail.js（v12 定稿原型），按计划分任务移植：
+   2026-11-01 作者缺陷单#1（排序不生效/数据不显示/显示错误）+#2（9 机器页页签柜子显示错/缺）：
+       #1 数值口径整体换 C# RailSortMath（ProjectCook.dll 反编译移植：实例效果值+天赋管线/
+          交易损耗×鉴定+Trade 需求因子/保质期 DaysLeft 状态机升序），契约物品行尾增
+          [s1,s2,s3,s4,trade,days]；角标三路匹配（id→位序 zip→图标尾段，Vue 页无 id 的逐叠
+          维度由位序命中）+ zoom 归一；toast 改 ctx.lastSortAck settle 回执；切场景重置默认
+          （§4.11 定版，localStorage 持久化退役）；同场景切柜续排。
+       #2 railCtns 机器页按 v1.7.0 逐页语义收窄（ctx.view food/material/browser 视图谓词
+          =tagfilter viewAllows 移植 + TABS 官方页签成员过滤）；页签行平铺本页全集（默认前 4 退役）。
    v1.8.3（作者 2026-10-31 执行令「把背包、取用、整理物资三个界面改了」＝原型 v13.2/v13.3 落地）：
        **BackpackUI 页转原生模式**——B 键单独背包 / 开柜双背包（整理物资）两形态都不再装配
        rail/plainbag，官方页整页原生；mod 仅注入原生改造 CSS（style#srNativeBp）三点：
@@ -370,13 +378,18 @@
   }
   /* Produces：bagArr() = items['bag']（契约原始行，T5/T7 取 logicId/cfgId/count 用） */
   function bagArr() { return store.items['bag'] || []; }
-  /* 物品行 → 渲染视图对象（join icfg；src=来源容器名，全库/列表/悬停用） */
+  /* 物品行 → 渲染视图对象（join icfg；src=来源容器名，全库/列表/悬停用）。
+     2026-11-01 缺陷单#1：行尾增 s1..s4/tradeV/days（C# RailSortMath=ProjectCook 实例+天赋
+     口径逐叠数值，null=该维无值→角标「—」、排序排尾） */
   function itOf(ownerId, r) {
     var cfg = ICFG[r[1]] || NOCFG;
     var c = ctnById(ownerId);
     return {
       id: r[0], cfgId: r[1], count: r[2] || 0, shelf: r[3] || 0,
       x: r[4] || 0, y: r[5] || 0, w: r[6] || 1, h: r[7] || 1, flags: r[8] || 0,
+      s1: r[9] == null ? null : r[9], s2: r[10] == null ? null : r[10],
+      s3: r[11] == null ? null : r[11], s4: r[12] == null ? null : r[12],
+      tradeV: r[13] == null ? null : r[13], days: r[14] == null ? null : r[14],
       name: cfg.n, icon: cfg.icon, cat: cfg.cat, catId: cfg.catId, value: cfg.trade,
       sat: cfg.v1, mind: cfg.v2, en: cfg.v3, hp: cfg.v5,
       src: c ? nm(c) : '?', ctnId: ownerId
@@ -412,8 +425,17 @@
     return t ? LIB_GROUPS[dimGroup(t.dim)].color : '#C9915A';
   }
   function catColor(catId) { return CAT_RING[((catId % CAT_RING.length) + CAT_RING.length) % CAT_RING.length]; }
-  /* 保质秒 → 显示小时（Math.round(timeLeftSec/3600)；排序仍用原值 timeLeftSec） */
-  function shelfH(sec) { return Math.round((sec || 0) / 3600); }
+  /* 保质键 → 角标文本（缺陷单#1：单位定案=游戏小时；days=排序键编码——-100001 腐败/
+     -100000 过期无计/(-100000,0) 过期计天(距腐败)/>0 剩余天；文本口径=ProjectCook DaysText） */
+  function shelfH(sec) { return Math.round((sec || 0) / 3600); } /* 旧口径保留（列表列等旧消费位） */
+  function daysText(k) {
+    if (k == null) return '—';
+    if (k <= -100001) return '已腐败';
+    if (k <= -100000) return '已过期';
+    var d = k < 0 ? k + 100000 : k;
+    if (d >= 1) return Math.floor(d) + '天';
+    return Math.max(0.1, Math.round(d * 10) / 10) + '天';
+  }
   function totalCap() {
     var s = BAG_CAP; /* 全库口径含背包（rail.js CTN 同款） */
     for (var i = 0; i < store.ctn.length; i++) s += store.ctn[i].cap;
@@ -421,10 +443,55 @@
   }
   /* 侧栏容器全集：背包（虚拟首位）+ 全部家中容器 */
   function allCtns() { return [bagCtn()].concat(store.ctn); }
-  /* 侧栏里可见的容器：整理柜场景排除背包（背包=页面左侧官方面板，§4.5；场景态 T4 接管） */
+  /* 侧栏里可见的容器：整理柜场景排除背包（背包=页面左侧官方面板，§4.5；场景态 T4 接管）。
+     2026-11-01 缺陷单#2：机器页（plain 9 页）按 **v1.7.0 逐页语义**收窄（v1.8.3 全量容器
+     上栏=「显示错误」根源——材料架/载具混进食品页、不可切柜占栏）：
+       ① ctx.view（C# View_* cfg 同源）视图谓词（tagfilter viewAllows 移植）：
+          food=冰箱(kind f)全显 + 柜子/架子按食物域标签（dim1-4）；material=材料/工具标签柜
+          +架子显、冰箱藏、无标签柜不进；browser=全显；
+       ② TABS[scene] 成员过滤（官方页签数组缓存**已到**才启用）：tt/cart/cart0 索引族切换
+          依赖官方数组下标（buildSwitchEvent indexOf），不在数组里的容器点了不切——
+          宁可不显示不错显（Compressor 原生页签=冰箱族，食物柜即被此条收敛=v1.7.0 原状）。
+     BackpackUI（browser 全量+原生页签）与 MaterialRack（rack 语义）不受影响。 */
+  function matchesFoodTags(tags) {
+    for (var i = 0; i < tags.length; i++) { var e = LIB[tags[i]]; if (e && e.dim >= 1 && e.dim <= 4) return true; }
+    return false;
+  }
+  function matToolIds() {
+    var mat = 0, tool = 0;
+    for (var i = 0; i < store.lib.length; i++) {
+      var t = store.lib[i];
+      if (!t) continue;
+      if (t.icon === 'material') mat = t.id;
+      else if (t.icon === 'tool') tool = t.id;
+    }
+    return [mat, tool];
+  }
+  function viewAllowsCtn(c, view) {
+    if (view === 'food') {
+      if (c.kind === 'f') return true;
+      return matchesFoodTags(c.tags || []);
+    }
+    if (view === 'material') {
+      if (c.kind === 'r') return true;
+      if (c.kind === 'f') return false;
+      var mt = matToolIds(), t = c.tags || [];
+      return t.indexOf(mt[0]) >= 0 || t.indexOf(mt[1]) >= 0;
+    }
+    return true; /* browser */
+  }
   function railCtns() {
     if (store.ctx && store.ctx.family === 'rack') return store.ctn;
-    return allCtns();
+    if (!isPlainScene()) return allCtns();
+    var view = (store.ctx && store.ctx.view) || 'browser';
+    var arr = store.ctn.filter(function (c) { return viewAllowsCtn(c, view); });
+    var tabsArr = TABS[st.scene];
+    if (tabsArr && tabsArr.length) {
+      var ok = {};
+      for (var i = 0; i < tabsArr.length; i++) if (tabsArr[i] != null) ok[String(tabsArr[i])] = true;
+      arr = arr.filter(function (c) { return !!ok[String(c.id)]; });
+    }
+    return [bagCtn()].concat(arr);
   }
   /* ---- §4.9 分场景记忆：localStorage 五键（键名冻结，persist 区）----
      srp_pin_order_<scene>   页签常用顺序 ownerId 数组（读=pinOrderIds 渲染即用；写=T5 拖拽 savePinOrder）
@@ -476,13 +543,20 @@
     var ids = pinOrderIds();
     if (!ids) {
       ids = [];
-      for (var i = 0; i < store.ctn.length && i < 4; i++) ids.push(store.ctn[i].id);
+      if (isPlainScene()) {
+        /* 缺陷单#2：机器页页签行平铺**本页语义全集**（v1.7.0 原生页签=全量平铺可点；
+           v1.8.3 默认只锔前 4 个+其余收 ▾=「未显示」根源）。玩家拖拽过（pinOrderIds 命中）
+           仍按记忆序全量平铺。 */
+        for (var p = 0; p < rc.length; p++) if (!rc[p].fixed) ids.push(rc[p].id);
+      } else {
+        for (var i = 0; i < store.ctn.length && i < 4; i++) ids.push(store.ctn[i].id);
+      }
     }
     var byId = {};
-    for (var j = 0; j < store.ctn.length; j++) byId[store.ctn[j].id] = store.ctn[j];
+    for (var j = 0; j < rc.length; j++) byId[rc[j].id] = rc[j]; /* 源=收窄集（防页签记忆复活被收窄柜） */
     var out = [];
     if (bag) out.push(bag);
-    for (var q = 0; q < ids.length; q++) { var c = byId[ids[q]]; if (c) out.push(c); }
+    for (var q = 0; q < ids.length; q++) { var c = byId[ids[q]]; if (c && !c.fixed) out.push(c); }
     return out;
   }
   /* 容量换列数+行数（cosmetic：页脚 N 行估算用；网格模式物品区=官方格，尺寸官方自带；
@@ -940,6 +1014,8 @@
                       （v1.8.2：put1 随右键 mod 语义退役；putAll/takeAll 由中段分类/按标签路
                       复用——cat 恒非 null；tidy 只带 owner/before=命令时该 owner 叠数；
                       storeAll 带 order+全量柜 snaps） */
+  var SORT_PENDING = null; /* 缺陷单#1：用户发起的排序键名——C# ctx.lastSortAck 回执到达时
+                      对得上才 toast，自动路（Trade 默认/切柜续排）静默 */
   function snapOwner(id) { /* ownerId → {s:叠数, p:件数}（契约原始行直读，零渲染对象开销） */
     var raw = id === store.bag ? bagArr() : (store.items[String(id)] || []);
     var s = raw.length, p = 0;
@@ -1271,9 +1347,11 @@
   }
   function applyFsort(key) {
     st.fsort = key;
-    try { lsSet('srp_fsort_' + st.scene, key); } catch (e) { }
+    /* 缺陷单#1：不再 localStorage 持久化（UI-SPEC §4.11「切场景重置为默认」；旧实现恢复标签
+       不重排=标签与格序分裂）；toast 改 settle 回执（C# ctx.lastSortAck，setData 消费）——
+       旧实现 C# 执行前就 toast 成功，失败全静默=「排序不生效」无感 */
+    SORT_PENDING = key;
     cmdOut('sortBy', { owner: st.currentId, key: key }); /* 统一出口：包装器可截获；入队同 cmd */
-    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值');
     render();
   }
   /* 交易买家条：正式实现无演示切换控件；品类加成数据源（ctx.tradePrefs=[[分类名,加成]…]）
@@ -1288,7 +1366,7 @@
       ps += '<i class="ti-pref"><span class="t-dot" style="background:' + FBCOLOR.tvalue + '"></span>' + esc(String(prefs[i][0])) + ' +' + Math.round(Number(prefs[i][1]) * 100) + '%</i>';
     }
     t.innerHTML = (prefs.length ? '<span class="ti-prefs">' + ps + '</span>' : '') +
-      '<span class="ti-mode" title="交易价值 = 单价 × 数量（品类加成接入后按当前交易对象加成计算）">按交易价值排序</span>';
+      '<span class="ti-mode" title="交易价值 = 单价 × 数量 × (1 + 当前交易对象品类加成)">按交易价值排序</span>';
   }
   /* 角标规格：Trade=交易价值（金）；食品设施=当前属性排序维 */
   function badgeSpec() {
@@ -1297,17 +1375,43 @@
     return null;
   }
   function badgeTextFor(it, cfg, k) {
-    if (k === 'shelf') return shelfH(it ? it.shelf : 0) + 'h';
+    /* 缺陷单#1：逐叠维度走契约数值段（it.days/it.tradeV/it.s1..s4——C# RailSortMath=
+       ProjectCook 实例+天赋口径）；it 缺位（id/位序双匹配皆失）时属性维退 icfg 配置级、
+       保质/交易不标（宁缺勿错） */
+    if (k === 'shelf') return daysText(it ? it.days : null);
     if (k === 'value' || k === 'tvalue') {
-      var trade = cfg ? cfg.trade : (it ? it.value : 0);
-      var cnt = it ? it.count : 1;
-      return String(Math.round((trade || 0) * (cnt || 1)));
+      if (it && it.tradeV != null) return String(it.tradeV);
+      if (!it) return '—';
+      var trade = cfg ? cfg.trade : it.value, cnt = it.count || 1;
+      return String(Math.round((trade || 0) * cnt));
     }
-    var v = cfg ? (cfg[VFMap[k]] || 0) : (it ? (it[k] || 0) : 0); /* sat/mind/en/hp=配置级 icfg v1/v2/v3/v5 */
+    var v = null;
+    if (it) v = k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null;
+    if (v == null && cfg) v = cfg[VFMap[k]] || 0; /* icfg v1/v2/v3/v5=配置级兜底（VD_MAP） */
+    v = v || 0;
     return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
   }
-  /* 匹配口径同 applyGridFilter：webui-bag 页 .item id=logicId 精确；Vue 页图标尾段唯一键→
-     配置级维度可标；逐叠维度（保质/交易价值）必须实例精确匹配，否则不标（宁缺勿错） */
+  /* 位序匹配（缺陷单#1 C-b1/C-b2）：Vue 页 .item 无 id、webui-bag 页 id 与契约 InstanceId
+     相等性未证——官方格按 (top,left) 视觉序 ↔ 契约行按 (y,x) 网格序逐位 zip（数量相等才启用）。
+     id 命中优先，位序兜底；数据层重排后两侧坐标同源（BagPos），位序恒成立。 */
+  function buildPosMap(its, arr) {
+    if (!its.length || its.length !== arr.length) return null;
+    var dom = [];
+    for (var i = 0; i < its.length; i++) {
+      var r = its[i].getBoundingClientRect();
+      if (r.width < 2) return null;
+      dom.push([r.top, r.left, its[i]]);
+    }
+    dom.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
+    var rows = arr.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+    var m = new Map(); /* 本脚本 realm 的 Map（仅脚本内部用，跨帧元素作键无碍） */
+    for (var j = 0; j < dom.length; j++) m.set(dom[j][2], rows[j]);
+    return m;
+  }
+  /* 匹配口径（缺陷单#1 后）：id 精确 → 位序 zip（buildPosMap）→ 图标尾段（配置级维度）；
+     逐叠维度（保质/交易价值）必须实例级命中，否则不标（宁缺勿错）。
+     zoom 补偿（C-c4）：官方页 CSS zoom 下 getBoundingClientRect 是视觉 px，角标层在
+     zoom 作用域内——按 nbBadges 同款 rect/offsetWidth 比值归一（st.gridScale 恒 1 弃用） */
   function applyBadges() {
     var host = el.srGridHost;
     if (!host || !host.firstElementChild || !el.doc) return;
@@ -1324,14 +1428,16 @@
       host.appendChild(layer); /* 官方格容器之外的自家层：srGridHost 是壳元素，合法 */
     }
     if (!ICONIDX) buildIconIdx();
-    var hostRect = host.getBoundingClientRect(), sc = st.gridScale || 1;
+    var hostRect = host.getBoundingClientRect();
+    var z = (hostRect.width > 0 && host.offsetWidth > 0) ? hostRect.width / host.offsetWidth : 1;
     var arr = itemsOf(st.currentId), byId = {};
     for (var i = 0; i < arr.length; i++) byId[String(arr[i].id)] = arr[i];
+    var posMap = buildPosMap(its, arr);
     var h = '';
     for (var k = 0; k < its.length; k++) {
       var elx = its[k];
       if (elx.getAttribute('data-srhide')) continue;             /* 被筛掉的格不标 */
-      var it = byId[String(elx.id || '')] || null;
+      var it = byId[String(elx.id || '')] || (posMap ? posMap.get(elx) : null) || null;
       var cfgId = it ? it.cfgId : 0, cfg = null;
       if (!cfgId) {
         var img = elx.querySelector ? elx.querySelector('img') : null;
@@ -1344,8 +1450,8 @@
       if (!it && (spec.k === 'shelf' || spec.k === 'value' || spec.k === 'tvalue')) continue;
       var r = elx.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
-      var x = (r.left - hostRect.left) / sc + r.width / sc;
-      var y = (r.top - hostRect.top) / sc;
+      var x = (r.left - hostRect.left) / z + r.width / z;
+      var y = (r.top - hostRect.top) / z;
       h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, cfg, spec.k) + '</i>';
     }
     if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
@@ -2094,6 +2200,10 @@
     /* v1.8.2：forge 官方切换 → 官方格（在壳内）按新容器重渲染（原生通道）；forge 不可达
        （无页签族/缓存未到）→ 本地数据仍为真，直接渲染 */
     if (!forgeSwitchTo(id)) { if (el.rail) render(); }
+    /* 缺陷单#1：同场景切柜续排（§4.11 排序作用于「当前查看的容器」——旧实现切柜后角标照显
+       而新柜数据未排=显示与数据分裂；ProjectCook 参考行为=排序态跨容器持续生效）。自动路
+       不置 SORT_PENDING（回执静默）。 */
+    if (isPlainScene() && st.fsort && st.fsort !== 'official') cmdOut('sortBy', { owner: id, key: st.fsort });
   }
   /* ---- active 字段读取（附录 A 各族 active 语义，tagfilter readActive 移植 + rack 特例）----
      返回 owner 字符串或 null。索引族（tt/cart/cart0）经 TABS 缓存解下标（pin 占位语义与
@@ -2350,6 +2460,7 @@
       if (!panel) { nbStrip(doc); if (NB.doc === doc) NB.doc = null; return; } /* 取用形态：不装配（翻转即摘） */
       var row = panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
       if (!row) return;
+      var docChanged = NB.doc !== doc; /* nbMount 每 scan 周期重跑——重置只许发生在进页/换页沿 */
       if (NB.doc !== doc) NB.doc = doc;
       if (!doc.getElementById('srnStyle')) {
         var stl = doc.createElement('style');
@@ -2410,7 +2521,10 @@
         t.hidden = true;
         doc.body.appendChild(t);
       }
-      NB.fsort = lsGet('srp_fsort_' + (st.scene || 'BackpackUI')) || 'official';
+      /* 缺陷单#1：切场景重置为默认（§4.11 定版）——**只在进页/换页沿重置**（nbMount 每周期
+         重跑，无条件重置会把玩家刚选的排序当场打回；旧实现靠 localStorage 每周期回灌掩盖） */
+      var scKey = (store.ctx && store.ctx.page) || '';
+      if (docChanged || NB.sceneKey !== scKey) { NB.sceneKey = scKey; NB.fsort = 'official'; }
       nbBadges(doc, panel);
       nbEnsureGridMO(doc, panel);
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
@@ -2432,11 +2546,10 @@
   }
   function nbApplyFsort(key, doc) {
     NB.fsort = key;
-    try { lsSet('srp_fsort_' + (st.scene || 'BackpackUI'), key); } catch (e) { }
     var p = doc.getElementById('srnSortPop');
-    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关 + 同口径 toast */
+    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关；toast 走 settle 回执（缺陷单#1） */
+    SORT_PENDING = key;
     cmdOut('sortBy', { owner: store.bag, key: key }); /* 数据层重排；BackpackUI 页 cmdOut 自带 forge 官方刷新 */
-    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值');
     nbBadges(doc, nbPanel(doc));
   }
   function nbOpenConfirm(doc) {
@@ -2481,11 +2594,12 @@
       var gRect = grid.getBoundingClientRect();
       var z = (gRect.width > 0 && grid.offsetWidth > 0) ? gRect.width / grid.offsetWidth : 1;
       var color = FBCOLOR[NB.fsort] || '#f0b03c';
-      if (!ICONIDX) buildIconIdx(); /* 双路匹配同 v1.8.3 applyBadges：id 精确 / 图标尾段→配置级维度 */
+      if (!ICONIDX) buildIconIdx(); /* 三路匹配同 applyBadges：id 精确 / 位序 zip（缺陷单#1，Vue 页无 id 的逐叠维度由此命中）/ 图标尾段→配置级维度 */
+      var posMap = buildPosMap(its, arr);
       var h = '';
       for (var k = 0; k < its.length; k++) {
         var elx = its[k];
-        var it = byId[String(elx.id || '')] || null;
+        var it = byId[String(elx.id || '')] || (posMap ? posMap.get(elx) : null) || null;
         var cfgId = it ? it.cfgId : 0, cfg = null;
         if (!cfgId) { /* Vue 页 .item 无 id 属性：img src 尾段唯一键→配置级（逐叠维度不标，宁缺勿错） */
           var img = elx.querySelector ? elx.querySelector('img') : null;
@@ -2629,9 +2743,10 @@
     st.scene = key;
     loadScenePrefs();
     st.currentId = entryDefault();
-    /* v13.5-v13.8：设施排序态随场景（Trade=交易价值默认；食品=存档或官方默认）；
+    /* v13.5-v13.8：设施排序态随场景（Trade=交易价值默认；其余=官方默认）；
+       缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；旧实现 localStorage 恢复标签不重排）；
        tradeSorted=每次进 Trade 页重置（首包后一次性下发默认排序） */
-    st.fsort = (key === 'Trade') ? 'value' : (lsGet('srp_fsort_' + key) || 'official');
+    st.fsort = (key === 'Trade') ? 'value' : 'official';
     st.tradeSorted = false;
     /* B 键单独背包 = 纯背包页：进入时全库收紧（rail.js setScene：global 复位回 prevMode） */
     if (sceneBagOnly() && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
@@ -2679,6 +2794,20 @@
        同页首包（mount 先行、数据后到）也补应用一次（sceneApplied 门——mount 时 ctx
        未到，入口默认容器可能落旧值）；同场景回推（rev 变）→ 不动，保住玩家当前页签。
        COMMON 不在此处重置（玩家状态），由 applyScene→loadScenePrefs 按存档/默认赋值。 */
+    /* 缺陷单#1：sortBy 回执 settle（C# ctx.lastSortAck=[key,ok,moved,skip] 一次性带出）——
+       只对用户发起（SORT_PENDING 对得上）toast；自动路（Trade 首包默认/切柜续排）静默。
+       成功=「已按「X」排序 · N 叠重排」（未动=顺序未变），失败=明确报错（治静默）。 */
+    var ack = store.ctx && store.ctx.lastSortAck;
+    if (ack && Array.isArray(ack) && SORT_PENDING === String(ack[0])) {
+      SORT_PENDING = null;
+      var aOk = !!ack[1], aMv = ack[2] | 0, aSk = ack[3] | 0, aK = String(ack[0]);
+      if (aOk) toast(aMv > 0
+        ? '已按「' + fsortLabel(aK) + '」排序 · ' + aMv + ' 叠重排' + (aSk > 0 ? ' · ' + aSk + ' 叠放不下' : '')
+        : '已按「' + fsortLabel(aK) + '」排序（顺序未变）');
+      else toast('「' + fsortLabel(aK) + '」排序未生效（详见 BepInEx 日志）');
+    } else if (ack && Array.isArray(ack)) {
+      SORT_PENDING = null; /* 自动路回执：消费即可，不 toast */
+    }
     var page = store.ctx.page || st.scene;
     if (page && (page !== st.scene || page !== sceneApplied)) {
       applyScene(page);
