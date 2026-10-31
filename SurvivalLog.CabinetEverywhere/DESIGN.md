@@ -119,6 +119,8 @@
     给自绘下拉）。Dim 语义（BackpackUI.js 实证）：4=全部食物 / 1=做到哪一步 / 2=什么食物 /
     3=状态 / 0=物资。
   - `scenario`：页面 id → 'food'|'material'|'browser'（cfg [Scenario] 直出，cfg 改动重推即换视图）。
+  - `railOn`（v3 增补段，T13）：[Rail] Enable 直出——rail 覆盖页旧筛选行为让位门，消费与
+    回退语义见 §9.6。
 - **记忆 v3**：`localStorage.sltf_sel_v3` = `{页面id: 选择}`，按界面独立记忆（v2 全局单值废弃、
   不迁移）；选择 = 标签 id 数字 | 'other' | 0（全部柜子）。
 - JS 侧行为全貌（截读消息/隐藏 DOM/**扣发+伪造切换**/回声丢弃/冻结/自绘下拉）见附录 C
@@ -341,6 +343,217 @@ cfg 文件（置物架排除/炉具排除/电器排除三次演进都靠手工�
 ## 8. 迭代维护清单（2026-10-28 新增）
 
 - 版本与发版（2026-10-28 起，v2 迁移后）：版本号单源=本仓 csproj <Version>（作者定义）；单 mod 发版=本仓 .\release.ps1；ModShared 改动源=中枢仓 suite\ModShared（push_modshared 推送）。
+- **储物侧栏 UI 重设计（2026-10-30，`UI-SPEC.md` 新增）**：可交互原型（7 轮迭代定稿）从
+  父项目夹临时目录迁入本仓 `design-proto\`，历轮截图归档 `design-proto\shots\`（32 张，
+  父夹已清空）。UI 几何/交互/持久化的唯一定义源 = 同目录 **`UI-SPEC.md`**（定稿要点：
+  侧栏 428×816、画布 1536×864 恒定；网格 10 列×34px、容量只加行；柜子入口 ▾ 196px
+  小菜单；**编辑入口=选中页签右侧 ✎（方案 2），双击为快捷方式**；排序 6 项+方向+按
+  总价计；标签两行上限；背包固定首位+竖线；页签顺序与快捷标签**分场景记忆**）。
+  原型构建 `node build-rail-proto.cjs`（输入 suite\tools\webui_src，游戏更新重跑即得
+  最新官方样式），预览 `node serve.cjs` → http://127.0.0.1:8180/standalone.html。
+  正式实现（TabInjector/tagfilter.page.js 演进）按 UI-SPEC 落地，落地时同步本清单。
+- **侧栏 v8（2026-10-30）**：场景入口默认容器（B 键单独背包→背包页，不看柜子）；
+  背包页**一键入库**（按物品分类匹配柜子标签，页签顺序优先，柜满顺延，无匹配留背包）；
+  列表模式改**同名汇总行**（数量=各叠合计）；**取出右键口径定版=取 1 件，Shift+右键=
+  整堆/整行**（官方 webui-rackrows「右键=快速转走一件」同口径）。原型数据层按容器
+  缓存支持真实转移；v8 截图 3 张入 shots\。详见 UI-SPEC v8。
+- **侧栏 v9（2026-10-30，作者反馈四连修）**：①B 键单独背包收紧为**纯背包页**
+  （bagonly：柜子页签栏+全库切换一律不显示，页面就是单个背包；一键入库仍可用）；
+  ②**页签柜名完整显示**（自适应宽+整行换行，去省略号）；③头部动作组定版：
+  **一键整理**（官方背包 action-btn 同位同图标，同名叠合并+分类归位）+ **一键入库
+  改弹窗确认**（取消/确认入库，先看件数预估）；④**整理柜场景整块替换**（官方
+  rack-system 双面板→单侧栏；v8 前只切 storage 侧导致"两个背包"+残留面板样式错位）。
+  修入库确认弹窗被同次点击冒泡秒关 bug（document 级关闭监听豁免）。v9 截图 3 张。
+- **侧栏 v10（2026-10-30，作者反馈三连修）**：①页签栏**恒一行**（v9 的换行改横向
+  滚动，柜名全名保留）；②**整理柜恢复官方双面板**——v9 整块替换把左背包删了，
+  整理=背包↔柜子互转，左背包是交互主体；左面板补静态物品（须前置填充：本页 .item
+  无绝对定位，追加在空格后被网格流排到视野外）+负重文案；③整理柜侧栏=**纯柜子页**
+  （背包页签/一键入库不进侧栏，背包互转走官方「放入材料/全部取出」，消除"两个背包"）；
+  ④标签 chips 语义写明=**筛物品非筛柜子**（本柜筛当前柜物品；全库跨柜，物品分类或
+  来源柜标签命中；柜子标签还用于一键入库路由）。v10 截图 2 张。
+- **侧栏 v11（2026-10-30，作者反馈）**：①**整理柜左侧背包改为自研「优化版背包
+  面板」**——v10 误放回官方原版背包（作者明确：背包已改版优化，不允许再出现官方
+  原版）；官方 rack-system 整体移除，注入自研 `.sr-duo` 双面板：左=背包面板（右键
+  放入右侧当前柜 1 件/Shift 整堆，底部 整理+入库），右=柜子侧栏（纯柜子页，右键
+  取出），转移后双面板联动；②**动作组移到页脚**（官方习惯：整理按钮原生在面板
+  下方），全场景统一，入库确认弹窗锚到底部。v11 截图 2 张。
+- **侧栏 v12（2026-10-30，作者反馈三连修）**：整理柜双面板**补中间转移按钮列**——
+  首版自绘两按钮被否（"官方本身不就有吗，还漏了一个"），后按官方改版背包
+  （BackpackUI 双背包）**逐个对齐到五按钮**：◀全部取出 / ◀分类取出(下拉) / 放入▶ /
+  分类放入▶(下拉) / **按标签放入▶**（按右侧柜子标签规则，色点随切柜联动——第三连
+  修补齐）；按钮样式直接用页面自带官方 .transfer-btn（不自绘），仅补 BackpackUI
+  侧独有样式（下拉/putin，官方 CSS 原样）。整叠/按分类/按标签批量互转，满则跳过
+  计数；主侧栏渲染连带刷新背包面板。实测按标签放入 16 件（材料·零件）、切医疗柜后
+  15 件（医疗）。v12 截图 2 张。
+- **储物侧栏正式实现落地（2026-10-30，cerail-storage-rail 分支，T1-T13）**：rail 全量落地
+  （数据契约 v4/命令层/12+1 场景装配/双面板/一键入库整理）+ [Rail] Enable 门 + 旧 tagfilter
+  railOn 让位门 + 版本 1.8.0 发版收尾；正式实现全貌、契约/命令/装配机制与实机校准点见 **§9**。
+
+## 9. 储物侧栏正式实现（CERail，2026-10-30；v1.8.2 全场景壳架构收口）
+
+> 计划/任务史：`.superpowers/sdd/2026-10-30-cerail-storage-rail\`（T1 取证 → T13 门控发版，
+> 十三份任务报告逐项留痕）；UI 几何/交互唯一定义源 = 同目录 `UI-SPEC.md`（**v13 动作保真
+> 总纲版，2026-10-31**——§0 红线：物品格=官方 DOM 原件，官方动作保真一票否决）；
+> 字段语义取证单源 = `docs/superpowers/plans/2026-10-30-cerail-spike-findings.md`；
+> v1.8.2 收口计划 = `docs/superpowers/plans/2026-10-31-cerail-v182-full-shell.md`。
+> 本节记实现全貌与决策；原型迭代史（v1-v12）在 §8 与 UI-SPEC §6，不重复。
+> **v1.8.2 装配总纲（全 12+1 场景统一）**：壳（自绘 chrome）+ 物品格官方 DOM 原件
+> （reparent）+ 命令通道（仅新增整柜批量动作 + rackOpen）。机器页/BackpackUI/Trade =
+> 壳占官方面板原位 + 官方格容器进 #srGridHost；整理柜 = 三段壳（官方左面板/官方中段
+> 两按钮+mod 三按钮/官方右面板进壳，作用域容器继承 id=rackSystem+class=rack-system，
+> 见 railui.page.js mount rack 分支）；跨柜 = rackOpen（C# 重放官方
+> Ac_MaterialRack_Open.SendAction → state 整体重绑 → 官方行组件原生重渲染）。
+> 自绘格路径（BAGPANEL/renderBagPanel/bindBagPanel/duo 自绘柜格/列表行右键）已全删。
+
+### 9.1 范围与正交性决策
+
+- **12+1 场景**：BackpackUI（bagonly 纯背包）/ MaterialRack（自研双面板 duo）/ Cooking /
+  BrewPanel / RatCage / DyePanel / Compressor / Shredder / GreenhouseBuild / ToolTable /
+  Trade（iframe id 实测='Trade'，非 TradeUI）/ DroneHub，共 12 页 SCENES 表；温室工程台
+  GreenhouseBuild 与粉碎机同款 cart 族适配（原型未单列，实现同表覆盖）。
+  官方背包面板列整体替换为固定侧栏，界面其余部分不改动。
+- **ToolTablePruner 不动（T13 定版决策）**：工作台 CabinetTabs 修剪（§2.7 制作卡顿治理）
+  与 rail 正交——CabinetTabs 是 C# 状态数据源，仍驱动官方自动取料
+  （GetAllLinkedOwnerIds）与重算成本；rail 只替换显示层宿主面板、不读不写 CabinetTabs
+  （侧栏容器行来自 CabinetCatalog.AllContainers）。修剪继续有效且必须保留：关掉=工作台
+  高频全量重算回归（卡顿），留着=对 rail 零影响。侧栏上架后工作台旧 DOM 筛选
+  （tagfilter 对 ToolTable 页）由 railOn 让位门停用（§9.6），但**修剪≠筛选**：前者是
+  扫描成本治理（C# 列表），后者是显示层（DOM）。
+
+### 9.2 文件表
+
+| 文件 | 职责 |
+|---|---|
+| `railui.page.js` | 内嵌资源 JS：契约 v4 消费（setData）、12 页装配循环（scan/ensureMounted/宿主替换/桩/观察器）、侧栏渲染与全部交互、命令出队（`__CERAIL__.cmd/drain`）、整理柜双面板与转移列 |
+| `railui.css` | 内嵌资源 CSS：侧栏几何 !important 锁死（画布 1536×864/侧栏 428×816/网格 10 列×34px）；文本经 `__CERAIL_CSS__` 随 bootstrap 单资源注入 |
+| `RailUi.cs` | 推送与注入通道：Tick（0.5s 快通道）= cfg 门 → Pump → bootstrap 注入+探活 ForceRepublish → drain → rev 门控 setData |
+| `RailData.cs` | 数据层：12 场景表（IsUIActive）、契约 v4 组装（白名单遍历/rev 签名/VD_MAP/临期 flags/BAG_OWNER 三级兜底/懒缓存）、RefreshMeta（5s 元数据） |
+| `RailCommands.cs` | 命令层：drain 解析入队（回调只解析）+ Pump 主帧串行（≤8 条/帧）+ 11 op 官方 API 直调 + cerail_names.json 持久化 + ctx.lastTidyFail 一次性标志 |
+| `RailJson.cs` | 微型 JSON 解析器（纯托管零依赖，回调线程安全；非预期输入抛 FormatException 整批丢弃） |
+| `tools/railjson-test` | RailJson 行为基线（13 断言，Compile Include 链源码——解析器改动必过） |
+| `design-proto/fixtures/` | 12 官方模板字节级快照（Trade 源=TradeUI.html；五页渲染段带 T9 守卫注释） |
+| `design-proto/railui-harness.html` | 测试床一（iframe 域）：真 railui.page.js 的数据消费/渲染/命令 mock 执行器 |
+| `design-proto/railui-root-harness.html` | 测试床二（Root 域）：仿 Root + 12 iframe 真装配循环、桩回归、消息模拟层（forge→按族回发）、包装链共存断言原料（preWrapChain） |
+
+两测试床由外部 Playwright 驱动（serve.cjs 8180），历轮驱动脚本留档
+`.superpowers/sdd/2026-10-30-cerail-storage-rail\tmp-t8/t9/t11/t12\`。JS 改动纪律同 §2.6：
+`node --check` + 两床全绿 + 0 控制台错误。
+
+### 9.3 数据契约 v4（C#→JS，`window.__CERAIL__.setData(json)`）
+
+```json
+{ "rev": 7,
+  "ctx": { "page": "Cooking", "family": "bag", "bagOnly": false,
+           "rackOwner": 0, "bagCap": 42, "lastTidyFail": false },
+  "bag": 900001,
+  "ctn":  [[ownerId,"名","c|f|r",cap,tagId...]],
+  "lib":  [[tagId,"名",dim,order,"iconKey","color"]],
+  "icfg": [[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5]],
+  "items": { "bag": [[instanceId,cfgId,count,timeLeftSec,x,y,w,h,flags]],
+             "<ownerId>": [...] } }
+```
+
+- flags：bit0=污染 / bit1=过期（可腐坏且 TimeLeft≤0）/ bit2=临期（≤ratio×OriginalTimeLeft
+  或 ≤maxDays×86400，阈值取 GameKey.GlobalSetting_NearExpiry_Ratio/_MaxDays，异常兜底 0.2/3）。
+- v1..5 按 VD_MAP（findings §1 定案）：饱食/心态/精力/恒 0（无令牌）/生命；thirst 退役。
+- icfg 行按 cfgId 共享取 Config 值（InstanceVD 实例覆盖不折算，校准点 T14）；图标 =
+  Config_Item.WebIcon 原样字符串（ICON_RULE：勿拼前缀勿加工）。
+- BAG_OWNER 三级兜底：活动页 `State_Web_*.PlayerBagOwnerId`（8 页有此字段）→ 会话缓存 →
+  `State_Data_Player.PlayerId` → 仍不可得 BuildJson 返 null 整包不推（等下一周期）。
+- 红线：OwnerCache 混有地面掉落虚拟 owner——**绝不 foreach 整个 OwnerCache**，只按白名单
+  （CabinetCatalog.AllContainers ownerIds ∪ 背包 owner）TryGetValue 逐 owner 取；State/Reducer 只读。
+- 推送门控三层：① 无 rail 场景（12 页 IsUIActive 全否）不推（清 _lastPage）；
+  ② rev 签名（容器/物品/背包 owner/rackOwner/页签场景）未变且 ctx.page 未切不推；
+  ③ bootstrap 探活「从无到有」即 ForceRepublish（WebView 重建后 rev 未变也要推一包）。
+
+### 9.4 cmd 命令通道（JS→C#，`__CERAIL__.drain()` 返回 + 11 op）
+
+两段式：**drain 回调（Vuplex 线程）只解析入队**（ConcurrentQueue）→ **Pump 主帧串行执行**
+（0.5s 快通道开头、场景门控之前——点完即关界面的存量命令也执行），每帧 ≤8 条，
+批量末尾统一 ForceRepublish 一次；积压 ≥32 抑流（本周期不发 drain）。
+
+| op | 负载 | 官方 API |
+|---|---|---|
+| rackOpen | {owner} | v1.8.2：`Ac_MaterialRack_Open.SendAction(owner, target=owner, cfgId)` 官方动作重放 → RA_Open 整体重绑 State_Web_MaterialRack → 官方行组件原生重渲染；门=MaterialRack UI 活跃（防关页重拉）；TargetId 口径=C1 校准点（§9.7） |
+| take | {ids, all, from} | all=false 只取第一叠 1 件（SplitItem 拆 1）→ 背包；all=true 整叠/整批 TryQuickMoveItems |
+| put | {ids, all, to} | 背包→柜（整理柜左面板右键），口径同 take |
+| takeAll / putAll | {from} / {to} | ItemManager.TryMoveBagAll |
+| takeCat / putCat | {from/to, cat} | 按 Config_Item.Category 过滤整批 → TryQuickMoveItems |
+| putTag | {to} | 读 to 的 GetRule() 标签名集合，背包物品分类名命中整批入柜（TagIds 同一备份读取通道，GetRule 语义 T14 校准——并入 §9.7 #6） |
+| tidy | {owner} | SortContainerForHub（官方排序）+ MergeStacksForHub（同名合并）——三路方案，实效校准见 §9.7 |
+| storeAll | {order:[...]} | §4.7 路由：分类名↔柜标签名、order 顺序优先、柜满顺延、无匹配留背包；order 非白名单 id 跳过+警告 |
+| rename | {owner, name} | mod 侧 cerail_names.json（≤8 字截断，坏文件弃用重建） |
+| setTags | {owner, tags} | FurnitureTagComponent.SetRule（接口代理经 TryCast）；tagId 过 Config_FurnitureTag_Dict 白名单，未知剔除，空数组仍 SetRule（=清标签） |
+
+红线对照（suite/docs/03）：① 回调只入队、执行全在主帧 Pump ✅；② OwnerCache 只白名单，
+非白名单 owner 整条丢弃+LogWarning ✅；③ 不克隆物品/不置零源堆/不碰 State/Reducer，只用
+官方 API ✅；④ id 查无静默跳过计数不中断整批 ✅；⑤ setTags 白名单剔除 ✅；⑥ 每帧 8 条+
+批量末尾一次重推 ✅。结果回传无 JS 通道：数据差量自然体现 + 日志；tidy 失败经
+ctx.lastTidyFail 一次性标志（推出即清）让 JS toast 降级文案。
+
+### 9.5 装配机制（railui.page.js）
+
+- **宿主替换**：SCENES 表 12 页各带运行时 host 选择器，命中即原位替换为 #srp（幂等：
+  宿主复活检测→重装配）。Trade 教训（T8 评审 Critical）：`.cols>.col` 裸选择器在运行时
+  .col 兄弟 3 个时会错命中中列→「在位不变量」恒假→级联摘毁官方两列；必须 `:first-child`
+  收窄（替换后首子=#srp 非 .col → 选择器归 null=「宿主未复活」成立）。
+- **桩节点注入（stubs）**：宿主替换后，官方页面自身 BagMsg/StatusMsg 渲染段的 live
+  $()/getElementById/类查询解引用被摘节点 → 每条官方推送必抛 TypeError、中断 handler
+  后续逻辑（机器功能区显示冻结；五页评审实锤首抛：Compressor `$('tabs')`、Shredder/
+  GreenhouseBuild `$('tabPinned')`、MaterialRack `$('wtText')`、ToolTable
+  `getElementById('backpack-grid')`、ToolTable StatusMsg `.weight-text` 类查询无守卫）。
+  stubs=该页宿主子树内被官方 JS 查询的全部渲染目标（id 桩+类名桩），按 SCENES.stubs
+  声明驱动、不写死页名；Vue 页（BackpackUI/Trade）宿主内无被查询目标=空列表不建桩。
+- **观察器重挂**：iframe 文档级 MutationObserver + 500ms interval 双保险 + `__CERAIL__.scan()`
+  手动触发（测试用）；iframe id 对 SCENES 键，`ID_ALIAS`（{Backpack:'BackpackUI'}）归一
+  静态默认 id 差异；宿主复活→旧 rail 摘除→重装配（真实路径 3ms 实测）。
+- **clickThrough**：官方 webui-core 的交互同步清单（button/[data-interactive]）——rail 全部
+  控件用 `<button>`（弹层选项行再加 data-interactive 双保险），点击穿透 Unity 原生生效。
+- **缩放**：wrap 挂宿主原位=官方 createViewportFit/applyViewportFit 的 zoom 容器内，侧栏
+  天然跟随页面缩放（T8 裁定 5；恒定抖动则改挂外层，代码注释已留改法——校准点 §9.7）。
+- **CSS 单资源**：rail DOM 在 iframe 文档、Root 文档样式管不到——railui.css 文本经
+  `__CERAIL_CSS__` 随 bootstrap 进 Root，由装配区按 iframe 文档注入 style#srpRail。
+
+### 9.6 cfg 门与旧层让位（T8/T13）
+
+- **[Rail] Enable（T8）**：false → RailUi.Tick 首行 return——bootstrap 注入/数据推送/drain
+  （含 Pump）全停；已注入界面的存量 rail 随界面重开由原生重建清除（与 Filter 同策略，不主动清）。
+- **旧 tagfilter railOn 让位门（T13）**：TagFilter.BuildDataJson 数据段追加
+  `"railOn":true|false`（=RailUi.Enabled，与 cfg 门同一语义源）；tagfilter.page.js 收数后存
+  `S.railOn` 全局标志，四处消费点最小侵入早退：
+  - `tryHold` 首行 return false——A-D 消息层扣发+伪造切换全停，消息原样放行；
+  - `applyFrame` 在「还原已藏页签」之后早退——页签隐藏/弹回跳过，且 cfg 热翻 railOn 后
+    不残留旧 display:none；
+  - `refreshDD` 与固定视图页（food/material）同路——摘除遗留下拉/包裹器/弹出层；
+  - `setData` 存标志（数据段缺省=false）。
+  false=旧行为完全不变（回退态）；数据推送本身保留（owners/lib/scenario 照常直推，无害）。
+  页级粒度不需要：rail 开=全局让位——tagfilter scenario 表 10 页全在 rail 12 页之内
+  （BackpackUI/MaterialRack 本就不进筛选名单）。官方页签已随宿主面板移除，跳过旧筛选
+  是防其作用于不存在 DOM 报错。
+
+### 9.7 T14 实机校准点汇总（T1-T13 遗留，一处收拢）
+
+| # | 校准点 | 来源 | 判定 / 翻法 |
+|---|---|---|---|
+| 1 | Backpack/MaterialRack iframe id | T8 | 开页看 `[CERail] scene mounted: <键> (iframe#<id>)`；'Backpack' 别名归一已覆盖；实测既非 'BackpackUI' 亦非 'Backpack' → 回填 SCENES/ID_ALIAS（一行） |
+| 2 | PlayerBagOwnerId 兜底链 | T6 | Verbose 下一条日志定案 8 页直读值==PlayerId 假设；不等则以会话缓存为唯一兜底（代码顺序已如此） |
+| 3 | TimeLeft 单位 | T6 | json 头 7200 类值即秒；若实为小时，改 ItemFlags 常量与注释一行 |
+| 4 | 缩放挂层 | T8 裁定5 | 小窗口开烹饪/交易页看 rail 是否随官方 zoom、有无恒定抖动；抖动 → wrap 改挂 zoom 容器外层（注释留改法） |
+| 5 | VD_MAP 四物核对 | T1/T6 | 面包 2502=[20,3,0,0,0]、急救绷带 2400=[0,0,0,0,20]、西瓜汁(完美) 12417=[102,51,0,0,9]、咖啡 7=[0,5,20,0,0] 逐项对照实际 v1..v5（有 InstanceVD 的实例以 Config 值出） |
+| 6 | SetRule TryCast 门 | T7 | 首测 setTags 即验（`kept=N ok=True`）；代理转换不命中 → 翻 set_TagIds 直写（OpSetTags 注释已留备选）；putTag 读 TagIds 同通道一并验（按标签放入后柜收件+moved>0=读取路成立） |
+| 7 | SortContainerForHub 合并实效 | T7/T12 | 两叠同名同柜 tidy：叠数减少=路线成立；不变（调用成功不合并）→ 翻 OpTidy 降级③置失败标记（一行改动，JS 降级 toast 已就位） |
+| 8 | silent 参数 | T7 | TryQuickMoveItems SilentQuickMove=true（无官方 toast，结果经数据回推自渲染）；实测期望官方 toast UX → 翻 false |
+| 9 | 五页桩+StatusMsg 零异常 | T8/T9 | 实机开 Compressor/Shredder/GreenhouseBuild/MaterialRack/ToolTable 看控制台（harness 已零异常）；游戏改版页面按 buildStubs 注释流程复扫 |
+| 10 | XFER 竞态观察 | T10 | 在途恒一笔（后发覆盖前发）与「单场景活跃」装配语义一致；实机连点五按钮/右键看末次命令 toast 口径观感 |
+| 11 | OpTidy 白名单丢弃路 | T7 | 非 Whitelisted owner（柜子拆掉后的残留入口等）整条丢弃+LogWarning——实机观察触发面与日志可读性 |
+| 12 | **C1：rackOpen TargetId 口径** | v1.8.2 | 开 Verbose 点柜签切柜：日志打「rackOpen 前态 RackOwnerId/CurrentFurnitureId → 重放 Ac_MaterialRack_Open(owner,target,cfg)」——切柜后 rackTitle/行内容重渲染=RackOwnerId 跟随即成立；不重绑（日志前后态不变）→ TargetId 试 State.CurrentFurnitureId 口径（OpRackOpen 一行改动）。附观察：RA_Open 副作用（声音/未读标记）、冰箱 f/柜子 c 经 rackOpen 的行渲染 |
+| 13 | C1b：rack 装配实机目验 | v1.8.2 | 整理柜三段布局（作用域容器 fit 测量不抖动）、飞行动画层落位、机器人开关在位、groundDock 障碍判定（拖出地面落点）；官方 PUT_ALL/TAKE_ALL 作用于 rackOpen 切换后柜 |
+
+> 表下备注（T14 收尾补）：① icfg 的 subCatId 列**原样透出**、本版不消费——侧栏分类显示走
+> 主类目名常量表（RailData.CategoryNames），subCatId 的 Name_Local 取数路径已在 RailData.cs
+> 头注定位（Config_Item.SubCategory → 子类目表），后续要用按该路径取，不属校准项；
+> ② 路径基准统一：本节与 §9.2 文中 `tools/` 均指**仓库根** tools/（railjson-test），
+> `railui.page.js`/`railui.css`/`design-proto/` 均在 mod 目录（SurvivalLog.CabinetEverywhere/）下。
 
 ## 附录 A：白盒穷举表（2026-10-17，T10；十七+轮教训的对照基线）
 

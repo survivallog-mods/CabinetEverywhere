@@ -1,0 +1,243 @@
+/* 版式约束（全部 !important，防止场景页自己的 CSS 反向覆盖）：
+   侧栏高度 816 恒定；宽度自适应官方格（v1.8.2 网格模式物品区=官方原版格，尺寸官方自带
+   38-56px——壳宽 max-content 包住它，min-width 428 保 v12 版式基准；duo/bagonly 无宽格时
+   即 428 定版）。
+   字号规范：主控件/正文 12px，次要信息 11.5px，分组标题 11px，数字 Consolas 11.5px。
+   fork 自 design-proto/rail.css（v12 定稿）。 */
+#srp .sr-rail{position:relative;z-index:2;display:flex;flex-direction:column;
+  width:max-content !important;min-width:428px !important;max-width:640px !important;
+  height:816px !important;min-height:816px !important;max-height:816px !important;
+  box-sizing:border-box !important;margin:0 !important;padding:10px !important;border-radius:12px;
+  /* 不透明底色（缺陷②）：宿主替换后官方面板底色不再衬底。固定深色面板底（与弹层
+     #201d24 同族），任何官方页上恒可读 */
+  background:#201d24 !important;border:1px solid rgba(255,255,255,.09);
+  box-shadow:0 10px 34px rgba(0,0,0,.45);
+  align-items:stretch !important;justify-content:flex-start !important}
+#srp .sr-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
+#srp .sr-headtxt{flex:1 1 0;min-width:0}
+#srp .sr-title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ece5d8}
+#srp .sr-sub{color:#a89f92;font-size:11.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-sub b{color:#f0b03c;font-weight:500}
+/* 动作按钮（官方习惯放面板底部）：一键整理（任意容器，官方 action-btn 同图标）+
+   一键入库（背包页专属，金色）。页脚右置，不占物品区高度（body flex 收缩） */
+#srp .sr-actrow{display:flex;gap:6px;flex:0 0 auto}
+#srp .sr-act{height:26px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2;font-size:12px;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+#srp .sr-act:hover{color:#ece5d8;border-color:rgba(255,255,255,.26)}
+#srp .sr-act:active{transform:translateY(1px)}
+#srp .sr-act svg{width:12px;height:12px;fill:currentColor;flex:0 0 auto}
+#srp .sr-act.primary{border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}
+#srp .sr-act.primary:hover{background:rgba(240,176,60,.26)}
+#srp .sr-act[hidden]{display:none}
+/* v1.8.2.5 简洁背包栏（plainbag：整理物资/材料架的背包侧，作者裁决"普通存储取物界面"）：
+   只留 标题/官方格/悬停条/页脚——页签栏/搜索行/快捷标签行/工具行(排序+网格列表切换) 全隐 */
+#srp .sr-rail.plainbag .sr-ctnbar{display:none !important}
+#srp .sr-rail.plainbag .sr-searchrow{display:none !important}
+#srp .sr-rail.plainbag .sr-tagrow{display:none !important}
+#srp .sr-rail.plainbag .sr-tools{display:none !important}
+#srp .sr-rail.plainbag .sr-offtabs{display:none !important}
+/* BackpackUI aTabs 模式（v1.8.2.2 Bug1 真因）：官方柜签页签行原件进 #srOffTabs 槽，
+   我方柜签栏隐藏（官方页签=原生切换器，active 由 followActive 跟随） */
+#srp .sr-rail.atabs .sr-ctnbar{display:none}
+#srp .sr-offtabs{margin-top:8px;overflow-x:auto;scrollbar-width:none}
+#srp .sr-offtabs::-webkit-scrollbar{display:none}
+/* BackpackUI 双背包三段壳（v1.8.2.1：后备箱/购物袋形态）——A 袋原件|官方五按钮原件|rail 壳。
+   布局自管（官方 .backpack-container 已被 #srp 原位替换，其 flex 布局不再作用于三段）；
+   三段内官方件（.bag-slot/.transfer-controls）样式走官方 CSS 原样。 */
+#srp .sr-bpduo{display:flex;flex-direction:row;align-items:flex-start;gap:18px}
+/* 整理柜三段壳（v1.8.2 v13）：#srp 内作用域容器继承官方 id=rackSystem+class=rack-system
+   ——布局（flex row/gap 18/居中）、scoped 选择器、fit 测量全走官方 CSS，此处零自绘布局。
+   左=官方 .bag-panel 原件 + 中=官方 .transfer-controls 原件（mod 三按钮 append 其尾）+
+   右=rail 壳（官方右面板进 sr-gridhost）。#srMid=mod 三按钮包裹层：display:contents
+   让子项平铺进官方容器（间隔沿用官方 gap:10）。 */
+#srp #srMid{display:contents}
+#srp .transfer-controls-spacer{height:20px;flex:none}
+#srp .category-dropdown-wrapper{position:relative}
+#srp .category-dropdown-btn{display:inline-flex;align-items:center;gap:6px}
+#srp .category-dropdown-btn::after{content:'';display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;margin-left:3px;transition:transform .2s;opacity:.9}
+#srp .category-dropdown-btn.open::after{transform:rotate(180deg)}
+#srp .category-dropdown{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 4px);min-width:100%;background:rgba(20,24,36,.96);border:1px solid rgba(100,120,160,.35);border-radius:6px;padding:4px 0;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.5);max-height:200px;overflow-y:auto}
+#srp .category-option{padding:7px 14px;font-size:13px;color:#c8cde0;cursor:pointer;white-space:nowrap;transition:background .15s}
+#srp .category-option:hover{background:rgba(80,110,180,.35);color:#fff}
+#srp .category-empty{padding:7px 14px;font-size:13px;color:#7a7268;white-space:nowrap}
+/* 按标签放入（官方 tag-putin-btn）：CSS 照搬官方；官方放标签 SVG 图标，原型用标签色点替代 */
+#srp .tag-putin-btn{flex-direction:column;gap:3px}
+#srp .tag-putin-btn.has-ico{padding-top:6px;padding-bottom:7px}
+#srp .tag-putin-btn .putin-row{display:inline-flex;align-items:center;gap:4px}
+#srp .tag-putin-btn .putin-main{gap:8px}
+#srp .tag-putin-btn .putin-ico{display:inline-flex;gap:2px}
+#srp .tag-putin-btn .putin-more{font-size:12px;line-height:13px;opacity:.8}
+#srp .tag-putin-btn .pi-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+/* B 键单独背包 = 纯背包页：柜子页签栏与全库切换不显示（柜子页签在其余场景照常） */
+#srp .sr-rail.bagonly .sr-ctnbar{display:none}
+#srp .sr-rail.bagonly .sr-scope{display:none}
+#srp .sr-ctnbar{display:flex;align-items:flex-start;gap:6px;margin-top:8px}
+/* 页签名完整显示（不省略）且只占一行：页签按内容自适应宽，放不下横向滚动（滚动条隐藏） */
+#srp .sr-pinrow{flex:1 1 0;min-width:0;display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#srp .sr-pinrow::-webkit-scrollbar{display:none}
+#srp .sr-pin{position:relative;flex:0 0 auto;height:30px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;display:inline-flex;align-items:center;gap:2px;cursor:pointer;user-select:none}
+#srp .sr-pin .p-lb{flex:0 0 auto;white-space:nowrap;text-align:center}
+#srp .sr-pin:hover{color:#ece5d8;border-color:rgba(255,255,255,.18)}
+#srp .sr-pin.active{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.12)}
+/* 方案2：仅选中页签右侧显示编辑按钮 */
+#srp .sr-pin .p-edit{display:none;flex:0 0 auto;width:15px;height:15px;border-radius:4px;align-items:center;justify-content:center;font-size:10.5px;line-height:1;color:#c9a86a;cursor:pointer}
+#srp .sr-pin.active .p-edit{display:inline-flex}
+#srp .sr-pin .p-edit:hover{color:#ffe1a0;background:rgba(240,176,60,.22)}
+/* 背包固定首位：竖线分隔，不可拖拽 */
+#srp .sr-pin.main{cursor:default}
+#srp .sr-pin.main::after{content:'';position:absolute;right:-5px;top:8px;bottom:8px;width:2px;border-radius:1px;background:rgba(255,255,255,.38)}
+#srp .sr-pin.dragging{opacity:.45;border-style:dashed}
+#srp .sr-allctn{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:13px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+#srp .sr-allctn:hover{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.10)}
+#srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
+#srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
+#srp .sr-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#ece5d8;font-size:12px}
+#srp .sr-search input::placeholder{color:#7a7268}
+#srp .sr-scope{flex:0 0 auto;height:32px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;cursor:pointer}
+#srp .sr-scope:hover{color:#ece5d8;border-color:rgba(255,255,255,.22)}
+#srp .sr-scope.active{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+#srp .sr-tagrow{display:flex;align-items:stretch;gap:5px;margin-top:8px}
+#srp .sr-tags{display:flex;flex-wrap:wrap;gap:5px;flex:1 1 0;min-width:0;align-content:flex-start;max-height:57px;overflow-y:auto;scrollbar-width:none}
+#srp .sr-tags::-webkit-scrollbar{display:none}
+#srp .sr-tag{flex:0 0 auto;height:26px;padding:0 8px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#srp .sr-tag:hover{color:#ece5d8}
+#srp .sr-tag.active{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.12)}
+#srp .sr-tag .t-dot{width:6px;height:6px;border-radius:50%}
+#srp .sr-tag .t-x{width:14px;height:14px;border-radius:50%;background:rgba(224,122,95,.35);color:#ffd9c4;font-size:10px;line-height:14px;text-align:center;cursor:pointer}
+#srp .sr-tag .t-x:hover{background:rgba(224,122,95,.6)}
+#srp .sr-tagadd{flex:0 0 auto;height:26px;padding:0 9px;border-radius:999px;border:1px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.02);color:#a89f92;font-size:12px;cursor:pointer;display:inline-flex;align-items:center}
+#srp .sr-tagadd:hover{color:#ece5d8;border-color:rgba(255,255,255,.35)}
+#srp .sr-tools{display:flex;align-items:center;gap:6px;margin-top:8px}
+#srp .sr-sortbtn{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#ece5d8;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden}
+#srp .sr-sortbtn:hover{border-color:rgba(255,255,255,.22)}
+#srp .sr-sortbtn .sb-caret{margin-left:auto;color:#7a7268;font-size:10px}
+#srp .sr-dir{flex:0 0 auto;width:34px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#f0b03c;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+#srp .sr-dir:hover{border-color:rgba(240,176,60,.45);color:#ffe1a0}
+#srp .sr-seg{display:flex;padding:2px;border-radius:8px;background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.10)}
+#srp .sr-seg.lock{opacity:.45;pointer-events:none}
+#srp .sr-seg button{height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#a89f92;font-size:12px;cursor:pointer}
+#srp .sr-seg button.active{background:rgba(255,255,255,.10);color:#ece5d8}
+#srp .sr-body{flex:1;min-height:0;margin-top:8px;border:1px solid rgba(255,255,255,.10);border-radius:9px;background:rgba(0,0,0,.18);overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.20) transparent}
+#srp .sr-body::-webkit-scrollbar{width:8px}
+#srp .sr-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:4px}
+#srp .sr-grid[hidden],#srp .sr-list[hidden]{display:none}
+/* v1.8.2 官方格宿主：壳内物品区容器——官方格容器整体搬入（id/监听/渲染通道保留）。
+   relative 供官方绝对定位 .item 锚定；尺寸随官方格自然撑开（壳宽 max-content 跟随） */
+#srp .sr-gridhost{position:relative;min-width:0}
+#srp .sr-gridhost[hidden]{display:none !important}
+#srp .sr-grid{display:grid;grid-auto-rows:var(--sr-slot,34px);gap:6px;padding:3px;align-content:start;justify-content:center}
+#srp .sr-slot{position:relative;width:var(--sr-slot,34px);height:var(--sr-slot,34px);border-radius:4px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,#18181c,#212126);display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;padding:0;overflow:hidden;cursor:pointer}
+#srp .sr-slot:hover{border-color:rgba(240,176,60,.55)}
+#srp .sr-slot.empty{background:rgba(255,255,255,.015);border-style:dashed;border-color:rgba(255,255,255,.05);cursor:default}
+#srp .sr-slot.fav{border-color:rgba(240,176,60,.7)}
+#srp .sr-slot.selected{border-color:#ffe1a0;box-shadow:0 0 0 1px rgba(255,225,160,.55)}
+#srp .sr-slot .s-dot{position:absolute;left:2px;top:2px;width:4px;height:4px;border-radius:50%;background:var(--cat,#b0a89a)}
+#srp .sr-slot .s-cnt{position:absolute;right:1px;bottom:1px;min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.74);color:#f5efe2;font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace}
+#srp .sr-slot .s-new{position:absolute;right:2px;top:2px;width:4px;height:4px;border-radius:50%;background:#f0b03c}
+#srp .sr-list{display:flex;flex-direction:column;gap:3px;padding:6px}
+#srp .sr-lhead{display:grid;grid-template-columns:26px minmax(0,1fr) 44px 56px;gap:6px;padding:2px 8px;color:#7a7268;font-size:11px}
+#srp .sr-lhead .num{text-align:right}
+#srp .sr-row{display:grid;grid-template-columns:26px minmax(0,1fr) 44px 56px;gap:6px;align-items:center;min-height:38px;padding:0 8px;border-radius:6px;border:1px solid transparent;background:rgba(255,255,255,.025);text-align:left;cursor:pointer}
+#srp .sr-row:hover{border-color:rgba(240,176,60,.35)}
+#srp .sr-row.selected{border-color:rgba(255,225,160,.55);background:rgba(240,176,60,.08)}
+#srp .sr-row .ico{font-size:17px;text-align:center}
+#srp .sr-row .main{min-width:0;display:flex;flex-direction:column;gap:1px}
+#srp .sr-row .nm{font-size:12px;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-row .sub{font-size:11.5px;color:#7a7268;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-row .sub .src{font-style:normal;color:#9a8fc0}
+#srp .sr-row .cnt{text-align:right;font-size:11.5px;color:#a89f92;font-family:Consolas,monospace}
+#srp .sr-row .dyn{text-align:right;font-size:11.5px;color:#f0b03c;font-family:Consolas,monospace}
+#srp .sr-row .dyn.cat{color:#a89f92;font-family:inherit}
+#srp .sr-empty{grid-column:1/-1;padding:30px 10px;text-align:center;color:#7a7268;font-size:12px}
+#srp .sr-hover{min-height:24px;padding:5px 2px 0;color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-hover b{color:#ece5d8;font-weight:500}
+#srp .sr-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.10);color:#7a7268;font-size:11.5px}
+#srp .sr-foot-l{flex:1 1 0;min-width:0;display:flex;justify-content:space-between;gap:8px}
+#srp .sr-foot .fr{color:#f0b03c}
+
+/* 弹层：排序 / 标签管理共用通栏样式；容器菜单与容器设置是小号悬浮面板，锚在右上 */
+#srp .sr-pop{position:absolute;left:10px;right:10px;top:206px;z-index:30;max-height:520px;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#201d24;box-shadow:0 18px 44px rgba(0,0,0,.55);overflow:hidden}
+#srp .sr-pop[hidden]{display:none}
+#srp .sr-popctn{left:auto;right:10px;width:196px;top:86px;max-height:404px}
+/* 一键入库确认弹窗：锚在底部动作行上方（按钮在页脚，弹窗就近） */
+#srp .sr-popstore{left:auto;right:10px;width:248px;top:auto;bottom:44px;max-height:320px}
+#srp .sr-popctn .sr-popbody{padding:5px 6px}
+#srp .sr-popedit{left:auto;right:10px;width:248px;top:86px;max-height:470px}
+#srp .sr-edit-lbl{display:block;color:#7a7268;font-size:11px;letter-spacing:.06em;margin:2px 0 5px}
+#srp .sr-edit-name{width:100%;height:28px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.3);outline:0;color:#ece5d8;font-size:12px;box-sizing:border-box}
+#srp .sr-edit-name:focus{border-color:rgba(240,176,60,.5)}
+#srp .sr-edit-save{height:26px;padding:0 12px;border-radius:6px;border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.15);color:#ffe1a0;font-size:12px;cursor:pointer;flex:0 0 auto}
+#srp .sr-edit-save:hover{background:rgba(240,176,60,.28)}
+#srp .sr-pophead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);color:#a89f92;font-size:12px}
+#srp .sr-popbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px}
+#srp .sr-popbody::-webkit-scrollbar{width:7px}
+#srp .sr-popbody::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
+#srp .sr-popfoot{display:flex;justify-content:flex-end;gap:6px;align-items:center;padding:7px 10px;border-top:1px solid rgba(255,255,255,.10);color:#7a7268;font-size:11.5px}
+#srp .sr-popclear{height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;cursor:pointer;flex:0 0 auto}
+#srp .sr-popclear:hover{color:#ece5d8}
+#srp .sr-grp{color:#7a7268;font-size:11px;letter-spacing:.06em;margin:8px 0 5px}
+#srp .sr-ctnitem{display:flex;align-items:center;gap:6px;width:100%;min-height:28px;padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;text-align:left;cursor:pointer}
+#srp .sr-ctnitem:hover{border-color:rgba(240,176,60,.35);background:rgba(240,176,60,.06)}
+#srp .sr-ctnitem.cur{border-color:rgba(255,225,160,.55);background:rgba(240,176,60,.08)}
+#srp .sr-ctnitem .cin{flex:1;min-width:0;font-size:12px;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-toast{position:absolute;left:50%;bottom:46px;transform:translateX(-50%) translateY(4px);z-index:50;max-width:396px;padding:7px 14px;border-radius:8px;border:1px solid rgba(240,176,60,.45);background:#2a2430;color:#ffe1a0;font-size:12px;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .22s,transform .22s;pointer-events:none}
+#srp .sr-toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#srp .sr-tagwrap{display:flex;flex-wrap:wrap;gap:5px}
+#srp .sr-tag2{height:26px;padding:0 9px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#srp .sr-tag2.active{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+#srp .sr-tag2 .t-dot{width:6px;height:6px;border-radius:50%}
+#srp .sr-tm-add{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+#srp .sr-tm-add input{flex:1;min-width:0;height:26px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.3);outline:0;color:#ece5d8;font-size:12px}
+#srp .sr-tm-add input::placeholder{color:#7a7268}
+#srp .sr-sortopt{display:flex;align-items:center;width:100%;min-height:32px;padding:4px 10px;border:0;border-radius:6px;background:transparent;color:#a89f92;font-size:12px;text-align:left;cursor:pointer}
+#srp .sr-sortopt:hover{background:rgba(255,255,255,.05);color:#ece5d8}
+#srp .sr-sortopt.active{color:#ffe1a0;background:rgba(240,176,60,.10)}
+#srp .sr-sortopt.active::after{content:'✓';margin-left:auto;font-size:11px}
+
+/* 页签拖拽指示 */
+#srp .sr-pin.drop-before{box-shadow:-3px 0 0 0 #f0b03c}
+#srp .sr-pin.drop-after{box-shadow:3px 0 0 0 #f0b03c}
+
+/* v-if 静态隐藏：官方 display 规则会盖过 UA 的 [hidden]，必须强制。
+   （原型写死 .gpage 画布层级；游戏内页没有 .gpage，改为全 #srp 生效） */
+#srp [hidden]{display:none !important}
+
+/* ── v13.5-v13.8 机器页简化（plain，9 页；作者 2026-10-31 执行令）──
+   头部两行/搜索行/快捷标签行/排序工具行/悬停条/「N 行」一律不显示：
+   侧栏=页签行(+交易条)+官方格区+页脚；动作组 v13.6 调序=入库在整理左。
+   BackpackUI 原生页/MaterialRack(plainbag)/温室不受影响。 */
+#srp .sr-rail.plain .sr-head,
+#srp .sr-rail.plain .sr-searchrow,
+#srp .sr-rail.plain .sr-tagrow,
+#srp .sr-rail.plain .sr-tools,
+#srp .sr-rail.plain .sr-hover,
+#srp .sr-rail.plain .sr-foot .fr{display:none}
+#srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单贴 ▾ 钮下锚 */
+/* 设施排序钮（页脚左下角；作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
+#srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
+#srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}
+#srp .sr-fsort svg{width:13px;height:13px;fill:currentColor}
+#srp .sr-fsort .sb-caret2{font-size:10px;color:#c9932f;margin-left:1px}
+/* 设施排序弹层（参考图配色/结构，尺寸对齐控件基准 26px/12px）：近黑容器+独立小圆角钮堆叠 */
+#srp .sr-popfsort{left:10px;right:auto;width:128px;top:auto;bottom:44px;max-height:320px;
+  background:rgba(10,10,12,.94);border-color:rgba(255,255,255,.12);border-radius:10px}
+#srp .sr-popfsort .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:5px}
+#srp .sr-fsopt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;
+  border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;
+  text-align:left;cursor:pointer;font-family:inherit}
+#srp .sr-fsopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
+#srp .sr-fsopt.active{color:#f0b03c}
+#srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
+/* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale） */
+#srp #srBadgeLayer{position:absolute;left:0;top:0;right:auto;bottom:auto;width:0;height:0;overflow:visible;pointer-events:none;z-index:5}
+#srp #srBadgeLayer i{position:absolute;transform:translate(-100%,0);min-width:10px;padding:0 2px;border-radius:2px;
+  background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;
+  font-style:normal;white-space:nowrap;pointer-events:none}
+/* 交易买家条（品类加成 chips 接入后显示；先显示排序口径） */
+#srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
+  border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
+  color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden}
+#srp .sr-tradeinfo[hidden]{display:none}
+#srp .ti-prefs{display:inline-flex;gap:6px;min-width:0;overflow:hidden}
+#srp .ti-pref{font-style:normal;display:inline-flex;align-items:center;gap:3px;color:#cfc8bc}
+#srp .ti-pref .t-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+#srp .ti-mode{margin-left:auto;flex:0 0 auto;color:#7a7268}

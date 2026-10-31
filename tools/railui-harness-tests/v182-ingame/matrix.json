@@ -1,0 +1,47 @@
+{
+ "matrix": {
+  "BackpackUI": {
+   "checks": [
+    {
+     "name": "rail-mounted",
+     "ok": true,
+     "detail": "title=背包"
+    },
+    {
+     "name": "official-in-shell",
+     "ok": true,
+     "detail": "{\"items\":18,\"rows\":0,\"firstChild\":\"grid-container\"}"
+    },
+    {
+     "name": "stubs-hidden-ok",
+     "ok": true,
+     "detail": "stubs=0（机器页桩=设计内兜底，数量不计FAIL）"
+    }
+   ],
+   "errors": [],
+   "done": true,
+   "shot": "BackpackUI.png"
+  },
+  "__summary": {
+   "total": 3,
+   "pass": 3,
+   "fail": 0,
+   "consoleErrors": []
+  }
+ },
+ "results": [
+  {
+   "key": "BackpackUI:rail-mounted",
+   "ok": true
+  },
+  {
+   "key": "BackpackUI:official-in-shell",
+   "ok": true
+  },
+  {
+   "key": "BackpackUI:stubs-hidden-ok",
+   "ok": true
+  }
+ ],
+ "consoleErrors": []
+}

@@ -4,7 +4,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>SurvivalLog.CabinetEverywhere</AssemblyName>
     <RootNamespace>SurvivalLog.CabinetEverywhere</RootNamespace>
-    <Version>1.7.0</Version>
+    <Version>1.8.3</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <DebugType>embedded</DebugType>
@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <EmbeddedResource Include="tagfilter.page.js" LogicalName="SurvivalLog.CabinetEverywhere.tagfilter.page.js" />
+    <EmbeddedResource Include="railui.page.js" LogicalName="SurvivalLog.CabinetEverywhere.railui.page.js" />
+    <EmbeddedResource Include="railui.css" LogicalName="SurvivalLog.CabinetEverywhere.railui.css" />
   </ItemGroup>
 
   <ItemGroup>

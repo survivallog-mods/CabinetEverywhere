@@ -1,0 +1,1348 @@
+<div id="sls-proto">
+  <style>
+    #sls-proto {
+      --p-bg: #0e0e10;
+      --p-panel: #1d1a18;
+      --p-panel-2: #23201d;
+      --p-rail: #17171a;
+      --p-rail-2: #1e1e22;
+      --p-line: rgba(255, 255, 255, .10);
+      --p-line-strong: rgba(255, 255, 255, .16);
+      --p-text: #ece5d8;
+      --p-muted: #9b9387;
+      --p-dim: #6f6960;
+      --p-gold: #f0b03c;
+      --p-gold-soft: rgba(240, 176, 60, .16);
+      --p-green: #8fc06e;
+      --p-orange: #e8a33d;
+      --p-blue: #7aa2d6;
+      --p-pink: #d68ab8;
+      --p-cyan: #6fc7c9;
+      --p-gray: #b0a89a;
+      --p-red: #e07a5f;
+      width: 100%;
+    }
+    #sls-proto .p-stage *,
+    #sls-proto .p-stage *::before,
+    #sls-proto .p-stage *::after { box-sizing: border-box; }
+    #sls-proto .p-stage button,
+    #sls-proto .p-stage input,
+    #sls-proto .p-stage select { font: inherit; color: inherit; }
+    #sls-proto .p-stage button { cursor: pointer; }
+    #sls-proto .p-stage {
+      position: relative;
+      width: 100%;
+      color: var(--p-text);
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+      background: radial-gradient(120% 120% at 50% 0%, #24201c 0%, #121113 55%, #0b0b0d 100%);
+      border: 1px solid rgba(255, 255, 255, .09);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+    }
+    #sls-proto .p-stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, .022) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .022) 1px, transparent 1px);
+      background-size: 36px 36px;
+      pointer-events: none;
+      opacity: .7;
+    }
+    #sls-proto .p-topbar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 18px;
+      border-bottom: 1px solid var(--p-line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .01));
+    }
+    #sls-proto .p-top-left { display: flex; align-items: center; gap: 9px; min-width: 0; }
+    #sls-proto .p-accent {
+      width: 4px;
+      height: 18px;
+      border-radius: 2px;
+      background: var(--p-gold);
+      box-shadow: 0 0 10px rgba(240, 176, 60, .5);
+    }
+    #sls-proto .p-page-title { font-size: 16px; font-weight: 600; letter-spacing: .08em; }
+    #sls-proto .p-page-sub { color: var(--p-muted); font-size: 11px; }
+    #sls-proto .p-top-right { display: flex; align-items: center; gap: 12px; }
+    #sls-proto .p-top-hint { color: var(--p-muted); font-size: 11px; letter-spacing: .02em; }
+    #sls-proto .p-icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid var(--p-line);
+      background: rgba(255, 255, 255, .03);
+      color: var(--p-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    #sls-proto .p-icon-btn:hover { color: var(--p-text); border-color: var(--p-line-strong); }
+    #sls-proto .p-layout {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 340px minmax(340px, 430px) 280px;
+      justify-content: center;
+      gap: 14px;
+      padding: 14px;
+      height: 640px;
+      min-height: 0;
+    }
+    #sls-proto .p-rail {
+      position: relative;
+      z-index: 2;
+      width: 340px;
+      max-width: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      border: 1px solid var(--p-line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(38, 37, 42, .94), rgba(22, 22, 26, .97));
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(255, 255, 255, .04);
+    }
+    #sls-proto .p-rail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    #sls-proto .p-rail-title-wrap { min-width: 0; }
+    #sls-proto .p-rail-title {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 196px;
+    }
+    #sls-proto .p-rail-sub { color: var(--p-muted); font-size: 10.5px; margin-top: 2px; }
+    #sls-proto .p-rail-sub b { color: var(--p-gold); font-weight: 500; }
+    #sls-proto .p-expand {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 7px;
+      border: 1px solid rgba(240, 176, 60, .35);
+      background: rgba(240, 176, 60, .09);
+      color: var(--p-gold);
+      font-size: 11px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    #sls-proto .p-expand:hover { background: rgba(240, 176, 60, .16); }
+    #sls-proto .p-tabs {
+      display: flex;
+      gap: 4px;
+      margin-top: 10px;
+      padding: 3px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, .22);
+      border: 1px solid var(--p-line);
+    }
+    #sls-proto .p-tab {
+      flex: 1;
+      height: 26px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--p-muted);
+      font-size: 11.5px;
+    }
+    #sls-proto .p-tab:hover { color: var(--p-text); }
+    #sls-proto .p-tab.active {
+      background: rgba(240, 176, 60, .16);
+      color: #ffe1a0;
+      box-shadow: inset 0 0 0 1px rgba(240, 176, 60, .35);
+    }
+    #sls-proto .p-search {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      height: 32px;
+      margin-top: 8px;
+      padding: 0 9px;
+      border-radius: 8px;
+      border: 1px solid var(--p-line);
+      background: rgba(0, 0, 0, .26);
+      color: var(--p-muted);
+    }
+    #sls-proto .p-search input {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--p-text);
+      font-size: 12px;
+    }
+    #sls-proto .p-search input::placeholder { color: var(--p-dim); }
+    #sls-proto .p-chips {
+      display: flex;
+      gap: 5px;
+      margin-top: 8px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+      scrollbar-width: none;
+    }
+    #sls-proto .p-chips::-webkit-scrollbar { display: none; }
+    #sls-proto .p-chip {
+      flex: 0 0 auto;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid var(--p-line);
+      background: rgba(255, 255, 255, .03);
+      color: var(--p-muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    #sls-proto .p-chip:hover { color: var(--p-text); border-color: var(--p-line-strong); }
+    #sls-proto .p-chip.active {
+      color: #ffe1a0;
+      border-color: rgba(240, 176, 60, .45);
+      background: rgba(240, 176, 60, .12);
+    }
+    #sls-proto .p-tools { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    #sls-proto .p-sort {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 7px;
+      border: 1px solid var(--p-line);
+      background: rgba(0, 0, 0, .22);
+      color: var(--p-muted);
+    }
+    #sls-proto .p-sort select {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--p-text);
+      font-size: 11px;
+      appearance: none;
+    }
+    #sls-proto .p-seg {
+      display: flex;
+      padding: 2px;
+      border-radius: 7px;
+      background: rgba(0, 0, 0, .22);
+      border: 1px solid var(--p-line);
+    }
+    #sls-proto .p-seg button {
+      height: 24px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--p-muted);
+      font-size: 10.5px;
+    }
+    #sls-proto .p-seg button:hover { color: var(--p-text); }
+    #sls-proto .p-seg button.active { background: rgba(255, 255, 255, .09); color: var(--p-text); }
+    #sls-proto .p-body {
+      flex: 1;
+      min-height: 0;
+      margin-top: 8px;
+      border: 1px solid var(--p-line);
+      border-radius: 9px;
+      background: rgba(0, 0, 0, .18);
+      overflow: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .18) transparent;
+    }
+    #sls-proto .p-body::-webkit-scrollbar { width: 7px; height: 7px; }
+    #sls-proto .p-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); border-radius: 4px; }
+    #sls-proto .p-body::-webkit-scrollbar-corner { background: transparent; }
+    #sls-proto .p-grid[hidden],
+    #sls-proto .p-list[hidden] { display: none; }
+    #sls-proto .p-grid {
+      display: grid;
+      grid-template-columns: repeat(var(--cols, 6), 33px);
+      grid-auto-rows: 33px;
+      gap: 4px;
+      padding: 4px;
+      align-content: start;
+      justify-content: start;
+      min-width: max-content;
+    }
+    #sls-proto .p-slot {
+      position: relative;
+      width: 33px;
+      height: 33px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, .075);
+      background: linear-gradient(180deg, #18181c 0%, #212126 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      line-height: 1;
+      padding: 0;
+      overflow: hidden;
+    }
+    #sls-proto .p-slot:hover {
+      border-color: rgba(240, 176, 60, .55);
+      background: linear-gradient(180deg, #202025, #2a2927);
+    }
+    #sls-proto .p-slot.empty {
+      background: rgba(255, 255, 255, .018);
+      border-style: dashed;
+      border-color: rgba(255, 255, 255, .05);
+      cursor: default;
+    }
+    #sls-proto .p-slot.fav {
+      border-color: rgba(240, 176, 60, .7);
+      box-shadow: inset 0 0 0 1px rgba(240, 176, 60, .18);
+    }
+    #sls-proto .p-slot.selected {
+      border-color: #ffe1a0;
+      box-shadow: 0 0 0 1px rgba(255, 225, 160, .55), inset 0 0 12px rgba(240, 176, 60, .15);
+    }
+    #sls-proto .p-slot .p-dot {
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--cat, var(--p-gray));
+      box-shadow: 0 0 4px var(--cat, var(--p-gray));
+    }
+    #sls-proto .p-slot .p-cnt {
+      position: absolute;
+      right: 2px;
+      bottom: 1px;
+      min-width: 10px;
+      padding: 0 2px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, .72);
+      color: #f5efe2;
+      font-size: 10px;
+      line-height: 13px;
+      text-align: center;
+      font-family: Consolas, monospace;
+    }
+    #sls-proto .p-slot .p-new {
+      position: absolute;
+      right: 2px;
+      top: 2px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--p-gold);
+      box-shadow: 0 0 5px rgba(240, 176, 60, .8);
+    }
+    #sls-proto .p-list { display: flex; flex-direction: column; gap: 3px; padding: 5px; min-width: 0; }
+    #sls-proto .p-list-head {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) 40px 44px;
+      gap: 6px;
+      padding: 3px 7px;
+      color: var(--p-dim);
+      font-size: 10px;
+      letter-spacing: .04em;
+    }
+    #sls-proto .p-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) 40px 44px;
+      gap: 6px;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 7px;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, .025);
+      text-align: left;
+    }
+    #sls-proto .p-row:hover { border-color: rgba(240, 176, 60, .35); background: rgba(255, 255, 255, .055); }
+    #sls-proto .p-row.selected { border-color: rgba(255, 225, 160, .55); background: rgba(240, 176, 60, .08); }
+    #sls-proto .p-row-ico { font-size: 16px; text-align: center; }
+    #sls-proto .p-row-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    #sls-proto .p-row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    #sls-proto .p-row-sub { font-size: 10px; color: var(--p-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #sls-proto .p-row-cnt { text-align: right; font-size: 10.5px; color: var(--p-muted); font-family: Consolas, monospace; }
+    #sls-proto .p-row-val { text-align: right; font-size: 10.5px; color: var(--p-gold); font-family: Consolas, monospace; }
+    #sls-proto .p-empty {
+      grid-column: 1 / -1;
+      padding: 26px 10px;
+      text-align: center;
+      color: var(--p-dim);
+      font-size: 11px;
+    }
+    #sls-proto .p-hover {
+      min-height: 26px;
+      padding: 6px 2px 0;
+      color: var(--p-muted);
+      font-size: 10.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #sls-proto .p-hover b { color: var(--p-text); font-weight: 500; }
+    #sls-proto .p-hover .p-hv-gold { color: var(--p-gold); }
+    #sls-proto .p-rail-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 6px;
+      border-top: 1px solid var(--p-line);
+      color: var(--p-dim);
+      font-size: 10.5px;
+    }
+    #sls-proto .p-foot-right { color: var(--p-gold); }
+    #sls-proto .p-center { min-width: 0; display: flex; }
+    #sls-proto .p-panel {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 14px;
+      border: 1px solid var(--p-line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(39, 34, 30, .96), rgba(24, 21, 19, .98));
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .04);
+    }
+    #sls-proto .p-panel-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+    #sls-proto .p-title-bar {
+      width: 4px;
+      height: 15px;
+      border-radius: 2px;
+      background: var(--p-gold);
+      box-shadow: 0 0 9px rgba(240, 176, 60, .5);
+    }
+    #sls-proto .p-count { margin-left: auto; color: var(--p-muted); font-size: 10.5px; font-weight: 400; }
+    #sls-proto .p-cook { align-items: center; justify-content: center; gap: 12px; }
+    #sls-proto .p-pot-wrap {
+      position: relative;
+      width: 190px;
+      height: 190px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 6px;
+    }
+    #sls-proto .p-pot-ring {
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1px solid rgba(240, 176, 60, .18);
+      box-shadow: inset 0 0 40px rgba(240, 176, 60, .06), 0 0 30px rgba(0, 0, 0, .4);
+    }
+    #sls-proto .p-pot-ring::before {
+      content: "";
+      position: absolute;
+      inset: 18px;
+      border-radius: 50%;
+      border: 1px dashed rgba(255, 255, 255, .08);
+    }
+    #sls-proto .p-pot {
+      width: 128px;
+      height: 128px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 56px;
+      background: radial-gradient(circle at 42% 36%, #3a3028, #151311 70%);
+      box-shadow: inset 0 8px 24px rgba(0, 0, 0, .7), 0 10px 26px rgba(0, 0, 0, .4);
+      filter: drop-shadow(0 8px 14px rgba(0, 0, 0, .45));
+    }
+    #sls-proto .p-cook-empty { font-size: 12px; color: var(--p-muted); }
+    #sls-proto .p-cook-hint { font-size: 10.5px; color: var(--p-dim); margin-top: -6px; }
+    #sls-proto .p-fuel {
+      width: 100%;
+      max-width: 340px;
+      margin-top: 8px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px dashed rgba(255, 255, 255, .12);
+      background: rgba(0, 0, 0, .16);
+    }
+    #sls-proto .p-fuel-head {
+      display: flex;
+      justify-content: space-between;
+      color: var(--p-muted);
+      font-size: 10.5px;
+      margin-bottom: 6px;
+    }
+    #sls-proto .p-fuel-slots { display: flex; gap: 6px; }
+    #sls-proto .p-fuel-slot {
+      width: 46px;
+      height: 46px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      background: rgba(20, 16, 13, .8);
+      border: 1px solid var(--p-line);
+    }
+    #sls-proto .p-fuel-slot.empty {
+      color: var(--p-dim);
+      font-size: 18px;
+      border-style: dashed;
+      background: rgba(255, 255, 255, .02);
+    }
+    #sls-proto .p-primary {
+      width: 100%;
+      max-width: 340px;
+      height: 38px;
+      margin-top: 4px;
+      border: 0;
+      border-radius: 7px;
+      background: linear-gradient(180deg, #f3bf54, #b77b1f);
+      color: #26190a;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      box-shadow: 0 4px 14px rgba(240, 176, 60, .25), inset 0 1px 0 rgba(255, 255, 255, .35);
+    }
+    #sls-proto .p-primary:hover { filter: brightness(1.08); }
+    #sls-proto .p-recipes { width: 280px; }
+    #sls-proto .p-recipe-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 8px;
+      padding-right: 2px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .16) transparent;
+    }
+    #sls-proto .p-recipe {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, .06);
+      background: rgba(255, 255, 255, .025);
+    }
+    #sls-proto .p-recipe:hover { border-color: rgba(240, 176, 60, .3); background: rgba(255, 255, 255, .045); }
+    #sls-proto .p-recipe-ico {
+      width: 30px;
+      height: 30px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      background: rgba(0, 0, 0, .3);
+    }
+    #sls-proto .p-recipe-name { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #sls-proto .p-recipe-mat { font-size: 10px; color: var(--p-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #sls-proto .p-recipe-tag {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--p-green);
+      border: 1px solid rgba(143, 192, 110, .35);
+      background: rgba(143, 192, 110, .08);
+      white-space: nowrap;
+    }
+    #sls-proto .p-recipe-tag.miss {
+      color: var(--p-dim);
+      border-color: rgba(255, 255, 255, .12);
+      background: rgba(255, 255, 255, .02);
+    }
+    #sls-proto .p-ghost {
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      bottom: 14px;
+      width: 320px;
+      z-index: 5;
+      border: 1px dashed rgba(240, 176, 60, .55);
+      border-radius: 14px;
+      background: rgba(240, 176, 60, .035);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .2s, width .25s;
+    }
+    #sls-proto .p-ghost.on { opacity: 1; }
+    #sls-proto .p-ghost-label {
+      position: absolute;
+      right: 6px;
+      top: 6px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(28, 23, 16, .96);
+      border: 1px solid rgba(240, 176, 60, .4);
+      color: #ffe1a0;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+    #sls-proto .p-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(20, 20, 23, .995), rgba(12, 12, 14, .998));
+    }
+    #sls-proto .p-overlay[hidden] { display: none; }
+    #sls-proto .p-ws-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--p-line);
+    }
+    #sls-proto .p-ws-title { font-size: 17px; font-weight: 600; letter-spacing: .06em; }
+    #sls-proto .p-ws-sub { margin-top: 2px; color: var(--p-muted); font-size: 11px; }
+    #sls-proto .p-ws-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+    #sls-proto .p-search-wide { width: 300px; margin-top: 0; }
+    #sls-proto .p-ws-sort {
+      height: 32px;
+      padding: 0 8px;
+      border-radius: 8px;
+      border: 1px solid var(--p-line);
+      background: rgba(0, 0, 0, .3);
+      color: var(--p-text);
+      font-size: 11px;
+      outline: 0;
+    }
+    #sls-proto .p-ws-close {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 32px;
+      padding: 0 10px;
+      border-radius: 8px;
+      border: 1px solid var(--p-line);
+      background: rgba(255, 255, 255, .04);
+      color: var(--p-text);
+      font-size: 11px;
+    }
+    #sls-proto .p-ws-close:hover { border-color: var(--p-line-strong); background: rgba(255, 255, 255, .07); }
+    #sls-proto .p-ws-chips { display: flex; gap: 6px; padding: 10px 0; overflow-x: auto; }
+    #sls-proto .p-ws-body {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--p-line);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, .2);
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, .18) transparent;
+    }
+    #sls-proto .p-ws-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, 44px);
+      grid-auto-rows: 44px;
+      gap: 6px;
+      padding: 10px;
+      align-content: start;
+      justify-content: start;
+    }
+    #sls-proto .p-ws-slot {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, .08);
+      background: linear-gradient(180deg, #1a1a1e, #232329);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      padding: 0;
+    }
+    #sls-proto .p-ws-slot:hover { border-color: rgba(240, 176, 60, .55); }
+    #sls-proto .p-ws-slot.fav { border-color: rgba(240, 176, 60, .7); }
+    #sls-proto .p-ws-slot .p-dot {
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--cat, var(--p-gray));
+      box-shadow: 0 0 4px var(--cat, var(--p-gray));
+    }
+    #sls-proto .p-ws-slot .p-new {
+      position: absolute;
+      right: 3px;
+      top: 3px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--p-gold);
+      box-shadow: 0 0 5px rgba(240, 176, 60, .8);
+    }
+    #sls-proto .p-ws-slot.empty {
+      background: rgba(255, 255, 255, .015);
+      border-style: dashed;
+      border-color: rgba(255, 255, 255, .05);
+      cursor: default;
+    }
+    #sls-proto .p-ws-slot .p-cnt {
+      position: absolute;
+      right: 3px;
+      bottom: 2px;
+      min-width: 11px;
+      padding: 0 2px;
+      border-radius: 2px;
+      background: rgba(0, 0, 0, .72);
+      color: #f5efe2;
+      font-size: 10px;
+      line-height: 13px;
+      text-align: center;
+      font-family: Consolas, monospace;
+    }
+    #sls-proto .p-ws-foot {
+      display: flex;
+      justify-content: space-between;
+      padding-top: 8px;
+      color: var(--p-dim);
+      font-size: 10.5px;
+    }
+    #sls-proto .p-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+    #sls-proto .p-control-label { color: var(--muted-foreground); font-size: 12px; }
+    #sls-proto .p-control-note { color: var(--muted-foreground); font-size: 11.5px; }
+    #sls-proto .p-compare { margin-left: 6px; }
+    @media (max-width: 1020px) {
+      #sls-proto .p-layout { grid-template-columns: 320px minmax(0, 1fr); height: auto; }
+      #sls-proto .p-rail { width: 320px; height: 620px; }
+      #sls-proto .p-center { min-height: 620px; }
+      #sls-proto .p-recipes { display: none; }
+    }
+    @media (max-width: 720px) {
+      #sls-proto .p-layout { grid-template-columns: 1fr; height: auto; }
+      #sls-proto .p-rail { width: 100%; height: 560px; }
+      #sls-proto .p-center { min-height: 520px; }
+      #sls-proto .p-top-hint { display: none; }
+      #sls-proto .p-ws-head { flex-direction: column; }
+      #sls-proto .p-ws-actions { width: 100%; justify-content: flex-start; }
+      #sls-proto .p-search-wide { width: 100%; }
+    }
+  </style>
+
+  <div class="p-stage">
+    <div class="p-topbar">
+      <div class="p-top-left">
+        <span class="p-accent"></span>
+        <span class="p-page-title">烹饪</span>
+        <span class="p-page-sub">厨房 · 家用灶台</span>
+      </div>
+      <div class="p-top-right">
+        <span class="p-top-hint" id="topHint">柜子 20×16 · 侧栏 340px 固定</span>
+        <button class="p-icon-btn" type="button" aria-label="关闭"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+    </div>
+
+    <div class="p-layout" id="layout">
+      <div class="p-ghost" id="ghost" aria-hidden="true">
+        <span class="p-ghost-label" id="ghostLabel">官方 ~964px</span>
+      </div>
+
+      <aside class="p-rail" id="rail">
+        <div class="p-rail-head">
+          <div class="p-rail-title-wrap">
+            <div class="p-rail-title" id="railTitle">储物柜（大型置物架）</div>
+            <div class="p-rail-sub"><b id="railFixed">侧栏固定 340px</b> · <span id="railCap">20×16</span></div>
+          </div>
+          <button class="p-expand" id="expandBtn" type="button" aria-label="放大到全屏工作区">
+            <i data-lucide="maximize-2" aria-hidden="true"></i><span>放大</span>
+          </button>
+        </div>
+
+        <div class="p-tabs" id="tabs">
+          <button class="p-tab" data-tab="backpack" type="button">背包</button>
+          <button class="p-tab active" data-tab="cabinet" type="button">储物柜</button>
+          <button class="p-tab" data-tab="fridge" type="button">冰箱</button>
+        </div>
+
+        <div class="p-search">
+          <i data-lucide="search" aria-hidden="true"></i>
+          <input id="searchInput" type="text" placeholder="搜索物品 / 标签" autocomplete="off" />
+        </div>
+
+        <div class="p-chips" id="chips">
+          <button class="p-chip active" data-cat="全部" type="button">全部</button>
+          <button class="p-chip" data-cat="食材" type="button">食材</button>
+          <button class="p-chip" data-cat="菜品" type="button">菜品</button>
+          <button class="p-chip" data-cat="材料" type="button">材料</button>
+          <button class="p-chip" data-cat="药品" type="button">药品</button>
+          <button class="p-chip" data-cat="饮品" type="button">饮品</button>
+        </div>
+
+        <div class="p-tools">
+          <label class="p-sort">
+            <i data-lucide="arrow-up-down" aria-hidden="true"></i>
+            <select id="sortSelect" aria-label="排序">
+              <option value="category">按分类</option>
+              <option value="value">按交易价值</option>
+              <option value="shelf">按保质期</option>
+              <option value="sat">按饱食度</option>
+            </select>
+          </label>
+          <div class="p-seg" id="modeSeg" role="group" aria-label="布局">
+            <button class="active" data-mode="grid" type="button">网格</button>
+            <button data-mode="list" type="button">列表</button>
+          </div>
+        </div>
+
+        <div class="p-body" id="body">
+          <div class="p-grid" id="grid"></div>
+          <div class="p-list" id="list" hidden></div>
+        </div>
+
+        <div class="p-hover" id="hoverDetail">悬停查看物品 · 拖入烹饪台</div>
+        <div class="p-rail-foot">
+          <span id="fillStatus">262 / 320 格</span>
+          <span class="p-foot-right" id="viewStatus">8 列可见 · 内部滚动</span>
+        </div>
+      </aside>
+
+      <main class="p-center">
+        <section class="p-panel p-cook">
+          <div class="p-panel-title"><span class="p-title-bar"></span>烹饪操作台</div>
+          <div class="p-pot-wrap">
+            <div class="p-pot-ring"></div>
+            <div class="p-pot">🍲</div>
+          </div>
+          <div class="p-cook-empty">等待食材投入…</div>
+          <div class="p-cook-hint">从左侧储物栏拖入，或右键转移</div>
+          <div class="p-fuel">
+            <div class="p-fuel-head"><span>燃料队列</span><span>已加 0 / 3</span></div>
+            <div class="p-fuel-slots">
+              <div class="p-fuel-slot">🪵</div>
+              <div class="p-fuel-slot empty">+</div>
+              <div class="p-fuel-slot empty">+</div>
+            </div>
+          </div>
+          <button class="p-primary" type="button">开始烹饪</button>
+        </section>
+      </main>
+
+      <aside class="p-panel p-recipes">
+        <div class="p-panel-title"><span class="p-title-bar"></span>菜谱书<span class="p-count">18 / 32</span></div>
+        <div class="p-recipe-list" id="recipeList"></div>
+      </aside>
+    </div>
+
+    <div class="p-overlay" id="workspace" hidden>
+      <div class="p-ws-head">
+        <div>
+          <div class="p-ws-title">储物工作区</div>
+          <div class="p-ws-sub" id="wsSub">储物柜（大型置物架） · 20×16 · 262 件</div>
+        </div>
+        <div class="p-ws-actions">
+          <div class="p-search p-search-wide">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input id="wsSearch" type="text" placeholder="全局搜索：名称 / 分类 / 标签" autocomplete="off" />
+          </div>
+          <select id="wsSort" class="p-ws-sort" aria-label="排序">
+            <option value="category">按分类</option>
+            <option value="value">按交易价值</option>
+            <option value="shelf">按保质期</option>
+            <option value="sat">按饱食度</option>
+          </select>
+          <button class="p-ws-close" id="wsClose" type="button"><i data-lucide="x" aria-hidden="true"></i>收起</button>
+        </div>
+      </div>
+      <div class="p-ws-chips" id="wsChips">
+        <button class="p-chip active" data-cat="全部" type="button">全部</button>
+        <button class="p-chip" data-cat="食材" type="button">食材</button>
+        <button class="p-chip" data-cat="菜品" type="button">菜品</button>
+        <button class="p-chip" data-cat="材料" type="button">材料</button>
+        <button class="p-chip" data-cat="药品" type="button">药品</button>
+        <button class="p-chip" data-cat="饮品" type="button">饮品</button>
+      </div>
+      <div class="p-ws-body">
+        <div class="p-ws-grid" id="wsGrid"></div>
+      </div>
+      <div class="p-ws-foot">
+        <span id="wsStatus">262 / 320 格</span>
+        <span>全屏工作区：自适应列数 · 内部滚动</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="viz-controls p-controls" id="controls">
+    <span class="p-control-label">柜子容量</span>
+    <button class="btn btn-sm" data-size="6x5" type="button">6×5</button>
+    <button class="btn btn-sm" data-size="14x10" type="button">14×10</button>
+    <button class="btn btn-sm btn-primary" data-size="20x16" type="button">20×16</button>
+    <button class="btn btn-sm" data-size="24x18" type="button">24×18</button>
+    <label class="form-check form-switch p-compare">
+      <input class="form-check-input" type="checkbox" id="compareToggle" />
+      <span class="form-check-label">对比官方膨胀宽度</span>
+    </label>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.getElementById('sls-proto');
+      if (!root) return;
+
+      var COLORS = {
+        '食材': '#8fc06e',
+        '菜品': '#e8a33d',
+        '材料': '#7aa2d6',
+        '药品': '#d68ab8',
+        '饮品': '#6fc7c9',
+        '工具': '#b0a89a'
+      };
+
+      var POOL = [
+        { n: '生态香米', e: '🍚', c: '食材', v: 12, s: 180, sat: 15 },
+        { n: '野兔肉', e: '🍖', c: '食材', v: 28, s: 36, sat: 35 },
+        { n: '胡萝卜', e: '🥕', c: '食材', v: 8, s: 60, sat: 10 },
+        { n: '土豆', e: '🥔', c: '食材', v: 6, s: 90, sat: 14 },
+        { n: '蘑菇', e: '🍄', c: '食材', v: 9, s: 24, sat: 8 },
+        { n: '河鱼', e: '🐟', c: '食材', v: 22, s: 18, sat: 28 },
+        { n: '面包', e: '🍞', c: '菜品', v: 18, s: 12, sat: 30 },
+        { n: '炖菜', e: '🍲', c: '菜品', v: 45, s: 8, sat: 55 },
+        { n: '烤肉', e: '🍗', c: '菜品', v: 38, s: 10, sat: 48 },
+        { n: '铁钉', e: '🔩', c: '材料', v: 4, s: 999, sat: 0 },
+        { n: '木板', e: '🪵', c: '材料', v: 5, s: 999, sat: 0 },
+        { n: '布料', e: '🧵', c: '材料', v: 7, s: 999, sat: 0 },
+        { n: '草药', e: '🌿', c: '药品', v: 15, s: 120, sat: 0 },
+        { n: '绷带', e: '🩹', c: '药品', v: 20, s: 999, sat: 0 },
+        { n: '净水', e: '💧', c: '饮品', v: 10, s: 30, sat: 5 },
+        { n: '咖啡', e: '☕', c: '饮品', v: 25, s: 20, sat: 2 },
+        { n: '罐头', e: '🥫', c: '食材', v: 16, s: 240, sat: 18 },
+        { n: '苹果', e: '🍎', c: '食材', v: 7, s: 42, sat: 9 },
+        { n: '鸡蛋', e: '🥚', c: '食材', v: 11, s: 28, sat: 12 },
+        { n: '面粉', e: '🌾', c: '材料', v: 9, s: 200, sat: 0 },
+        { n: '酒曲', e: '🧪', c: '材料', v: 30, s: 999, sat: 0 },
+        { n: '止痛药', e: '💊', c: '药品', v: 26, s: 999, sat: 0 },
+        { n: '热汤', e: '🥣', c: '菜品', v: 32, s: 6, sat: 40 },
+        { n: '茶', e: '🍵', c: '饮品', v: 14, s: 24, sat: 3 }
+      ];
+
+      var SIZE_TITLES = {
+        '6x5': '储物柜（小型置物架）',
+        '8x7': '冰箱',
+        '14x10': '储物柜（中型置物架）',
+        '20x16': '储物柜（大型置物架）',
+        '24x18': '储物柜（超大型置物架）'
+      };
+
+      var RECIPES = [
+        { n: '蘑菇炖兔肉', e: '🍲', m: '野兔肉 ×2 · 蘑菇 ×3', ok: true },
+        { n: '烤土豆', e: '🥔', m: '土豆 ×2 · 燃料 ×1', ok: true },
+        { n: '蔬菜汤', e: '🥣', m: '胡萝卜 ×2 · 净水 ×1', ok: true },
+        { n: '香煎河鱼', e: '🐟', m: '河鱼 ×1 · 油脂 ×1', ok: false },
+        { n: '大米饭', e: '🍚', m: '生态香米 ×2 · 净水 ×1', ok: true },
+        { n: '面包', e: '🍞', m: '面粉 ×3 · 净水 ×1', ok: false },
+        { n: '烤肉串', e: '🍗', m: '野兔肉 ×2 · 木签 ×2', ok: true },
+        { n: '草药茶', e: '🍵', m: '草药 ×2 · 净水 ×1', ok: true },
+        { n: '苹果派', e: '🥧', m: '苹果 ×3 · 面粉 ×2', ok: false },
+        { n: '炖菜', e: '🍜', m: '土豆 ×2 · 胡萝卜 ×2', ok: true }
+      ];
+
+      var state = {
+        size: '20x16',
+        tab: 'cabinet',
+        lastCabinetSize: '20x16',
+        mode: 'grid',
+        sort: 'category',
+        cat: '全部',
+        query: '',
+        selectedId: null,
+        items: [],
+        cells: 320,
+        cols: 20,
+        rows: 16
+      };
+
+      var els = {
+        topHint: document.getElementById('topHint'),
+        railTitle: document.getElementById('railTitle'),
+        railFixed: document.getElementById('railFixed'),
+        railCap: document.getElementById('railCap'),
+        tabs: document.getElementById('tabs'),
+        searchInput: document.getElementById('searchInput'),
+        chips: document.getElementById('chips'),
+        sortSelect: document.getElementById('sortSelect'),
+        modeSeg: document.getElementById('modeSeg'),
+        body: document.getElementById('body'),
+        grid: document.getElementById('grid'),
+        list: document.getElementById('list'),
+        hoverDetail: document.getElementById('hoverDetail'),
+        fillStatus: document.getElementById('fillStatus'),
+        viewStatus: document.getElementById('viewStatus'),
+        recipeList: document.getElementById('recipeList'),
+        expandBtn: document.getElementById('expandBtn'),
+        workspace: document.getElementById('workspace'),
+        wsSearch: document.getElementById('wsSearch'),
+        wsSort: document.getElementById('wsSort'),
+        wsChips: document.getElementById('wsChips'),
+        wsGrid: document.getElementById('wsGrid'),
+        wsSub: document.getElementById('wsSub'),
+        wsStatus: document.getElementById('wsStatus'),
+        wsClose: document.getElementById('wsClose'),
+        ghost: document.getElementById('ghost'),
+        ghostLabel: document.getElementById('ghostLabel'),
+        compareToggle: document.getElementById('compareToggle'),
+        controls: document.getElementById('controls')
+      };
+
+      function parseSize(size) {
+        var parts = size.split('x');
+        return { cols: parseInt(parts[0], 10), rows: parseInt(parts[1], 10) };
+      }
+
+      function sizeLabel(size) {
+        var p = parseSize(size);
+        return p.cols + '×' + p.rows;
+      }
+
+      function makeItems(size) {
+        var p = parseSize(size);
+        var cells = p.cols * p.rows;
+        var count = Math.max(6, Math.round(cells * 0.82));
+        var items = [];
+        for (var i = 0; i < count; i++) {
+          var base = POOL[i % POOL.length];
+          var bump = (i * 7) % 9;
+          items.push({
+            id: i,
+            name: base.n,
+            emoji: base.e,
+            cat: base.c,
+            count: 1 + ((i * 5 + 3) % 9),
+            value: base.v + bump * 2,
+            shelf: Math.max(2, base.s - bump * 3),
+            sat: base.sat + (bump % 4),
+            fav: i % 13 === 0,
+            fresh: i % 17 === 0
+          });
+        }
+        return { items: items, cells: cells, cols: p.cols, rows: p.rows };
+      }
+
+      function sortItems(items) {
+        var catOrder = { '食材': 0, '菜品': 1, '材料': 2, '药品': 3, '饮品': 4, '工具': 5 };
+        var out = items.slice();
+        out.sort(function (a, b) {
+          if (state.sort === 'value') return b.value - a.value;
+          if (state.sort === 'shelf') return a.shelf - b.shelf;
+          if (state.sort === 'sat') return b.sat - a.sat;
+          var ca = catOrder[a.cat] == null ? 9 : catOrder[a.cat];
+          var cb = catOrder[b.cat] == null ? 9 : catOrder[b.cat];
+          if (ca !== cb) return ca - cb;
+          return a.id - b.id;
+        });
+        return out;
+      }
+
+      function visibleItems() {
+        var q = state.query.trim().toLowerCase();
+        return sortItems(state.items.filter(function (it) {
+          if (state.cat !== '全部' && it.cat !== state.cat) return false;
+          if (!q) return true;
+          return it.name.toLowerCase().indexOf(q) >= 0 || it.cat.toLowerCase().indexOf(q) >= 0;
+        }));
+      }
+
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      }
+
+      function slotHtml(it, cls) {
+        var color = COLORS[it.cat] || '#b0a89a';
+        return '<button type="button" class="' + cls + (it.fav ? ' fav' : '') + (state.selectedId === it.id ? ' selected' : '') + '" ' +
+          'data-item-id="' + it.id + '" aria-label="' + esc(it.name + ' ×' + it.count) + '" ' +
+          'style="--cat:' + color + '">' +
+          '<span class="p-dot"></span>' +
+          '<span aria-hidden="true">' + it.emoji + '</span>' +
+          '<span class="p-cnt">' + it.count + '</span>' +
+          (it.fresh ? '<span class="p-new"></span>' : '') +
+          '</button>';
+      }
+
+      function renderRecipes() {
+        var html = '';
+        for (var i = 0; i < RECIPES.length; i++) {
+          var r = RECIPES[i];
+          html += '<div class="p-recipe">' +
+            '<div class="p-recipe-ico" aria-hidden="true">' + r.e + '</div>' +
+            '<div><div class="p-recipe-name">' + esc(r.n) + '</div><div class="p-recipe-mat">' + esc(r.m) + '</div></div>' +
+            '<span class="p-recipe-tag' + (r.ok ? '' : ' miss') + '">' + (r.ok ? '可做' : '缺料') + '</span>' +
+            '</div>';
+        }
+        els.recipeList.innerHTML = html;
+      }
+
+      function syncInputs() {
+        if (els.searchInput.value !== state.query) els.searchInput.value = state.query;
+        if (els.wsSearch.value !== state.query) els.wsSearch.value = state.query;
+        if (els.sortSelect.value !== state.sort) els.sortSelect.value = state.sort;
+        if (els.wsSort.value !== state.sort) els.wsSort.value = state.sort;
+      }
+
+      function syncChips() {
+        var groups = [els.chips, els.wsChips];
+        for (var g = 0; g < groups.length; g++) {
+          var buttons = groups[g].querySelectorAll('[data-cat]');
+          for (var i = 0; i < buttons.length; i++) {
+            buttons[i].classList.toggle('active', buttons[i].getAttribute('data-cat') === state.cat);
+          }
+        }
+      }
+
+      function render() {
+        var p = parseSize(state.size);
+        var filtered = visibleItems();
+        var visibleCols = Math.min(p.cols, 8);
+        var canFit = p.cols <= 8 && p.rows <= 10;
+        var title = state.tab === 'backpack' ? '角色背包' : (state.tab === 'fridge' ? '冰箱' : (SIZE_TITLES[state.size] || '储物柜'));
+
+        els.railTitle.textContent = title;
+        els.railCap.textContent = sizeLabel(state.size);
+        els.topHint.textContent = '柜子 ' + sizeLabel(state.size) + ' · 侧栏 340px 固定';
+        els.fillStatus.textContent = filtered.length + ' / ' + state.cells + ' 格';
+        els.viewStatus.textContent = canFit ? '全部可见 · 无滚动' : (visibleCols + ' 列可见 · 内部滚动');
+        els.wsSub.textContent = title + ' · ' + sizeLabel(state.size) + ' · ' + filtered.length + ' 件';
+        els.wsStatus.textContent = filtered.length + ' / ' + state.cells + ' 格';
+
+        var tabs = els.tabs.querySelectorAll('[data-tab]');
+        for (var t = 0; t < tabs.length; t++) {
+          tabs[t].classList.toggle('active', tabs[t].getAttribute('data-tab') === state.tab);
+        }
+
+        var seg = els.modeSeg.querySelectorAll('[data-mode]');
+        for (var s = 0; s < seg.length; s++) {
+          seg[s].classList.toggle('active', seg[s].getAttribute('data-mode') === state.mode);
+        }
+
+        syncChips();
+        syncInputs();
+
+        if (state.mode === 'grid') {
+          els.grid.hidden = false;
+          els.list.hidden = true;
+          els.grid.style.setProperty('--cols', p.cols);
+          var html = '';
+          if (!filtered.length) {
+            html = '<div class="p-empty" style="grid-column:1/-1">没有匹配的物品</div>';
+          } else {
+            for (var i = 0; i < state.cells; i++) {
+              if (i < filtered.length) html += slotHtml(filtered[i], 'p-slot');
+              else html += '<div class="p-slot empty" aria-hidden="true"></div>';
+            }
+          }
+          els.grid.innerHTML = html;
+        } else {
+          els.grid.hidden = true;
+          els.list.hidden = false;
+          var rowHtml = '<div class="p-list-head"><span></span><span>物品</span><span style="text-align:right">数量</span><span style="text-align:right">价值</span></div>';
+          if (!filtered.length) {
+            rowHtml += '<div class="p-empty">没有匹配的物品</div>';
+          } else {
+            for (var j = 0; j < filtered.length; j++) {
+              var it = filtered[j];
+              rowHtml += '<button type="button" class="p-row' + (state.selectedId === it.id ? ' selected' : '') + '" data-item-id="' + it.id + '">' +
+                '<span class="p-row-ico" aria-hidden="true">' + it.emoji + '</span>' +
+                '<span class="p-row-main"><span class="p-row-name">' + esc(it.name) + '</span><span class="p-row-sub">' + esc(it.cat) + ' · 保质 ' + it.shelf + 'h · 饱食 +' + it.sat + '</span></span>' +
+                '<span class="p-row-cnt">×' + it.count + '</span>' +
+                '<span class="p-row-val">' + it.value + '</span>' +
+                '</button>';
+            }
+          }
+          els.list.innerHTML = rowHtml;
+        }
+
+        var wsHtml = '';
+        if (!filtered.length) {
+          wsHtml = '<div class="p-empty" style="grid-column:1/-1">没有匹配的物品</div>';
+        } else {
+          for (var k = 0; k < state.cells; k++) {
+            if (k < filtered.length) wsHtml += slotHtml(filtered[k], 'p-ws-slot');
+            else wsHtml += '<div class="p-ws-slot empty" aria-hidden="true"></div>';
+          }
+        }
+        els.wsGrid.innerHTML = wsHtml;
+        updateGhost();
+      }
+
+      function setSize(size, remember) {
+        var p = parseSize(size);
+        state.size = size;
+        if (remember !== false) state.lastCabinetSize = size;
+        state.cells = p.cols * p.rows;
+        state.cols = p.cols;
+        state.rows = p.rows;
+        var made = makeItems(size);
+        state.items = made.items;
+        state.cells = made.cells;
+        state.selectedId = null;
+        render();
+      }
+
+      function setTab(tab) {
+        state.tab = tab;
+        if (tab === 'backpack') setSize('6x5', false);
+        else if (tab === 'fridge') setSize('8x7', false);
+        else setSize(state.lastCabinetSize, false);
+      }
+
+      function findItem(id) {
+        for (var i = 0; i < state.items.length; i++) {
+          if (state.items[i].id === id) return state.items[i];
+        }
+        return null;
+      }
+
+      function showHover(it) {
+        if (!it) {
+          els.hoverDetail.textContent = '悬停查看物品 · 拖入烹饪台';
+          return;
+        }
+        els.hoverDetail.innerHTML = '<b>' + esc(it.name) + '</b> ×' + it.count +
+          ' · 交易 <span class="p-hv-gold">' + it.value + '</span>' +
+          ' · 保质 ' + it.shelf + 'h · 饱食 +' + it.sat;
+      }
+
+      function updateGhost() {
+        if (!els.compareToggle.checked) {
+          els.ghost.classList.remove('on');
+          return;
+        }
+        var p = parseSize(state.size);
+        var official = p.cols * 40 + (p.cols - 1) * 6 + 20 + 30;
+        els.ghost.style.width = official + 'px';
+        els.ghostLabel.textContent = '官方 ~' + official + 'px' + (official > 340 ? ' → 整页缩' : '');
+        els.ghost.classList.add('on');
+      }
+
+      function openWorkspace() {
+        els.workspace.hidden = false;
+        syncInputs();
+        render();
+        setTimeout(function () { els.wsSearch.focus(); }, 60);
+      }
+
+      function closeWorkspace() {
+        els.workspace.hidden = true;
+        els.searchInput.focus();
+      }
+
+      els.tabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-tab]');
+        if (!btn) return;
+        setTab(btn.getAttribute('data-tab'));
+      });
+
+      els.chips.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-cat]');
+        if (!btn) return;
+        state.cat = btn.getAttribute('data-cat');
+        render();
+      });
+
+      els.wsChips.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-cat]');
+        if (!btn) return;
+        state.cat = btn.getAttribute('data-cat');
+        render();
+      });
+
+      els.searchInput.addEventListener('input', function () {
+        state.query = els.searchInput.value;
+        render();
+      });
+
+      els.wsSearch.addEventListener('input', function () {
+        state.query = els.wsSearch.value;
+        render();
+      });
+
+      els.sortSelect.addEventListener('change', function () {
+        state.sort = els.sortSelect.value;
+        render();
+      });
+
+      els.wsSort.addEventListener('change', function () {
+        state.sort = els.wsSort.value;
+        render();
+      });
+
+      els.modeSeg.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-mode]');
+        if (!btn) return;
+        state.mode = btn.getAttribute('data-mode');
+        render();
+      });
+
+      els.body.addEventListener('mouseover', function (e) {
+        var el = e.target.closest('[data-item-id]');
+        if (!el) return;
+        showHover(findItem(parseInt(el.getAttribute('data-item-id'), 10)));
+      });
+
+      els.body.addEventListener('mouseleave', function () {
+        showHover(null);
+      });
+
+      els.body.addEventListener('click', function (e) {
+        var el = e.target.closest('[data-item-id]');
+        if (!el) return;
+        var id = parseInt(el.getAttribute('data-item-id'), 10);
+        state.selectedId = state.selectedId === id ? null : id;
+        render();
+        if (state.selectedId !== null) showHover(findItem(state.selectedId));
+      });
+
+      els.controls.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-size]');
+        if (!btn) return;
+        state.tab = 'cabinet';
+        setSize(btn.getAttribute('data-size'));
+        var all = els.controls.querySelectorAll('[data-size]');
+        for (var i = 0; i < all.length; i++) {
+          var active = all[i] === btn;
+          all[i].classList.toggle('btn-primary', active);
+        }
+      });
+
+      els.compareToggle.addEventListener('change', updateGhost);
+      els.expandBtn.addEventListener('click', openWorkspace);
+      els.wsClose.addEventListener('click', closeWorkspace);
+
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !els.workspace.hidden) closeWorkspace();
+      });
+
+      renderRecipes();
+      setSize('20x16');
+      render();
+    })();
+  </script>
+</div>

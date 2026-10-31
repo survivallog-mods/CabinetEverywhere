@@ -1,0 +1,223 @@
+/* 版式约束（全部 !important，防止场景页自己的 CSS 反向覆盖）：
+   侧栏宽跟格（v13.8：12 列 × 34px + 11×6 间距 + 2×10 内边距 = 494px）× 高 816 恒定
+   —— 任何柜子、任何容器都不改变页面尺寸；画布恒定 1536×864（见构建脚本内 .gpage 规则）。
+   字号规范：主控件/正文 12px，次要信息 11.5px，分组标题 11px，数字 Consolas 11.5px。 */
+#srp .sr-rail{position:relative;z-index:2;display:flex;flex-direction:column;
+  width:494px !important;min-width:494px !important;max-width:494px !important;flex-basis:494px !important;
+  height:816px !important;min-height:816px !important;max-height:816px !important;
+  box-sizing:border-box !important;margin:0 !important;padding:10px !important;border-radius:12px;
+  align-items:stretch !important;justify-content:flex-start !important}
+#srp .sr-head{display:flex;align-items:flex-start;gap:8px;min-width:0}
+#srp .sr-headtxt{flex:1 1 0;min-width:0}
+#srp .sr-title{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ece5d8}
+#srp .sr-sub{color:#a89f92;font-size:11.5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-sub b{color:#f0b03c;font-weight:500}
+/* 动作按钮（官方习惯放面板底部）：一键整理（任意容器，官方 action-btn 同图标）+
+   一键入库（背包页专属，金色）。页脚右置，不占物品区高度（body flex 收缩） */
+#srp .sr-actrow{display:flex;gap:6px;flex:0 0 auto}
+#srp .sr-act{height:26px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2;font-size:12px;white-space:nowrap;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+#srp .sr-act:hover{color:#ece5d8;border-color:rgba(255,255,255,.26)}
+#srp .sr-act:active{transform:translateY(1px)}
+#srp .sr-act svg{width:12px;height:12px;fill:currentColor;flex:0 0 auto}
+#srp .sr-act.primary{border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}
+#srp .sr-act.primary:hover{background:rgba(240,176,60,.26)}
+#srp .sr-act[hidden]{display:none}
+/* 整理柜双面板：左=优化版背包面板 + 中间官方转移按钮列 + 右=柜子侧栏，三段一体。
+   按钮本体样式 = 页面自带官方 .transfer-btn（MaterialRack 样式表）；
+   以下仅搬 BackpackUI（改版背包）侧独有的类——官方 CSS 原样 */
+#srp .sr-duo{display:flex;gap:0;align-items:stretch}
+#srp .sr-duo .transfer-controls{margin:0}   /* 官方 margin:-18px 是为叠进 rack-system 间距，双栏容器下归零 */
+#srp .transfer-controls-spacer{height:20px;flex:none}
+#srp .category-dropdown-wrapper{position:relative}
+#srp .category-dropdown-btn{display:inline-flex;align-items:center;gap:6px}
+#srp .category-dropdown-btn::after{content:'';display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;margin-left:3px;transition:transform .2s;opacity:.9}
+#srp .category-dropdown-btn.open::after{transform:rotate(180deg)}
+#srp .category-dropdown{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 4px);min-width:100%;background:rgba(20,24,36,.96);border:1px solid rgba(100,120,160,.35);border-radius:6px;padding:4px 0;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.5);max-height:200px;overflow-y:auto}
+#srp .category-option{padding:7px 14px;font-size:13px;color:#c8cde0;cursor:pointer;white-space:nowrap;transition:background .15s}
+#srp .category-option:hover{background:rgba(80,110,180,.35);color:#fff}
+#srp .category-empty{padding:7px 14px;font-size:13px;color:#7a7268;white-space:nowrap}
+/* 按标签放入（官方 tag-putin-btn）：CSS 照搬官方；官方放标签 SVG 图标，原型用标签色点替代 */
+#srp .tag-putin-btn{flex-direction:column;gap:3px}
+#srp .tag-putin-btn.has-ico{padding-top:6px;padding-bottom:7px}
+#srp .tag-putin-btn .putin-row{display:inline-flex;align-items:center;gap:4px}
+#srp .tag-putin-btn .putin-main{gap:8px}
+#srp .tag-putin-btn .putin-ico{display:inline-flex;gap:2px}
+#srp .tag-putin-btn .putin-more{font-size:12px;line-height:13px;opacity:.8}
+#srp .tag-putin-btn .pi-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+/* B 键单独背包 = 纯背包页：柜子页签栏与全库切换不显示（柜子页签在其余场景照常） */
+#srp .sr-rail.bagonly .sr-ctnbar{display:none}
+#srp .sr-rail.bagonly .sr-scope{display:none}
+#srp .sr-ctnbar{display:flex;align-items:flex-start;gap:6px;margin-top:8px}
+/* 页签名完整显示（不省略）且只占一行：页签按内容自适应宽，放不下横向滚动（滚动条隐藏） */
+#srp .sr-pinrow{flex:1 1 0;min-width:0;display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#srp .sr-pinrow::-webkit-scrollbar{display:none}
+#srp .sr-pin{position:relative;flex:0 0 auto;height:30px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;display:inline-flex;align-items:center;gap:2px;cursor:pointer;user-select:none}
+#srp .sr-pin .p-lb{flex:0 0 auto;white-space:nowrap;text-align:center}
+#srp .sr-pin:hover{color:#ece5d8;border-color:rgba(255,255,255,.18)}
+#srp .sr-pin.active{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.12)}
+/* 方案2：仅选中页签右侧显示编辑按钮 */
+#srp .sr-pin .p-edit{display:none;flex:0 0 auto;width:15px;height:15px;border-radius:4px;align-items:center;justify-content:center;font-size:10.5px;line-height:1;color:#c9a86a;cursor:pointer}
+#srp .sr-pin.active .p-edit{display:inline-flex}
+#srp .sr-pin .p-edit:hover{color:#ffe1a0;background:rgba(240,176,60,.22)}
+/* 背包固定首位：竖线分隔，不可拖拽 */
+#srp .sr-pin.main{cursor:default}
+#srp .sr-pin.main::after{content:'';position:absolute;right:-5px;top:8px;bottom:8px;width:2px;border-radius:1px;background:rgba(255,255,255,.38)}
+#srp .sr-pin.dragging{opacity:.45;border-style:dashed}
+#srp .sr-allctn{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:13px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+#srp .sr-allctn:hover{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.10)}
+#srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
+#srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
+#srp .sr-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#ece5d8;font-size:12px}
+#srp .sr-search input::placeholder{color:#7a7268}
+#srp .sr-scope{flex:0 0 auto;height:32px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;cursor:pointer}
+#srp .sr-scope:hover{color:#ece5d8;border-color:rgba(255,255,255,.22)}
+#srp .sr-scope.active{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+#srp .sr-tagrow{display:flex;align-items:stretch;gap:5px;margin-top:8px}
+#srp .sr-tags{display:flex;flex-wrap:wrap;gap:5px;flex:1 1 0;min-width:0;align-content:flex-start;max-height:57px;overflow-y:auto;scrollbar-width:none}
+#srp .sr-tags::-webkit-scrollbar{display:none}
+#srp .sr-tag{flex:0 0 auto;height:26px;padding:0 8px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#srp .sr-tag:hover{color:#ece5d8}
+#srp .sr-tag.active{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.12)}
+#srp .sr-tag .t-dot{width:6px;height:6px;border-radius:50%}
+#srp .sr-tag .t-x{width:14px;height:14px;border-radius:50%;background:rgba(224,122,95,.35);color:#ffd9c4;font-size:10px;line-height:14px;text-align:center;cursor:pointer}
+#srp .sr-tag .t-x:hover{background:rgba(224,122,95,.6)}
+#srp .sr-tagadd{flex:0 0 auto;height:26px;padding:0 9px;border-radius:999px;border:1px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.02);color:#a89f92;font-size:12px;cursor:pointer;display:inline-flex;align-items:center}
+#srp .sr-tagadd:hover{color:#ece5d8;border-color:rgba(255,255,255,.35)}
+#srp .sr-tools{display:flex;align-items:center;gap:6px;margin-top:8px}
+#srp .sr-sortbtn{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#ece5d8;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden}
+#srp .sr-sortbtn:hover{border-color:rgba(255,255,255,.22)}
+#srp .sr-sortbtn .sb-caret{margin-left:auto;color:#7a7268;font-size:10px}
+#srp .sr-dir{flex:0 0 auto;width:34px;height:30px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#f0b03c;font-size:14px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+#srp .sr-dir:hover{border-color:rgba(240,176,60,.45);color:#ffe1a0}
+#srp .sr-seg{display:flex;padding:2px;border-radius:8px;background:rgba(0,0,0,.26);border:1px solid rgba(255,255,255,.10)}
+#srp .sr-seg.lock{opacity:.45;pointer-events:none}
+#srp .sr-seg button{height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#a89f92;font-size:12px;cursor:pointer}
+#srp .sr-seg button.active{background:rgba(255,255,255,.10);color:#ece5d8}
+#srp .sr-body{flex:1;min-height:0;margin-top:8px;border:1px solid rgba(255,255,255,.10);border-radius:9px;background:rgba(0,0,0,.18);overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.20) transparent}
+#srp .sr-body::-webkit-scrollbar{width:8px}
+#srp .sr-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:4px}
+#srp .sr-grid[hidden],#srp .sr-list[hidden]{display:none}
+#srp .sr-grid{display:grid;grid-auto-rows:34px;gap:6px;padding:3px;align-content:start;justify-content:center}
+#srp .sr-slot{position:relative;width:34px;height:34px;border-radius:4px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,#18181c,#212126);display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;padding:0;overflow:hidden;cursor:pointer}
+#srp .sr-slot:hover{border-color:rgba(240,176,60,.55)}
+#srp .sr-slot.empty{background:rgba(255,255,255,.015);border-style:dashed;border-color:rgba(255,255,255,.05);cursor:default}
+#srp .sr-slot.fav{border-color:rgba(240,176,60,.7)}
+#srp .sr-slot.selected{border-color:#ffe1a0;box-shadow:0 0 0 1px rgba(255,225,160,.55)}
+#srp .sr-slot .s-dot{position:absolute;left:2px;top:2px;width:4px;height:4px;border-radius:50%;background:var(--cat,#b0a89a)}
+#srp .sr-slot .s-cnt{position:absolute;right:1px;bottom:1px;min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.74);color:#f5efe2;font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace}
+#srp .sr-slot .s-new{position:absolute;right:2px;top:2px;width:4px;height:4px;border-radius:50%;background:#f0b03c}
+#srp .sr-list{display:flex;flex-direction:column;gap:3px;padding:6px}
+#srp .sr-lhead{display:grid;grid-template-columns:26px minmax(0,1fr) 44px 56px;gap:6px;padding:2px 8px;color:#7a7268;font-size:11px}
+#srp .sr-lhead .num{text-align:right}
+#srp .sr-row{display:grid;grid-template-columns:26px minmax(0,1fr) 44px 56px;gap:6px;align-items:center;min-height:38px;padding:0 8px;border-radius:6px;border:1px solid transparent;background:rgba(255,255,255,.025);text-align:left;cursor:pointer}
+#srp .sr-row:hover{border-color:rgba(240,176,60,.35)}
+#srp .sr-row.selected{border-color:rgba(255,225,160,.55);background:rgba(240,176,60,.08)}
+#srp .sr-row .ico{font-size:17px;text-align:center}
+#srp .sr-row .main{min-width:0;display:flex;flex-direction:column;gap:1px}
+#srp .sr-row .nm{font-size:12px;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-row .sub{font-size:11.5px;color:#7a7268;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-row .sub .src{font-style:normal;color:#9a8fc0}
+#srp .sr-row .cnt{text-align:right;font-size:11.5px;color:#a89f92;font-family:Consolas,monospace}
+#srp .sr-row .dyn{text-align:right;font-size:11.5px;color:#f0b03c;font-family:Consolas,monospace}
+#srp .sr-row .dyn.cat{color:#a89f92;font-family:inherit}
+#srp .sr-empty{grid-column:1/-1;padding:30px 10px;text-align:center;color:#7a7268;font-size:12px}
+#srp .sr-hover{min-height:24px;padding:5px 2px 0;color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-hover b{color:#ece5d8;font-weight:500}
+#srp .sr-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.10);color:#7a7268;font-size:11.5px}
+#srp .sr-foot-l{flex:1 1 0;min-width:0;display:flex;justify-content:space-between;gap:8px}
+#srp .sr-foot .fr{color:#f0b03c}
+
+/* 弹层：排序 / 标签管理共用通栏样式；容器菜单与容器设置是小号悬浮面板，锚在右上 */
+#srp .sr-pop{position:absolute;left:10px;right:10px;top:206px;z-index:30;max-height:520px;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#201d24;box-shadow:0 18px 44px rgba(0,0,0,.55);overflow:hidden}
+#srp .sr-pop[hidden]{display:none}
+#srp .sr-popctn{left:auto;right:10px;width:196px;top:86px;max-height:404px}
+/* 一键入库确认弹窗：锚在底部动作行上方（按钮在页脚，弹窗就近） */
+#srp .sr-popstore{left:auto;right:10px;width:248px;top:auto;bottom:44px;max-height:320px}
+#srp .sr-popctn .sr-popbody{padding:5px 6px}
+#srp .sr-popedit{left:auto;right:10px;width:248px;top:86px;max-height:470px}
+#srp .sr-edit-lbl{display:block;color:#7a7268;font-size:11px;letter-spacing:.06em;margin:2px 0 5px}
+#srp .sr-edit-name{width:100%;height:28px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.3);outline:0;color:#ece5d8;font-size:12px;box-sizing:border-box}
+#srp .sr-edit-name:focus{border-color:rgba(240,176,60,.5)}
+#srp .sr-edit-save{height:26px;padding:0 12px;border-radius:6px;border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.15);color:#ffe1a0;font-size:12px;cursor:pointer;flex:0 0 auto}
+#srp .sr-edit-save:hover{background:rgba(240,176,60,.28)}
+#srp .sr-pophead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);color:#a89f92;font-size:12px}
+#srp .sr-popbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px}
+#srp .sr-popbody::-webkit-scrollbar{width:7px}
+#srp .sr-popbody::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
+#srp .sr-popfoot{display:flex;justify-content:flex-end;gap:6px;align-items:center;padding:7px 10px;border-top:1px solid rgba(255,255,255,.10);color:#7a7268;font-size:11.5px}
+#srp .sr-popclear{height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;cursor:pointer;flex:0 0 auto}
+#srp .sr-popclear:hover{color:#ece5d8}
+#srp .sr-grp{color:#7a7268;font-size:11px;letter-spacing:.06em;margin:8px 0 5px}
+#srp .sr-ctnitem{display:flex;align-items:center;gap:6px;width:100%;min-height:28px;padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;text-align:left;cursor:pointer}
+#srp .sr-ctnitem:hover{border-color:rgba(240,176,60,.35);background:rgba(240,176,60,.06)}
+#srp .sr-ctnitem.cur{border-color:rgba(255,225,160,.55);background:rgba(240,176,60,.08)}
+#srp .sr-ctnitem .cin{flex:1;min-width:0;font-size:12px;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-toast{position:absolute;left:50%;bottom:46px;transform:translateX(-50%) translateY(4px);z-index:50;max-width:396px;padding:7px 14px;border-radius:8px;border:1px solid rgba(240,176,60,.45);background:#2a2430;color:#ffe1a0;font-size:12px;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .22s,transform .22s;pointer-events:none}
+#srp .sr-toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+#srp .sr-tagwrap{display:flex;flex-wrap:wrap;gap:5px}
+#srp .sr-tag2{height:26px;padding:0 9px;border-radius:999px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;white-space:nowrap;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+#srp .sr-tag2.active{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+#srp .sr-tag2 .t-dot{width:6px;height:6px;border-radius:50%}
+#srp .sr-tm-add{display:flex;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+#srp .sr-tm-add input{flex:1;min-width:0;height:26px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.3);outline:0;color:#ece5d8;font-size:12px}
+#srp .sr-tm-add input::placeholder{color:#7a7268}
+#srp .sr-sortopt{display:flex;align-items:center;width:100%;min-height:32px;padding:4px 10px;border:0;border-radius:6px;background:transparent;color:#a89f92;font-size:12px;text-align:left;cursor:pointer}
+#srp .sr-sortopt:hover{background:rgba(255,255,255,.05);color:#ece5d8}
+#srp .sr-sortopt.active{color:#ffe1a0;background:rgba(240,176,60,.10)}
+#srp .sr-sortopt.active::after{content:'✓';margin-left:auto;font-size:11px}
+
+/* 页签拖拽指示 */
+#srp .sr-pin.drop-before{box-shadow:-3px 0 0 0 #f0b03c}
+#srp .sr-pin.drop-after{box-shadow:3px 0 0 0 #f0b03c}
+
+#srp .gfit{position:absolute;left:50%;top:50%;transform-origin:center center}
+
+/* v-if 静态隐藏：官方 display 规则会盖过 UA 的 [hidden]，必须强制 */
+#srp .gpage [hidden]{display:none !important}
+
+/* ── v13.5 机器界面简化（plain，9 个机器场景；作者 2026-10-31 需求）──
+   搜索行/快捷标签行/排序工具行一律不显示：侧栏=头部+页签+物品区+悬停+页脚，
+   排序收进页脚左下角（食品类设施）。三 live 场景（单独背包/取用/整理物资）不受影响。 */
+#srp .sr-rail.plain .sr-searchrow,
+#srp .sr-rail.plain .sr-tagrow,
+#srp .sr-rail.plain .sr-tools,
+#srp .sr-rail.plain .sr-head{display:none}   /* v13.6：头部两行（容器名+列数副标）也去掉（作者 2026-10-31） */
+#srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单跟随 ▾ 触发钮就近下锚 */
+/* v13.7 作者批注：悬停详情条与「N 行 · 全部可见」在机器场景一并去掉 */
+#srp .sr-rail.plain .sr-hover,
+#srp .sr-rail.plain .sr-foot .fr{display:none}
+/* 设施排序按钮（页脚左下角，v13.7 换作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
+#srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
+#srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}
+#srp .sr-fsort svg{width:13px;height:13px;fill:currentColor}
+#srp .sr-fsort .sb-caret2{font-size:10px;color:#c9932f;margin-left:1px}
+/* 设施排序弹层（v13.7 参考图配色/结构，v13.8 尺寸对齐侧栏控件基准 26px 高/12px 字，
+   作者「按钮太大了不协调」）：近黑容器 + 独立小圆角按钮堆叠；
+   常规=炭灰底近白字，选中=图标文字金色（边框同款，对齐参考图） */
+#srp .sr-popfsort{left:10px;right:auto;width:128px;top:auto;bottom:44px;max-height:320px;
+  background:rgba(10,10,12,.94);border-color:rgba(255,255,255,.12);border-radius:10px}
+#srp .sr-popfsort .sr-pophead{display:none}
+#srp .sr-popfsort .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:5px}
+#srp .sr-fsopt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;
+  border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;
+  text-align:left;cursor:pointer;font-family:inherit}
+#srp .sr-fsopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
+#srp .sr-fsopt.active{color:#f0b03c}
+#srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
+/* 物品格右上角数值角标（设施排序/交易价值）：与右下 s-cnt 同款底衬，色随维度；
+   角标在场时原「新获得」小点让位（slotHtml 二选一） */
+#srp .sr-slot .s-badge{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;
+  background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;
+  font-family:Consolas,monospace;white-space:nowrap;pointer-events:none}
+/* 无人机交易买家条：当前交易对象的品类加成（点击买家名=演示切换） */
+#srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
+  border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
+  color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden}
+#srp .sr-tradeinfo[hidden]{display:none}
+#srp .ti-buyer{flex:0 0 auto;border:0;background:transparent;padding:0;color:#ffe1a0;font-size:11.5px;font-family:inherit;cursor:pointer;white-space:nowrap}
+#srp .ti-buyer:hover{text-decoration:underline}
+#srp .ti-arr{color:#7a7268;font-size:10px}
+#srp .ti-prefs{display:inline-flex;gap:6px;min-width:0;overflow:hidden}
+#srp .ti-pref{font-style:normal;display:inline-flex;align-items:center;gap:3px;color:#cfc8bc}
+#srp .ti-pref .t-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+#srp .ti-mode{margin-left:auto;flex:0 0 auto;color:#7a7268}

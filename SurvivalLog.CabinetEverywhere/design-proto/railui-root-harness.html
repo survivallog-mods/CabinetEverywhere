@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CERail railui root harness（T8 场景装配 + T9 消息模拟：仿 Root + 12 官方模板 iframe，真装配循环）</title>
+<link rel="icon" href="data:,"> <!-- 空图标：免浏览器默认 /favicon.ico 请求污染控制台 -->
+<!-- T8 真实模板验证床：仿 Root（#iframe-container + 12 个 iframe src=./fixtures/<Page>.html，
+     场景切换=显示对应 iframe），加载真 railui.page.js（装配区自动扫描挂载）。
+     CSS 文本经 fetch 注入 window.__CERAIL_CSS__——与游戏内 C# bootstrap「样式随 JS 单资源」
+     同一消费路径（injectRailStyle 按 iframe 文档注入 style#srpRail）。
+     断言由外部 Playwright 驱动（task-8），页面自身只做宿主准备与数据投喂：
+     - 12 页 iframe id 与 SCENES 键一致（BackpackUI/MaterialRack 用 SCENES 键；findings §6
+       静态默认 id 'Backpack' 走 ID_ALIAS 归一路——T8 校准点）。
+     - BackpackUI（v-show ready 门）与 Trade（v-if ready 门）需数据才显示宿主：预备阶段
+       （帧隐藏，装配区不动作）按 Root.html case 8 的 postMessage 形态补发最小 Info/Bag
+       消息置 ready，并捕获宿主「恰命中一个」证据与 outerHTML 快照（测试对账原料）。
+     - T9 消息模拟层（本任务）：fixtures 静态无流量——rail 的 forge（SWITCH_BAG/TAB_SWITCH
+       带 sourcePageId）被捕获后按附录 A 各族签名回发模拟 BagMsg（Root case 8 同路）；
+       另在 Cooking 帧预挂一层包装（preWrapChain，__SLTF__ wrapRelay 先在的同位模拟）。
+       断言原料：__HZ_FORGES__/__HZ_PRESEEN__/__HZ_POST__（见中部注释）。五个 fixture
+       （Shredder/Compressor/GreenhouseBuild/MaterialRack/ToolTable）的渲染段带 T9 守卫
+       （宿主替换后 live 查找归 null 的容错缺口，偏离整文件拷贝基线、实报 T14）。 -->
+<style>
+html,body{margin:0;background:#14161c;color:#d8d0c2;font:13px/1.5 system-ui,'Segoe UI',sans-serif;height:100%}
+.hz-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.12);flex-wrap:wrap}
+.hz-bar b{color:#ffe1a0;font-weight:600;margin-right:6px}
+.hz-bar button{height:26px;padding:0 10px;border-radius:8px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2;font-size:12px;cursor:pointer}
+.hz-bar button:hover{color:#ece5d8;border-color:rgba(255,255,255,.26)}
+.hz-bar button.active{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+.hz-status{color:#a89f92;font-size:12px;margin-left:8px}
+.hz-log{color:#7a7268;font-size:11.5px;font-family:Consolas,monospace;margin-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:520px}
+/* 仿 Root：#iframe-container 全屏容器 + .page-frame 全屏 iframe。游戏内 Root 用 display:none
+   收起未开页面（hidePage）、打开页 display:block——本 harness 场景切换同一语义，
+   装配区 frameVisible 正是按 computed display 判定。 */
+#hzc{position:relative;width:100%;height:calc(100vh - 42px);overflow:hidden}
+#iframe-container{position:absolute;inset:0}
+.page-frame{position:absolute;top:0;left:0;width:100%;height:100%;border:none;background:#191c24}
+</style>
+</head>
+<body>
+<div class="hz-bar">
+  <b>CERail root harness</b>
+  <span id="hzScenes"></span>
+  <span class="hz-status" id="hzStatus">初始化…</span>
+  <span class="hz-log" id="hzLog"></span>
+</div>
+<div id="hzc"><div id="iframe-container"></div></div>
+<script>
+/* 真 railui.page.js 之前的准备工作：fetch railui.css → window.__CERAIL_CSS__（游戏内由 C#
+   bootstrap 注入同名字段——harness 走同一消费路径），随后动态引入真身。 */
+(function () {
+  fetch('../railui.css').then(function (r) { return r.text(); }).then(function (t) {
+    window.__CERAIL_CSS__ = t;
+    var s = document.createElement('script');
+    s.src = '../railui.page.js';
+    s.onload = function () { window.__HZ_READY__ && window.__HZ_READY__(); };
+    document.body.appendChild(s);
+  }).catch(function (e) {
+    document.getElementById('hzStatus').textContent = 'railui.css 读取失败（须走 serve.cjs http）：' + e;
+  });
+})();
+</script>
+<script>
+/* ---- harness 驱动（真身载入后由 __HZ_READY__ 回调启动）---- */
+window.__HZ_READY__ = function () {
+  var R = window.__CERAIL__;
+  var statusEl = document.getElementById('hzStatus');
+  var logEl = document.getElementById('hzLog');
+  function log(msg) { logEl.textContent = msg; }
+  if (!R || R.ver !== 1) { statusEl.textContent = '__CERAIL__ 缺失——railui.page.js IIFE 未生效'; return; }
+  statusEl.textContent = '__CERAIL__ ver=' + R.ver + ' · 装配循环已启动';
+
+  /* 命令劫持（旧 harness 同款思路）：记录最后一笔命令供测试观测，仍转发真身入队。
+     T11：storeAll 在劫持层按 C# OpStoreAll 语义就地执行 MOCK（§4.7 路由：物品分类名→
+     柜官方标签名、order 顺序优先、柜满顺延、无匹配/全满留背包，同 cfgId 合并优先），
+     再 pushCtx(current) 回推一包（rev+1）——让「确认→命令→回推→差量 toast」全流程
+     在真装配路径（iframe/ensureMounted）上可断言；其余 op 只记录不执行（T8/T9 断言床
+     不受影响）。T12：tidy 同法就地执行（C# OpTidy 保真：MergeStacksForHub 同 cfgId
+     并组/超 stack 上限拆留/保质取最短/flags 并集/w·h 沿首叠；bag 与柜同路）——
+     __HZ_TIDYFAIL__ 置真走失败降级路（不执行，回推包 ctx.lastTidyFail=true 一次性标志，
+     推出即清=C# ReportTidyFail 语义；pushCtx 的 ctxFor 不带该字段，故失败路自建包）。 */
+  window.__HZ_TIDYFAIL__ = false;
+  var TIDY_SEQ = 0; /* tidy 合并新叠 logicId 序列（960000+seq，与 take 的 950000 系不撞） */
+  var TAKE_SEQ = 0; /* take 搬运新叠 logicId 序列（950000+seq，终审建议-4 take mock 用） */
+  var origCmd = R.cmd, lastCmd = '';
+  R.cmd = function (op, payload) {
+    lastCmd = op + ':' + JSON.stringify(payload || {});
+    log('cmd ' + lastCmd);
+    var r = origCmd.apply(this, arguments);
+    if (op === 'tidy' && payload) {
+      if (window.__HZ_TIDYFAIL__) {
+        var jf = JSON.parse(JSON.stringify(MOCK));
+        jf.ctx = ctxFor(current || 'Cooking');
+        jf.ctx.lastTidyFail = true;
+        jf.rev = ++REV;
+        MOCK = jf;
+        R.setData(jf);
+        log('mock C# 回推（tidy 降级③：lastTidyFail=true，未执行合并）');
+        return r;
+      }
+      var tArr = payload.owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(payload.owner)] || (MOCK.items[String(payload.owner)] = []));
+      (function () {
+        function capOf(cfgId) { for (var i = 0; i < MOCK.icfg.length; i++) if (MOCK.icfg[i][0] === cfgId) return MOCK.icfg[i][4] || 1; return 1; }
+        var cfgs = [], seen = {};
+        for (var i = 0; i < tArr.length; i++) if (!seen[tArr[i][1]]) { seen[tArr[i][1]] = true; cfgs.push(tArr[i][1]); }
+        var out = [];
+        for (var g = 0; g < cfgs.length; g++) {
+          var total = 0, tm = Infinity, fl = 0, w0 = 1, h0 = 1, first = true;
+          for (var q = 0; q < tArr.length; q++) {
+            if (tArr[q][1] !== cfgs[g]) continue;
+            if (first) { w0 = tArr[q][6] || 1; h0 = tArr[q][7] || 1; first = false; }
+            total += tArr[q][2];
+            if (tArr[q][3] < tm) tm = tArr[q][3];
+            fl |= tArr[q][8];
+          }
+          var left = total;
+          while (left > 0) {
+            var n = Math.min(capOf(cfgs[g]), left); left -= n;
+            out.push([960000 + (++TIDY_SEQ), cfgs[g], n, tm, 0, 0, w0, h0, fl]);
+          }
+        }
+        tArr.length = 0;
+        for (var o = 0; o < out.length; o++) tArr.push(out[o]);
+      })();
+      log('mock C# 回推（tidy 已生效）');
+      if (current) pushCtx(current);
+    }
+    if (op === 'storeAll' && payload && Array.isArray(payload.order)) {
+      function cfgOf(j, cfgId) {
+        for (var i = 0; i < j.icfg.length; i++) if (j.icfg[i][0] === cfgId) return [j.icfg[i][5], j.icfg[i][7]];
+        return [0, ''];
+      }
+      function moveStack(j, stack, n, toArr, toCap) {
+        if (n <= 0) return false;
+        for (var b = 0; b < toArr.length; b++) if (toArr[b][1] === stack[1]) { toArr[b][2] += n; return true; }
+        if (toArr.length >= toCap) return false;
+        var cp = stack.slice(); cp[2] = n; cp[0] = 950000 + Math.floor(Math.random() * 40000) + 500000;
+        toArr.push(cp);
+        return true;
+      }
+      function tagNamesOfCtn(row) {
+        var names = [];
+        for (var ti = 4; ti < row.length; ti++) for (var tk = 0; tk < MOCK.lib.length; tk++) if (MOCK.lib[tk][0] === row[ti]) names.push(MOCK.lib[tk][1]);
+        return names;
+      }
+      var bagSnap = MOCK.items.bag.slice();
+      for (var si = 0; si < bagSnap.length; si++) {
+        var st4 = bagSnap[si], cfg4 = cfgOf(MOCK, st4[1]), placed = false;
+        for (var oi = 0; oi < payload.order.length && !placed; oi++) {
+          for (var ci = 0; ci < MOCK.ctn.length; ci++) {
+            if (MOCK.ctn[ci][0] !== payload.order[oi]) continue;
+            if (tagNamesOfCtn(MOCK.ctn[ci]).indexOf(cfg4[1]) < 0) break;
+            var toArr = MOCK.items[String(payload.order[oi])] || (MOCK.items[String(payload.order[oi])] = []);
+            if (moveStack(MOCK, st4, st4[2], toArr, MOCK.ctn[ci][3])) {
+              var bi = MOCK.items.bag.indexOf(st4);
+              if (bi >= 0) MOCK.items.bag.splice(bi, 1);
+              placed = true;
+            }
+            break;
+          }
+        }
+      }
+      log('mock C# 回推（storeAll 已生效）');
+      if (current) pushCtx(current);
+    }
+    if (op === 'take' && payload && payload.from != null && Array.isArray(payload.ids)) {
+      /* 终审建议-4（Review Focus 1 JS 侧落点）：take 就地 MOCK（C# OpTake 保真）——
+         ids 查无（源容器无该 logicId）→ 静默跳过计数、不抛不中断整批（红线4）；
+         all:true=命中叠各搬全量、all:false=按 ids 序首个命中叠拆 1。 */
+      var srcT = MOCK.items[String(payload.from)] || (MOCK.items[String(payload.from)] = []);
+      var TAKE_IDS = {}, skipT = 0, movedT = 0;
+      for (var ti = 0; ti < payload.ids.length; ti++) {
+        var idT = payload.ids[ti], foundT = false;
+        for (var tj = 0; tj < srcT.length; tj++) if (srcT[tj][0] === idT) { foundT = true; break; }
+        if (!foundT) { skipT++; continue; } /* 查无：静默跳过计数 */
+        TAKE_IDS[idT] = true;
+        if (!payload.all) break; /* all:false=只取第一叠 1 件 */
+      }
+      for (var tk = srcT.length - 1; tk >= 0; tk--) {
+        if (!TAKE_IDS[srcT[tk][0]]) continue;
+        var nT = payload.all ? srcT[tk][2] : 1;
+        MOCK.items.bag.push([950000 + (++TAKE_SEQ), srcT[tk][1], nT, srcT[tk][3], 0, 3, 1, 1, 0]);
+        srcT[tk][2] -= nT;
+        if (srcT[tk][2] <= 0) srcT.splice(tk, 1);
+        movedT++;
+      }
+      log('mock C# 回推（take 已生效 moved=' + movedT + ' skip=' + skipT + '——查无静默跳过）');
+      if (current) pushCtx(current);
+    }
+    return r;
+  };
+  window.__HZ_LASTCMD__ = function () { return lastCmd; };
+  /* 终审建议-4 自检入口：drain 一笔含不存在 logicId 的 take → mock 不抛错、按 C# OpTake
+     查无跳过语义计数（skip>0/moved=0），返回 {threw, lastCmd, log} 供断言脚本/手动验证。 */
+  window.__HZ_TAKEGHOST__ = function () {
+    var threw = null;
+    try { R.cmd('take', { ids: [999999, 888888], all: true, from: 900101 }); }
+    catch (e) { threw = String(e && e.message || e); }
+    return { threw: threw, lastCmd: lastCmd, log: logEl.textContent };
+  };
+
+  /* ---- 契约 v4 mock（旧 railui-harness 同一份数据，12 场景 ctx 按表给出）---- */
+  var ICO = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+  var FAMILY = {
+    BackpackUI: { family: 'backpack', bagOnly: true }, MaterialRack: { family: 'rack', bagOnly: false, rackOwner: 900103 },
+    Cooking: { family: 'bag' }, BrewPanel: { family: 'bag' }, RatCage: { family: 'bag' }, DyePanel: { family: 'bag' },
+    Compressor: { family: 'cart0' }, Shredder: { family: 'cart' }, GreenhouseBuild: { family: 'cart' },
+    ToolTable: { family: 'tt' }, Trade: { family: 'trade' }, DroneHub: { family: 'bag' }
+  };
+  function ctxFor(key) {
+    var f = FAMILY[key] || { family: 'bag' };
+    return {
+      page: key, family: f.family, bagOnly: !!f.bagOnly,
+      rackOwner: f.rackOwner || 0, bagCap: 42
+    };
+  }
+  var MOCK = {
+    rev: 7,
+    ctx: ctxFor('Cooking'),
+    bag: 900001,
+    ctn: [
+      [900101, '食材柜', 'c', 40, 101, 104],
+      [900102, '冷藏柜', 'f', 24, 102],
+      [900103, '材料架', 'r', 60, 103, 106],
+      [900104, '杂物柜', 'c', 18]
+    ],
+    lib: [
+      [101, '食材', 4, 1, '', '#8fc06e'],
+      [102, '需冷藏', 3, 2, '', '#6fc7c9'],
+      [103, '材料', 0, 3, '', '#7aa2d6'],
+      [104, '蔬果', 1, 4, '', '#8fc06e'],
+      [105, '贵重品', 0, 5, '', '#c9b458'],
+      [106, '种植', 5, 6, '', '#6fc7c9']
+    ],
+    icfg: [
+      [1, '生态香米', ICO, 12, 99, 1, 1, '食材', 0, 15, 0, 0, 0, 0],
+      [2, '烤肉', ICO, 38, 20, 1, 2, '食材', 0, 48, 2, 6, 0, 6],
+      [3, '咖啡', ICO, 25, 50, 1, 9, '食材', 0, 2, 5, 15, 0, 0],
+      [4, '急救绷带', ICO, 20, 99, 2, 0, '医疗', 0, 0, 0, 0, 0, 20],
+      [5, '铁钉', ICO, 4, 999, 9, 0, '材料', 0, 0, 0, 0, 0, 0],
+      [6, '木板', ICO, 5, 999, 9, 0, '材料', 0, 0, 0, 0, 0, 0],
+      [7, '净水', ICO, 10, 30, 1, 9, '食材', 0, 5, 0, 2, 0, 0],
+      [8, '草药', ICO, 15, 99, 2, 0, '医疗', 0, 0, 0, 0, 0, 12],
+      [9, '钨锭', ICO, 88, 99, 9, 0, '材料', 0, 0, 0, 0, 0, 0]
+    ],
+    items: {
+      bag: [
+        [901, 1, 30, 7200, 0, 0, 1, 1, 0],
+        [902, 3, 5, 10800, 1, 0, 1, 1, 0],
+        [903, 5, 40, 0, 2, 0, 1, 1, 0],
+        [904, 5, 12, 0, 3, 0, 1, 1, 0],
+        [905, 9, 3, 0, 4, 0, 1, 1, 0],
+        [906, 2, 2, 9000, 5, 0, 1, 1, 4],
+        [907, 8, 6, 3600, 6, 0, 1, 1, 2],
+        [908, 4, 1, 0, 7, 0, 2, 2, 1],
+        [909, 6, 25, 0, 0, 1, 1, 1, 0],
+        [910, 7, 4, 43200, 1, 1, 1, 1, 0]
+      ],
+      '900101': [
+        [911, 1, 60, 86400, 0, 0, 1, 1, 0],
+        [912, 2, 8, 21600, 1, 0, 1, 1, 0],
+        [913, 7, 10, 259200, 2, 0, 1, 1, 0],
+        [914, 2, 1, 3600, 3, 0, 1, 1, 4]
+      ],
+      '900102': [[915, 2, 6, 7200, 0, 0, 1, 1, 0], [916, 3, 2, 0, 1, 0, 1, 1, 0]],
+      '900103': [[917, 5, 200, 0, 0, 0, 1, 1, 0], [918, 6, 120, 0, 1, 0, 1, 1, 0], [919, 9, 10, 0, 2, 0, 1, 1, 0]],
+      '900104': []
+    }
+  };
+  var REV = 7;
+  /* v1.8.2：icfg 图标逐 cfg 加 '#v<id>' 片段（不破坏解码）——图标尾段唯一化，
+     display 层过滤的图标识别路（.rk-row/Vue .item）才能按 cfgId 命中/歧义判定可测 */
+  (function () { for (var i = 0; i < MOCK.icfg.length; i++) MOCK.icfg[i][2] = ICO + '#v' + MOCK.icfg[i][0]; })();
+  window.__HZ_ICOV__ = function (cfgId) { return ICO + '#v' + cfgId; };
+  function pushCtx(key) {
+    var j = JSON.parse(JSON.stringify(MOCK));
+    j.ctx = ctxFor(key);
+    j.rev = ++REV;
+    R.setData(j);
+    log('setData rev=' + j.rev + ' ctx=' + key);
+  }
+
+  /* ---- 12 iframe 建（SCENES 键=iframe id，fixture 文件同名；Trade 模板=TradeUI.html 拷贝）----
+     全部隐藏建、后台预备；场景切换=纯 display 切换 + 投喂数据（Root hidePage/loadPage 语义）。 */
+  var SCENE_KEYS = ['BackpackUI', 'MaterialRack', 'Cooking', 'BrewPanel', 'RatCage', 'DyePanel',
+    'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade', 'DroneHub'];
+  var cont = document.getElementById('iframe-container');
+  var frames = {}, btns = {};
+  var bar = document.getElementById('hzScenes');
+  SCENE_KEYS.forEach(function (key) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = key;
+    b.onclick = function () { show(key); };
+    bar.appendChild(b);
+    btns[key] = b;
+    var f = document.createElement('iframe');
+    f.id = key;
+    f.className = 'page-frame';
+    /* 初始隐藏：装配区 frameVisible 按 computed display 门控，隐藏帧不装配——宿主预备
+       （prepare 快照）必须跑在首次装配之前，否则 mount 连锚点一起替换掉，快照只得 0 */
+    f.style.display = 'none';
+    f.src = './fixtures/' + key + '.html';
+    cont.appendChild(f);
+    frames[key] = f;
+  });
+
+  /* ---- ready 门页补数（幂等，Root.html case 8 的 postMessage 形态直投 iframe）：
+     BackpackUI：WebUI_Backpack_InfoAMsg{gridCols...} → ready=true（.backpack-container v-show 显示）
+     Trade：WebUI_Trade_BagMsg{bagCols...} → ready=true（.cols>.col v-if=ready 渲染） */
+  function nudge(key) {
+    try {
+      var f = frames[key];
+      if (!f || !f.contentWindow) return;
+      /* v1.8.2：全 12 页官方 BagMsg 真形状喂食——官方格（壳内）真渲染 .item，
+         供交互/过滤/截图断言。字段名逐页按官方 handler 取证（fixtures 内 grep refresh）。 */
+      var ICO = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+      function mk(itemId, x, count) {
+        /* y=x%2 双行铺开（v1.8.2：全挤 y:0 会让 MaterialRack 的 bag 空间测算判「背包已满」，
+           右键取 1 被 onBlocked 拦——夹具保真修复） */
+        return { itemId: itemId, x: x, y: x % 2, w: 1, h: 1, icon: ICO, name: '物品' + itemId, count: count || 1, quality: 3 };
+      }
+      var bagItems = [mk(901, 0, 30), mk(902, 1, 5), mk(903, 2, 40), mk(904, 3, 12), mk(905, 4, 3), mk(906, 5, 2), mk(907, 6, 6), mk(908, 7, 1)];
+      var M = {
+        Cooking: ['WebUI_Cooking_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
+        BrewPanel: ['WebUI_Brew_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
+        RatCage: ['WebUI_RatCage_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
+        DyePanel: ['WebUI_Dye_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
+        Compressor: ['WebUI_Compressor_BagMsg', { cartOwnerId: 900001, cartCols: 10, cartRows: 6, cartItems: bagItems }],
+        Shredder: ['WebUI_Shredder_BagMsg', { cartOwnerId: 900001, cartCols: 10, cartRows: 6, cartItems: bagItems }],
+        GreenhouseBuild: ['WebUI_GreenhouseBuild_BagMsg', { cartOwnerId: 900001, cartCols: 10, cartRows: 6, cartItems: bagItems }],
+        ToolTable: ['WebUI_ToolTable_BagMsg', { bagOwnerId: 900001, bagCols: 6, bagRows: 5, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
+        DroneHub: ['WebUI_DroneHub_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
+        Trade: ['WebUI_Trade_BagMsg', { bagCols: 10, bagRows: 6, bagTabsJson: '[]', bagOwnerKey: '900001', bagItemsJson: JSON.stringify(bagItems) }],
+        BackpackUI: [['WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '背包', gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 100 }],
+                     ['WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(bagItems.map(function (b) { return { id: b.itemId, x: b.x, y: b.y, w: 1, h: 1, icon: b.icon, name: b.name, count: b.count, quality: 3 }; })) }]],
+        /* v1.8.2 v13：MaterialRack 官方 BagMsg 全形状（State_Web_MaterialRack WebBind 字段）——
+           背包侧 bagGrid 真渲染 .item、架子侧 rackrows 真渲染 .rk-row。rows 的 configId 对齐
+           MOCK icfg（5=铁钉/6=木板/9=？）、icon 用 __HZ_ICOV__ 唯一片段（过滤图标路可测）。 */
+        MaterialRack: ['WebUI_MaterialRack_BagMsg', (function () {
+          return { bagOwnerId: 900001, bagCols: 8, bagRows: 7, bagItems: bagItems, bagWeight: 12, bagMaxWeight: 100, bagOverweightLine: 80,
+            rackOwnerId: 900103, furnitureName: '材料架', total: 22,
+            rows: [
+              { configId: 5, name: '铁钉', icon: window.__HZ_ICOV__(5), w: 1, h: 1, count: 200, rowY: 0, lastId: 917, ok: true, fit: 20 },
+              { configId: 9, name: '煤炭', icon: window.__HZ_ICOV__(9), w: 1, h: 1, count: 10, rowY: 1, lastId: 919, ok: true, fit: 5 },
+              { configId: 6, name: '木板', icon: window.__HZ_ICOV__(6), w: 1, h: 1, count: 120, rowY: 2, lastId: 918, ok: true, fit: 8, locked: true }
+            ] };
+        })()]
+      };
+      var m = M[key];
+      if (m) {
+        if (m[0] instanceof Array) for (var mi = 0; mi < m.length; mi++) f.contentWindow.postMessage({ type: m[mi][0], data: m[mi][1] }, '*');
+        else f.contentWindow.postMessage({ type: m[0], data: m[1] }, '*');
+      }
+    } catch (e) { }
+  }
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.type !== '__PAGE_READY__') return;
+    var id = d.sourcePageId;
+    if (id === 'TradeUI') id = 'Trade'; /* fixture 文件源为 TradeUI.html，页内 pageId 恒 'TradeUI' */
+    if (SCENE_KEYS.indexOf(id) >= 0) nudge(id); /* v1.8.2：全部页面 ready 即喂官方 BagMsg */
+  });
+
+  /* ---- T9 消息模拟层：forge 事件捕获 → 按族回发模拟官方回包 ----
+     fixtures 是静态模板（无 Unity/vuplex 流量）——官方回包（*_BagMsg 带 active 字段）由本层
+     模拟：rail 的 forge（Root 帧直发的 SWITCH_BAG/TAB_SWITCH，带 sourcePageId=iframe id）
+     被捕获记入 __HZ_FORGES__，25ms 后按附录 A 各族签名把回包投进目标 iframe（Root case 8
+     同路 contentWindow.postMessage）——rail wrapRelay 截读 active 跟随、官方页面 handler
+     照常消费。回包字段形状照各 fixture handler 的容错面给全（零控制台错误纪律）。
+     断言原料：__HZ_FORGES__()=已捕获 forge 事件（负载逐族对附录 A）；__HZ_PRESEEN__=
+     预包装链（preWrapChain，模拟 __SLTF__ wrapRelay 先在）见到的消息类型序列。 */
+  var FAKE_IDS = [900001, 900101, 900102, 900103, 900104];
+  var FAKE_TABS = {
+    bag: FAKE_IDS,                            /* 首位=pin 背包（bag 族 offset -1） */
+    tt: [900101, 900102, 900103, 900104],     /* 无 pin（0=背包/1=抽屉在栏外，offset 0） */
+    cart: FAKE_IDS,                           /* 首位=pin（Shredder/GreenhouseBuild） */
+    cart0: [900101, 900102, 900103, 900104]   /* 无 pin（Compressor 全部页签同容器） */
+  };
+  function fakeName(o) {
+    if (o === 900001) return '背包';
+    for (var i = 0; i < MOCK.ctn.length; i++) if (MOCK.ctn[i][0] === o) return MOCK.ctn[i][1];
+    return '#' + o;
+  }
+  function fakeTabs(fam) {
+    return (FAKE_TABS[fam] || []).map(function (o) {
+      return fam === 'trade' ? { owner: String(o), name: fakeName(o) } : { ownerId: o, name: fakeName(o) };
+    });
+  }
+  var SIM_TYPE = {
+    Cooking: 'WebUI_Cooking_BagMsg', BrewPanel: 'WebUI_Brew_BagMsg', RatCage: 'WebUI_RatCage_BagMsg',
+    DyePanel: 'WebUI_Dye_BagMsg', DroneHub: 'WebUI_DroneHub_BagMsg', ToolTable: 'WebUI_ToolTable_BagMsg',
+    Trade: 'WebUI_Trade_BagMsg', Shredder: 'WebUI_Shredder_BagMsg', GreenhouseBuild: 'WebUI_GreenhouseBuild_BagMsg',
+    Compressor: 'WebUI_Compressor_BagMsg', MaterialRack: 'WebUI_MaterialRack_BagMsg'
+  };
+  function simReply(fg) {
+    /* 依族构造模拟回包（附录 A 形状）：bag=bagTabs+bagOwnerId、tt=cabinetTabs+activeLeftTab、
+       trade=bagTabsJson+bagOwnerKey、cart/cart0=cartTabs+activeTab；items 恒空数组
+       （各 handler 均 `data.x || []` 容错）。 */
+    var id = fg.sourcePageId, d = fg.data || {}, fam = (FAMILY[id] || {}).family, type = SIM_TYPE[id];
+    if (!type) return null;
+    if (fam === 'bag') return { type: type, data: { bagTabs: fakeTabs('bag'), bagOwnerId: d.ownerId, bagItems: [], workbenchItems: [] } };
+    if (fam === 'tt') return { type: type, data: { cabinetTabs: fakeTabs('tt'), activeLeftTab: d.tab | 0, workbenchItems: [], drawerOwnerId: 0, workbenchOwnerId: 0 } };
+    if (fam === 'trade') return { type: type, data: { bagTabsJson: JSON.stringify(fakeTabs('trade')), bagOwnerKey: String(d.ownerId) } };
+    if (fam === 'cart') return { type: type, data: { cartTabs: fakeTabs('cart'), activeTab: d.tab | 0, cartItems: [], hopperItems: [], trayItems: [] } };
+    if (fam === 'cart0') return { type: type, data: { cartTabs: fakeTabs('cart0'), activeTab: d.tab | 0, cartItems: [] } };
+    return null;
+  }
+  var FORGES = [];
+  window.addEventListener('message', function (ev) {
+    var m = ev.data;
+    if (!m || (m.type !== 'SWITCH_BAG' && m.type !== 'TAB_SWITCH') || !m.sourcePageId) return;
+    FORGES.push({ type: m.type, data: m.data, sourcePageId: m.sourcePageId });
+    var rp = simReply(m);
+    if (!rp) return;
+    setTimeout(function () {
+      var f = frames[m.sourcePageId];
+      if (f && f.contentWindow) f.contentWindow.postMessage(rp, '*');
+    }, 120); /* 120ms：模拟 Unity 往返时延，且让「forge 已发、回包未到不渲染」断言有确定性窗口 */
+  });
+  window.__HZ_FORGES__ = function () { return FORGES.slice(); };
+  /* T11 测试钩子：MOCK 基座整体替换（空背包/指定背包态注入用；配 __HZ_PUSH__ 重推） */
+  window.__HZ_MOCKSET__ = function (j) { if (j) MOCK = j; return MOCK; };
+  window.__HZ_PRESEEN__ = [];
+  function preWrapChain(f) { /* 包装链共存断言原料：在 Cooking 帧再包一层（模拟 __SLTF__
+     wrapRelay 在链上；装配区对就绪文档即 attachFrame——与 prepare 的 docReady 轮询存在
+     先后竞态，rail 先包时本层挂其外、本层先包时 rail 挂其外——链序无关，任一位置的包装
+     都先观察后转发，PRESEEN 断言只看「双方都见到」）。 */
+    try {
+      var win = f.contentWindow;
+      if (!win || win.__hzChainWrapped) return;
+      var prev = win.postMessage;
+      win.__hzChainWrapped = 1;
+      win.postMessage = function (msg) {
+        window.__HZ_PRESEEN__.push(msg && msg.type);
+        return prev.apply(this, arguments);
+      };
+    } catch (e) { }
+  }
+
+  /* ---- 宿主预备（prepare）：帧保持隐藏（装配区 frameVisible 门不会抢先替换宿主），
+     等文档建树 + ready 门页宿主出现，然后捕获宿主「恰命中一个」证据与 outerHTML 快照
+     （测试做选择器对账与「宿主复活→观察器重装配」的原料）。 */
+  var HOSTCHK = {}; /* key → { anchors, resolved, html } */
+  function hostStat(doc, sel) {
+    var k = sel.indexOf(".closest('");
+    if (k > 0) {
+      var anchorSel = sel.slice(0, k), nearSel = sel.slice(k + 10, sel.length - 2);
+      var as = doc.querySelectorAll(anchorSel);
+      var a = as.length ? as[0].closest(nearSel) : null;
+      return { anchors: as.length, resolved: !!a, html: a ? a.outerHTML : '' };
+    }
+    var m = doc.querySelectorAll(sel);
+    return { anchors: m.length, resolved: m.length > 0, html: m.length ? m[0].outerHTML : '' };
+  }
+  function docReady(key, cb, tries) {
+    var f = frames[key], doc = null;
+    try { doc = f.contentDocument; } catch (e) { }
+    if (doc && doc.body && doc.body.children.length) { cb(doc); return; }
+    if ((tries || 0) > 160) { log('docReady 超时: ' + key); return; }
+    setTimeout(function () { docReady(key, cb, (tries || 0) + 1); }, 50);
+  }
+  function prepare(key, tries) {
+    if (HOSTCHK[key]) return;
+    docReady(key, function (doc) {
+      if (key === 'Cooking') preWrapChain(frames[key]); /* T9 包装链断言：Cooking 帧在 rail 装配前先挂预包装（帧隐藏时 rail 尚未 wrap） */
+      if (key === 'BackpackUI' || key === 'Trade') nudge(key); /* ready 门页：补发数据（幂等） */
+      var st = hostStat(doc, R.scenes[key].host);
+      /* 就绪判定=resolved（Trade 的 .cols v-if 要等 nudge 后才出现；BackpackUI 的容器
+         v-show 常在）。不做可见性判定：帧隐藏时computed display 不可靠且无必要——
+         快照只消费 anchors 计数与 outerHTML（revive 用），display 态由装配区自己管。 */
+      if (!st.resolved && (tries || 0) < 60) { setTimeout(function () { prepare(key, (tries || 0) + 1); }, 100); return; }
+      HOSTCHK[key] = st;
+      log('prepare ' + key + '：宿主 anchors=' + st.anchors + ' resolved=' + st.resolved);
+    });
+  }
+  window.__HZ_HOSTCHK__ = function (key) { return HOSTCHK[key] || null; };
+  window.__HZ_NUDGE__ = nudge;
+  window.__HZ_REVCOUNT__ = function () { return REV; };
+
+  /* ---- 场景切换（Root hidePage 语义：display none/block；装配区 frameVisible 按此判定）----
+     切换后等文档建树再投喂数据；__CERAIL__.scan() 手动触发一次扫描（免等 500ms 兜底，
+     与 interval 同一函数——真实装配路径不变）。 */
+  var current = null;
+  function show(key) {
+    current = key;
+    SCENE_KEYS.forEach(function (k) {
+      frames[k].style.display = k === key ? 'block' : 'none';
+      btns[k].className = k === key ? 'active' : '';
+    });
+    statusEl.textContent = '场景 ' + key + ' · rail 装配由真装配循环驱动（观察器/interval）';
+    docReady(key, function () {
+      R.scan();
+      pushCtx(key);
+    });
+  }
+  window.__HZ_SHOW__ = show;
+  window.__HZ_CURRENT__ = function () { return current; };
+  window.__HZ_PUSH__ = pushCtx;
+  window.__HZ_FRAME__ = function (key) { return frames[key]; };
+  /* T9 测试投递口：模拟官方回包/主动推送直达目标 iframe（Root case 8 同路
+     contentWindow.postMessage——经 rail 的 wrapRelay 包装链）。 */
+  window.__HZ_POST__ = function (key, msg) {
+    var f = frames[key];
+    if (f && f.contentWindow) f.contentWindow.postMessage(msg, '*');
+  };
+  SCENE_KEYS.forEach(function (key) { prepare(key); }); /* 后台预备全部 12 页（含宿主快照） */
+  /* 首场景等预备完成再 show（宿主快照必须在首装替换宿主之前捕获——mount 会连锚点一起
+     替换掉，迟到的快照只能拿到 anchors=0） */
+  (function waitBoot() {
+    if (current) return; /* 已有显式场景切换（外部测试先行 show）：放弃首场景展示 */
+    if (HOSTCHK.Cooking) { show('Cooking'); return; }
+    setTimeout(waitBoot, 60);
+  })();
+};
+</script>
+</body>
+</html>

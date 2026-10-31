@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>口粮压制机</title>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
+<style>
+/* 口粮压制机面板 —— 三块布局：左=背包 / 右上=机器（压制槽→传送带→产出格 一条线）/ 右下=信息与操作。
+   骨架与配色沿用 Shredder.html / Cooking.html 同一套变量，格子规格与 BrewPanel 对齐。
+   🚨 整个面板高度必须恒定：所有「有时出现、有时消失」的元素一律常驻占位，只切 visibility 不切 display。*/
+/* 🚨 配色与 Cooking.html 同源（mock「压缩机界面_mock.html」的 :root 就注明「与 Cooking.html 同源」）——
+   本面板是烹饪厨具族的一员,和灶台 / 酿酒桶 / 粉碎机并排出现在同一套家具功能菜单里,
+   自成一套冷灰蓝会让玩家读成「另一个系统的界面」。变量名一律保持不变（引用处零改动）,只换取值。*/
+:root{
+  /* Cooking 家族的公共色板 */
+  --warm-gold:#fbb034;
+  --warm-orange:#ff9500;
+  --warm-orange-dark:#e67e22;
+  --army-green:rgba(139,153,59,.9);
+  --army-green-light:#a4b546;
+  --text-main:#fcfcfc;
+  --text-dark:#c0c0c0;
+  --border-light:rgba(255,255,255,.18);
+  --border-color:rgba(255,255,255,.12);
+  --grid-bg:rgba(20,15,12,.85);
+  --slot-border:rgba(255,255,255,.1);
+
+  /* 本页既有变量名 → 暖色取值 */
+  --accent:#fbb034;
+  --panel-bg:linear-gradient(180deg,rgba(55,48,44,.85) 0%,rgba(35,28,25,.95) 100%);
+  --panel-border:rgba(255,255,255,.15);
+  --slot-bg:rgba(12,9,8,.8);
+  --plate-bg:linear-gradient(135deg,rgba(70,60,55,.95),rgba(45,38,34,.95));
+  --digi:#fbb034;
+  --line:rgba(255,255,255,.12);
+  --slot:40px;
+  --gap:6px;
+  --gpad:10px;
+  --btn-bg:linear-gradient(135deg,rgba(70,60,55,.95),rgba(45,38,34,.95));
+  --btn-hover:linear-gradient(135deg,rgba(92,79,60,.95),rgba(62,52,40,.95));
+  --btn-border:rgba(255,255,255,.18);
+  --accent-glow:rgba(251,176,52,.4);
+  --btn-go-bg:#fbb034;
+  --btn-go-hover:#ff9500;
+  --gold:#fbb034;
+  --danger:#e05555;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:transparent;color:var(--text-main);
+  font-family:'Segoe UI',"Microsoft YaHei","PingFang SC",sans-serif;font-size:14px;
+  display:flex;align-items:center;justify-content:center;-webkit-font-smoothing:antialiased;
+  user-select:none;-webkit-user-select:none;text-shadow:0 1px 2px rgba(0,0,0,.6);
+}
+/* 压暗底景：与 Cooking 同做法,让面板从场景里浮出来 */
+body::before{content:'';position:fixed;inset:0;background:rgba(15,10,8,.45);z-index:-1;pointer-events:none}
+
+/* 统一外壳（= Cooking 的 .cooking-system）：左右两栏装在同一个暖褐容器里,
+   而不是两块各自漂浮的深灰卡片 —— 后者正是「不像同一个系统」的主因。*/
+#app{display:flex;align-items:flex-start;gap:20px;position:relative;padding:16px;border-radius:12px;
+  background-image:radial-gradient(circle at center bottom,rgba(251,176,52,.22) 0%,transparent 65%),
+                   linear-gradient(135deg,rgba(65,52,45,.96) 0%,rgba(35,28,24,.98) 100%);
+  border:1px solid var(--border-light);
+  box-shadow:0 25px 60px rgba(0,0,0,.8),inset 0 1px 0 rgba(255,255,255,.15);overflow:hidden}
+/* 20px 网格纹理：Cooking 家族的统一质感 */
+#app::before{content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);
+  background-size:20px 20px}
+#app>*{position:relative}
+
+/* ── 左：背包（页签 + 网格 + 负重）── */
+.cart{background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:8px;
+  padding:15px;box-shadow:inset 0 2px 10px rgba(0,0,0,.4),0 4px 15px rgba(0,0,0,.2);
+  display:flex;flex-direction:column;align-items:center}
+/* 口径与 Cooking / BrewPanel 的 .bag-tab 一致（本页类名保持 left-tab,JS 不动）：
+   未选中是压暗的褐底,选中是暖金描边 + 内发光。*/
+.left-tabs{display:flex;flex-wrap:nowrap;align-items:stretch;width:100%;min-width:0;gap:4px;margin-bottom:8px}
+.left-tab{flex-shrink:0;min-width:0;padding:5px 11px;font-size:12.5px;font-weight:600;letter-spacing:.5px;
+  font-family:inherit;color:var(--text-dark);background:rgba(20,15,12,.55);
+  border:1px solid var(--border-color);border-radius:6px;cursor:pointer;position:relative;
+  transition:background .2s,color .2s,border-color .2s;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.left-tab:hover{color:var(--text-main);border-color:rgba(255,255,255,.28);background:rgba(35,26,20,.75)}
+.left-tab.active{color:var(--warm-gold);cursor:default;border-color:var(--warm-gold);
+  background:linear-gradient(180deg,rgba(251,176,52,.25),rgba(251,176,52,.1));
+  box-shadow:inset 0 0 8px rgba(251,176,52,.35)}
+/* 冰箱页签被熟练度锁住时：能看见、点不动,带锁标 —— 口径同烹饪面板。
+   🚨 三处逐值抄 Cooking.html 的 `.bag-tab.locked` / `.bag-tab.locked:hover` / `.recipe-lock-badge`：
+   上一版用 `opacity:.55` + `::after content:'🔒'`,两处都与烹饪不一致 ——
+   ① 半透明会把底下的褐底透出来,与烹饪那种「压死成近黑底 + 极淡边框」不是一个观感；
+   ② emoji 锁受系统字体表影响（Win/Steam Deck 渲染不同、彩色 emoji 与暗色 UI 打架）,
+      烹饪用的是纯 CSS 画的挂锁（::before 锁梁 + ::after 锁体）,跨平台恒定。
+   ⚠ locked 必须连 :hover 一起覆盖 —— 本页 .left-tab:hover 会改 color/border,不压回去会「点不动却有悬停反馈」。*/
+/* ⚠ 下面四条刻意写成 `0.28` 而不是本文件惯用的 `.28` —— verify_fridge.mjs 会把这几条声明与
+   Cooking.html 的对应规则**逐字符规范化后比对**,小数写法不一致会被判成漂移。要改先改那条断言。 */
+.left-tab.locked{color:rgba(255,255,255,0.28);background:rgba(18, 14, 12, 0.85);
+  border-color:rgba(255,255,255,0.06);cursor:not-allowed}
+.left-tab.locked:hover{color:rgba(255,255,255,0.28);background:rgba(18, 14, 12, 0.85);
+  border-color:rgba(255,255,255,0.06)}
+/* 挂锁图标：与 Cooking.html 的 .recipe-lock-badge 同一份几何,改名只因本页不涉及配方 */
+.left-tab .lock-badge{display:inline-block;width:11px;height:11px;position:relative;
+  margin-left:6px;vertical-align:-1px;opacity:0.7;pointer-events:none}
+.left-tab .lock-badge::before{content:'';position:absolute;top:0;left:2px;width:7px;height:6px;
+  box-sizing:border-box;border:1.5px solid rgba(255,255,255,0.45);border-bottom:none;border-radius:4px 4px 0 0}
+.left-tab .lock-badge::after{content:'';position:absolute;bottom:0;left:0;width:11px;height:6px;
+  background:rgba(255,255,255,0.45);border-radius:2px}
+.left-tab .dot{position:absolute;top:4px;right:5px;width:6px;height:6px;border-radius:50%;
+  background:var(--danger);box-shadow:0 0 6px rgba(224,85,85,.8);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 🚨 display:grid 必须写在这里 —— webui-bag.js 的 initGrid 只设 gridTemplateColumns/Rows,
+   **不设 display**。容器不是 grid 时那两条声明完全失效,36 个 .slot 会按 block 竖着堆成一列,
+   而 .item 是绝对定位照旧铺开 ⇒ 格子看不见、物品飘在容器外。全工程 7 个用 createGridBag 的
+   面板都各自写了这一条,本页原先整块漏了。*/
+.grid-container{position:relative;display:grid;gap:var(--gap);width:fit-content;
+  background:var(--grid-bg);border:1px solid var(--border-color);
+  border-radius:8px;padding:var(--gpad);
+  box-shadow:inset 0 5px 20px rgba(0,0,0,.8),0 2px 0 rgba(255,255,255,.05)}
+
+/* 压制槽的模糊罩挂这一层,不能挂进 #binGrid —— initGrid 每次 refresh 都 innerHTML='' 清空容器,
+   罩子会被连同格子一起删掉,之后 renderPanel 里 $('pressOverlay') 取到 null 直接抛异常。*/
+.grid-wrap{position:relative;width:fit-content}
+
+/* 格位：createGridBag 生成 .slot,样式由页面提供 */
+.grid-container .slot{width:var(--slot);height:var(--slot);
+  background:var(--slot-bg);
+  border:1px solid var(--slot-border);border-radius:4px;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.6);
+  transition:background .15s,border-color .15s}
+.grid-container .slot:hover{border-color:rgba(251,176,52,.30)}
+.grid-container .slot.valid-hover{background:linear-gradient(180deg,rgba(76,175,80,.20),rgba(76,175,80,.08));
+  border-color:rgba(76,175,80,.7)}
+.grid-container .slot.invalid-hover{background:linear-gradient(180deg,rgba(244,67,54,.20),rgba(244,67,54,.08));
+  border-color:rgba(244,67,54,.7)}
+
+/* 物品：绝对定位,left/top 由 webui-bag.js 按 padding + x*(slot+gap) 算 */
+.grid-container .item{position:absolute;display:flex;align-items:center;justify-content:center;
+  background:var(--plate-bg);border:1px solid rgba(255,255,255,.3);border-radius:4px;
+  cursor:grab;overflow:hidden;z-index:2;
+  box-shadow:0 4px 10px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.2);
+  transition:filter .1s,border-color .2s,box-shadow .2s}
+.grid-container .item:hover{filter:brightness(1.25);border-color:var(--warm-gold);
+  box-shadow:0 0 15px rgba(251,176,52,.5)}
+.grid-container .item.dragging{cursor:grabbing;z-index:20}
+.grid-container .item img{max-width:100%;max-height:100%;object-fit:contain;pointer-events:none}
+
+/* 数量 / 使用次数角标：webui-bag.js 自动生成,缺样式就是裸文字压在图标上 */
+.item-count{position:absolute;bottom:3px;right:4px;font-size:11px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.08);padding:0 6px;border-radius:9px;
+  line-height:14px;text-shadow:0 1px 2px rgba(0,0,0,.8);z-index:3;pointer-events:none}
+.item-use{position:absolute;bottom:5px;left:3px;font-size:10px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.12);padding:0 5px;border-radius:8px;
+  line-height:13px;font-variant-numeric:tabular-nums;z-index:4;pointer-events:none}
+.item-use-bar{position:absolute;left:2px;right:2px;bottom:0;height:2px;background:rgba(0,0,0,.55);
+  border-radius:1px;overflow:hidden;pointer-events:none;z-index:4}
+.item-use-bar-fill{height:100%;width:100%;transform:scaleX(0);transform-origin:left;transition:transform .2s}
+
+/* 品质描边（webui-bag.js 按 quality 自动挂 q-*） */
+.grid-container .item.q-perfect{border-color:#FFC107;box-shadow:0 0 12px rgba(255,193,7,.40),0 2px 5px rgba(0,0,0,.5)}
+.grid-container .item.q-good{border-color:#B988E6;box-shadow:0 0 9px rgba(185,136,230,.32),0 2px 5px rgba(0,0,0,.5)}
+.grid-container .item.q-normal{border-color:rgba(255,255,255,.50)}
+.grid-container .item.q-fail{border-color:#707070;filter:saturate(.5) brightness(.85)}
+
+#weightSection{width:100%;margin-top:10px}
+.wrow{display:flex;align-items:center;gap:8px;font-size:12px;color:#a9a49d}
+.wbar{flex:1;height:8px;border-radius:4px;background:rgba(10,8,6,.65);overflow:hidden;
+  border:1px solid rgba(255,255,255,.08)}
+.wbar i{display:block;height:100%;background:linear-gradient(90deg,#7fae62,#c8b24a);width:0}
+.wbar i.over{background:linear-gradient(90deg,#c85a4a,#e05555)}
+
+.cart-foot{width:100%;display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px}
+.hint{font-size:11px;color:#7b7670;letter-spacing:.3px}
+.mini-btn{padding:5px 12px;font-size:12px;font-family:inherit;color:#ddd;background:var(--btn-bg);
+  border:1px solid var(--btn-border);border-radius:6px;cursor:pointer}
+.mini-btn:hover{background:var(--btn-hover);color:var(--warm-gold);border-color:rgba(251,176,52,.45)}
+
+/* ── 右：机器 ── */
+.machine{display:flex;flex-direction:column;gap:20px;flex:1;min-width:0}
+.panel{background:var(--panel-bg);border:1px solid var(--panel-border);border-radius:8px;
+  padding:15px;display:flex;flex-direction:column;
+  box-shadow:inset 0 2px 10px rgba(0,0,0,.4),0 4px 15px rgba(0,0,0,.2)}
+/* 标题：暖金字 + 左侧发光竖条。这条竖条是 Cooking / 菜谱书 / 烹饪操作台共用的识别符,
+   少了它这个面板就不像同一家的。*/
+.panel-title{display:flex;align-items:center;width:100%;flex-shrink:0;
+  font-size:16px;font-weight:bold;letter-spacing:1px;color:var(--warm-gold);margin-bottom:12px;
+  text-shadow:0 0 10px rgba(251,176,52,.4)}
+.panel-title::before{content:'';display:inline-block;width:4px;height:16px;background:var(--warm-gold);
+  margin-right:8px;border-radius:2px;box-shadow:0 0 8px rgba(251,176,52,.8);flex-shrink:0}
+.panel-title .sub{margin-left:auto;font-size:12px;font-weight:normal;letter-spacing:0;
+  color:var(--text-dark);text-shadow:none}
+
+/* 右上：压制槽 → 传送带 → 产出格，横排成一条线 */
+.mrow{display:flex;align-items:flex-start;gap:0}
+.mcol{display:flex;flex-direction:column}
+.mcol .cap{display:flex;align-items:baseline;justify-content:space-between;height:20px;
+  font-size:12px;letter-spacing:1px;color:#cfc9c0;margin-bottom:6px}
+.mcol .cap b{color:var(--gold);font-weight:700}
+.mcol .cap em{font-style:normal;font-size:11px;color:#8a8079}
+
+/* 传送带：夹在两格中间，竖直居中，五行结构，每行锁死高度（面板不许抖）。
+   🚨 2026-08-21 改版：图标不再骑在带子上走 —— 它钉在带子**正上方**的固定槽里（.bicon），
+   「走到哪儿了」整个交给带子本身表达：带子退成一条进度条（.bfill，见 updateBeltFill）。*/
+.belt{width:92px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  align-self:center;padding:0 6px}
+.belt .bname{height:15px;line-height:15px;font-size:11px;font-weight:700;color:var(--gold);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:92px;text-align:center}
+/* 传送带正上方的产出图标槽：位置固定不动。高度锁死 34px（含 margin 共 41px）——
+   空闲态只撤掉框与图标（.empty），行高不塌，面板不抖。*/
+.belt .bicon{position:relative;width:34px;height:34px;margin:4px 0 3px;display:flex;
+  align-items:center;justify-content:center;font-size:17px;border-radius:5px;
+  background:linear-gradient(135deg,rgba(126,109,80,.97),rgba(80,68,52,.97));
+  border:1px solid rgba(251,176,52,.75);
+  box-shadow:0 3px 9px rgba(0,0,0,.65),inset 0 1px 0 rgba(255,255,255,.16)}
+.belt .bicon.empty{background:none;border:none;box-shadow:none}
+.belt .bicon img{width:26px;height:26px;object-fit:contain}
+.belt .bicon .x{position:absolute;right:-5px;bottom:-4px;font-size:9px;color:#fff;
+  background:rgba(0,0,0,.7);border-radius:3px;padding:0 2px}
+/* 换组时的淡入。只动 opacity —— 与 .bfill 的 transform 各管各的，不抢同一个属性 */
+.belt .bicon.pop{animation:beltPop .34s ease-out}
+@keyframes beltPop{from{opacity:0}to{opacity:1}}
+/* 带子本体 = 进度条底槽。斜纹保留（那是「这是条传送带」的唯一残留形象），跑动时纹路流动。
+   条纹放伪元素上用 transform 推,不动 background-position —— 后者每帧重绘整块背景（禁用属性）。
+   左右各留 24px 余量,推满一个周期也不露白,溢出由 .track 的 overflow:hidden 裁掉。*/
+.belt .track{position:relative;width:80px;height:12px;margin:3px 0 4px;border-radius:6px;
+  background:linear-gradient(180deg,rgba(50,46,42,.9),rgba(30,27,24,.95));
+  border:1px solid rgba(255,255,255,.10);box-shadow:inset 0 2px 5px rgba(0,0,0,.8);overflow:hidden}
+.belt .track::before{content:'';position:absolute;top:0;bottom:0;left:-24px;right:-24px;
+  background:repeating-linear-gradient(115deg,rgba(255,255,255,.05) 0 6px,rgba(0,0,0,0) 6px 12px)}
+.belt .track.run::before{animation:beltmove .9s linear infinite}
+@keyframes beltmove{from{transform:translateX(0)}to{transform:translateX(24px)}}
+/* 填充条。与右下总进度条同款做法：transform:scaleX 不用 width —— 后者每帧重排+重绘。
+   🚨 比例是**真实时间进度**实时算出来的,不是一段定长动画,transition 只负责把两次采样之间抹平。*/
+.belt .bfill{position:absolute;inset:0;transform-origin:left;transform:scaleX(0);
+  background:linear-gradient(90deg,#a8761c,var(--gold));box-shadow:0 0 10px rgba(251,176,52,.55);
+  transition:transform .28s linear}
+/* 堵塞：这一组已经走到头、卡在带尾等位 —— 满条 + 转红，与 .eta.jam 同色系 */
+.belt .bfill.jam{background:linear-gradient(90deg,#8a3535,var(--danger));
+  box-shadow:0 0 10px rgba(224,85,85,.45)}
+/* 🚨 倒计时与剩余件数是传送带唯一的读数,上一版两行都是 11px 灰字、跟装饰纹一个权重,扫过去看不见。
+   倒计时提到 13px 暖金加粗（它是「下一块什么时候掉」的答案）,件数提到 12px 亮灰。
+   空闲态（.idle）压回暗灰细体 —— 没有倒计时的时候它不该抢注意力。 */
+.belt .eta{height:20px;line-height:20px;font-size:13px;font-weight:700;color:var(--warm-gold);
+  text-shadow:0 0 6px rgba(251,176,52,.35);white-space:nowrap;font-variant-numeric:tabular-nums}
+.belt .eta.idle{color:#6f6a64;font-weight:normal;text-shadow:none}
+.belt .eta.jam{color:var(--danger);text-shadow:0 0 6px rgba(224,85,85,.4)}
+.belt .cnt{height:17px;line-height:17px;font-size:12px;color:#c9c2b8;white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.belt .cnt.jam{color:var(--danger)}
+
+/* 压制中盖在压制槽上的模糊罩 */
+.press-overlay{position:absolute;inset:0;border-radius:7px;display:none;overflow:hidden;
+  align-items:center;justify-content:center;font-size:13px;letter-spacing:3px;color:#ffe6a8;
+  /* 不用 backdrop-filter：它不在效果白名单,且启动瞬间原料已全部消耗、罩下本就是一格空网格,
+     等于纯付 GPU 费用；半透明底色已足够表达「这块暂时不能动」。*/
+  background:rgba(10,8,6,.62);z-index:5}
+.press-overlay.show{display:flex}
+/* 压制中的「咬合」动画：上下两条压板一张一合 + 文字同频轻缩。
+   🚨 只动 transform / opacity（`webui-effects-performance.md` [强制]）——
+   不动 height / top / background-position,那三样每帧都要重排或重绘整块罩子。
+   三条都是 infinite ⇒ 下面必须配 html.quality-low 静态化规则,缺一条就是规范违例。 */
+.press-overlay .jaw{position:absolute;left:0;right:0;height:14px;pointer-events:none;will-change:transform,opacity}
+.press-overlay .jaw.top{top:0;background:linear-gradient(180deg,rgba(251,176,52,.5),transparent)}
+.press-overlay .jaw.bot{bottom:0;background:linear-gradient(0deg,rgba(251,176,52,.5),transparent)}
+.press-overlay.show .jaw.top{animation:pressJawTop 1.4s ease-in-out infinite}
+.press-overlay.show .jaw.bot{animation:pressJawBot 1.4s ease-in-out infinite}
+.press-overlay .ptxt{position:relative;z-index:1;will-change:transform}
+.press-overlay.show .ptxt{animation:pressText 1.4s ease-in-out infinite}
+@keyframes pressJawTop{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(7px);opacity:.85}}
+@keyframes pressJawBot{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-7px);opacity:.85}}
+@keyframes pressText{0%,100%{transform:scale(1);opacity:.88}50%{transform:scale(.94);opacity:1}}
+
+.mfoot{display:flex;align-items:center;justify-content:space-between;height:26px;margin-top:8px}
+.mfoot .tip{font-size:11px;color:#7b7670}
+
+/* 右下：信息与操作。
+   🚨 徽章一律「暗色标签 + 暖金数值」两段式,口径抄 Cooking 的 .power-badge / .capacity-badge ——
+   上一版把整句塞进一个 12px 灰字里（「用电 10 · 本次 2160 电」）,数值和标签一样暗,扫一眼读不出重点。
+   🚨 两行**显式分行**,不靠 flex-wrap：wrap 的换行位置随文案长度变（DE 的「Verbrauch」比「用电」长得多）,
+   一换行整块高度就变,直接破坏「七态高度恒定」那条硬要求。显式两行 + 固定高度才稳。 */
+.badges{display:flex;align-items:center;height:26px;gap:8px;font-size:12px;color:#a9a49d}
+.badges.row2{height:24px;margin-top:5px;margin-bottom:10px;flex-wrap:nowrap;overflow:hidden}
+.badges .pwr{display:inline-flex;align-items:center;gap:5px;flex-shrink:0}
+.badges .pwr i{width:7px;height:7px;border-radius:50%;background:#7fae62;box-shadow:0 0 6px rgba(127,174,98,.8)}
+.badges .pwr.off i{background:var(--danger);box-shadow:0 0 6px rgba(224,85,85,.8)}
+
+.cbadge{display:inline-flex;align-items:baseline;gap:5px;white-space:nowrap;line-height:1;
+  padding:4px 8px;border-radius:4px;border:1px solid var(--border-light);
+  background:linear-gradient(135deg,rgba(70,60,55,.95),rgba(45,38,34,.95));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 2px 4px rgba(0,0,0,.4);
+  overflow:hidden;text-overflow:ellipsis}
+.cbadge .k{font-size:11px;color:var(--text-dark);font-weight:normal;flex-shrink:0}
+.cbadge .v{font-size:12px;color:var(--warm-gold);font-weight:bold;
+  text-shadow:0 0 6px rgba(251,176,52,.35);font-variant-numeric:tabular-nums}
+.cbadge.off{opacity:.42}
+.cbadge.off .v{color:var(--text-dark);text-shadow:none}
+/* ⚠ `.cbadge.hero`（16px 暖金产量徽章）与 `.cbadge .v2` 已随「产量下沉到 .attrs」删除,别再按 hero 找产量。 */
+
+.ctl-body{display:flex;align-items:flex-start;gap:18px}
+
+/* 调味配比条（原样移植 BrewPanel 的 .qbar，只换映射）*/
+.qwrap{flex:1;min-width:0;max-width:330px}
+.qlabel{font-size:12px;color:#a9a49d;margin-bottom:6px;letter-spacing:1px}
+.qbar{position:relative;height:15px;border-radius:8px;overflow:visible;display:flex;
+  background:rgba(10,8,6,.6);border:1px solid rgba(255,255,255,.08);
+  box-shadow:inset 0 2px 6px rgba(0,0,0,.75)}
+.qseg{flex:1;opacity:.34;transition:opacity .2s}
+.qseg:nth-child(1){background:linear-gradient(180deg,#9dc47f,#5c8443);border-radius:8px 0 0 8px}
+.qseg:nth-child(2){background:linear-gradient(180deg,#f0c368,#b57f26)}
+.qseg:nth-child(3){background:linear-gradient(180deg,#d6798f,#8e3247);border-radius:0 8px 8px 0}
+.qseg.on{opacity:1}
+.qbar .qtarget{position:absolute;left:33.3%;width:33.4%;bottom:-1px;height:3px;border-radius:2px;
+  background:rgba(255,240,200,.9);box-shadow:0 0 8px rgba(251,176,52,.9);opacity:.55}
+.qseg:nth-child(2).on ~ .qtarget,.qbar.full .qtarget{opacity:1}
+.qbar .qmark{position:absolute;top:-13px;transform:translateX(-50%);font-size:13px;color:#fff;
+  text-shadow:0 2px 4px rgba(0,0,0,.8);pointer-events:none}
+.qbar .qmark::after{content:'';position:absolute;left:50%;top:13px;width:1px;height:7px;
+  background:rgba(255,255,255,.85);transform:translateX(-50%)}
+.qbar.full .qseg{opacity:1}
+.qlabels{display:flex;margin-top:4px;font-size:11px;color:#6f6a64}
+.qlabels span{flex:1;text-align:center}
+.qlabels span.on{color:#ffe6a8}
+.qcap{height:17px;line-height:17px;margin-top:4px;font-size:11px;color:#8a8079;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.qcap.ok{color:var(--gold)}
+.qcap.bad{color:var(--danger)}
+
+/* 属性区三行：每块心态 / 压出 / 饱腹 —— 同一套 .r 版式,右对齐数值。
+   min-width 从 150 提到 162：最长的值是「20 块 + 3 碎屑」,150 下 k 与 v 会贴到一起。 */
+.attrs{min-width:162px}
+.r{display:flex;align-items:baseline;justify-content:space-between;height:22px;font-size:13px}
+.r .k{color:#a9a49d;font-size:12px}
+.r .k em{font-style:normal;font-size:11px;opacity:.55;margin-left:4px}
+.r .v{font-weight:700;color:#d8d2c8;font-variant-numeric:tabular-nums}
+.r .v.gold{color:var(--gold)}
+.r .v.neg{color:var(--danger)}
+
+/* 🚨 常驻占位：警告框与进度条只切 visibility，不切 display（切 display 会顶高整个面板） */
+.warn-slot{height:33px;margin-bottom:9px;margin-top:10px}
+.warning-box{font-size:12px;color:#ffb3b3;background:rgba(224,85,85,.14);
+  border:1px solid rgba(224,85,85,.45);border-radius:5px;padding:7px 10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;visibility:hidden;
+  /* 🚨 max-width/min-width 缺一不可：本框是全页唯一 nowrap 的 block,它的 max-content 宽度会一路
+     传到 shrink-to-fit 的 .machine ⇒ 德/俄等长文案会静默把整个面板顶宽并横向推移(实测 120 字符
+     即 +47px),超出视口还会触发 _fit 全局降采样把 40px 格子缩糊。*/
+  max-width:100%;min-width:0}
+.warning-box.info{color:#e9d3a8;background:rgba(251,176,52,.1);border-color:rgba(251,176,52,.4)}
+.warning-box.on{visibility:visible}
+
+.progress-container{width:100%;height:12px;background:rgba(10,5,0,.6);border-radius:6px;overflow:hidden;
+  border:1px solid rgba(255,255,255,.1);visibility:hidden;margin-bottom:9px;
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.8)}
+.progress-container.on{visibility:visible}
+/* 用 transform:scaleX 不用 width —— width 每帧重排+重绘,而本条 250ms 就写一次。*/
+.progress-bar{height:100%;width:100%;transform:scaleX(0);transform-origin:left;border-radius:6px;
+  background:linear-gradient(90deg,#a8761c,var(--gold));box-shadow:0 0 12px rgba(251,176,52,.6)}
+
+.cook-btn{background:var(--btn-go-bg);color:#111;border:none;padding:13px;
+  border-radius:6px;font-size:16px;font-weight:bold;cursor:pointer;width:100%;transition:background .2s,transform .2s,box-shadow .2s;
+  box-shadow:0 4px 15px var(--accent-glow);letter-spacing:3px;font-family:inherit}
+.cook-btn:hover:not(:disabled){background:var(--btn-go-hover);transform:translateY(-2px);
+  box-shadow:0 6px 20px rgba(255,149,0,.6)}
+.cook-btn:disabled{background:rgba(60,50,45,.8);color:rgba(255,255,255,.3);cursor:not-allowed;box-shadow:none}
+
+/* 物品格通用标记（与 BackpackUI 对齐） */
+.expired{filter:grayscale(.5)}
+/* ── 冷藏冰霜（左栏切到冰箱页签时）──
+   🚨 z-index 必须压在所有角标**之下**（Brew 用的是 z3,直接抄过来会盖掉红✕和调味次数标）。
+   本页格内叠层：frost(1) < expired-mask(2) < polluted-ring(3) < 角标(6)。
+   红✕「这台机器不收这一类」和调味次数是压制机的核心准入表达,被冰盖住就废了。
+   贴图统一引 BackpackUI 那一份,不要在本目录另存。*/
+.item-frost{position:absolute;inset:0;pointer-events:none;border-radius:3px;z-index:1;
+  background-image:url('../BackpackUI/Refrigerator_ICE.png');
+  background-size:100% auto;background-repeat:no-repeat;background-position:top center}
+.grid-container.is-frozen .slot{background:#16293d;border-color:rgba(130,180,240,.45)}
+.grid-container.is-frozen .slot.valid-hover{background:rgba(232,176,75,.20);border-color:var(--warm-gold)}
+.grid-container.is-frozen .slot.invalid-hover{background:rgba(224,85,85,.2);border-color:var(--danger)}
+.grid-container.is-frozen .item{border-color:rgba(130,180,240,.5)}
+.expired-mask{position:absolute;inset:0;background:rgba(146,52,38,.22);pointer-events:none;border-radius:4px;z-index:2}
+/* 快过期：底部 12px 贴底黄晕（无硬线），与已过期的暗红褐满片染底靠色相(黄/红)+范围(12px/整格)+浓度(.42/.7)区分。
+   12px 已接近上限：形态同为底部染色，实测拉到 16px 范围与已过期拉平就会误认。刻意做轻：提醒而非判决。 */
+.near-expiry-mask{position:absolute;inset:0;border-radius:3px;pointer-events:none;z-index:5;
+  background:linear-gradient(to top,rgba(255,210,60,.42) 0px,rgba(255,210,60,.18) 5px,rgba(255,210,60,0) 12px)}
+.polluted-ring{position:absolute;inset:0;border:2px solid rgba(96,190,96,.85);border-radius:5px;pointer-events:none;z-index:3}
+/* 🚨 拒收档**零视觉标记**（2026-08-21 用户两次收敛）：
+   第一次撤掉淡化（原 opacity:.45 + grayscale(.7)）—— 淡化读起来像"这件东西本身坏了/过期了",
+   而它其实完好,只是这台机器不收;且会和 .expired 的泛黄遮罩、.item-frost 的冰霜层叠成三种分不出的"灰"。
+   第二次撤掉右上角那枚红 ✕ —— 满屏红叉是"禁区地图",而玩家在这台机器前是**找料**,不是找禁区。
+   ⇒ 准入表达收敛成**单向**：挂角标 = 能进,没角标 = 不能进（互为逆否,不需要第二套符号）。
+   拒收的**原因**仍有两条通道兜底：tooltip 常驻一行 + 拖进去时飘警告（canAcceptItem 分支）。
+   `.rejected` 类保留作语义钩子（验证脚本按它计数）,故意不给任何视觉规则 —— 别再给它加回来。 */
+/* 正向角标：范式对齐 Shredder 的 .item.shredable::before 与 Cooking 的 .item.is-food::after
+   —— 小圆角方块 + 内嵌白色 SVG 图形 + 有色渐变底 + 白描边 + 投影,而不是一个裸文字符号。
+   🚨 用内嵌 SVG 不用 emoji/文字：emoji 受系统字体表影响（Win / Steam Deck 渲染不同、彩色 emoji
+   与暗色 UI 打架）,这条与锁页签挂锁改成纯 CSS 是同一个理由。
+   图形 = 下压箭头 + 底板,与「压制」按钮图标 arrow_67、压制罩的压板咬合动画同一个动作隐喻：往下投。
+   位置取右上（沿用旧 .intake-ok,不新引入冲突）；与 .unread-dot 共存时由下面那条规则给红点让位。 */
+.intake-ok{position:absolute;top:-3px;right:-3px;width:15px;height:15px;box-sizing:border-box;z-index:6;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g fill='white'><rect x='10.4' y='2.6' width='3.2' height='7.6' rx='1.6'/><path d='M12 16.2 6.2 9.4h11.6z'/><rect x='4' y='18.4' width='16' height='3.2' rx='1.6'/></g></svg>"),
+    linear-gradient(135deg,var(--warm-gold),var(--warm-orange-dark));
+  background-size:9px 9px,100% 100%;background-position:center,center;background-repeat:no-repeat,no-repeat;
+  border-radius:3px;border:1px solid rgba(255,255,255,.4);box-shadow:0 2px 4px rgba(0,0,0,.6);
+  pointer-events:none}
+/* 未读红点与正向角标都定在右上 ⇒ 共存时（刚拿到手的可投料,很常见）把红点挪到右下,两者都完整可读。
+   只在共存时生效,拒收件/不可投件上的红点位置照旧不变。 */
+.item.has-intake .unread-dot{top:auto;right:2px;bottom:2px}
+.unread-dot{position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:50%;z-index:6;
+  background:var(--danger);box-shadow:0 0 5px rgba(224,85,85,.9);pointer-events:none}
+.act-mark{position:absolute;left:2px;top:1px;font-size:10px;color:#ffe6a8;pointer-events:none}
+.act-mark.using{animation:pulse 1.2s ease-in-out infinite}
+.q-1{box-shadow:inset 0 0 0 2px rgba(255,193,7,.85)}
+.q-2{box-shadow:inset 0 0 0 2px rgba(126,183,232,.8)}
+.q-3{box-shadow:inset 0 0 0 2px rgba(180,180,180,.6)}
+.q-4{box-shadow:inset 0 0 0 2px rgba(150,90,90,.7)}
+
+#itemTip{position:fixed;display:none;z-index:99;max-width:280px;padding:8px 10px;font-size:12px;
+  line-height:1.6;color:#ddd;background:rgba(14,13,12,.96);border:1px solid rgba(255,255,255,.14);
+  border-radius:6px;box-shadow:0 10px 26px rgba(0,0,0,.7);pointer-events:none;white-space:pre-line}
+#itemTip .tname{color:#ffe6a8;font-weight:700;margin-bottom:3px}
+
+/* ── 画质分级：Low 档静态化长驻 infinite 动画 ── */
+/* 传送带条纹是纯装饰（流向指示）→ 直接禁用；带子在不在跑由进度条填充本身表达 */
+html.quality-low .belt .track.run::before{animation:none}
+/* 页签红点是「这栏有新东西」的提醒且可长驻 → 静态化,提示语义靠颜色与辉光常显保留 */
+html.quality-low .left-tab .dot{animation:none;opacity:1}
+/* 压制罩的咬合动画：Low 档静态化。压板停在「合拢」相位并常显,
+   「这块正在压、动不了」的语义由罩子本身 + 文字承担,不依赖动画 */
+html.quality-low .press-overlay.show .jaw.top{animation:none;transform:translateY(7px);opacity:.7}
+html.quality-low .press-overlay.show .jaw.bot{animation:none;transform:translateY(-7px);opacity:.7}
+html.quality-low .press-overlay.show .ptxt{animation:none;transform:none;opacity:1}
+/* .bfill 的进度走 transition、.bicon 淡入是一次性 animation,都不是 infinite,按规范不写 Low 档规则 */
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── 左：角色背包 ── -->
+  <div class="cart">
+    <div class="panel-title"><span data-i18n="cartTitle">角色背包</span></div>
+    <div class="left-tabs" id="tabs"></div>
+    <div class="grid-container" id="cartGrid"></div>
+    <div id="weightSection">
+      <div class="wrow">
+        <span data-i18n="weightLabel">负重</span>
+        <div class="wbar"><i id="wfill"></i></div>
+        <span id="wtext">0 / 0</span>
+      </div>
+    </div>
+    <div class="cart-foot">
+      <span class="hint" id="shiftHint" data-i18n="shiftHint">右键 / Shift+点击 快速转移 · 点击查看详情</span>
+      <button class="mini-btn" id="btnSortBag" data-i18n="sortBtn">整理</button>
+    </div>
+  </div>
+
+  <!-- ── 右：机器 ── -->
+  <div class="machine">
+
+    <!-- 右上：压制槽 → 传送带 → 产出格，一条线 -->
+    <div class="panel">
+      <div class="panel-title">
+        <!-- 折减原本挂在这里当标题副文（12px 灰）,已随这批「不突出」的意见挪进右下徽章行 -->
+        <span id="pageTitle" data-i18n="pageTitle">口粮压制机</span>
+      </div>
+      <div class="mrow">
+        <div class="mcol">
+          <div class="cap"><span data-i18n="binTitle">压制槽</span><span id="binCap"></span></div>
+          <div class="grid-wrap">
+            <div class="grid-container" id="binGrid"></div>
+            <!-- 🚨 data-i18n 必须挂在内层 .ptxt 上：挂在罩子本体会把 .jaw 两个子节点一起写没 -->
+            <div class="press-overlay" id="pressOverlay">
+              <div class="jaw top"></div>
+              <span class="ptxt" data-i18n="statRunning">压 制 中</span>
+              <div class="jaw bot"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="belt">
+          <div class="bname" id="beltName" data-i18n="beltTitle">出料</div>
+          <!-- 产出图标：钉在传送带正上方不动（原本是骑在带子上走的那一块，已撤） -->
+          <div class="bicon empty" id="beltIconBox"></div>
+          <div class="track" id="beltTrack">
+            <div class="bfill" id="beltFill"></div>
+          </div>
+          <div class="eta idle" id="beltEta">—</div>
+          <!-- 只在产出格堵住时出字（见 renderBelt）；平时是一条 17px 的空占位行，撑住传送带列高 -->
+          <div class="cnt" id="beltCnt"></div>
+        </div>
+
+        <div class="mcol">
+          <div class="cap"><span data-i18n="trayTitle">产出格</span><span id="trayCap"></span></div>
+          <div class="grid-container" id="trayGrid"></div>
+        </div>
+      </div>
+      <div class="mfoot">
+        <span class="tip" id="trayHint"></span>
+        <button class="mini-btn" id="takeBtn" data-i18n="btnTakeAll">全部收进背包</button>
+      </div>
+    </div>
+
+    <!-- 右下：信息与操作。🚫 仍然不预告**口味** —— 那是传送带的揭晓时刻。
+         产量（块数/碎屑/有效饱腹）自 2026-08-21 起预告,位置在「每块心态」下方的 .attrs 里。 -->
+    <div class="panel">
+      <div class="badges">
+        <span class="pwr" id="pwrBadge"><i></i><span id="pwrText" data-i18n="pwrOn">通电</span></span>
+      </div>
+      <div class="badges row2">
+        <span class="cbadge off" id="bgRate"><span class="k" data-i18n="lblRate">折减</span><span class="v" id="rateVal">—</span></span>
+        <span class="cbadge off" id="bgPower"><span class="k" data-i18n="lblPower">用电</span><span class="v" id="powerVal">—</span></span>
+        <span class="cbadge off" id="bgCost"><span class="k" data-i18n="lblCost">本次</span><span class="v" id="costVal">—</span></span>
+        <!-- 标签在压制中要换成「剩余」：这一格显示的值本来就分两种语义（预览=整批耗时 / 运行中=剩余时间），
+             上一版标签写死「耗时」,压制中读成「这批要 70 分钟」而实际是「还剩 70 分钟」。
+             data-i18n 只提供初值,真正的切换在 renderPanel（LocalizationMsg 末尾会调 renderAll,顺序安全）。 -->
+        <span class="cbadge off" id="bgTime"><span class="k" id="timeKey" data-i18n="lblTime">耗时</span><span class="v" id="timeVal">—</span></span>
+      </div>
+      <div class="ctl-body">
+        <div class="qwrap">
+          <div class="qlabel" data-i18n="seasonLabel">调味</div>
+          <div class="qbar" id="qBar">
+            <div class="qseg" id="q0"></div><div class="qseg" id="q1"></div><div class="qseg" id="q2"></div>
+            <div class="qtarget"></div>
+            <div class="qmark" id="qMark">▼</div>
+          </div>
+          <div class="qlabels">
+            <span id="ql0" data-i18n="seasonSegLow">淡</span>
+            <span id="ql1" data-i18n="seasonSegOk">刚好</span>
+            <span id="ql2" data-i18n="seasonSegHigh">齁</span>
+          </div>
+          <div class="qcap" id="qCap"></div>
+        </div>
+        <!-- 三行同一套 .r > .k + .v 版式：心态在上,产量紧随其下（用户 2026-08-21 意见 5 定位）。
+             ⚠ 这三行整体高 66px,仍矮于左侧 .qwrap（约 73px）⇒ .ctl-body 的高度由调味条决定,
+             加行**不顶高面板**,「七态高度恒定」不受影响。再加行前必须重量一次。 -->
+        <div class="attrs">
+          <div class="r"><span class="k" id="moodKey" data-i18n="moodLabel">每块心态</span><span class="v" id="moodVal">—</span></div>
+          <div class="r"><span class="k" data-i18n="lblYield">压出</span><span class="v" id="yieldVal">—</span></div>
+          <div class="r"><span class="k" data-i18n="attrSatiety">饱腹</span><span class="v" id="satVal">—</span></div>
+        </div>
+      </div>
+      <div class="warn-slot"><div class="warning-box" id="warnBox"></div></div>
+      <div class="progress-container" id="progWrap"><div class="progress-bar" id="pfill"></div></div>
+      <button class="cook-btn" id="goBtn" data-i18n="btnStart">启 动 压 制</button>
+    </div>
+
+  </div>
+</div>
+
+<div id="itemTip" data-no-sync></div>
+
+<script>
+var core = createWebUICore('Compressor');
+var _fit = createViewportFit({ measureSelector: '#app', margin: 24, bodyHeightProp: 'height' });
+
+/* 中文兜底表。🚨 handler 只合并**非空值**（裸 Object.assign 会把中文兜底洗成空白，
+   webui-panel 既往事故 CL13774 / Sentry UNITY_SL-77Q 影响 413 人）。 */
+var i18nText = {
+  pageTitle:'口粮压制机', bagTitle:'背包', cartTitle:'角色背包', binTitle:'压制槽', trayTitle:'产出格', beltTitle:'出料',
+  weightLabel:'负重',
+  statIdle:'待 机', statRunning:'压 制 中', statPaused:'已 暂 停', statDone:'已 完 成',
+  btnStart:'启 动 压 制', btnStarting:'压 制 中…', btnEjecting:'出 料 中…',
+  btnTakeAll:'全部收进背包', sortBtn:'整理',
+  pwrOn:'通电', pwrOff:'停电',
+  lblRate:'折减', lblPower:'用电', lblCost:'本次', lblTime:'耗时', lblRemainTime:'剩余', lblYield:'压出',
+  tmplPowerVal:'{0} 电', tmplYield:'{0} 块', tmplYieldCrumb:'{0} 块 + {1} 碎屑', tmplSat:'约 {0}',
+  tmplCrumbFree:'折减只算食材 —— {0} 个回炉碎屑不折',
+  tmplTrayCap:'{0} / {1}',
+  tmplHour:'{0} 小时', tmplMinute:'{0} 分钟',
+  tmplEtaHour:'{0} 小时后', tmplEtaMinute:'{0} 分钟后',
+  suffixFloor:'保底', etaReady:'就绪', etaJam:'等位中', beltIdle:'出料',
+  moodLabel:'每块心态', markCapped:'已封顶', markFloored:'触下限',
+  seasonLabel:'调味', seasonSegLow:'淡', seasonSegOk:'刚好', seasonSegHigh:'齁',
+  seasonCapFull:'够味了 · 再放也不会更好吃',
+  seasonCapNone:'还没放调料 · 放几次会更好吃',
+  seasonCapTooLow:'太淡了 · 再多放几次',
+  seasonCapLow:'还差点味',
+  seasonCapOk:'刚刚好',
+  seasonCapABitMuch:'有点多了',
+  seasonCapMuch:'过头了 · 开始发齁',
+  seasonCapTooMuch:'齁得没法吃',
+  blockEmpty:'压制槽是空的，先放点东西进去。',
+  blockTooLittle:'不足 10 饱腹，压不出一块碎屑。',
+  blockCrumbShort:'碎屑还不够压成一整块 —— 再攒几个。',
+  blockNoPower:'停电了，通上电才能开工。',
+  blockTrayFull:'产出格满了，先收走一些。',
+  blockJam:'产出格满了，产物停在传送带上 —— 收走几件它就继续送。',
+  warnRejectClass:'这台机器不收这一类',
+  warnRejectExpired:'已经过期了，口粮压制机不收过期食物',
+  warnLocked:'正在压制，这件动不了',
+  warnBusyNoIn:'正在压制，放不进去',
+  warnTrayNoIn:'产出格只出不进',
+  warnNoRoom:'这里放不下，换个空位',
+  tipExpired:'⊘ 已经过期了 —— 口粮压制机不收过期食物',
+  tipRejectClass:'⊘ 这台机器不收这一类',
+  tipNegMood:'※ 心态 {0} → 压制时按 0 计（难吃不扣分，但也不会变好吃）',
+  tipFlavor:'口味',
+  attrSatiety:'饱腹', attrMood:'心态', attrEnergy:'精力', attrHealth:'健康', attrLife:'生命',
+  trayHint:'右键 / Shift+点击 收一件，或一次全收',
+  shiftHint:'右键 / Shift+点击 快速转移 · 点击查看详情'
+};
+
+var State = {
+  cartOwnerId:0, cartCols:8, cartRows:7, cartItems:[], cartTabs:[], activeTab:0,
+  cartIsFreezing:false, cartIsPowered:false, cartFrozen:false,
+  cartMaxCols:0, cartMaxRows:0,
+  binOwnerId:0, binCols:6, binRows:6, binItems:[],
+  trayOwnerId:0, trayCols:6, trayRows:6, trayItems:[],
+  weightCurrent:0, weightMax:0,
+  binUsed:0, binTotal:0, trayUsed:0, trayTotal:0,
+  runState:0, isPowered:true,
+  cellsIn:0, minutes:0, minutesFloored:false, powerCost:0, powerPerTick:0, rate:0, crumbIn:0,
+  moodPerBlock:0, moodCapped:false, moodFloored:false, negMoodCount:0,
+  seasoningD:0, seasoningFull:false,
+  remainSeconds:0, totalSeconds:0, progress:0,
+  blocks:0, crumbs:0, satEffective:0, groupCount:0, emittedGroups:0, pendingItemCount:0,
+  beltConfigId:0, beltIcon:'', beltName:'', beltCount:0, beltEtaSeconds:0, beltJammed:false,
+  canStart:false, blockReason:0
+};
+
+var $ = function(id){ return document.getElementById(id); };
+function fmt(t){
+  var a = Array.prototype.slice.call(arguments, 1);
+  return String(t || '').replace(/\{(\d+)\}/g, function(m, i){ return a[i] !== undefined ? a[i] : m; });
+}
+/* 🚨 耗时一律按小时读：满仓 2160 分钟写成分钟读不出量级。≥120 分钟走小时，带一位小数。 */
+function fmtDur(minutes){
+  if (minutes >= 120) return fmt(i18nText.tmplHour, (minutes % 60 === 0) ? (minutes / 60) : (minutes / 60).toFixed(1));
+  return fmt(i18nText.tmplMinute, minutes);
+}
+/* 🚨 传送带倒计时的切换点放在 **60 分钟**：用 120 会在「2.1 小时 → 74 分钟」之间跳，读着别扭。 */
+function fmtEta(minutes){
+  if (minutes >= 60) return fmt(i18nText.tmplEtaHour, (minutes / 60).toFixed(1));
+  if (minutes >= 1)  return fmt(i18nText.tmplEtaMinute, Math.ceil(minutes));
+  return i18nText.etaReady;
+}
+/* 进度条填充：写 transform:scaleX 而不是 width（width 每帧重排+重绘）。
+   并量化到 0.25% —— 心跳 250ms 一发,肉眼分辨不出更细的粒度,量化后绝大多数 tick 直接早退,
+   连合成帧都不产。*/
+function setProgressFill(p){
+  var el = $('pfill');
+  if (!el) return;
+  var q = Math.round(Math.max(0, Math.min(1, p || 0)) * 400) / 400;
+  if (el._q === q) return;
+  el._q = q;
+  el.style.transform = 'scaleX(' + q + ')';
+}
+/* eager=true 用于传送带上方的产出图标：那是「这一组是什么口味」的揭晓时刻,而该图标此前没在任何格子里
+   解码过,lazy 会让它首帧空白 —— 恰好错过要看的那一眼。格子里的图标维持 lazy 不变。*/
+function iconHtml(src, cls, eager){
+  if (!src) return '📦';
+  return '<img src="' + src + '" loading="' + (eager ? 'eager' : 'lazy') + '" decoding="async"' +
+         (cls ? ' class="' + cls + '"' : '') + ' onerror="this.outerHTML=\'📦\'">';
+}
+function findItem(list, itemId){
+  for (var i = 0; i < list.length; i++){ if (list[i].itemId == itemId) return list[i]; }
+  return null;
+}
+
+var GRID_CFG = (function(){
+  var cs = getComputedStyle(document.documentElement);
+  function px(name, fallback){ var v = parseFloat(cs.getPropertyValue(name)); return isFinite(v) ? v : fallback; }
+  return { slotSize: px('--slot', 40), gap: px('--gap', 6), padding: px('--gpad', 10) };
+})();
+function mkCfg(cols, rows, painter){
+  return { cols:cols, rows:rows, slotSize:GRID_CFG.slotSize, gap:GRID_CFG.gap,
+           padding:GRID_CFG.padding, onItemRendered:painter };
+}
+
+var cartBag = createGridBag('cartGrid', mkCfg(8, 7, paintCartItem));
+var cartLock = createGridSizeLock('cartGrid');
+var _weightSecH = (function(){
+  var sec = document.getElementById('weightSection');
+  if (!sec) return 0;
+  // 🚨 读 marginTop 不是 marginBottom —— #weightSection 的规则是 margin-top:10px,
+  //    读错方向恒取到 0,cartLock 的 extraTop 补偿就少算 10px,重量区一显一隐会让左栏跳一下。
+  return sec.offsetHeight + (parseFloat(window.getComputedStyle(sec).marginTop) || 0);
+})();
+/* 🚨 压制槽与产出格必须**完全同款**（同 grid-container / 同 --slot / 同 6×6）——
+   同款 + 一条线 + 中间一条带子，玩家才会把它们读成「同一台机器的进料口和出料口」。 */
+var binBag  = createGridBag('binGrid',  mkCfg(6, 6, paintBinItem));
+var trayBag = createGridBag('trayGrid', mkCfg(6, 6, paintTrayItem));
+
+function paintCommonMarks(el, r){
+  if (r.isExpired){
+    el.classList.add('expired');
+    var mask = document.createElement('div'); mask.className = 'expired-mask'; el.appendChild(mask);
+  } else if (r.nearExpiry){
+    var nearMask = document.createElement('div');
+    nearMask.className = 'near-expiry-mask';
+    el.appendChild(nearMask);
+  }
+  if (r.polluted){
+    var ring = document.createElement('div'); ring.className = 'polluted-ring'; el.appendChild(ring);
+  }
+  if (r.actionMark){
+    var am = document.createElement('div');
+    am.className = 'act-mark' + (r.actionMark === 2 ? ' using' : '');
+    am.textContent = r.actionMark === 2 ? '▶' : '⋯';
+    el.appendChild(am);
+  }
+  if (r.quality) el.classList.add('q-' + r.quality);
+}
+/* 准入表达是**单向**的：能进的挂角标,不能进的什么都不挂（见 .intake-ok 那段 CSS 注释）。
+   🚫 拒收件不加任何视觉：不淡化、不打 ✕。`rejected` 只是语义类,给验证脚本和将来可能的需求留钩子。
+   🚫 调味料**不叠任何压制专属角标** —— 通用格子渲染（webui-bag.js 的 .item-use）本来就画了使用次数,
+   在同一个格子上再挂一遍是同一信息说两次,还占掉左下角。压制槽内曾有一条「已投 N 次」,
+   2026-08-21 按需求一并撤掉（见 paintBinItem）。 */
+function paintIntake(el, r){
+  if (r.intake === 2){ el.classList.add('rejected'); return; }
+  /* 能进的一律挂正向角标（含调味品 intake===1 —— 它也进得去,只是只提味,不参与五维）。
+     ⚠ intake===1 现在**只有 SubCategory=8 的调味品**（酱油/盐/糖/醋…共 12 条）；
+       2026-08-21 前「任何不顶饱的」都落这一档,药品/书报/肥皂都能投,已改成拒收。
+     ⚠ 只有左栏背包走这里（paintCartItem）——压制槽里的东西已经投进去了、产出格是产物,
+       给它们挂「能进」是无意义的噪声。
+     has-intake 是给未读红点让位用的（同上 CSS）,不要顺手删。 */
+  el.classList.add('has-intake');
+  var ok = document.createElement('div');
+  ok.className = 'intake-ok';
+  el.appendChild(ok);
+}
+function paintCartItem(el, item){
+  var r = item._raw || {};
+  paintCommonMarks(el, r);
+  paintIntake(el, r);
+  if (r.isNewUnread){ var d = document.createElement('div'); d.className = 'unread-dot'; el.appendChild(d); }
+  /* 冷藏冰霜：只有左栏当前页签是**通着电的**冰箱时才挂。
+     ⚠ 冰霜层是建节点时挂的 ⇒ State.cartFrozen 必须在 cartBag.refresh 之前就落定，见 BagMsg handler。*/
+  if (State.cartFrozen){ var f = document.createElement('div'); f.className = 'item-frost'; el.appendChild(f); }
+}
+/* 槽内投料**不叠任何压制专属角标** —— 通用格子渲染（webui-bag.js）已经画了使用次数 / 数量,
+   压制槽里再挂一层「已投 N 次」是同一信息说两次。2026-08-21 按需求撤掉。 */
+function paintBinItem(el, item){
+  paintCommonMarks(el, item._raw || {});
+}
+function paintTrayItem(el, item){ paintCommonMarks(el, item._raw || {}); }
+
+var dragCoord = createBagDragCoordinator([cartBag, binBag, trayBag], {
+  canAcceptItem: function(bag, itemData, isFinal){
+    var cid = bag.getContainerId();
+    /* 产出格只出不进 */
+    if (cid === 'trayGrid'){ if (isFinal) showWarn(i18nText.warnTrayNoIn); return false; }
+    if (cid === 'binGrid'){
+      /* 压制中整槽不收新料：原料在启动瞬间已全部消耗,这时槽本来就该是空的,
+         这会儿投进去的料吃不进本轮,只会躺着等下一轮,而产量预告按 cellsIn 算 ⇒ 读成"我的料也在压"。
+         ⚠ 文案用 warnBusyNoIn（放不进去）不是 warnLocked（这件动不了）—— 后者是**移出**方向的话。
+         ⚠ 这道是前端预挡（不给落位高亮）,权威闸在 C# 侧 RA_ItemMove/RA_ItemClick 的 IsCompressorBusy;
+           右键/Shift 那条路径压根不经过这里,别以为前端挡了就万事大吉。 */
+      if (isBusy()){ if (isFinal) showWarn(i18nText.warnBusyNoIn); return false; }
+      var r = (itemData && itemData._raw) || findItem(State.cartItems, itemData && itemData.id) || {};
+      /* 🚨 拒收分支必须飘一句原因 —— 静默拒绝时玩家只会以为"没拖准"反复试 */
+      if (r.intake === 2){
+        if (isFinal) showWarn(r.isExpired ? i18nText.warnRejectExpired : i18nText.warnRejectClass);
+        return false;
+      }
+    }
+    return true;
+  },
+  onItemMove: function(data){ core.UnitySendEvent('ITEM_MOVE', data); },
+  onItemPickup: function(itemData){ core.UnitySendEvent('SFX_ITEM_PICKUP', { itemId: itemData ? itemData.id : 0 }); },
+  onItemPutback: function(itemData){
+    core.UnitySendEvent('SFX_ITEM_PUTBACK', { itemId: itemData ? itemData.id : 0 });
+    if (!showWarn._t) showWarn(i18nText.warnNoRoom);
+  },
+  onItemHover: function(itemId, isEnter){
+    if (!isEnter){ hideTip(); return; }
+    var it = findItem(State.cartItems, itemId)
+          || findItem(State.binItems, itemId)
+          || findItem(State.trayItems, itemId);
+    if (!it){ hideTip(); return; }
+    showTip(it);
+    moveTip(_tipPos.x, _tipPos.y);
+  },
+  /* ⚠ onItemClick 只有两个参数（itemId, rightClick），拿不到 bag —— 容器判定全在 C# 侧做。
+     🚨 2026-08-21：**前端不再截胡左键**（用户要求「界面上的行为和烹饪界面一模一样」）。
+     旧代码在这里按容器分流并各自 return：产出格→TAKE、压制槽→TAKE_BACK、调味料→PUT_SEASONING，
+     三条路都直接执行操作，于是 C# 侧 RA_ItemClick 结尾那句「左键 = 看详情」**永远走不到** ——
+     而本面板自己的提示条明明写着「点击查看详情」，属于说了做不到。
+     现在统一转给 C#，与 Cooking / Brew / ToolTable 同一套口径：
+       · 左键          = 看详情（打开 ItemDetailPopup）
+       · 右键 / Shift  = 快速转移：产出格→背包 · 压制槽→背包 · 食材→压制槽 · 调味料→投一次
+     RA_ItemClick 的快转分支已逐一覆盖上面四种去向（含「调味料整瓶搬会卡不准配比峰值，所以走投一次」
+     这条特例），删掉截胡不丢任何功能，只是把入口从左键挪到右键/Shift。
+     ⚠ Shift 只能在 C# 侧读 —— Vuplex 不把修饰键传进 iframe，前端 e.shiftKey 恒 false，
+       所以这里**不要**自作主张加 shiftKey 判断。
+     🚨 **这条路径零前端拦截**（拿不到 bag，也不该在这里重判一套准入）——
+     所有闸都在 C# 侧 RA_ItemClick。2026-08-21 用户实测「压制中还能把物品放进去」就出在这：
+     C# 侧当时只有 IsCompressorLockedItem（判「已在槽里的那件动不了」），对从背包过来的物品恒不触发，
+     于是拖拽被前端 canAcceptItem 挡住、右键/Shift 长驱直入。已在那边补 IsCompressorBusy 放入闸。
+     ⇒ 往后给本面板加任何准入规则，都要问一句「右键那条路上有没有」。*/
+  onItemClick: function(itemId, rightClick){
+    core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId), rightClick: !!rightClick });
+  }
+});
+
+dragCoord.setDropInterceptor(function(){ return 'reject'; });
+
+function isBusy(){ return State.runState === 1 || State.runState === 2; }
+function isEjecting(){ return isBusy() && State.emittedGroups < State.groupCount; }
+
+/* ── tooltip：四档提示 + 产物完整五维 ── */
+function moveTip(x, y){
+  var t = $('itemTip');
+  var w = t.offsetWidth, h = t.offsetHeight;
+  var nx = x + 16, ny = y + 16;
+  if (nx + w > window.innerWidth - 8) nx = x - w - 12;
+  if (ny + h > window.innerHeight - 8) ny = y - h - 12;
+  t.style.left = Math.max(4, nx) + 'px';
+  t.style.top = Math.max(4, ny) + 'px';
+}
+/* 五维属性名走 i18n（不是常量数组）—— LocalizationMsg 可能在首次渲染之后才到,
+   每次现取才能保证换语言后 tooltip 立刻跟上。i18nText 自带中文兜底,取不到不会空。*/
+function attrName(i){
+  return [i18nText.attrSatiety, i18nText.attrMood, i18nText.attrEnergy,
+          i18nText.attrHealth, i18nText.attrLife][i] || '';
+}
+function showTip(it){
+  if (!it) return;
+  var lines = [];
+  if (it.isProduct){
+    /* 产物 tooltip 是那四维数值**唯一的出口** —— 右下不显示它们，这里不能再省 */
+    if (it.vd && it.vd.length >= 5){
+      var parts = [];
+      for (var i = 0; i < 5; i++){
+        if (Math.abs(it.vd[i]) > 0.05) parts.push(attrName(i) + ' ' + (it.vd[i] > 0 ? '+' : '') + it.vd[i].toFixed(1));
+      }
+      if (parts.length) lines.push(parts.join(' · '));
+    }
+    if (it.netWeight) lines.push((it.netWeight / 1000).toFixed(2) + ' kg');
+    /* 保质期：口径与烹饪台 / 背包同源（Reducer 侧 GetShelfLifeText 照抄 SR_Web_Cooking）。
+       ⚠ 这一行取代了旧的「※ 只走主动交易点,商店不收也不卖」——
+       销路属于攻略知识,不该占着物品 tooltip 的常驻行；能放多久才是玩家当场要判断的事。*/
+    if (it.shelfLife) lines.push(it.shelfLife);
+  } else {
+    if (it.category) lines.push(it.category);
+    /* 食材侧同样给保质期 —— 烹饪面板每件都显示,本面板不给的话「换个面板就没有保质期」。
+       它也正是玩家在这台机器前要做的判断：哪件快坏了,先压哪件。*/
+    if (it.shelfLife) lines.push(it.shelfLife);
+    if (it.intake === 2) lines.push(it.isExpired ? i18nText.tipExpired : (it.denyText || i18nText.tipRejectClass));
+    else if (it.flavorName) lines.push(i18nText.tipFlavor + ' · ' + it.flavorName);
+    /* 🚨 负心态必须写出来：玩家看到土豆写着「心态 −3」、压出来却没扣分，会以为是 bug */
+    if (it.negMood) lines.push(fmt(i18nText.tipNegMood,
+      (it.moodValue > 0 ? '+' : '') + (it.moodValue || 0).toFixed(1)));
+  }
+  var t = $('itemTip');
+  t.innerHTML = '<div class="tname">' + core.escapeHtml(it.name) + '</div>' + core.escapeHtml(lines.join('\n'));
+  t.style.display = 'block';
+}
+function hideTip(){ $('itemTip').style.display = 'none'; }
+/* mousemove 只存坐标，跟手写入合到 rAF 里跑（同 Shredder / BrewPanel 等所有 tooltip 面板）。
+   moveTip 读 offsetWidth/offsetHeight 做边缘翻转,是强制同步布局；直接在 mousemove 里调,
+   就变成「读→写→下一次 mousemove 再读」的逐次重排,而 mousemove 可达 120+Hz、比帧率还高。
+   tooltip 显示期间按住拖东西时这条路径与拖拽跟手叠在一起,是最容易掉帧的组合。
+   口径同全库拖拽分层：mousemove 只记坐标,读布局/写位置这类活一律留给 rAF 那一层。*/
+var _tipPos = { x: 0, y: 0 }, _tipRaf = 0;
+document.addEventListener('mousemove', function(e){
+  _tipPos.x = e.clientX; _tipPos.y = e.clientY;
+  if (_tipRaf) return;
+  _tipRaf = requestAnimationFrame(function(){
+    _tipRaf = 0;
+    if ($('itemTip').style.display === 'block') moveTip(_tipPos.x, _tipPos.y);
+  });
+});
+
+/* ── 渲染 ── */
+function applyCartFrozenClass(){
+  var g = $('cartGrid');
+  if (g) g.classList.toggle('is-frozen', !!State.cartFrozen);
+}
+function renderTabs(){
+  var box = $('tabs'); box.innerHTML = '';
+  (State.cartTabs || []).forEach(function(t, i){
+    var b = document.createElement('button');
+    b.className = 'left-tab' + (i === State.activeTab ? ' active' : '') + (t.locked ? ' locked' : '');
+    b.textContent = t.name || i18nText.bagTitle;
+    if (t.isNew){ var d = document.createElement('span'); d.className = 'dot'; b.appendChild(d); }
+    /* 锁页签（冰箱未到烹饪 Lv2）：灰显 + 锁标 + **不绑点击**。
+       锁标是**子元素**不是 ::after —— 与 Cooking.createTabEl 同构（那边 append 一个 .recipe-lock-badge）,
+       纯 CSS 画的挂锁不吃系统 emoji 字体。*/
+    if (t.locked){
+      b.disabled = true;
+      var lk = document.createElement('span'); lk.className = 'lock-badge'; b.appendChild(lk);
+    }
+    else b.onclick = function(){ core.UnitySendEvent('TAB_SWITCH', { tab: i }); };
+    box.appendChild(b);
+  });
+}
+function renderWeight(){
+  var show = State.cartOwnerId && State.weightMax > 0;
+  $('weightSection').style.display = show ? 'block' : 'none';
+  if (!show) return;
+  var pct = State.weightMax > 0 ? Math.min(100, State.weightCurrent / State.weightMax * 100) : 0;
+  var f = $('wfill'); f.style.width = pct + '%';
+  f.classList.toggle('over', State.weightCurrent > State.weightMax);
+  $('wtext').textContent = State.weightCurrent.toFixed(1) + ' / ' + State.weightMax.toFixed(1);
+}
+function renderCaps(){
+  $('binCap').innerHTML = State.binTotal ? ('<em>' + State.binUsed + ' / ' + State.binTotal + '</em>') : '';
+  $('trayCap').innerHTML = State.trayTotal
+    ? ('<b>' + State.trayUsed + '</b><em> / ' + State.trayTotal + '</em>') : '';
+  $('trayHint').textContent = State.trayUsed > 0 ? (i18nText.trayHint || '') : '';
+}
+/* 传送带：产出图标钉在带子正上方 + 写出名字 + 带子按真实进度填充 + 倒计时 + 堵塞告警 */
+var _beltKey = '';
+function renderBelt(){
+  var running = isEjecting() && !State.beltJammed && State.runState === 1;
+  $('beltTrack').classList.toggle('run', running);
+  var icon = $('beltIconBox');
+  if (State.beltConfigId){
+    $('beltName').textContent = State.beltName;
+    /* ×N 只挂在图标角标上,名字那一行不再重复写一遍 */
+    icon.innerHTML = iconHtml(State.beltIcon, '', true) + (State.beltCount > 1 ? '<span class="x">×' + State.beltCount + '</span>' : '');
+    icon.classList.remove('empty');
+    /* 🚨 只在「换了一组」时重跑入场动画 —— 任何一次 render 都重跑的话，
+       玩家随便点点背包,图标就一直在闪。*/
+    var key = State.beltConfigId + '/' + State.emittedGroups + '/' + State.beltCount;
+    if (key !== _beltKey){
+      /* 换了一组：进度瞬时归零（禁掉 transition，否则新一组会从上一组的满条滑回起点），图标再淡入 */
+      _beltKey = key;
+      var fill = $('beltFill');
+      fill.style.transition = 'none';
+      fill.style.transform = 'scaleX(0)';
+      fill._q = null;
+      void fill.offsetWidth;
+      fill.style.transition = '';
+      icon.classList.remove('pop'); void icon.offsetWidth; icon.classList.add('pop');
+    }
+    updateBeltFill();
+  } else {
+    $('beltName').textContent = i18nText.beltIdle;
+    icon.innerHTML = ''; icon.classList.add('empty'); icon.classList.remove('pop');
+    updateBeltFill(); _beltKey = '';
+  }
+  renderBeltEta();
+  /* 🚨 队列剩余件数「还有 N 个」已撤（2026-08-21 用户意见）——
+     产出格标题已经在报 `已收 / 总容量`,右下面板也在报产量与剩余时间,这一行是第三遍说同一件事。
+     这一行**只留堵塞告警**：它不是读数,是「机器停下了、去收货」的行动指令,别一并撤掉。
+     ⚠ .cnt 是锁死 17px 高的（面板不许抖）,所以清空文本不会让传送带那一列塌陷,不要改成 display:none。*/
+  var cnt = $('beltCnt');
+  cnt.classList.toggle('jam', !!State.beltJammed);
+  cnt.textContent = State.beltJammed ? i18nText.blockTrayFull : '';
+}
+/* 带子的填充比例 = **真实时间进度**，不是一段固定时长的动画。
+   比例 = 1 − 本组剩余秒 / 单组时长；单组时长 = 整批总时长 ÷ 组数
+   （第 k 组在 Start + (k+1)×Total/GroupCount 落地，所以每组间隔恒为 Total/GroupCount）。
+   这样开面板 / 读档 / 跳天回来，条都停在它当下该有的长度，而不是从头再播一遍填满就不动了。
+   ⚠ 之所以要秒不要分钟：整组时长常常不足 1 分钟（组数多时），分钟粒度会让 eta 恒为 0、条直接钉在满格。
+   堵塞时 GetNextGroupRemainSeconds 返回 0 ⇒ 比例自然是 1（这一组确实已经走到带尾在等位），
+   .jam 只负责把它染红,不额外改比例。*/
+function beltRatio(){
+  if (!State.beltConfigId || !isBusy()) return -1;
+  var span = (State.groupCount > 0) ? (State.totalSeconds / State.groupCount) : 0;
+  if (span <= 0) return -1;
+  return Math.max(0, Math.min(1, 1 - (State.beltEtaSeconds / span)));
+}
+function updateBeltFill(){
+  var fill = $('beltFill');
+  if (!fill) return;
+  fill.classList.toggle('jam', !!State.beltJammed);
+  var r = beltRatio();
+  if (r < 0) r = 0;
+  /* 量化到 1/400（条宽 80px ⇒ 0.2px 一档）：比例没跨档就不写 style,心跳 0.25s 一次不做无谓重绘 */
+  var q = Math.round(r * 400) / 400;
+  if (fill._q === q) return;
+  fill._q = q;
+  fill.style.transform = 'scaleX(' + q + ')';
+}
+function renderBeltEta(){
+  var el = $('beltEta');
+  /* 三态各自的视觉：等位中走 .jam（红）、空闲走 .idle（暗灰细体）、正常倒计时是暖金加粗 */
+  if (State.beltJammed){ el.textContent = i18nText.etaJam; el.className = 'eta jam'; return; }
+  if (!State.beltConfigId || !isBusy()){ el.textContent = '—'; el.className = 'eta idle'; return; }
+  el.textContent = fmtEta(Math.ceil(State.beltEtaSeconds / 60));   /* 显示仍按分钟，填充比例才用秒 */
+  el.className = 'eta';
+}
+/* 调味配比条：▼ 位置连续、所在段点亮；满档三段一起点亮并收起 ▼ */
+function renderQ(){
+  var live = State.cellsIn > 0 || isBusy();
+  var d = live ? State.seasoningD : 0;
+  var P1 = 0.7, P2 = 1.3, HI = 3;
+  var mk = d < P1 ? (d / P1) * 33.3
+         : d < P2 ? 33.3 + (d - P1) / (P2 - P1) * 33.3
+                  : 66.6 + Math.min(1, (d - P2) / (HI - P2)) * 33.3;
+  var idx = d < P1 ? 0 : (d < P2 ? 1 : 2);
+  var full = live && State.seasoningFull;
+  $('qBar').classList.toggle('full', full);
+  var qm = $('qMark');
+  qm.style.left = Math.max(2, Math.min(98, live ? mk : 2)) + '%';
+  /* 🚨 满档收起 ▼ 必须在 JS 里判：内联 style.opacity 会压过 .qbar.full .qmark 那条 CSS */
+  qm.style.opacity = live ? (full ? 0 : 1) : 0.25;
+  for (var i = 0; i < 3; i++){
+    $('q' + i).classList.toggle('on', live && !full && idx === i);
+    $('ql' + i).classList.toggle('on', live && !full && idx === i);
+  }
+  /* 常驻判语六档：段标签只是刻度，这一行才说「现在该怎么办」 */
+  var txt = '', cls = '';
+  if (!live) txt = '';
+  else if (full){ txt = i18nText.seasonCapFull; cls = 'ok'; }
+  else if (d <= 0){ txt = i18nText.seasonCapNone; }
+  else if (d < 0.35) txt = i18nText.seasonCapTooLow;
+  else if (d < P1)   txt = i18nText.seasonCapLow;
+  else if (d <= P2){ txt = i18nText.seasonCapOk; cls = 'ok'; }
+  else if (d <= 2)   txt = i18nText.seasonCapABitMuch;
+  else if (d <= 3){  txt = i18nText.seasonCapMuch; cls = 'bad'; }
+  else {             txt = i18nText.seasonCapTooMuch; cls = 'bad'; }
+  var cap = $('qCap'); cap.textContent = txt; cap.className = 'qcap' + (cls ? ' ' + cls : '');
+}
+/* 每块心态：右下唯一显示的属性行。标记优先级 触下限 > 已封顶。
+   🚫 「N 件难吃的按 0 计」已撤（这批意见）—— 那条信息在物品 tooltip 的 tipNegMood 里还在,
+   逐件看得到,比在总览行上挂一个总数更有用。State.negMoodCount 仍在下发,只是不显示。 */
+function renderMood(){
+  var live = State.cellsIn > 0 || isBusy();
+  var v = State.moodPerBlock;
+  $('moodVal').textContent = live ? ((v > 0 ? '+' : '') + v.toFixed(1)) : '—';
+  $('moodVal').className = 'v' + (!live || Math.abs(v) < 0.05 ? '' : (v < 0 ? ' neg' : ' gold'));
+  var mark = State.moodFloored ? i18nText.markFloored : (State.moodCapped ? i18nText.markCapped : '');
+  $('moodKey').innerHTML = core.escapeHtml(i18nText.moodLabel) + (mark ? '<em>· ' + core.escapeHtml(mark) + '</em>' : '');
+}
+/* 徽章统一入口：无值时不清空文字,只把整枚徽章压暗（.off）——
+   文字换成「—」再变回来会让徽章宽度跳,一行四枚跳起来很脏。 */
+function setBadge(id, valId, text){
+  var on = !!text;
+  $(id).classList.toggle('off', !on);
+  if (on) $(valId).textContent = text;
+}
+function renderPanel(){
+  var live = State.cellsIn > 0 || isBusy();
+
+  var pb = $('pwrBadge');
+  pb.classList.toggle('off', !State.isPowered);
+  $('pwrText').textContent = State.isPowered ? i18nText.pwrOn : i18nText.pwrOff;
+
+  /* 产量预告（2026-08-21 口径变更）：块数 / 碎屑数 / 有效饱腹都是定死的算术结果,与口味种子无关。
+     🚫 仍然**不预告口味** —— 那是传送带的揭晓时刻,右下一个字都不能提前说。
+     碎屑为 0 时走短模板,别显示「4 块 + 0 碎屑」。 */
+  var y = '';
+  if (live && (State.blocks > 0 || State.crumbs > 0)){
+    y = State.crumbs > 0 ? fmt(i18nText.tmplYieldCrumb, State.blocks, State.crumbs)
+                         : fmt(i18nText.tmplYield, State.blocks);
+  }
+  /* 🚨 产量已从右上的 hero 徽章下沉到 .attrs 的「每块心态」下方,渲染口径随之换成 .r 那一套：
+     无值回落「—」而不是清空 —— 三行是常驻占位,空串会让那一行看着像渲染失败；
+     徽章时代靠 .off 压暗整枚的做法在这里不适用（.r 没有边框可压）。 */
+  $('yieldVal').textContent = y || '—';
+  $('yieldVal').className = 'v' + (y ? ' gold' : '');
+  /* 「约」不是含糊其辞：谷物味每块 42 饱腹、其余 40,总数会有个位数出入。
+     单位「饱腹」已由左侧 .k 承担（复用 attrSatiety）,所以 tmplSat 只剩「约 {0}」。 */
+  $('satVal').textContent = (y && State.satEffective > 0)
+    ? fmt(i18nText.tmplSat, Math.round(State.satEffective)) : '—';
+
+  setBadge('bgRate',  'rateVal',  (live && State.rate > 0) ? ('×' + State.rate.toFixed(2)) : '');
+  setBadge('bgPower', 'powerVal', live ? fmt(i18nText.tmplPowerVal, State.powerPerTick) : '');
+  setBadge('bgCost',  'costVal',  live ? fmt(i18nText.tmplPowerVal, State.powerCost) : '');
+
+  /* 耗时：≥120 分钟按小时说，吃到保底时缀「保底」。它是**通电累计时长**不是等待时长。
+     压制中这一格改显剩余时间 ⇒ 标签必须跟着换成「剩余」，否则读成「这批要 70 分钟」。 */
+  var t = isBusy() ? fmtDur(Math.ceil(State.remainSeconds / 60))
+        : (live ? fmtDur(State.minutes) : '');
+  $('timeKey').textContent = isBusy() ? i18nText.lblRemainTime : i18nText.lblTime;
+  $('bgTime').classList.toggle('off', !t);
+  if (t){
+    $('timeVal').innerHTML = core.escapeHtml(t) + ((!isBusy() && State.minutesFloored)
+      ? ' <em style="font-style:normal;font-size:11px;font-weight:normal;color:#a9a49d">' + core.escapeHtml(i18nText.suffixFloor) + '</em>' : '');
+  }
+
+  $('pressOverlay').classList.toggle('show', isBusy());
+  $('progWrap').classList.toggle('on', isBusy());
+  setProgressFill(State.progress);
+
+  var go = $('goBtn');
+  go.disabled = !State.canStart;
+  go.textContent = State.runState === 1 ? i18nText.btnStarting
+    : (State.runState === 2 ? i18nText.statPaused
+    : (isEjecting() ? i18nText.btnEjecting : i18nText.btnStart));
+
+  paintBlockBox();
+}
+function setWarn(cls, text){
+  var box = $('warnBox');
+  box.textContent = text || '';
+  box.classList.toggle('info', cls === 'info');
+  box.classList.toggle('on', !!text);
+}
+/* 拖拽拒收飘字：2.4 秒后落回常驻阻断文案。
+   🚨 必须加 .on —— 警告框默认 visibility:hidden，只写 textContent 是看不见的。 */
+function showWarn(text){
+  if (!text) return;
+  setWarn('info', text);
+  if (showWarn._t) clearTimeout(showWarn._t);
+  showWarn._t = setTimeout(function(){ showWarn._t = 0; paintBlockBox(); }, 2400);
+}
+function paintBlockBox(){
+  if (showWarn._t) return;   // 飘字期间不覆盖
+  if (State.beltJammed){ setWarn('info', i18nText.blockJam); return; }
+  if (isBusy()){ setWarn('', ''); return; }
+  switch (State.blockReason){
+    case 1: setWarn('', ''); break;                          // 槽空：不当成错误，不弹提示
+    case 2: setWarn('', i18nText.blockTooLittle); break;
+    /* 6 = 整仓只有回炉碎屑但攒不够一块。不能落到 case 2 那句「不足 10 饱腹」——
+       玩家槽里明明躺着 3 个碎屑（30 饱腹），那句话对不上，读着像 bug。 */
+    case 6: setWarn('', i18nText.blockCrumbShort); break;
+    case 3: setWarn('', i18nText.blockNoPower); break;
+    case 4: setWarn('', i18nText.blockTrayFull); break;
+    /* 0 = 无阻断（能启动）。混投批此刻只有一枚「折减 ×0.60」徽章，那是**正常食材那一路**的
+       折减率 —— 回炉碎屑走 rawFree 通路一点没折（CompressFormula.Calc 两路分开累加）。
+       不把这句说出来，玩家会读成「加了根菜之后我攒的碎屑也被折了六成」，反而劝退混投这条
+       本该鼓励的玩法（染色权是有意留给玩家的）。
+       🚨 判据要求 rate < 1：纯碎屑批 rate 恒 1.00，徽章本身已经把「一点没折」说清楚了，
+          再补一句是废话；rate > 0 则顺带把运行中/出料中（rate=0，徽章不出现）排除掉。
+       落点选常驻的 warn-slot（固定 33px、本来就空着）而不是 .attrs 加行 —— 那三行 66px
+       已经贴着左侧 .qwrap 的 73px，再加一行会顶高 .ctl-body，破坏「七态高度恒定」。 */
+    default:
+      if (State.crumbIn > 0 && State.rate > 0 && State.rate < 1)
+        setWarn('info', fmt(i18nText.tmplCrumbFree, State.crumbIn));
+      else setWarn('', '');
+      break;
+  }
+}
+/* 压制中：压制槽与背包锁死、产出格不锁。
+   ⚠ createGridBag 没有 setLocked —— 两道闸分别在 canAcceptItem（拖入）与 onItemClick（点击）里，
+   这里只负责把按钮文案同步过来。*/
+function renderLocks(){
+  $('btnSortBag').textContent = i18nText.sortBtn;
+  $('takeBtn').textContent = i18nText.btnTakeAll;
+}
+function renderAll(){
+  renderTabs(); renderWeight(); renderCaps();
+  renderBelt(); renderQ(); renderMood(); renderPanel(); renderLocks();
+  cartLock.apply({
+    cols: State.cartCols, rows: State.cartRows,
+    maxCols: State.cartMaxCols, maxRows: State.cartMaxRows,
+    extraTop: $('weightSection').style.display === 'none' ? _weightSecH : 0
+  });
+  _fit.apply();
+}
+
+core.registerHandlers({
+  'WebUI_Compressor_BagMsg': function(data){
+    if (data.cartOwnerId !== undefined){ State.cartOwnerId = data.cartOwnerId; cartBag.setOwnerId(data.cartOwnerId || 0); }
+    if (data.binOwnerId !== undefined){ State.binOwnerId = data.binOwnerId; binBag.setOwnerId(data.binOwnerId || 0); }
+    if (data.trayOwnerId !== undefined){ State.trayOwnerId = data.trayOwnerId; trayBag.setOwnerId(data.trayOwnerId || 0); }
+    if (data.cartCols !== undefined){ State.cartCols = data.cartCols; State.cartRows = data.cartRows; cartBag.resize(data.cartCols, data.cartRows); }
+    if (data.cartMaxCols !== undefined) State.cartMaxCols = data.cartMaxCols;
+    if (data.cartMaxRows !== undefined) State.cartMaxRows = data.cartMaxRows;
+    if (data.binCols !== undefined){ State.binCols = data.binCols; State.binRows = data.binRows; binBag.resize(data.binCols, data.binRows); }
+    if (data.trayCols !== undefined){ State.trayCols = data.trayCols; State.trayRows = data.trayRows; trayBag.resize(data.trayCols, data.trayRows); }
+    if (data.cartTabs !== undefined) State.cartTabs = data.cartTabs || [];
+    if (data.activeTab !== undefined) State.activeTab = data.activeTab;
+    if (data.weightCurrent !== undefined) State.weightCurrent = data.weightCurrent;
+    if (data.weightMax !== undefined) State.weightMax = data.weightMax;
+    if (data.binUsed !== undefined) State.binUsed = data.binUsed;
+    if (data.binTotal !== undefined) State.binTotal = data.binTotal;
+    if (data.trayUsed !== undefined) State.trayUsed = data.trayUsed;
+    if (data.trayTotal !== undefined) State.trayTotal = data.trayTotal;
+
+    /* 🚨 顺序不可颠倒：先算冷藏态并落 class，再 refresh —— 冰霜层在 onItemRendered 里建节点时挂，
+       refresh 在前的话这一批物品全都不带冰霜（口径同 BrewPanel）。*/
+    var _prevFrozen = State.cartFrozen;
+    if (data.cartIsFreezing !== undefined) State.cartIsFreezing = !!data.cartIsFreezing;
+    if (data.cartIsPowered !== undefined) State.cartIsPowered = !!data.cartIsPowered;
+    State.cartFrozen = State.cartIsFreezing && State.cartIsPowered;
+    applyCartFrozenClass();
+    if (data.cartItems !== undefined){ State.cartItems = data.cartItems || []; cartBag.refresh(State.cartItems); }
+    else if (_prevFrozen !== State.cartFrozen) cartBag.renderItems();   /* 物品没变但通/断电翻转 → 强制重画 */
+    if (data.binItems !== undefined){ State.binItems = data.binItems || []; binBag.refresh(State.binItems); }
+    if (data.trayItems !== undefined){ State.trayItems = data.trayItems || []; trayBag.refresh(State.trayItems); }
+    renderAll();
+  },
+
+  'WebUI_Compressor_StateMsg': function(data){
+    ['runState','cellsIn','minutes','powerCost','powerPerTick','rate','crumbIn','moodPerBlock','negMoodCount',
+     'seasoningD','remainSeconds','totalSeconds','progress','blocks','crumbs','satEffective','groupCount',
+     'emittedGroups','pendingItemCount','beltConfigId','beltCount','beltEtaSeconds',
+     'binUsed','binTotal','trayUsed','trayTotal','blockReason'].forEach(function(k){
+      if (data[k] !== undefined) State[k] = data[k];
+    });
+    ['isPowered','minutesFloored','moodCapped','moodFloored','seasoningFull','beltJammed','canStart'].forEach(function(k){
+      if (data[k] !== undefined) State[k] = !!data[k];
+    });
+    if (data.beltIcon !== undefined) State.beltIcon = data.beltIcon || '';
+    if (data.beltName !== undefined) State.beltName = data.beltName || '';
+
+    binBag.renderItems();
+    renderCaps(); renderBelt(); renderQ(); renderMood(); renderPanel(); renderLocks();
+    _fit.apply();
+  },
+
+  /* 心跳：只改三个节点，不调 renderAll（0.25s 一次跑满两网格重绘会常驻掉帧） */
+  'WebUI_Compressor_TickMsg': function(data){
+    if (data.remainSeconds !== undefined) State.remainSeconds = data.remainSeconds;
+    if (data.progress !== undefined) State.progress = data.progress;
+    if (data.beltEtaSeconds !== undefined) State.beltEtaSeconds = data.beltEtaSeconds;
+    if (isBusy()) $('timeVal').textContent = fmtDur(Math.ceil(State.remainSeconds / 60));
+    setProgressFill(State.progress);
+    updateBeltFill();  /* 每拍按新的剩余秒把进度条推到位 */
+    renderBeltEta();
+  },
+
+  'WebUI_Compressor_LocalizationMsg': function(data){
+    if (!data) return;
+    /* 🚨 只合并非空值：裸 Object.assign 会把中文兜底洗成空白 */
+    Object.keys(data).forEach(function(k){ if (data[k]) i18nText[k] = data[k]; });
+    if (data.pageTitle) document.title = data.pageTitle;
+    Object.keys(data).forEach(function(k){
+      if (data[k]) core.i18n.updateText('[data-i18n="' + k + '"]', data[k]);
+    });
+    binBag.renderItems();
+    renderAll();
+  }
+});
+
+$('goBtn').onclick = function(){ if (State.canStart) core.UnitySendEvent('START', {}); };
+$('takeBtn').onclick = function(){ core.UnitySendEvent('TAKE', { itemId: 0 }); };
+$('btnSortBag').onclick = function(){ core.UnitySendEvent('SORT', { index: 0 }); };
+
+/* 点空白关面板。🚨 必须带 mousedown 守卫：click 的 target 是「按下」与「松开」的最近公共祖先，
+   拖一个被吞掉 mousedown 的物品会让面板凭空关掉。 */
+function isBlankTarget(t){
+  return !!t && (t === document.body || t.id === 'app' ||
+                 (t.classList && (t.classList.contains('machine') || t.classList.contains('mrow'))));
+}
+var _blankMouseDown = false;
+document.addEventListener('mousedown', function(e){ _blankMouseDown = isBlankTarget(e.target); }, true);
+document.body.addEventListener('click', function(e){
+  if (!_blankMouseDown) return;
+  if (isBlankTarget(e.target)) core.UnitySendEvent('CLOSE', {});
+});
+
+renderAll();
+core.notifyReady();
+</script>
+</body>
+</html>

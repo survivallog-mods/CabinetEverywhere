@@ -39,7 +39,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "CabinetEverywhere";
-    public const string Version = "1.7.0";
+    public const string Version = "1.8.3";
 
     internal static ManualLogSource Log;
 
@@ -58,6 +58,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> ListOnReady;
     internal static ConfigEntry<bool> DumpFurniture;
     internal static ConfigEntry<bool> FilterEnable;
+    internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
+    internal static ConfigEntry<int> UniformBagWidth; // v13.8 柜宽统一（0=off；作者拍板默认 12）
+    internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
     internal static ConfigEntry<ScenarioView> ViewCooking, ViewRatCage, ViewBrewPanel, ViewDyePanel, ViewCompressor,
@@ -72,6 +75,16 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Enabled = Config.Bind("General", "Enabled", true,
             "总开关：false=对称移除白名单注入并停写停注入；下次启动不加载。");
         Enabled.SettingChanged += (object s0, System.EventArgs e0) => { Rerun = true; };
+        // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
+        // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
+        // 由原生重建清除（与 Filter 同策略，不主动清）。
+        RailEnable = Config.Bind("Rail", "Enable", true,
+            "CERail 储物侧栏总开关：false=不注入侧栏脚本、不推数据、不取命令（12 页官方面板恢复原样）。");
+        RailEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
+        AllowDebugUiShow = Config.Bind("Rail", "AllowDebugUiShow", false,
+            "调试：允许 uiShow 命令远程显示官方界面（实机验收驱动用；发布/日常保持 false）。");
+        UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
+            "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。");
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
             "白名单注入：工作台/无人机交易/无人机站/粉碎机/温室 的柜子页签与自动取料。");
         EnableCooking = Config.Bind("Access", "EnableCooking", true, "烹饪界面注入柜子页签。");
@@ -214,6 +227,11 @@ internal sealed class AccessTicker : MonoBehaviour
             // 4) 筛选：JS 注入/喂标签数据（容器枚举已并入上面的统一扫描）
             if (CabinetEverywherePlugin.FilterEnable.Value)
                 TagFilter.Tick();
+
+            // 5) CERail 容器行/背包容量元数据（消费上面的 AllContainers；物品行走 0.5s 快通道）
+            //    终审 Minor-4：cfg [Rail] Enable=false 时跳过（回退态不再做死工作——
+            //    OpRename/OpSetTags 命令路径内的 RefreshMeta 直调不受此门影响）
+            if (RailUi.Enabled) RailData.RefreshMeta();
         }
 
         // 页签注入（烹饪/老鼠笼/酿酒/颜料桶）：读 5s 刷新的柜子子集 HomeInstances，0.5s 轮询补挂
@@ -221,6 +239,11 @@ internal sealed class AccessTicker : MonoBehaviour
         if (_fastCheck < 0.5f) return;
         _fastCheck = 0f;
         TabInjector.PollAll();
+
+        // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
+        // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：
+        // rev 门控在 RailUi.Tick 内（无场景/rev 未变不推），常态空转零开销
+        RailUi.Tick();
 
         // 工作台页签修剪（扫描=所见）：仅当白名单注入+筛选都开着才有意义
         if (CabinetEverywherePlugin.EnableCraftSource.Value &&
