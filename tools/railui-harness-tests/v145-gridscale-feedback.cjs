@@ -34,7 +34,7 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
     };
   });
   const pre = await probe();
-  check('brew:no-scale', pre.scale === 1 && pre.hostW === pre.gridNatW + 'px', `scale=${pre.scale} hostW=${pre.hostW}=格自然宽（贴合无空白）`);
+  check('brew:no-scale', pre.scale === 1 && pre.hostW === '' && pre.hostWAdj >= pre.gridNatW - 1, `scale=${pre.scale} hostInline='${pre.hostW}' hostAdj=${pre.hostWAdj}≥格自然宽${pre.gridNatW}（v1.8.4 缺陷#5 第三轮起：宿主零冻宽、flex 居中，格内容全在宿主内）`);
   check('brew:host-fits-grid', pre.slotRectW === pre.gridNatW || Math.abs(pre.slotRectW - 38) < 3, `slot 显示=${pre.slotRectW} gridNat=${pre.gridNatW}（无缩放=无右侧空白）`);
 
   await bf.evaluate(() => document.getElementById('srTidy').click()); /* tidy→mock 回推→二次 render */

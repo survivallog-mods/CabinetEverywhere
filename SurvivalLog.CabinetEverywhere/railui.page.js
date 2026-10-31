@@ -1373,13 +1373,15 @@
     if (!el.rail || !el.srGridHost) return;
     var childG = el.srGridHost.firstElementChild;
     if (!childG) return;
-    /* 缺陷#5 第二轮（作者实测：工作台页滚动条遮格≈一格半）：官方 8 个机器页全部用
+    /* 缺陷#5 第二轮（作者实测：工作台页滚动条遮格≈一格半）：官方 8 个机器页全用
        createGridSizeLock（webui-bag.js@1211）把格容器钉在**见过的最大列数**——切窄柜时给
-       #bagGrid 加左右 margin 补差（12→6 列时左右各≈3 格宽），格区被左 margin 推右；本函数
-       原量 childG.offsetWidth（不含 margin）→ 壳比「格+左补边」窄 → 右侧整段滑进
-       overflow-x:hidden 被滚动条盖住。全 12 列时代差值恒 0 从未暴露；三道门后混宽必现。
-       修=量**外沿宽**（offsetWidth+左右 margin）：官方锁保证外沿=最大列数恒定（格区居中），
-       壳跟外沿=跨页签稳定、零裁切——官方锁替我们做壳宽稳定，只需别忽略它的补边。 */
+       格容器加左右 margin 补差，格区被左 margin 推右；量 offsetWidth 不含 margin → 壳比
+       「格+左补边」窄 → 右侧整段滑进 overflow-x:hidden 被滚动条盖住。修=量**外沿宽**。
+       缺陷#5 第三轮（作者实测：工作台 12 列柜只显示 10 列半）：ToolTable 类页面的官方格
+       容器**无 inline 宽**（gridInlineW=null 实锤）——block 拉伸下随父定宽，宿主再被写死
+       宽度=量宽照镜子，切宽柜后轨道溢出被裁（夹具实锤 lastCellR 超 body 263px）。修=壳内
+       .sr-gridhost 改列 flex 居中（railui.css，官方 .backpack-panel 同款）→ 格容器恢复
+       fit-content（随轨道内容定宽），**宿主宽度一律不写**（写=冻宽陷阱），只量不锁。 */
     var nat = childG.offsetWidth || 0;
     try {
       var cs = childG.ownerDocument.defaultView.getComputedStyle(childG);
@@ -1393,9 +1395,11 @@
        行数增长当帧 MO 回调补量收敛）。 */
     var sb = 0;
     try { var body = el.rail.querySelector('.sr-body'); if (body) sb = Math.max(0, body.offsetWidth - body.clientWidth); } catch (e) { }
-    var wantHost = nat + 'px';
-    if (el.srGridHost.style.width !== wantHost) el.srGridHost.style.width = wantHost;
-    var rw2 = (nat + 20 + sb) + 'px';
+    if (el.srGridHost.style.width) el.srGridHost.style.width = ''; /* 历史冻宽残留清除（幂等） */
+    /* 壳宽=外沿+24+sb：24=rail 内衬 20+两重边框 4（补齐后格区横向溢出恒 0——第三轮实测
+       ToolTable 官方格无内边距，+20 信用下末列右缘被结构性啃 3px；Brew 类 9px 内边距页
+       此前把它藏着）。sb=滚动条（同上）。 */
+    var rw2 = (nat + 24 + sb) + 'px';
     if (el.rail.style.width !== rw2) {
       try {
         el.rail.style.setProperty('width', rw2, 'important');

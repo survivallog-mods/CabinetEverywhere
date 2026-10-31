@@ -121,8 +121,13 @@
 #srp .sr-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:4px}
 #srp .sr-grid[hidden],#srp .sr-list[hidden]{display:none}
 /* v1.8.2 官方格宿主：壳内物品区容器——官方格容器整体搬入（id/监听/渲染通道保留）。
-   relative 供官方绝对定位 .item 锚定；尺寸随官方格自然撑开（壳宽 max-content 跟随） */
-#srp .sr-gridhost{position:relative;min-width:0}
+   relative 供官方绝对定位 .item 锚定；尺寸随官方格自然撑开（壳宽 max-content 跟随）。
+   v1.8.4 缺陷#5 第三轮：改**列 flex 居中**（官方 .backpack-panel 同款语义）——ToolTable 类
+   页面的官方格容器无 inline 宽（块级），block 拉伸下随父定宽=量宽照镜子（host 冻宽后切宽柜
+   轨道溢出被裁，实锤 gridInlineW=null+lastCellR 超 body 263px）；flex 居中让格容器恢复
+   fit-content（随轨道内容定宽），官方 createGridSizeLock 的左右补 margin 也回到设计语义
+   （外沿=最大列数、格区居中）。宿主宽度一律不写（写了就是冻宽陷阱）。 */
+#srp .sr-gridhost{position:relative;min-width:0;display:flex;flex-direction:column;align-items:center}
 #srp .sr-gridhost[hidden]{display:none !important}
 #srp .sr-grid{display:grid;grid-auto-rows:var(--sr-slot,34px);gap:6px;padding:3px;align-content:start;justify-content:center}
 #srp .sr-slot{position:relative;width:var(--sr-slot,34px);height:var(--sr-slot,34px);border-radius:4px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,#18181c,#212126);display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;padding:0;overflow:hidden;cursor:pointer}

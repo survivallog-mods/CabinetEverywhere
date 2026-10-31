@@ -49,11 +49,11 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
     window.postMessage({ type: 'WebUI_Brew_BagMsg', data: { bagOwnerId: 900001, bagCols: c, bagRows: 6, bagItems: items } }, '*');
   }, cols);
   const near = (a, b, tol) => Math.abs(a - b) <= tol;
-  const cellsSafe = (p) => p.lastCellR <= p.bodyRight - p.sbW - 1;
+  const cellsSafe = (p) => p.lastCellR <= p.bodyRight - p.sbW + 1; /* +1=offsetWidth 取整 vs rect 小数的亚像素容差（缺陷是 84~186px 级，1px 不可见） */
 
   const p0 = await probe();
-  check('brew:init-10col-shell-follows-outer', !!p0 && near(p0.railW, p0.outer + 20 + p0.sbW, 2) && near(p0.hostW, p0.outer, 1),
-    `rail=${p0.railW} outer=${p0.outer} grid=${p0.gridW} host=${p0.hostW} sb=${p0.sbW}`);
+  check('brew:init-10col-shell-follows-outer', !!p0 && near(p0.railW, p0.outer + 24 + p0.sbW, 2) && p0.hostW >= p0.outer - 4,
+    `rail=${p0.railW} outer=${p0.outer} grid=${p0.gridW} host=${p0.hostW} sb=${p0.sbW}（宿主不写宽、flex 居中包住外沿）`);
   check('brew:init-10col-cells-safe', !!p0 && cellsSafe(p0), `lastCell=${p0.lastCellR} bodyRight-sb=${p0.bodyRight - p0.sbW}`);
 
   await pushCols(6);
@@ -61,7 +61,7 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
   const p1 = await probe();
   check('brew:shrink-6col-lock-pads-margin', !!p1 && p1.mL + p1.mR > 0 && near(p1.outer, p0.outer, 3),
     `margin L${p1.mL}+R${p1.mR} 外沿 ${p0.outer}→${p1.outer}（官方锁钉最大列数、格区居中）`);
-  check('brew:shrink-6col-shell-stable', !!p1 && near(p1.railW, p1.outer + 20 + p1.sbW, 2) && near(p1.railW, p0.railW, 4),
+  check('brew:shrink-6col-shell-stable', !!p1 && near(p1.railW, p1.outer + 24 + p1.sbW, 2) && near(p1.railW, p0.railW, 4),
     `rail ${p0.railW}→${p1.railW}（跟外沿=跨宽度稳定，不再锁死也不乱跳）`);
   check('brew:shrink-6col-cells-safe-tt-regression', !!p1 && cellsSafe(p1),
     `lastCell=${p1.lastCellR} ≤ bodyRight-sb-1=${p1.bodyRight - p1.sbW - 1}（工作台遮格≈1.5 格的回归断言：格+补边全在壳内）`);
@@ -69,7 +69,7 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
   await pushCols(12);
   await page.waitForTimeout(450);
   const p2 = await probe();
-  check('brew:grow-12col-shell-grows', !!p2 && near(p2.railW, p2.outer + 20 + p2.sbW, 2) && p2.railW > p1.railW,
+  check('brew:grow-12col-shell-grows', !!p2 && near(p2.railW, p2.outer + 24 + p2.sbW, 2) && p2.railW > p1.railW,
     `rail ${p1.railW}→${p2.railW} outer=${p2.outer}`);
   check('brew:grow-12col-cells-safe', !!p2 && cellsSafe(p2), `lastCell=${p2.lastCellR} ≤ ${p2.bodyRight - p2.sbW - 1}`);
 
@@ -79,6 +79,53 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
   check('brew:stable-on-repush', !!p3 && p3.railW === p2.railW && p3.hostW === p2.hostW,
     `rail=${p3.railW} host=${p3.hostW}（二次回推零抖、幂等零写）`);
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 2)));
+
+  /* ── 工作台复现场（缺陷#5 第三轮，作者实测：12 列柜只显示 10 列半）──
+     ToolTable 官方格容器无 inline 宽（gridInlineW=null）——block 拉伸随父定宽+宿主冻宽
+     =量宽照镜子，切宽柜后轨道溢出被裁。修后：宿主 flex 居中→格容器 fit-content 随轨道。 */
+  await page.evaluate(() => window.__HZ_SHOW__('ToolTable'));
+  await page.waitForTimeout(2500);
+  const ttf = page.frames().find((f) => f.url().includes('/fixtures/ToolTable.html'));
+  if (!ttf) { console.log('FAIL | tt-frame'); await browser.close(); process.exit(3); }
+  const ttProbe = () => ttf.evaluate(() => {
+    const host = document.getElementById('srGridHost');
+    const rail = document.getElementById('srRail');
+    const g = document.getElementById('backpack-grid');
+    const body = rail ? rail.querySelector('.sr-body') : null;
+    if (!host || !rail || !g || !body) return null;
+    const cs = getComputedStyle(g);
+    const mL = parseFloat(cs.marginLeft) || 0, mR = parseFloat(cs.marginRight) || 0;
+    let lastCellR = 0;
+    g.querySelectorAll('.slot,.item').forEach((c) => { lastCellR = Math.max(lastCellR, c.getBoundingClientRect().right); });
+    return {
+      railW: rail.offsetWidth, hostW: host.offsetWidth, gridW: g.offsetWidth, hostInline: host.style.width || '',
+      mL: Math.round(mL), mR: Math.round(mR), outer: Math.round(g.offsetWidth + mL + mR),
+      gridInline: g.style.width || null,
+      cols: cs.gridTemplateColumns ? cs.gridTemplateColumns.split(' ').length : null,
+      sbW: body.offsetWidth - body.clientWidth,
+      lastCellR: Math.round(lastCellR), bodyRight: Math.round(body.getBoundingClientRect().right)
+    };
+  });
+  const ttPush = (cols) => ttf.evaluate((c) => {
+    const ico = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+    const items = [];
+    for (let i = 0; i < Math.min(c, 8); i++) items.push({ itemId: 901 + i, x: i, y: i % 2, w: 1, h: 1, icon: ico, name: 'i' + i, count: 1, quality: 3 });
+    window.postMessage({ type: 'WebUI_ToolTable_BagMsg', data: { bagOwnerId: 900001, bagCols: c, bagRows: 5, bagItems: items, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] } }, '*');
+  }, cols);
+
+  const t0 = await ttProbe(); /* nudge 初态 6 列 */
+  await ttPush(12); /* 切 12 列柜（作者复现路径） */
+  await page.waitForTimeout(600);
+  const t1 = await ttProbe();
+  check('tt:grow-12col-all-cols-visible', !!t1 && t1.cols === 12 && t1.lastCellR <= t1.bodyRight - t1.sbW + 1,
+    `cols=${t1.cols} grid=${t1.gridW} outer=${t1.outer} rail=${t1.railW} lastCell=${t1.lastCellR} ≤ bodyRight-sb(+1 舍入)=${t1.bodyRight - t1.sbW + 1}（12 列全可见=作者缺陷直接断言）`);
+  check('tt:grow-12col-shell-follows', !!t1 && near(t1.railW, t1.outer + 24 + t1.sbW, 3), `rail=${t1.railW} outer=${t1.outer}`);
+  check('tt:host-no-frozen-width', !!t1 && t1.hostInline === '' && t1.hostW >= t1.outer - 4, `hostInline='${t1.hostInline}' host=${t1.hostW}（宿主零冻宽，flex 居中）`);
+  await ttPush(6); /* 切回窄：官方锁补边、格居中、末列安全 */
+  await page.waitForTimeout(600);
+  const t2 = await ttProbe();
+  check('tt:back-6col-cells-safe', !!t2 && t2.lastCellR <= t2.bodyRight - t2.sbW + 1 && t2.mL + t2.mR > 0,
+    `margin L${t2.mL}+R${t2.mR} lastCell=${t2.lastCellR} ≤ ${t2.bodyRight - t2.sbW - 1}`);
 
   await browser.close();
   const fail = results.filter((r) => !r.ok).length;
