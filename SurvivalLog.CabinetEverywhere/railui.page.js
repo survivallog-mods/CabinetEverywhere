@@ -1372,7 +1372,19 @@
   function syncRailWidth() {
     if (!el.rail || !el.srGridHost) return;
     var childG = el.srGridHost.firstElementChild;
-    var nat = childG ? (childG.offsetWidth || 0) : 0;
+    if (!childG) return;
+    /* 缺陷#5 第二轮（作者实测：工作台页滚动条遮格≈一格半）：官方 8 个机器页全部用
+       createGridSizeLock（webui-bag.js@1211）把格容器钉在**见过的最大列数**——切窄柜时给
+       #bagGrid 加左右 margin 补差（12→6 列时左右各≈3 格宽），格区被左 margin 推右；本函数
+       原量 childG.offsetWidth（不含 margin）→ 壳比「格+左补边」窄 → 右侧整段滑进
+       overflow-x:hidden 被滚动条盖住。全 12 列时代差值恒 0 从未暴露；三道门后混宽必现。
+       修=量**外沿宽**（offsetWidth+左右 margin）：官方锁保证外沿=最大列数恒定（格区居中），
+       壳跟外沿=跨页签稳定、零裁切——官方锁替我们做壳宽稳定，只需别忽略它的补边。 */
+    var nat = childG.offsetWidth || 0;
+    try {
+      var cs = childG.ownerDocument.defaultView.getComputedStyle(childG);
+      nat += (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+    } catch (e) { }
     if (nat <= 40) return;
     /* 滚动条计入壳宽（症状②根因）：sr-body overflow-x:hidden 下格区横向溢出恒为
        壳内衬（rail padding20+border2+body border2=24）+滚动条宽。不加 sb 时 WebView2
