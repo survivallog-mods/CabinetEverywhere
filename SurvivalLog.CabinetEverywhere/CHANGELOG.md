@@ -29,6 +29,13 @@
   sortBy owner=bag/角标双路/默认摘除/确认窗/storeAll 差量 toast/bpBag 摘与恢复/零控制台
   错）；夹具 `mk()` 增 cfg 参数（#v 图标尾段对齐 __HZ_ICOV__）；回归 v138 16/16、v182 17/17。
 - 已部署 v1.8.4 → 游戏 plugins（旧版备份 .v1.8.3.bak）；实机验收见 v144 实机矩阵。
+- **热修（同版）**：酿酒桶/机器页**一键整理后格子变小、右侧大片空白**（作者实测）——格区
+  归一量宽用 `srGridHost.scrollWidth` 的反馈塌缩：v13.8 柜宽 12 列后网格(445)窄于
+  UNI_W(700)，scrollWidth 读到上帧写死的宿主 width:700 → kk=1，每次数据回推都把 transform
+  重置（16 列时代网格 896>700 溢出撑着 scrollWidth 故未暴露）。修复=量子格 offsetWidth
+  （布局宽，transform 无关，帧间稳定）。harness `v145-gridscale-feedback` 6/6（缩放帧间
+  稳定/tidy 两笔回推不缩/零控制台错）；回归 v144 19/19、v138 16/16、v182 17/17。
+  版本号维持作者裁定（本次不自行 bump）。
 
 ## v1.8.3（2026-10-31）
 

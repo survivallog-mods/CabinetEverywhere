@@ -1431,7 +1431,13 @@
          BackpackExpand.Width=16 / CabinetSize 档位 16；各页官方 slot 38-56px 差异经缩放
          归一为视觉一致——rect 系拖拽/落点按缩放后矩形判定，官方渲染管线零改动）。 */
       if (el.srGridHost.firstElementChild) {
-        var nat = el.srGridHost.scrollWidth || 0;
+        /* v1.8.4 缺陷修复（作者实测：酿酒桶一键整理后格子变小/右侧大片空白）：
+           自然宽必须量**子格布局宽**（offsetWidth，不受 transform 影响）——旧代码量
+           srGridHost.scrollWidth，v13.8 柜宽 12 列后网格(445)窄于 UNI_W(700)，scrollWidth
+           读到的是上帧写死的宿主 width:700 → kk=700/700=1 → transform 每次回推都被重置、
+           格子缩回原尺寸（16 列时代网格 896>700 溢出撑着 scrollWidth，帧间稳定故未暴露）。 */
+        var childG = el.srGridHost.firstElementChild;
+        var nat = (childG.offsetWidth || childG.scrollWidth) || 0;
         if (nat > 40) {
           var kk = UNI_W / nat;
           if (kk > 0.2 && kk < 5) {
