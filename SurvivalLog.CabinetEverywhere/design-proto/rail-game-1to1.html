@@ -6679,10 +6679,11 @@ button{font-family:inherit;}
   }
 
   /* ================= v13.2 取用/整理物资：官方页 iframe 真渲染 =================
-     mod 改造点（仅此三项，其余官方原生）：
+     mod 改造点（仅此四项，其余官方原生）：
      ① 宽度统一 12 列（mock gridCols=12；正式实现=数据层包/柜 cols 统一 12）
      ② 高度扩容+纵向滚动（max-height+overflow+scrollbar-gutter:stable 不压格）
      ③ 柜子面板不显示负重条（.weight-section 隐藏；取用=整个面板即柜子；整理物资=B 侧柜子）
+     ④ 背包面板底部 mod 按钮 bar（v13.9 提案，见 srn* 区：⇅排序 ▾ + 📦 一键入库）
      取用=单柜面板（InfoAMsg 绑柜子 + canTag:true → 头部=柜名·分类标签按钮，官方原生渲染）；
      整理物资=官方双背包（InfoA/InfoB/ItemsA/ItemsB 喂数）。 */
   var ICOA2 = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==#a';
@@ -6715,6 +6716,188 @@ button{font-family:inherit;}
       d.body.appendChild(bd);
     } catch (e) { }
   }
+  /* ================= v13.9 提案（作者缺陷单#1）：背包页 mod 按钮 ⇅排序 ▾ + 📦 一键入库 =================
+     背景：v13.4 三 live 场景转官方原生时，排序/一键入库随 rail 一并离开本页（作者看原型
+     定稿）→ 作者实测缺陷单：背包界面缺失 排序、一键入库 按钮。
+     提案=背包面板（单背包/整理物资 A 侧）底部加一条 **mod 按钮 bar**（mod 自有 DOM 自有
+     监听，官方元素零接线零改造，§0 红线不动）：
+     - 左「⇅ 排序 ▾」：v13.7 作者参考图样式 7 项弹层（默认/饱腹/心态/精力/生命/交易价值/
+       保质期，选中金色，152→128px 控件基准与食品设施同款）；选属性=数据层重排（正式实现
+       走既有 sortBy 命令；此处演示=按伪属性降序重排重喂 ItemsAMsg，官方网格原生重渲染）
+       + 格子右上角数值角标（v13.5 同款壳层 overlay，pointer-events:none）。
+     - 右「📦 一键入库」：金色主按钮（§4.6）；点击先弹确认窗（件数/叠数按当前背包实时计，
+       弹窗锚在按钮上方），确认后演示入库 + §4.7 toast 口径（正式实现=既有 storeAll 命令）。
+     取用（access=柜子面板）不加：不是背包界面。 */
+  var SRN_SORTS = FSORTS; /* 7 项与食品设施排序完全同款（§4.11 v13.7） */
+  var SRN_BADGE = BADGE_COLOR;
+  function srnAttr(key, it) { /* 演示伪属性：按 id 稳定生成（原型无真实物品配置） */
+    var id = it.id % 97;
+    if (key === 'sat') return (id * 13) % 50;
+    if (key === 'mind') return (id * 11) % 38;
+    if (key === 'en') return (id * 17) % 45;
+    if (key === 'hp') return (id * 7) % 40;
+    if (key === 'shelf') return (id * 29) % 120;
+    return it.count * (10 + (id % 20)); /* value = 单价×数量（演示单价 10~29） */
+  }
+  function srnOrdered(key, items) { /* 数据层重排演示：重排+12 列 row-major 落位 */
+    var arr = key === 'official' ? items : items.slice().sort(function (a, b) { return srnAttr(key, b) - srnAttr(key, a); });
+    for (var i = 0; i < arr.length; i++) { arr[i].x = i % 12; arr[i].y = (i / 12) | 0; }
+    return arr;
+  }
+  var SRN_CSS =
+    /* v13.9 作者反馈两轮收口：mod 按钮**并入官方 .toolbar 按钮行**（不再自起一行），
+       基类=官方 .action-btn（同尺寸同观感，spec §4.10「mod 新增按钮用页面自带官方类」先例），
+       srn-* 只做金色系点缀（v13.7 排序钮参考图色 / v13.6 入库金）。弹层挂各自触发钮内
+       （按钮 position:relative，absolute 上弹），span nowrap 防 zoom 重排断行。 */
+    '.srn-sort,.srn-store{position:relative;flex:0 0 auto}' +
+    '.srn-sort{background:#1a1a1e !important;border-color:rgba(240,176,60,.45) !important;color:#f0b03c !important}' +
+    '.srn-sort:hover{color:#ffe1a0 !important;border-color:rgba(240,176,60,.68) !important}' +
+    '.srn-caret{font-size:10px;color:#c9932f;margin-left:1px}' +
+    '.srn-store{border-color:rgba(240,176,60,.5) !important;background:rgba(240,176,60,.14) !important;color:#ffe1a0 !important;' +
+    'margin-right:auto !important}' + /* auto 边距吃掉行内剩余空间：mod 两钮钉死左缘，官方丢弃/整理保持右缘 */
+    '.srn-store:hover{background:rgba(240,176,60,.26) !important}' +
+    '.srn-sort span,.srn-store span{display:inline-block;white-space:nowrap;flex:0 0 auto}' +
+    '.srn-pop{position:absolute;bottom:calc(100% + 8px);z-index:30;border-radius:10px;' +
+    'background:rgba(10,10,12,.94);box-shadow:0 8px 24px rgba(0,0,0,.5)}' +
+    /* !important 必须带：#srnSortPop{display:flex} 是 ID 权重，会压过普通 [hidden] 规则
+       （=作者看到的按钮上方常驻黑条；§4.10 同款教训） */
+    '.srn-pop[hidden]{display:none !important}' +
+    '#srnSortPop{left:0;width:128px;border:1px solid rgba(255,255,255,.12);padding:6px;' +
+    'display:flex;flex-direction:column;gap:5px}' +
+    '#srnSortPop .srn-opt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;border-radius:7px;' +
+    'border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;text-align:left;font-family:inherit;cursor:pointer}' +
+    '#srnSortPop .srn-opt:hover{color:#fff;border-color:rgba(255,255,255,.30)}' +
+    '#srnSortPop .srn-opt.active{color:#f0b03c}' +
+    '#srnSortPop .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}' +
+    '#srnSortPop .srn-tick{margin-left:auto;font-size:11px}' +
+    '#srnConfirm{left:0;width:300px;border:1px solid rgba(240,176,60,.4);padding:10px 12px}' + /* 入库钮已在左缘，弹窗向右展开防出界 */
+    '#srnConfirm .srn-cf-head{font-size:13px;color:#ffe1a0;margin-bottom:6px}' +
+    '#srnConfirm .srn-cf-body{font-size:12px;color:#cfc8bc;line-height:1.5;margin-bottom:10px}' +
+    '#srnConfirm .srn-cf-foot{display:flex;gap:8px;justify-content:flex-end}' +
+    '#srnConfirm button{padding:5px 12px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer}' +
+    '#srnConfirm .srn-cf-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2}' +
+    '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}' +
+    '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:5}' +
+    '#srnBadges span{position:absolute;width:56px;height:56px}' +
+    '#srnBadges span i{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.80);' +
+    'font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}' +
+    '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;' +
+    'background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}' +
+    '#srnToast[hidden]{display:none}';
+  function srnMount(fr, demo) {
+    try {
+      var d = fr.contentDocument;
+      var panel = d.querySelector('.bag-panel:not(.is-storage)'); /* 单背包=唯一面板；整理物资=A 侧背包 */
+      if (!panel) return;
+      var row = panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
+      if (!row) return;
+      if (!d.getElementById('srnStyle')) {
+        var stl = d.createElement('style'); stl.id = 'srnStyle'; stl.textContent = SRN_CSS; d.head.appendChild(stl);
+      }
+      if (!d.getElementById('srnSortBtn')) {
+        /* 两钮 append 进官方 .toolbar 行尾（同排同观感：基类=官方 .action-btn）；
+           弹层挂各自触发钮内（按钮 position:relative），absolute 上弹不占行高 */
+        var sortBtn = d.createElement('button');
+        sortBtn.className = 'action-btn srn-sort'; sortBtn.id = 'srnSortBtn'; sortBtn.type = 'button';
+        sortBtn.innerHTML = '<span>⇅</span><span>排序</span><span class="srn-caret">▾</span>';
+        var pop = d.createElement('div'); pop.className = 'srn-pop'; pop.id = 'srnSortPop'; pop.hidden = true;
+        sortBtn.appendChild(pop);
+        var storeBtn = d.createElement('button');
+        storeBtn.className = 'action-btn srn-store'; storeBtn.id = 'srnStoreBtn'; storeBtn.type = 'button';
+        storeBtn.innerHTML = '<span>📦</span><span>一键入库</span>';
+        var cf = d.createElement('div'); cf.className = 'srn-pop'; cf.id = 'srnConfirm'; cf.hidden = true;
+        storeBtn.appendChild(cf);
+        row.insertBefore(sortBtn, row.firstChild); /* 两钮放行首（左侧），官方丢弃/整理保持靠右 */
+        row.insertBefore(storeBtn, sortBtn.nextSibling);
+        sortBtn.onclick = function () {
+          var c = d.getElementById('srnConfirm'); if (c) c.hidden = true;
+          var p = d.getElementById('srnSortPop'); if (!p) return;
+          p.hidden = !p.hidden; srnRenderPop(fr, demo);
+        };
+        storeBtn.onclick = function () { srnOpenConfirm(fr, demo); };
+      }
+      if (!d.__srnDocBound) { /* 点空白关弹层；mod 按钮内点击不关（v9 豁免清单同款教训） */
+        d.__srnDocBound = true;
+        d.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('.srn-sort,.srn-store')) return;
+          var p = d.getElementById('srnSortPop'); if (p) p.hidden = true;
+          var c = d.getElementById('srnConfirm'); if (c) c.hidden = true;
+        });
+      }
+      srnBadges(fr, demo);
+    } catch (e) { }
+  }
+  function srnRenderPop(fr, demo) {
+    var d = fr.contentDocument, pop = d.getElementById('srnSortPop');
+    if (!pop) return;
+    var h = '';
+    for (var i = 0; i < SRN_SORTS.length; i++) {
+      var s = SRN_SORTS[i], on = demo.key === s.k;
+      h += '<button class="srn-opt' + (on ? ' active' : '') + '" data-k="' + s.k + '" type="button">' +
+        '<span class="f-ico">' + s.ico + '</span>' + s.label + (on ? '<span class="srn-tick">✓</span>' : '') + '</button>';
+    }
+    pop.innerHTML = h;
+    var btns = pop.querySelectorAll('.srn-opt');
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = function () {
+        demo.key = this.getAttribute('data-k');
+        if (demo.bag) srnOrdered(demo.key, demo.bag); /* 入库后的余量也跟随重排 */
+        pop.hidden = true; /* 与食品设施弹层同款：选完即关 + toast 口径一致 */
+        feedLive(fr, demo.kind); /* 重喂 ItemsAMsg=数据层重排演示；官方网格原生重渲染 */
+        srnToast(fr, demo.key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(demo.key) + '」排序 · 格子右上角显示数值');
+      };
+    }
+  }
+  function srnBadges(fr, demo) { /* v13.5 同款：属性排序时格子右上角数值角标（0=「—」） */
+    var d = fr.contentDocument;
+    var old = d.getElementById('srnBadges');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (demo.key === 'official') return;
+    var gc = d.querySelector('.bag-panel:not(.is-storage) .grid-container');
+    if (!gc) return;
+    var lay = d.createElement('div'); lay.id = 'srnBadges';
+    var items = demo.cur || [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], v = srnAttr(demo.key, it);
+      var cell = d.createElement('span');
+      cell.style.left = (it.x * 56) + 'px'; cell.style.top = (it.y * 56) + 'px';
+      var b = d.createElement('i');
+      b.style.color = SRN_BADGE[demo.key] || '#f0b03c';
+      b.textContent = demo.key === 'shelf' ? (v ? v + 'h' : '—') : (v || '—');
+      cell.appendChild(b);
+      lay.appendChild(cell);
+    }
+    gc.appendChild(lay);
+  }
+  function srnOpenConfirm(fr, demo) { /* §4.6 确认前置：弹窗锚在按钮上方，件数/叠数实时计 */
+    var d = fr.contentDocument;
+    var pop = d.getElementById('srnSortPop'); if (pop) pop.hidden = true;
+    var cf = d.getElementById('srnConfirm'); if (!cf) return;
+    var items = demo.cur || [], pieces = 0;
+    for (var i = 0; i < items.length; i++) pieces += items[i].count;
+    cf.innerHTML = '<div class="srn-cf-head">一键入库</div>' +
+      '<div class="srn-cf-body">背包现有 ' + pieces + ' 件（' + items.length + ' 叠），将按物品分类放入带对应标签的柜子…</div>' +
+      '<div class="srn-cf-foot"><button class="srn-cf-cancel" type="button">取消</button>' +
+      '<button class="srn-cf-go" type="button">确认入库</button></div>';
+    cf.hidden = false;
+    cf.querySelector('.srn-cf-cancel').onclick = function () { cf.hidden = true; };
+    cf.querySelector('.srn-cf-go').onclick = function () {
+      cf.hidden = true;
+      /* 演示入库：保留 1/4 重喂（原型无真实柜子数据），toast 按 §4.7 差量口径 */
+      var keep = items.slice(0, Math.max(1, Math.floor(items.length / 4))), left = 0;
+      for (var k = 0; k < keep.length; k++) left += keep[k].count;
+      demo.bag = srnOrdered(demo.key, keep);
+      feedLive(fr, demo.kind);
+      srnToast(fr, '已入库 ' + (pieces - left) + ' 件 → 床头柜 · 食品柜（演示）…（' + left + ' 件留背包）');
+    };
+  }
+  function srnToast(fr, msg) {
+    var d = fr.contentDocument, t = d.getElementById('srnToast');
+    if (!t) { t = d.createElement('div'); t.id = 'srnToast'; d.body.appendChild(t); }
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(t.__srnT); t.__srnT = setTimeout(function () { t.hidden = true; }, 3000);
+  }
+
   function feedLive(fr, kind) {
     if (kind === 'access') {
       /* 取用=单柜面板：柜名+分类标签按钮（canTag），无负重条 */
@@ -6724,19 +6907,27 @@ button{font-family:inherit;}
       livePost(fr, 'WebUI_Backpack_InfoBMsg', { canTag: true });
       livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(liveBag(60, 14).map(function (it) { it.id += 700; it.name = '柜藏' + it.id; return it; })) });
       liveMods(fr, '.weight-section{display:none !important}'); /* mod 点③：柜子无负重条 */
-    } else if (kind === 'backpack') {
+      return;
+    }
+    /* v13.9 提案：背包页演示态（排序键/入库余量）挂在 iframe 元素上，重喂循环保活一致 */
+    var demo = fr.__srn || (fr.__srn = { key: 'official', bag: null, cur: null, kind: kind });
+    demo.kind = kind;
+    var items = demo.bag || srnOrdered(demo.key, liveBag(48, 12));
+    demo.cur = items;
+    if (kind === 'backpack') {
       /* v13.3 单独背包=B 键纯背包页：对齐整理物资背包侧（同一只 仓管背包·12列·同数据），
          负重条保留（mod 点③只藏柜侧），无 InfoB/canTag（单袋形态，头部无分类按钮） */
       livePost(fr, 'WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '仓管背包', gridCols: 12, gridRows: 12, currentWeight: 8, maxWeight: 60 });
-      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(liveBag(48, 12)) });
+      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(items) });
       liveMods(fr, '');
     } else {
       livePost(fr, 'WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '仓管背包', gridCols: 12, gridRows: 12, currentWeight: 8, maxWeight: 60, isDualBag: true });
       livePost(fr, 'WebUI_Backpack_InfoBMsg', { ownerId: 900103, backpackName: '床头柜', gridCols: 12, gridRows: 12, currentWeight: 0, maxWeight: 0, canTag: true });
-      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(liveBag(48, 12)) });
+      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(items) });
       livePost(fr, 'WebUI_Backpack_ItemsBMsg', { itemsJson: JSON.stringify(liveBag(40, 12).map(function (it) { it.id += 500; it.name = '柜藏' + it.id; return it; })) });
       liveMods(fr, '.bag-panel.is-storage .weight-section{display:none !important}'); /* mod 点③：柜侧无负重条（背包侧保留） */
     }
+    srnMount(fr, demo); /* mod 点④：背包侧按钮 bar（排序/入库），幂等重挂 */
   }
   function setSceneLive(key) {
     var kind = DATA.scenes[key].live;

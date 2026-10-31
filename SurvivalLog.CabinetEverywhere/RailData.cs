@@ -143,6 +143,29 @@ internal static class RailData
         catch { return true; }
     }
 
+    /// <summary>
+    /// v13.9 §0a-4（2026-10-31）：BackpackUI **A 侧是否玩家背包**——B键单背包/开柜双背包=true；
+    /// 取用（单柜面板，InfoA 绑柜子 ownerId）=false。JS 侧原生页 mod 按钮对（排序/入库）
+    /// 以此为装配判据（负重条判据不成立：柜子也有负重，v13.4 柜侧隐负重条 CSS 即证）。
+    /// 直读 State_Web_BackpackUI.OwnerId_A 比对背包 owner（dump @152427 区段 public long）。
+    /// 任一端未知（0）/状态不可达 = 保守 true（按钮照装，与 BagOnlyDyn 兜底风格一致）。
+    /// </summary>
+    private static bool BpBagDyn()
+    {
+        var rus = ReduxUi();
+        if (rus == null) return true;
+        try
+        {
+            var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)))
+                ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_BackpackUI>();
+            if (st == null) return true;
+            long a = st.OwnerId_A;
+            if (a == 0) return true;
+            return a == ResolveBagOwner(null);
+        }
+        catch { return true; }
+    }
+
     /// <summary>ctx.rackOwner：MaterialRack 活动时的当前架子 owner（0=未知）。</summary>
     private static long RackOwnerOf(SceneDef sc = null)
     {
@@ -252,6 +275,9 @@ internal static class RailData
         sb.Append(",\"ctx\":{\"page\":\"").Append(EscapeJs(sc?.Page)).Append('"');
         sb.Append(",\"family\":\"").Append(EscapeJs(sc?.Family ?? "bag")).Append('"');
         sb.Append(",\"bagOnly\":").Append(BagOnlyDyn(sc) ? "true" : "false");
+        // v13.9 §0a-4：BackpackUI A 侧是否玩家背包（B键单背包/双背包=true；取用=单柜面板=false）——
+        // 原生页 mod 按钮对（排序/入库）装配判据；其余页恒 true 无消费方
+        sb.Append(",\"bpBag\":").Append(BpBagDyn() ? "true" : "false");
         sb.Append(",\"rackOwner\":").Append(rackOwner);
         sb.Append(",\"bagCap\":").Append(Math.Max(0, _bagCap));
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
@@ -758,6 +784,7 @@ internal static class RailData
             sig = sig * 31 + ctn[i].OwnerId * 7 + ctn[i].Cap;
         sig = sig * 31 + _bagCap;
         sig = sig * 31 + (BagOnlyDyn(ActiveScene()) ? 1 : 0); // Bug1：双背包形态翻转也要重推
+        sig = sig * 31 + (BpBagDyn() ? 1 : 0); // v13.9：A 侧背包/取用单柜翻转也要重推（按钮对装配判据）
         sig = sig * 31 + _bagOwner;
         sig = sig * 31 + RackOwnerOf();
         string ap = ActivePage();

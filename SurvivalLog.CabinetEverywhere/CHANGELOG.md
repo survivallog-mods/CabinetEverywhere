@@ -3,6 +3,33 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## v1.8.4（2026-10-31）
+
+**背包页 mod 按钮对：⇅排序 ▾ + 📦一键入库 回归原生背包页（作者缺陷单#1「背包界面缺失 排序、
+一键入库 按钮」；UI-SPEC v13.9 §0a-4，原型三轮定稿「并入官方按钮行/放左边」）**：
+
+- **BackpackUI 原生页（B 键单独背包 / 开柜双背包=整理物资）背包面板官方 `.toolbar` 行
+  （一键丢弃/一键整理所在行）行首左缘插入两钮**（`margin-right:auto` 钉左缘、官方两钮
+  保持右缘；基类=官方 `.action-btn` 同尺寸观感+金色点缀）；取用（单柜面板）与柜侧
+  （is-storage）不装配。
+- **⇅ 排序 ▾**：FSORTS 7 项弹层（v13.7 参考图样式，挂触发钮内 absolute 上弹）→
+  `sortBy{owner:bag}` 数据层重排（C# 官方 SortContainerForHub/属性维降序管线复用，
+  C# 零新增命令）；按 `srp_fsort_BackpackUI` 持久化；选完即关+同口径 toast。
+  属性排序时背包格右上角**数值角标**（`#srnBadges` overlay：v1.8.3 applyBadges 同款
+  双路匹配——.item id 精确/图标尾段唯一键→配置级维度，逐叠维度宁缺勿错；MutationObserver
+  跟随官方重渲染，同串免写防回环）。
+- **📦 一键入库**：§4.6/§4.7 全流程（空背包 toast 不弹窗；确认窗文案与主侧栏逐字同款；
+  `storeAll{order}`；差量汇总 toast 走 toast() 原生页优先路由落本页 `#srnToast`——
+  el 引用表残留上一 rail 页时不再写丢）。
+- **C# 契约增补一字段**：`ctx.bpBag`（BackpackUI A 侧是否玩家背包：直读
+  `State_Web_BackpackUI.OwnerId_A` 比对 ResolveBagOwner；B键单背包/双背包=true、
+  取用单柜=false；未知保守 true）——JS 装配判据（负重条判据不成立：柜子也有负重）；
+  签名门纳入（形态翻转即重推）；旧契约缺字段时 JS 兜底=头部分类 chips 判据。
+- harness：新增 `v144-native-bp-buttons.cjs` 19 断言全绿（toolbar 挂载/左缘钉定/7 项弹层/
+  sortBy owner=bag/角标双路/默认摘除/确认窗/storeAll 差量 toast/bpBag 摘与恢复/零控制台
+  错）；夹具 `mk()` 增 cfg 参数（#v 图标尾段对齐 __HZ_ICOV__）；回归 v138 16/16、v182 17/17。
+- 已部署 v1.8.4 → 游戏 plugins（旧版备份 .v1.8.3.bak）；实机验收见 v144 实机矩阵。
+
 ## v1.8.3（2026-10-31）
 
 **机器界面简化+设施排序+交易价值+柜宽 12 列（作者执行令「按照原型……执行吧」＝UI-SPEC v13.5-v13.8 §4.11）**：

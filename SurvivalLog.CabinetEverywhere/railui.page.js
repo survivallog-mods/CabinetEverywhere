@@ -131,7 +131,7 @@
        （Vue）、BackpackUI .grid-container（Vue，无 id）。MaterialRack=rack 三段壳（官方件
        reparent，见 mount rack 分支）。stubs 沿用 v1.8.0 实证表——自愈语义：reparent 后真节点
        仍在文档（官方查询照常命中）即不建桩，任一官方件抓取失败时兜底防 TypeError。 */
-    BackpackUI:      { host: '.backpack-container', family: 'backpack', bagOnly: true, duo: false, native: true, grid: '.grid-container', stubs: [] }, /* iframe id 实测 'Backpack'（ID_ALIAS 归一）。v1.8.3：**原生模式（native:true）**——不装配 rail/plainbag（ensureMountedFrame 走 ensureNativeBp 注入 style#srNativeBp：高度滚动+滚动条不压格+柜侧隐负重条），B 键单独背包/开柜双背包（整理物资）两形态官方页整页原生。host/grid/stubs 字段保留供旧 harness mount() 直调参考，装配区不再消费。列数=官方数据原生（12 列统一待数据层拍板） */
+    BackpackUI:      { host: '.backpack-container', family: 'backpack', bagOnly: true, duo: false, native: true, grid: '.grid-container', stubs: [] }, /* iframe id 实测 'Backpack'（ID_ALIAS 归一）。v1.8.3：**原生模式（native:true）**——不装配 rail/plainbag（ensureNativeBp 注 style#srNativeBp：高度滚动+滚动条不压格+柜侧隐负重条）；v1.8.4：加 mod 按钮对（nbMount：⇅排序▾/📦一键入库 进官方 .toolbar 行左缘，UI-SPEC §0a-4；装配判据=ctx.bpBag，取用单柜不装）。host/grid/stubs 字段保留供旧 harness mount() 直调参考。列数=官方数据原生（12 列统一待数据层拍板） */
     MaterialRack:    { host: '.bag-panel:not(.is-storage)', family: 'rack', bagOnly: false, duo: false, plainBag: true, rackMid: true, grid: null, stubs: ['wtText', 'wtFill', 'previewLayer'] }, /* v1.8.2.5：**只替换左侧背包 .bag-panel**→简洁背包栏（plainbag）；官方转移列（2 原件+mod 3 增值按钮 append）与右侧柜子面板（普通存储取物界面=官方行组件）原样不动。宿主「替换即消亡」成立（默认 alive）。stubs=随背包面板移除的官方查询目标兜底 */
     Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中） */
     BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263） */
@@ -694,7 +694,17 @@
       setTimeout(function () { tEl.hidden = true; }, 250);
     }, 2000);
   }
-  function toast(msg) { toastAt(el.srToast, msg); }
+  function toast(msg) {
+    /* v1.8.4 原生背包页优先：native 页活跃且 NB.doc 在场时一律落本页 #srnToast——
+       el 引用表可能仍是上一 rail 页的残留（页切换瞬间/隐藏帧预装配），写到那边玩家看不见 */
+    if (NB.doc && store.ctx && SCENES[store.ctx.page] && SCENES[store.ctx.page].native) {
+      var t = NB.doc.getElementById ? NB.doc.getElementById('srnToast') : null;
+      if (t) { toastAt(t, msg); return; }
+    }
+    if (el.srToast) { toastAt(el.srToast, msg); return; }
+    var t2 = NB.doc && NB.doc.getElementById ? NB.doc.getElementById('srnToast') : null;
+    if (t2) toastAt(t2, msg);
+  }
   /* 整理柜场景 toast（v1.8.2：左背包面板已官方化，无独立 sbToast 元素——统一走主侧栏 toast） */
   function sbToast(msg) { toast(msg); }
 
@@ -2225,11 +2235,259 @@
     st.textContent = NATIVE_BP_CSS;
     doc.head.appendChild(st);
   }
+
+  /* ================= v1.8.4 原生背包页 mod 按钮对（UI-SPEC §0a-4，v13.9 作者缺陷单#1） =================
+     v13.4 转原生时排序/入库随 rail 离开本页 → 作者缺陷单补回，原型 v13.9 三轮定稿：
+     背包面板官方 .toolbar 行**行首左缘**两钮（margin-right:auto 钉左缘，官方丢弃/整理
+     保持右缘），基类=官方 .action-btn 同尺寸观感。⇅排序 ▾=FSORTS 7 项弹层（挂触发钮内
+     absolute 上弹）→ sortBy{owner:bag} 数据层重排（cmdOut 对 BackpackUI 自带 forge 官方
+     刷新）+ 属性排序时背包格右上角数值角标（#srnBadges overlay，MutationObserver 跟随
+     官方重渲染，同串免写防回环）；📦一键入库=§4.6 确认窗 → storeAll{order}（settleXfer
+     差量 toast 经 toast() 兜底路由落本页 #srnToast）。装配判据=面板带 .weight-section
+     （背包有负重；取用=单柜面板无负重条不装配）；柜侧（is-storage）恒不装配。
+     官方元素零 addEventListener（监听只在 mod 自有钮/弹层/文档级收弹层含 mod 钮豁免=v9
+     同款）；.srn-pop[hidden] 必须 !important 压 ID display（v13.9 实测常驻黑条教训）。 */
+  var NB = { doc: null, fsort: 'official' };
+  var NB_CSS = ''
+    + '.srn-sort,.srn-store{position:relative;flex:0 0 auto}'
+    + '.srn-sort{background:#1a1a1e !important;border-color:rgba(240,176,60,.45) !important;color:#f0b03c !important}'
+    + '.srn-sort:hover{color:#ffe1a0 !important;border-color:rgba(240,176,60,.68) !important}'
+    + '.srn-caret{font-size:10px;color:#c9932f;margin-left:1px}'
+    + '.srn-store{border-color:rgba(240,176,60,.5) !important;background:rgba(240,176,60,.14) !important;color:#ffe1a0 !important;margin-right:auto !important}'
+    + '.srn-store:hover{background:rgba(240,176,60,.26) !important}'
+    + '.srn-sort span,.srn-store span{display:inline-block;white-space:nowrap;flex:0 0 auto}'
+    + '.srn-pop{position:absolute;bottom:calc(100% + 8px);z-index:30;border-radius:10px;background:rgba(10,10,12,.94);box-shadow:0 8px 24px rgba(0,0,0,.5)}'
+    + '.srn-pop[hidden]{display:none !important}'
+    + '#srnSortPop{left:0;width:128px;border:1px solid rgba(255,255,255,.12);padding:6px;display:flex;flex-direction:column;gap:5px}'
+    + '#srnSortPop .srn-opt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;text-align:left;font-family:inherit;cursor:pointer}'
+    + '#srnSortPop .srn-opt:hover{color:#fff;border-color:rgba(255,255,255,.30)}'
+    + '#srnSortPop .srn-opt.active{color:#f0b03c}'
+    + '#srnSortPop .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}'
+    + '#srnSortPop .srn-tick{margin-left:auto;font-size:11px}'
+    + '#srnConfirm{left:0;width:300px;border:1px solid rgba(240,176,60,.4);padding:10px 12px}'
+    + '#srnConfirm .srn-cf-head{font-size:13px;color:#ffe1a0;margin-bottom:6px}'
+    + '#srnConfirm .srn-cf-body{font-size:12px;color:#cfc8bc;line-height:1.5;margin-bottom:10px}'
+    + '#srnConfirm .srn-cf-foot{display:flex;gap:8px;justify-content:flex-end}'
+    + '#srnConfirm button{padding:5px 12px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer}'
+    + '#srnConfirm .srn-cf-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2}'
+    + '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}'
+    + '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:5}'
+    + '#srnBadges i{position:absolute;transform:translateX(-100%);min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.8);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}'
+    + '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}'
+    + '#srnToast[hidden]{display:none !important}';
+  function nbPanel(doc) {
+    /* 双背包形态：A 侧（:not(.is-storage)）恒为背包，直接装配。
+       单面板形态 B键背包 vs 取用（同页同构，负重条判据不成立——柜子也有负重）：
+       权威判据=ctx.bpBag（C# 直读 State_Web_BackpackUI.OwnerId_A 比对背包 owner）；
+       缺字段（旧契约/harness mock）兜底=头部分类 chips（取用柜 canTag 挂 chips，B键背包无）。 */
+    var panels = doc.querySelectorAll('.bag-panel:not(.is-storage)');
+    if (!panels.length) return null;
+    var dual = !!doc.querySelector('.bag-panel.is-storage');
+    if (dual) return panels[0];
+    var ctx = store.ctx || {};
+    var isBag;
+    if (typeof ctx.bpBag === 'boolean') isBag = ctx.bpBag;
+    else isBag = !panels[0].querySelector('.header .tag-chips');
+    return isBag ? panels[0] : null;
+  }
+  function nbStrip(doc) { /* 形态翻转（B键↔取用）摘按钮对+角标；style/toast 留着无害 */
+    if (!doc) return;
+    var b = doc.getElementById('srnSortBtn');
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+    var s = doc.getElementById('srnStoreBtn');
+    if (s && s.parentNode) s.parentNode.removeChild(s);
+    var lay = doc.getElementById('srnBadges');
+    if (lay && lay.parentNode) lay.parentNode.removeChild(lay);
+  }
+  function nbMount(f) {
+    try {
+      var doc = f.doc;
+      if (!doc || !doc.body) return;
+      var panel = nbPanel(doc);
+      if (!panel) { nbStrip(doc); if (NB.doc === doc) NB.doc = null; return; } /* 取用形态：不装配（翻转即摘） */
+      var row = panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
+      if (!row) return;
+      if (NB.doc !== doc) NB.doc = doc;
+      if (!doc.getElementById('srnStyle')) {
+        var stl = doc.createElement('style');
+        stl.id = 'srnStyle';
+        stl.setAttribute('data-cer-native', '1');
+        stl.textContent = NB_CSS;
+        doc.head.appendChild(stl);
+      }
+      if (!doc.getElementById('srnSortBtn')) {
+        var sortBtn = doc.createElement('button');
+        sortBtn.className = 'action-btn srn-sort';
+        sortBtn.id = 'srnSortBtn';
+        sortBtn.type = 'button';
+        sortBtn.title = '排序：官方默认，或按属性排序（格子右上角显示数值）';
+        sortBtn.innerHTML = '<span>⇅</span><span>排序</span><span class="srn-caret">▾</span>';
+        var pop = doc.createElement('div');
+        pop.className = 'srn-pop';
+        pop.id = 'srnSortPop';
+        pop.hidden = true;
+        sortBtn.appendChild(pop);
+        var storeBtn = doc.createElement('button');
+        storeBtn.className = 'action-btn srn-store';
+        storeBtn.id = 'srnStoreBtn';
+        storeBtn.type = 'button';
+        storeBtn.title = '按物品分类自动放入带对应标签的柜子（柜满顺延，无匹配留在背包）';
+        storeBtn.innerHTML = '<span>📦</span><span>一键入库</span>';
+        var cf = doc.createElement('div');
+        cf.className = 'srn-pop';
+        cf.id = 'srnConfirm';
+        cf.hidden = true;
+        storeBtn.appendChild(cf);
+        row.insertBefore(sortBtn, row.firstChild); /* 行首左缘；storeBtn margin-right:auto 吃余空间 */
+        row.insertBefore(storeBtn, sortBtn.nextSibling);
+        sortBtn.onclick = function () {
+          var c = doc.getElementById('srnConfirm');
+          if (c) c.hidden = true;
+          var p = doc.getElementById('srnSortPop');
+          if (!p) return;
+          p.hidden = !p.hidden;
+          nbRenderSortPop(doc);
+        };
+        storeBtn.onclick = function () { nbOpenConfirm(doc); };
+      }
+      if (!doc.__srnDocBound) {
+        doc.__srnDocBound = true;
+        doc.addEventListener('click', function (ev) { /* 点空白收弹层；mod 钮内点击豁免（v9 同款教训） */
+          if (ev.target && ev.target.closest && ev.target.closest('.srn-sort,.srn-store')) return;
+          var p = doc.getElementById('srnSortPop');
+          if (p) p.hidden = true;
+          var c = doc.getElementById('srnConfirm');
+          if (c) c.hidden = true;
+        });
+      }
+      var t = doc.getElementById('srnToast');
+      if (!t) {
+        t = doc.createElement('div');
+        t.id = 'srnToast';
+        t.hidden = true;
+        doc.body.appendChild(t);
+      }
+      NB.fsort = lsGet('srp_fsort_' + (st.scene || 'BackpackUI')) || 'official';
+      nbBadges(doc, panel);
+      nbEnsureGridMO(doc, panel);
+    } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
+  }
+  function nbRenderSortPop(doc) {
+    var pop = doc.getElementById('srnSortPop');
+    if (!pop || pop.hidden) return;
+    var h = '';
+    for (var i = 0; i < FSORTS.length; i++) {
+      var s = FSORTS[i], on = s.k === NB.fsort;
+      h += '<button type="button" class="srn-opt' + (on ? ' active' : '') + '" data-k="' + s.k + '">' +
+        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + s.label + (on ? '<span class="srn-tick">✓</span>' : '') + '</button>';
+    }
+    pop.innerHTML = h;
+    var btns = pop.querySelectorAll('.srn-opt');
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = function () { nbApplyFsort(this.getAttribute('data-k'), doc); };
+    }
+  }
+  function nbApplyFsort(key, doc) {
+    NB.fsort = key;
+    try { lsSet('srp_fsort_' + (st.scene || 'BackpackUI'), key); } catch (e) { }
+    var p = doc.getElementById('srnSortPop');
+    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关 + 同口径 toast */
+    cmdOut('sortBy', { owner: store.bag, key: key }); /* 数据层重排；BackpackUI 页 cmdOut 自带 forge 官方刷新 */
+    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值');
+    nbBadges(doc, nbPanel(doc));
+  }
+  function nbOpenConfirm(doc) {
+    var p = doc.getElementById('srnSortPop');
+    if (p) p.hidden = true;
+    var cf = doc.getElementById('srnConfirm');
+    if (!cf) return;
+    if (!bagArr().length) { toast('背包是空的'); return; } /* §4.6：空背包 toast 不弹窗 */
+    cf.innerHTML = '<div class="srn-cf-head">一键入库</div><div class="srn-cf-body"></div>' +
+      '<div class="srn-cf-foot"><button type="button" class="srn-cf-cancel">取消</button>' +
+      '<button type="button" class="srn-cf-go">确认入库</button></div>';
+    cf.querySelector('.srn-cf-body').innerHTML = storeConfirmText(); /* 文案与主侧栏逐字同款（rail.js 口径） */
+    cf.hidden = false;
+    cf.querySelector('.srn-cf-cancel').onclick = function () { cf.hidden = true; };
+    cf.querySelector('.srn-cf-go').onclick = function () {
+      cf.hidden = true;
+      /* goStoreAll 同款 arm+cmd（rail 弹窗元素在原生页不存在，故独立收口） */
+      var order = storeAllOrder(), snaps = {};
+      for (var i = 0; i < order.length; i++) snaps[order[i]] = snapOwner(order[i]);
+      XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps };
+      cmdOut('storeAll', { order: order }); /* settleXfer 差量汇总 toast → toast() 兜底落本页 */
+    };
+  }
+  /* 数值角标（v13.5 同款 overlay；挂官方 .grid-container 内 pointer-events:none，跟随官方
+     重渲染由 nbEnsureGridMO 观察器驱动）。webui-bag 页 .item id=logicId 精确匹配契约背包行，
+     无主格不标（宁缺勿错）；几何按官方 zoom 归一（rect/offsetWidth），角标锚格右上角。 */
+  function nbBadges(doc, panel) {
+    try {
+      if (!doc || !doc.body) return;
+      if (!panel) panel = nbPanel(doc);
+      var grid = panel && panel.querySelector('.grid-container');
+      if (!grid) return;
+      var old = doc.getElementById('srnBadges');
+      if (NB.fsort === 'official' || !bagArr().length) {
+        if (old && old.parentNode) old.parentNode.removeChild(old);
+        return;
+      }
+      var its = grid.querySelectorAll('.item');
+      if (!its.length) { if (old && old.parentNode) old.parentNode.removeChild(old); return; }
+      var arr = itemsOf(store.bag), byId = {};
+      for (var i = 0; i < arr.length; i++) byId[String(arr[i].id)] = arr[i];
+      var gRect = grid.getBoundingClientRect();
+      var z = (gRect.width > 0 && grid.offsetWidth > 0) ? gRect.width / grid.offsetWidth : 1;
+      var color = FBCOLOR[NB.fsort] || '#f0b03c';
+      if (!ICONIDX) buildIconIdx(); /* 双路匹配同 v1.8.3 applyBadges：id 精确 / 图标尾段→配置级维度 */
+      var h = '';
+      for (var k = 0; k < its.length; k++) {
+        var elx = its[k];
+        var it = byId[String(elx.id || '')] || null;
+        var cfgId = it ? it.cfgId : 0, cfg = null;
+        if (!cfgId) { /* Vue 页 .item 无 id 属性：img src 尾段唯一键→配置级（逐叠维度不标，宁缺勿错） */
+          var img = elx.querySelector ? elx.querySelector('img') : null;
+          var tail = img ? String(img.getAttribute('src') || '').split('?')[0].split('/').pop().toLowerCase() : '';
+          var e2 = tail ? ICONIDX[tail] : null;
+          if (e2 && !e2.ambig) { for (var cid in e2.ids) { cfgId = parseInt(cid, 10); break; } }
+        }
+        if (cfgId && ICFG[cfgId]) cfg = ICFG[cfgId];
+        if (!it && !cfg) continue;
+        if (!it && (NB.fsort === 'shelf' || NB.fsort === 'value')) continue;
+        var r = elx.getBoundingClientRect();
+        if (r.width < 2 || r.height < 2) continue;
+        var x = (r.left - gRect.left) / z + r.width / z - 1;
+        var y = (r.top - gRect.top) / z + 1;
+        h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, cfg, NB.fsort) + '</i>';
+      }
+      if (old && old.__srnH === h) return; /* 同串免写：防自家写入触发观察器回环（v1.8.3 同款） */
+      if (!old) {
+        old = doc.createElement('div');
+        old.id = 'srnBadges';
+        grid.appendChild(old);
+      }
+      old.__srnH = h;
+      old.innerHTML = h;
+    } catch (e) { try { console.warn('[CERail] nbBadges 失败', e && (e.stack || e.message)); } catch (e2) { } }
+  }
+  function nbEnsureGridMO(doc, panel) {
+    var grid = panel && panel.querySelector('.grid-container');
+    if (!grid || grid.__srnMO) return;
+    try {
+      var V = doc.defaultView.MutationObserver;
+      grid.__srnMO = new V(function () {
+        setTimeout(function () { if (NB.doc === doc) nbBadges(doc, null); }, 50);
+      });
+      grid.__srnMO.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    } catch (e) { }
+  }
+  function nbRefresh() { /* setData 后跟随：角标值随新契约重算（网格未变也不漏） */
+    if (NB.doc && NB.doc.body) nbBadges(NB.doc, null);
+  }
   function ensureMountedFrame(f) {
     var doc = f.doc, key = f.key, sc = SCENES[key];
     if (!doc || !doc.body || !sc) return;
     if (!frameVisible(f.el)) return;
-    if (sc.native) { ensureNativeBp(f); return; } /* v1.8.3 原生模式：只注 CSS 不装配（幂等；iframe 重载换文档自然重注） */
+    if (sc.native) { ensureNativeBp(f); nbMount(f); return; } /* v1.8.3 原生模式：注 CSS 不装配 rail；v1.8.4 加 mod 按钮对（幂等；iframe 重载换文档自然重注） */
     /* T9 宿主复活先撤桩（裁定 2）：rail 在位而宿主重现=官方重建——真节点已回文档，此刻
        桩的重复 id 会让官方 $() 命中桩而非真节点；撤桩后 mount 重替换并重建新桩。
        （官方格引用在 mount 内先于摘除取得，复活重装配不丢格。） */
@@ -2391,6 +2649,7 @@
       try { render(); } catch (e) { try { console.warn('[CERail] render 失败(兜底不炸通道)', e && (e.stack || e.message), e); } catch (e2) { } }
     }
     try { settleXfer(); } catch (e) { try { console.warn('[CERail] settleXfer 失败', e && (e.stack || e.message), e); } catch (e2) { } }
+    try { nbRefresh(); } catch (e) { try { console.warn('[CERail] nbRefresh 失败', e && (e.stack || e.message), e); } catch (e2) { } } /* v1.8.4 原生页角标随契约重算 */
   }
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */

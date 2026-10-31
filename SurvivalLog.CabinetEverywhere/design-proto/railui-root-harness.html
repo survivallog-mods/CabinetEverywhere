@@ -316,12 +316,14 @@ window.__HZ_READY__ = function () {
       /* v1.8.2：全 12 页官方 BagMsg 真形状喂食——官方格（壳内）真渲染 .item，
          供交互/过滤/截图断言。字段名逐页按官方 handler 取证（fixtures 内 grep refresh）。 */
       var ICO = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
-      function mk(itemId, x, count) {
+      function mk(itemId, x, count, cfg) {
         /* y=x%2 双行铺开（v1.8.2：全挤 y:0 会让 MaterialRack 的 bag 空间测算判「背包已满」，
            右键取 1 被 onBlocked 拦——夹具保真修复） */
-        return { itemId: itemId, x: x, y: x % 2, w: 1, h: 1, icon: ICO, name: '物品' + itemId, count: count || 1, quality: 3 };
+        /* v1.8.4：cfg 给定时图标带 '#v<cfg>' 唯一尾段（对齐 MOCK.icfg 与 __HZ_ICOV__，
+           BackpackUI 原生页官方格 .item 无 id 属性——角标图标尾段匹配路需要） */
+        return { itemId: itemId, x: x, y: x % 2, w: 1, h: 1, icon: cfg ? window.__HZ_ICOV__(cfg) : ICO, name: '物品' + itemId, count: count || 1, quality: 3 };
       }
-      var bagItems = [mk(901, 0, 30), mk(902, 1, 5), mk(903, 2, 40), mk(904, 3, 12), mk(905, 4, 3), mk(906, 5, 2), mk(907, 6, 6), mk(908, 7, 1)];
+      var bagItems = [mk(901, 0, 30, 1), mk(902, 1, 5, 3), mk(903, 2, 40, 5), mk(904, 3, 12, 5), mk(905, 4, 3, 9), mk(906, 5, 2, 2), mk(907, 6, 6, 8), mk(908, 7, 1, 4)];
       var M = {
         Cooking: ['WebUI_Cooking_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
         BrewPanel: ['WebUI_Brew_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
