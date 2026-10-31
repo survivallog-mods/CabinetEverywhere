@@ -29,23 +29,24 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
       scale: scale,
       hostW: host ? host.style.width : '',
       slotRectW: slot ? Math.round(slot.getBoundingClientRect().width * 10) / 10 : null,
-      gridNatW: g ? g.offsetWidth : null
+      gridNatW: g ? g.offsetWidth : null,
+      hostWAdj: host ? host.offsetWidth : null
     };
   });
   const pre = await probe();
-  check('brew:scale-normalized', pre.scale > 1.01 && pre.hostW === '700px', `scale=${pre.scale} hostW=${pre.hostW}（445→700 归一）`);
-  check('brew:slot-enlarged', pre.slotRectW > 40, `slot 显示宽=${pre.slotRectW}（原 38 归一放大）`);
+  check('brew:no-scale', pre.scale === 1 && pre.hostW === pre.gridNatW + 'px', `scale=${pre.scale} hostW=${pre.hostW}=格自然宽（贴合无空白）`);
+  check('brew:host-fits-grid', pre.slotRectW === pre.gridNatW || Math.abs(pre.slotRectW - 38) < 3, `slot 显示=${pre.slotRectW} gridNat=${pre.gridNatW}（无缩放=无右侧空白）`);
 
   await bf.evaluate(() => document.getElementById('srTidy').click()); /* tidy→mock 回推→二次 render */
   await page.waitForTimeout(3500);
   const post = await probe();
-  check('brew:scale-stable-after-tidy', Math.abs(post.scale - pre.scale) < 0.005 && post.scale > 1.01, `pre=${pre.scale} post=${post.scale}（修复前=1）`);
-  check('brew:slot-not-shrunk', Math.abs(post.slotRectW - pre.slotRectW) < 2, `pre=${pre.slotRectW} post=${post.slotRectW}（修复前缩到 38）`);
+  check('brew:scale-stable-after-tidy', post.scale === 1 && Math.abs(post.slotRectW - pre.slotRectW) < 1, `pre slot=${pre.slotRectW} post=${post.slotRectW}（tidy 后不缩不空）`);
+  check('brew:rail-width-locked', Math.abs(post.hostWAdj - pre.hostWAdj) < 1, `rail hostW pre=${pre.hostWAdj} post=${post.hostWAdj}（只增不减）`);
   /* 第二笔回推仍稳（循环塌缩防回归） */
   await page.evaluate(() => window.__CERAIL__.cmd('tidy', { owner: 900001 }));
   await page.waitForTimeout(2500);
   const post2 = await probe();
-  check('brew:scale-stable-2nd-push', Math.abs(post2.scale - pre.scale) < 0.005, `post2=${post2.scale}`);
+  check('brew:scale-stable-2nd-push', post2.scale === 1 && Math.abs(post2.slotRectW - 38) < 3, `post2 slot=${post2.slotRectW}`);
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 2)));
   await browser.close();
   const fail = results.filter((r) => !r.ok).length;

@@ -68,7 +68,8 @@
   /* 版式常量（同原型）：428px 侧栏内 10×34px + 9×6px = 394px 恰好铺满。
      所有容器一律 10 列，扩容只增加行数（纵向滚动）。 */
   var COLS = 10, SLOT = 34, GAP = 6;
-  var UNI_W = 700; /* Bug2 宽度归一：格区恒定宽（16 列 × ~40px 视觉），壳宽=UNI_W+20 */
+  /* UNI_W=700 格区缩放归一已随 v1.8.4 撤除（拖拽落点错位+酿酒桶缩格，见 render 网格块注释）；
+     壳宽=官方格自然宽+20，Bug2 只增不减锁由 st.railMinW 承担 */
   /* 格子尺寸跟官方（缺陷⑥，v1.8.1）：SCENES.cell = 逐页官方源码取证值
      （Brew/Dye 38、Cooking/RatCage/DroneHub/Compressor/Greenhouse 40、Shredder 45、
      ToolTable/Trade/BackpackUI 56px），旁挂侧栏与 bagonly 生效；列数按 428 壳宽自适应。
@@ -1427,28 +1428,27 @@
       el.srGridHost.hidden = false; el.srList.hidden = true;
       applyGridFilter(fi);
       st.gridScale = 1;
-      /* Bug2 v1.8.2.2 宽度/格子归一：格区等比缩放到恒定 UNI_W（数据层列数已统一 16——
-         BackpackExpand.Width=16 / CabinetSize 档位 16；各页官方 slot 38-56px 差异经缩放
-         归一为视觉一致——rect 系拖拽/落点按缩放后矩形判定，官方渲染管线零改动）。 */
+      /* v1.8.4 缺陷修复（作者实测：拖拽落点错位——瞄 A 格高亮 B 格、松手落 B 格）：
+         **撤除格区 transform:scale 归一**。官方落点判定= (clientX-rect.left)/官方zoom/PAD
+         再 /CELL(56 布局常数)（BackpackUI.html @6384 cachedZoom 路），rect 会带 transform
+         但除数不带 → 光标→格子换算被放大 kk 倍，离格原点越远偏移越大（kk>1 向右下偏）。
+         scale 归一是 v1.8.2.2（16 列时代）的视觉一致性机器，与 §0 红线「拖拽移动/落点预览
+         官方动作原生存活（一票否决）」和 §2「mod 不改格子几何」冲突，格子回归官方原尺寸
+         （对齐已批原型：机器侧栏 12×34px 原生格、壳宽 494=格宽+20，不再恒 720）。
+         壳宽保留 Bug2「只增不减锁」：st.railMinW 记本帧挂载以来的最大格宽，切窄格不回缩。 */
+      el.srGridHost.style.transform = 'none';
+      el.srGridHost.style.width = '';
+      var railW = 0;
       if (el.srGridHost.firstElementChild) {
-        /* v1.8.4 缺陷修复（作者实测：酿酒桶一键整理后格子变小/右侧大片空白）：
-           自然宽必须量**子格布局宽**（offsetWidth，不受 transform 影响）——旧代码量
-           srGridHost.scrollWidth，v13.8 柜宽 12 列后网格(445)窄于 UNI_W(700)，scrollWidth
-           读到的是上帧写死的宿主 width:700 → kk=700/700=1 → transform 每次回推都被重置、
-           格子缩回原尺寸（16 列时代网格 896>700 溢出撑着 scrollWidth，帧间稳定故未暴露）。 */
         var childG = el.srGridHost.firstElementChild;
-        var nat = (childG.offsetWidth || childG.scrollWidth) || 0;
+        var nat = childG.offsetWidth || 0;
         if (nat > 40) {
-          var kk = UNI_W / nat;
-          if (kk > 0.2 && kk < 5) {
-            el.srGridHost.style.transformOrigin = 'top left';
-            el.srGridHost.style.transform = 'scale(' + kk + ')';
-            el.srGridHost.style.width = UNI_W + 'px';
-            st.gridScale = kk; /* 角标 overlay 坐标除以缩放（getBoundingClientRect 是缩放后值） */
-          }
+          el.srGridHost.style.width = nat + 'px';
+          railW = nat + 20;
         }
         try {
-          var rw2 = (UNI_W + 20) + 'px';
+          st.railMinW = Math.max(st.railMinW || 0, railW);
+          var rw2 = (st.railMinW || railW || 720) + 'px';
           el.rail.style.setProperty('width', rw2, 'important');
           el.rail.style.setProperty('min-width', rw2, 'important');
           el.rail.style.setProperty('max-width', rw2, 'important');
