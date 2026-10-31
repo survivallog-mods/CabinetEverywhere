@@ -21,6 +21,24 @@ public static class BagTable
     private static readonly Dictionary<long, int> OrigBurden = new();
     private static readonly Dictionary<long, float> OrigCold = new();
 
+    /// <summary>
+    /// 改宽黑名单 34 包（套件单源；口径=CabinetExpand 2026-10-13 拍板，理由留档 CabinetSize DESIGN §5.3）：
+    /// 这些 Config_Bag 被机器功能界面/非储物家具/场景搜刮容器共用，改 Size 会连带变形——
+    /// 2026-11-01 实锤：染料桶原料槽(66196)/自制工具台材料容器(313/80033/80164) 与工具桌/杂物纸箱
+    /// 共用 1010，CabinetEverywhere 柜宽统一直写 1010 后两个机器容器随之翻倍。
+    /// 语义=「谁的 Size 不能动」；与各 mod 自持的「筛选/页签收录」名单（1010 必须收录，否则工具桌
+    /// 从柜子页签消失）不是一回事，勿混用。任何 mod 直写 Config_Bag.Size 前先剔此名单。
+    /// </summary>
+    public static readonly int[] DefaultResizeExcludeIds =
+    {
+        5001, 5002, 5003, 5004, 5005, 5006, 5011,       // 厨房电器（格子=烹饪槽位语义）
+        5007, 5008, 5009, 5014, 5015, 5017, 5020,       // 老鼠笼/粉碎机/口粮压制机/暖房工程台/酿酒桶
+        115004, 115002, 1050, 1062,                     // 堆肥箱/吊篮(种植)/通信设备
+        10001, 10004,                                   // 床/垃圾桶
+        1010, 2003, 1060, 1014, 1008, 1009, 115003, 3003, // 纸箱共包/门窗口暂存/无人机/货车/手推车
+        110007, 3001, 2001, 2002, 2004, 10003,          // 纯场景搜刮容器
+    };
+
     public static GameCore.HotUpdate.ConfigManager Cm()
     {
         try

@@ -61,6 +61,14 @@ internal static class RailUi
         CabinetEverywherePlugin.RailEnable == null || CabinetEverywherePlugin.RailEnable.Value;
 
     // ================= v13.8 SizeEngine：柜宽统一（作者 2026-10-31 拍板 12 列） =================
+    // 2026-11-01 热修（作者实测：染料桶原料槽/工作台材料容器被改宽、界面变形）：v1.8.3 拿
+    // AllContainers（筛选收录名单=家里一切带包家具，含冰箱/材料架/被家具级排除的染料桶）当改宽
+    // 目标，黑名单又只抄了收录名单 23 包——而 Config_Bag.Size 是配置级：染料桶(66196)/自制工具台
+    // (313/80033/80164) 与 工具桌/工具台/杂物纸箱 共用 1010，改柜子=改机器槽（日志 13/14 实锤）。
+    // 三道门：① 目标集=真柜子子集 HomeInstances（kind=='c' 且入柜名单；冰箱/材料架/材料堆不碰）
+    //        ② 剔 BagTable.DefaultResizeExcludeIds（套件改宽黑名单 34 包，与 CabinetSize 同源）
+    //        ③ 共包守卫：包被 cfg ExcludeFurnitureIds 名单内任一家具使用 → 跳过（防未来新共包）
+    // 代价：共包柜子（工具桌/工具台/杂物纸箱/纸箱堆）维持官方原宽，不凑 12 列（作者 2026-11-01 认可）。
     private static bool _sizeEngineDone = false;
     private static void SizeEngineOnce()
     {
@@ -74,14 +82,42 @@ internal static class RailUi
             var bags = BagTable.BagDict(cm);
             var furns = BagTable.FurnDict(cm);
             if (bags == null || furns == null || bags.Count == 0) return; // 配置表未就绪：下轮再试
+
+            // ① 真柜子子集（RefreshHomeInstances 产出：kind=='c' 且 ConfigIds 命中）
             var ids = new HashSet<int>();
-            foreach (var c in CabinetCatalog.AllContainers)
+            foreach (var c in CabinetCatalog.HomeInstances)
             {
                 try { if (furns.TryGetValue(c.ConfigId, out var f) && f != null && f.BagId > 0) ids.Add(f.BagId); } catch { }
             }
-            if (ids.Count == 0) return; // 目录未就绪（家具未扫描）：下轮再试
-            int changed = 0;
+            if (ids.Count == 0)
+            {
+                if (CabinetCatalog.AllContainers.Count == 0) return; // 目录未就绪（家具未扫描）：下轮再试
+                _sizeEngineDone = true; // 扫描已跑、家里没有柜子（只有冰箱/材料架等）：无事可做
+                CabinetEverywherePlugin.Log.LogInfo("[CERail] SizeEngine：家中无柜子子集，本会话不改宽");
+                return;
+            }
+
+            // ② 套件改宽黑名单 + ③ 家具级排除名单（染料桶/自制工具台/材料堆/载具……作者维护）所用的包
+            var black = new HashSet<int>(BagTable.DefaultResizeExcludeIds);
+            var excludeFurn = BagTable.ParseIds(CabinetEverywherePlugin.ExcludeFurnitureIds.Value);
+            var sharedBags = new HashSet<int>();
+            foreach (var pair in furns)
+            {
+                if (!excludeFurn.Contains(pair.Key)) continue;
+                try { var f = pair.Value; if (f != null && f.BagId > 0) sharedBags.Add(f.BagId); } catch { }
+            }
+
+            var targets = new HashSet<int>();
+            var skipped = new List<string>();
             foreach (var bagId in ids)
+            {
+                bool b = black.Contains(bagId), s = sharedBags.Contains(bagId);
+                if (b || s) { skipped.Add(bagId + (b && s ? "(黑名单+共包)" : b ? "(黑名单)" : "(共包)")); continue; }
+                targets.Add(bagId);
+            }
+
+            int changed = 0;
+            foreach (var bagId in targets)
             {
                 try
                 {
@@ -94,8 +130,10 @@ internal static class RailUi
                 catch { }
             }
             _sizeEngineDone = true;
-            if (changed > 0)
-                CabinetEverywherePlugin.Log.LogInfo($"[CERail] SizeEngine：{changed}/{ids.Count} 个柜宽已统一为 {w} 列（Config_Bag.Size 内存直写，本会话一次）");
+            skipped.Sort(string.CompareOrdinal);
+            CabinetEverywherePlugin.Log.LogInfo($"[CERail] SizeEngine：{changed}/{targets.Count} 个柜宽已统一为 {w} 列；跳过 {skipped.Count} 包"
+                + (skipped.Count > 0 ? "：" + string.Join(",", skipped) : "")
+                + "（目标=家中柜子子集；Config_Bag.Size 内存直写，本会话一次）");
         }
         catch (Exception e)
         {
