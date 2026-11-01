@@ -31,193 +31,8 @@ namespace SurvivalLog.CabinetEverywhere;
 /// </summary>
 internal static class RailSortMath
 {
-    // ================= 天赋/难度因子（EatInputs/EatLogic 移植） =================
-
-    internal sealed class Talent
-    {
-        public float Nourish;
-        public float PerfectMorale;
-        public int[] AddPermille;      // [5]（0饱腹/1心态/2精力/3健康(弃)/4生命）
-        public float[] SatietyFood;    // [12] 按食物子类
-        public float[] MoraleFood;
-        public int EfficientPermille;
-        public int ComfortPermille;
-    }
-
-    internal sealed class Factors
-    {
-        public List<Talent> Talents = new List<Talent>();
-        public int[] BasePermille;     // null=未读到（全按 0）
-        public float LifeDelta;
-    }
-
-    /// <summary>AttrName.Add*_Ratio（dump.cs 枚举 20001-20005；ProjectCook AddRatios 同值序）。</summary>
-    private static readonly int[] AddRatioIds = { 20001, 20002, 20003, 20004, 20005 };
-
-    private static Factors _factors;
-    private static float _factorsAt = float.NegativeInfinity;
-    private static bool _factorsWarned;
-
-    /// <summary>因子缓存 2s（buff/难度缓变；0.5s 快通道不必每包重读 buff 表）。</summary>
-    internal static Factors FactorsNow()
-    {
-        float now = NowHours();
-        if (_factors != null && now - _factorsAt < 2f) return _factors;
-        var f = new Factors();
-        try
-        {
-            var cm = BagTable.Cm();
-            var world = RailData.World();
-            var role = world?._AgentManager?.GetLeadingRole();
-            if (cm != null && role != null)
-            {
-                var ac = GameCore.HotUpdate.Battle.Logic.AgentTools.GetAgentComponent<GameCore.HotUpdate.Battle.Logic.AttributeComponent>(role);
-                if (ac != null)
-                {
-                    f.BasePermille = new int[5];
-                    for (int i = 0; i < 5; i++)
-                    {
-                        try { f.BasePermille[i] = ac.GetBaseValue_Int((GameCore.HotUpdate.AttrName)AddRatioIds[i]); } catch { }
-                    }
-                }
-                try { f.LifeDelta = GameCore.HotUpdate.Battle.Logic.DifficultyTools.GetVitalityItemAddDelta(); } catch { }
-
-                var bc = GameCore.HotUpdate.Battle.Logic.AgentTools.GetAgentComponent<GameCore.HotUpdate.Battle.Logic.BuffComponent>(role);
-                var buffs = bc?.buffIdMap;
-                if (buffs != null)
-                {
-                    var byBuff = TalentsByBuff(cm);
-                    foreach (var kv in buffs)
-                    {
-                        GameCore.HotUpdate.Config_Talent tCfg = null;
-                        try { byBuff?.TryGetValue(kv.Key, out tCfg); } catch { }
-                        if (tCfg == null) continue;
-                        var bCfg = cm.Get_Config_Buff(kv.Key);
-                        if (bCfg == null || bCfg.BuffDuring >= 0f) continue; // 永久 buff 才算天赋
-                        var eff = cm.Get_Config_Effect(bCfg.EffectConfigId);
-                        if (eff == null) continue;
-                        int cnt = 1;
-                        try { cnt = Math.Max(1, kv.Value?.Count ?? 1); } catch { }
-                        var t = ToTalent(eff);
-                        if (t != null) for (int j = 0; j < cnt; j++) f.Talents.Add(t);
-                    }
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            if (!_factorsWarned) { _factorsWarned = true; CabinetEverywherePlugin.Log.LogWarning("[CERail] 排序天赋因子读取失败（按无天赋计）: " + e.Message); }
-        }
-        _factors = f; _factorsAt = now;
-        return f;
-    }
-
-    private static Dictionary<int, GameCore.HotUpdate.Config_Talent> _talentByBuff;
-    private static object _talentByBuffSrc;
-
-    private static Dictionary<int, GameCore.HotUpdate.Config_Talent> TalentsByBuff(GameCore.HotUpdate.ConfigManager cm)
-    {
-        var src = cm?._Config_Talent_Dict;
-        if (src == null) return null;
-        if (_talentByBuff != null && ReferenceEquals(src, _talentByBuffSrc)) return _talentByBuff;
-        var d = new Dictionary<int, GameCore.HotUpdate.Config_Talent>();
-        try
-        {
-            foreach (var kv in src)
-                if (kv.Value != null && kv.Value.BuffID > 0) d[kv.Value.BuffID] = kv.Value;
-        }
-        catch { }
-        _talentByBuff = d; _talentByBuffSrc = src;
-        return d;
-    }
-
-    /// <summary>Config_Effect → Talent（ProjectCook ToTalent 逐分支移植；ConfigName 键照抄）。</summary>
-    private static Talent ToTalent(GameCore.HotUpdate.Config_Effect e)
-    {
-        var t = new Talent();
-        bool any = false;
-        string name = null;
-        try { name = e.ConfigName; } catch { }
-        if (name == "Buff/AE_CookDishNourish") { t.Nourish = e.FloatValue0; any = true; }
-        else if (name == "Buff/AE_CookEatPerfectMorale") { t.PerfectMorale = e.FloatValue0; any = true; }
-        else if (name == "Buff/Efficient_Nutrition") { t.EfficientPermille = (int)(e.FloatValue0 * 1000f); any = true; }
-        else if (name == "Buff/Buff_304310_ComfortFood") { t.ComfortPermille = (int)(e.FloatValue0 * 1000f); any = true; }
-        var add = new float[5];
-        try { add[0] = e.BuffSatietyAdd; add[1] = e.BuffMoraleAdd; add[2] = e.BuffStaminaAdd; add[4] = e.BuffVitalityAdd; } catch { }
-        bool hasAdd = false;
-        for (int i = 0; i < 5; i++) if (add[i] != 0f) hasAdd = true;
-        if (hasAdd)
-        {
-            t.AddPermille = new int[5];
-            for (int i = 0; i < 5; i++) t.AddPermille[i] = (int)(add[i] * 1000f);
-            any = true;
-        }
-        t.SatietyFood = FoodRatios(e, "BuffSatietyFood{0}Add_Ratio");
-        t.MoraleFood = FoodRatios(e, "EF_BuffMoraleFood{0}Add_Ratio");
-        if (!any && t.SatietyFood == null && t.MoraleFood == null) return null;
-        return t;
-    }
-
-    private static float[] FoodRatios(GameCore.HotUpdate.Config_Effect e, string fmt)
-    {
-        float[] arr = null;
-        for (int i = 1; i < 12; i++)
-        {
-            float v = 0f;
-            try
-            {
-                var p = typeof(GameCore.HotUpdate.Config_Effect).GetProperty(string.Format(CultureInfo.InvariantCulture, fmt, i));
-                if (p == null) continue;
-                v = Convert.ToSingle(p.GetValue(e), CultureInfo.InvariantCulture);
-            }
-            catch { continue; }
-            if (v != 0f) { arr = arr ?? new float[12]; arr[i] = v; }
-        }
-        return arr;
-    }
-
-    // ================= 吃入数值（EatLogic 移植，逐式照抄） =================
-
-    private static readonly int[] EatIndex = { 0, 1, 2, 4 }; // Stats[0..3]=效果[饱腹/心态/精力/生命(=效果4)]
-
-    /// <summary>EatValues+Gain（ProjectCook EatLogic 逐式；dish.Values=单次食用效果值[5]）。</summary>
-    private static float[] EatValues(float[] values, bool hasInstance, bool isStaple, bool isPerfect, int subCategory, int portions, Factors f)
-    {
-        var r = new float[5];
-        float nourish = 0f, perfectMorale = 0f;
-        foreach (var t in f.Talents) { nourish += t.Nourish; perfectMorale += t.PerfectMorale; }
-        for (int i = 0; i < 5; i++)
-        {
-            if (i == 3) continue; // 3=Fitness（ProjectCook 同款跳过）
-            float v = Get(values, i);
-            if (hasInstance) v *= 1f + nourish;
-            r[i] = Gain(i, v, isStaple, subCategory, f);
-        }
-        if (isPerfect && perfectMorale != 0f)
-            r[1] += Math.Max(1, portions) * Gain(1, perfectMorale, isStaple, subCategory, f);
-        return r;
-    }
-
-    private static float Gain(int stat, float value, bool isStaple, int subCategory, Factors f)
-    {
-        if (value <= 0f) return value;
-        float satFood = 0f;
-        int permille = Get(f.BasePermille, stat);
-        foreach (var t in f.Talents)
-        {
-            if (stat == 0) satFood += Get(t.SatietyFood, subCategory);
-            if (stat == 1) satFood += Get(t.MoraleFood, subCategory);
-            permille += Get(t.AddPermille, stat);
-            if (stat == 0) permille += t.EfficientPermille + (isStaple ? t.ComfortPermille : 0);
-        }
-        if (stat == 0 || stat == 1) value *= 1f + Math.Min(2f, Math.Max(-1f, satFood));
-        if (stat == 4) value = Math.Max(0f, (1f + f.LifeDelta) * value);
-        return value * (1f + Math.Min(2000, Math.Max(-500, permille)) / 1000f);
-    }
-
-    private static float Get(float[] a, int i) => (a == null || i < 0 || i >= a.Length) ? 0f : a[i];
-    private static int Get(int[] a, int i) => (a == null || i < 0 || i >= a.Length) ? 0 : a[i];
-
+    // =================（已退役 2026-11-01 作者终裁：stats=配置效果值×剩余次数，不叠天赋；
+    //    天赋管线 EatValues/FactorsNow 整块移除——详见 Of() 注释） =================
     // ================= 交易（ProjectCook TradeUses/鉴定 + Trade 页需求因子） =================
 
     /// <summary>使用损耗系数（ProjectCook TradeUses 逐式：全新=1；用过的按剩余次数比例折算）。</summary>
@@ -378,21 +193,6 @@ internal static class RailSortMath
         public string DaysText;
     }
 
-    private static HashSet<int> _perfectIds;
-    private static object _perfectSrc;
-
-    private static bool IsPerfect(GameCore.HotUpdate.ConfigManager cm, int cfgId)
-    {
-        var src = cm?._Config_CookingRecipe_Dict;
-        if (src == null) return false;
-        if (_perfectIds == null || !ReferenceEquals(src, _perfectSrc))
-        {
-            var s = new HashSet<int>();
-            try { foreach (var kv in src) if (kv.Value != null && kv.Value.PerfectItemID > 0) s.Add(kv.Value.PerfectItemID); } catch { }
-            _perfectIds = s; _perfectSrc = src;
-        }
-        return _perfectIds.Contains(cfgId);
-    }
 
     /// <summary>
     /// 单叠数值：属性=实例效果→配置效果→天赋管线；交易=场景分式（Trade 页需求价 / 其他页
@@ -411,38 +211,27 @@ internal static class RailSortMath
             bool isFood = cat == 1;
             if (isFood)
             {
-                var f = FactorsNow();
-                float[] one = null; bool hasInst = false;
+                /* 2026-11-01 作者终裁（缺陷单#1 第六轮）：角标=**详情单次值 × 剩余使用次数**
+                   （山珍菌菇饭(完美) 28×3=84）。单次值=Config_UseAction→Effect.Item*End（完美料理
+                   有独立配置，品质已含在配置选择里）——**不再叠实例数组/天赋管线**（旧路 84→26/次
+                   =78 与详情 28/次不符；详情=展示口径，作者以详情为准）。 */
+                float[] one = new float[5];
                 try
                 {
-                    var ie = it.InstanceEffectEnd;
-                    if (ie != null && ie.Length >= 5)
+                    if (cfg.UseAction > 0)
                     {
-                        hasInst = true;
-                        one = new float[5];
-                        for (int i = 0; i < 5; i++) one[i] = ie[i];
+                        var act = cm?.Get_Config_Action(cfg.UseAction);
+                        var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
+                        if (eff != null)
+                            one = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
                     }
                 }
                 catch { }
-                if (one == null)
-                {
-                    one = new float[5];
-                    try
-                    {
-                        if (cfg.UseAction > 0)
-                        {
-                            var act = cm?.Get_Config_Action(cfg.UseAction);
-                            var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
-                            if (eff != null)
-                                one = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
-                        }
-                    }
-                    catch { }
-                }
-                var eaten = EatValues(one, hasInst, cat == 1 && sub == 1, IsPerfect(cm, cfg.ID), sub, 1, f);
+                int uses = 1;
+                try { uses = Math.Max(1, it.UseTimes); } catch { } /* 剩余使用次数（useTimes 随食用递减） */
                 for (int i = 0; i < 4; i++)
                 {
-                    int v = (int)Math.Round(eaten[EatIndex[i]], MidpointRounding.AwayFromZero);
+                    int v = (int)Math.Round(one[EatIndex[i]] * uses, MidpointRounding.AwayFromZero);
                     if (v != 0) n.Stats[i] = v;
                 }
             }

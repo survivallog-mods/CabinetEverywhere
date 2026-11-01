@@ -1489,6 +1489,7 @@
     if (DISP.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格） */
     var cells = gridEl.querySelectorAll('.item');
     if (!cells.length || cells.length !== model.items.length) return null;
+    if (cells[0].offsetWidth < 2) return null; /* 页面隐藏（详情弹层顶替）=全格零尺寸：保留上一次 */
     var rows = dispRows(model); /* 行序=模型数组序（与 DOM 同序）——不再按位置重排 */
     var m = new Map();
     for (var j = 0; j < cells.length; j++) m.set(cells[j], rows[j]);
@@ -1641,6 +1642,7 @@
       var x = p[0] + elx.offsetWidth, y = p[1];
       h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
     }
+    if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
     if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
   }
   /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点）——官方改格后先重抹显示层
@@ -2823,6 +2825,7 @@
         var x = p[0] + elx.offsetWidth - 1, y = p[1] + 1;
         h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, NB.fsort) + '</i>';
       }
+      if (h === '' && old && old.__srnH) return; /* 空结果不覆写（隐藏/窗口期保上一次） */
       if (old && old.__srnH === h) return; /* 同串免写：防自家写入触发观察器回环（v1.8.3 同款） */
       if (!old) {
         old = doc.createElement('div');
