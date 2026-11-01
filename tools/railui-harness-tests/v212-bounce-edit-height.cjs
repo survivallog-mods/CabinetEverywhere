@@ -193,30 +193,54 @@ const CONTRACT = (rev) => ({
   /* ---- #4 二轮：居中补偿（作者：高度缩了下面仍被遮挡=界面整体下移）----
      官方机器页 body align-items:center——壳缩 76px 被上下各分 38。修：壳为系统容器
      最高子面板时给系统 translateY(-38px)（顶复位、底让足 76px）；非最高不提。
-     4a：RatCage 预先藏掉兄弟面板（强制壳最高）→ 装配后系统带 translateY(-38px)；
+     4a：RatCage 藏兄弟+格撑高（壳封顶 740 且最高）后**拆壳逼重装配**（四轮回滚后
+     lift=装配期一次性判定，装配后强改条件不再触发）→ 系统带 translateY(-38px)；
      4b：BrewPanel 兄弟在场（壳非最高）→ 不提。 */
+  await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
+  const rcF0 = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
+  await rcF0.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
+  await page.waitForTimeout(600); /* 装配稳态（与 dbg 流程一致：先在位，再拆壳逼重装配） */
   await page.evaluate(() => {
     const el = document.getElementById('RatCage');
     const doc = el && el.contentDocument;
     if (doc) {
-      [...doc.querySelectorAll('.cooking-system > *, body > *')].forEach((n) => {
-        if (n.id === 'RatCage' || n.tagName === 'SCRIPT' || n.tagName === 'STYLE') return;
-        if (n.querySelector && (n.querySelector('#bagTabs') || n.id === 'cookingSystem' || n.querySelector('#cookingSystem'))) return;
-        if (n.closest && n.closest('#cookingSystem')) return;
+      /* RatCage 根容器=.generator-system（非 cooking-system）——按「系统外全藏+系统内非宿主面板全藏」通用处理 */
+      [...doc.querySelectorAll('body > *, body > * > *')].forEach((n) => {
+        if (n.tagName === 'SCRIPT' || n.tagName === 'STYLE') return;
+        if (n.querySelector && n.querySelector('#bagTabs')) return; /* 含宿主（或壳）的分支保留 */
+        if (n.id === 'srp' || (n.closest && n.closest('#srp'))) return;
+        if (n.parentElement === doc.body && n.querySelector('.panel')) return; /* 系统根保留 */
         n.style.display = 'none';
       });
+      const g = doc.querySelector('#backpackGrid');
+      if (g) g.style.height = '2000px'; /* 壳封顶（重装配 reparent 同一元素，样式带过去） */
+      const srp = doc.getElementById('srp');
+      const home = srp ? srp.parentElement : null; /* 壳原父级（RatCage 根=.generator-system，
+        查询 .cooking-system 会 miss——重装配必须挂回原位） */
+      if (srp) srp.remove(); /* 拆壳（原宿主已被 replaceChild 消费——需假宿主才能重装配） */
+      /* f41f8ba lift=一次性 __srLift 门，装载期首装已消费——清门让重装配真判定一次 */
+      let sysG = home;
+      while (sysG && sysG.parentElement && sysG.parentElement !== doc.body) sysG = sysG.parentElement;
+      if (sysG) sysG.__srLift = 0;
+      const fake = doc.createElement('div'); /* 模拟 Vue 重建宿主面板（含 #bagTabs/#backpackGrid，
+        resolveHost 按 SCENES 选择器命中 → 观察器 → 重装配走 mount 全路含 lift 判定） */
+      fake.className = 'panel';
+      fake.innerHTML = '<div class="bag-tabs" id="bagTabs"></div>';
+      const fg = doc.createElement('div'); fg.id = 'backpackGrid'; fg.style.height = '2000px';
+      fake.appendChild(fg);
+      (home || doc.body).appendChild(fake);
     }
   });
   await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
   const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
   await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1300); /* 观察器异步重装配 */
   const liftA = await rcF.evaluate(() => {
     let sys = document.getElementById('srp');
     while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
     return sys ? sys.style.transform : 'NO-SYS';
   });
-  check('4a:lift-when-tallest', liftA === 'translateY(-38px)', `sys.transform=${liftA}（壳最高=居中被缩动 → 提 38 复位顶边）`);
+  check('4a:lift-when-tallest', liftA === 'translateY(-38px)', `sys.transform=${liftA}（装配期壳封顶且最高=居中被压短 → 提 38 复位顶边）`);
 
   /* 4b 对照：强制兄弟面板更高（min-height 800）→ 壳非最高=系统高度由兄弟驱动（顶没动过）
      → 不提。fixture 静态内容里 Brew 兄弟列本就矮于 740，须人为垫高才构成对照。 */

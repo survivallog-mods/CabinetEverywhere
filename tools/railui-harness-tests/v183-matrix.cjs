@@ -161,7 +161,7 @@ function check(name, ok, detail) {
     const s = await railState(key);
     if (!s) { check(key + ':rail', false, 'rail 未挂'); continue; }
     check(key + ':plain', s.cls.indexOf('plain') >= 0, s.cls);
-    check(key + ':size', s.w === 720 && s.h === 740, `${s.w}x${s.h}`); /* 作者#3：plain 740 */
+    check(key + ':size', s.w === 720 && (key === 'RatCage' ? (s.h <= 740 && s.h >= 300) : s.h === 740), `${s.w}x${s.h}`); /* 作者#3：plain 定高 740；四轮 RatCage 独享自适应封顶（sc-ratcage） */
     if (FOOD[key]) check(key + ':sortbtn', s.sortBtn, '');
     else check(key + ':nosortbtn', !s.sortBtn, '');
     if (key === 'Trade') {

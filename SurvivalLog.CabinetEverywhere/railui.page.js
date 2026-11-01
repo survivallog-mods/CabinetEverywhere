@@ -518,7 +518,14 @@
   function pinKey() { return 'srp_pin_order_' + st.scene; }
   function commonKey() { return 'srp_common_tags_' + st.scene; }
   function loadPinOrder() { var v = lsGet(pinKey()); return Array.isArray(v) ? v : null; }
-  function savePinOrder(ids) { lsSet(pinKey(), ids || []); }                 /* T5 拖拽调用 */
+  /* T5 拖拽调用。2026-11-02 四轮（作者#2 定案：拖拽同步官方序）：显示序写入 localStorage
+     的同时同步官方 BagTabs 数组序（cmd→C# TabInjector 重排+Repush）——官方 A/D 步进走
+     官方数组序，序一致后步进=显示序邻居，无需拦截校正；显示序≠官方序的整类错位消失。 */
+  var INJ_PAGES = { Cooking: 1, RatCage: 1, BrewPanel: 1, DyePanel: 1 }; /* TabInjector 四注入页（pinOrder 只对这些页上报——其他页官方数组非本 mod 域） */
+  function savePinOrder(ids) {
+    lsSet(pinKey(), ids || []);
+    try { if (INJ_PAGES[st.scene] && Array.isArray(ids) && ids.length) cmdOut('pinOrder', { key: st.scene, order: ids.slice() }); } catch (e) { }
+  }
   function loadCommon() { var v = lsGet(commonKey()); return Array.isArray(v) ? v.slice() : null; }
   function saveCommon() { lsSet(commonKey(), COMMON); }
   function loadNames() {
@@ -835,7 +842,7 @@
     /* Bug3 v1.8.2.3：物品变更类命令发出后，官方格需官方重绑才重渲染——BackpackUI 页的
        C# 侧 RefreshBag 带参不可直调，此处对当前 owner 重发 SWITCH_BAG（官方重绑=同效刷新；
        600ms=命令泵 0.5s 周期后落点）。其余 12 页走 C# RefreshActivePage（无参官方动作）。 */
-    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && store.ctx && store.ctx.page === 'BackpackUI') {
+    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && op !== 'pinOrder' && store.ctx && store.ctx.page === 'BackpackUI') {
       setTimeout(function () { try { forgeSwitchTo(st.currentId); } catch (e) { } }, 600);
     }
   }
@@ -2248,6 +2255,7 @@
     if (st.plainBag) rail.className += ' plainbag'; /* v1.8.2.5：简洁背包栏（CSS 隐 ctnbar/搜索/标签/工具行） */
     if (PLAIN_KEYS[sceneKey]) rail.className += ' plain'; /* v1.8.4 缺陷#1：首包前的骨架也按 plain 呈现
        （render 才正式 toggle；防 Trade 等机器页在数据到达前闪出非 plain 的搜索/工具行） */
+    rail.className += ' sc-' + sceneKey.toLowerCase(); /* 2026-11-02 四轮（作者原则：单页问题单页修）：场景类名——per 页 CSS 隔离锚（如老鼠笼专用高度） */
     /* v1.8.2.5：BP/rack 官方格与页签行在**替换面板前**入壳（格进 srGridHost、页签行进
        #srOffTabs 槽，Vue 后续 patch 按引用继续渲染） */
     if (bpPanel) {
@@ -3129,6 +3137,14 @@
     if (sceneBagOnly() && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
     st.sel = null;
     st.lastStepIdx = null; /* 换场景=方向无意义，回「无方向」语义（tagfilter setSel 同款） */
+    /* 2026-11-02 四轮：场景开启即上报本页显示序（C# 侧注入/重排用它对齐官方数组序——
+       游戏重推 tabs/换档重开后顺序自愈；pinOrder 命令幂等，序未变 C# 不动） */
+    try {
+      if (INJ_PAGES[key]) {
+        var po0 = loadPinOrder();
+        if (po0 && po0.length) cmdOut('pinOrder', { key: key, order: po0 });
+      }
+    } catch (e) { }
     PIN_KEY = ''; /* 场景换了/全新侧栏 DOM：页签结构必重建（原地更新纪律，§4.10） */
     RENDERED_ID = null; /* 场景态重置=渲染目标未知，回包门回到「未渲染」 */
     saveSnap(); /* T9：入口态即刻入快照（数据未到时重绑重访也有完整场景态可换回） */

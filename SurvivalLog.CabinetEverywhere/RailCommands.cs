@@ -185,7 +185,7 @@ internal static class RailCommands
             {
                 try { Execute(c); }
                 catch (Exception e) { WarnOnce("exec:" + c.Op, "命令 " + c.Op + " 执行异常: " + e.Message); }
-                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen"; // 物品变更类（Bug3 刷新判定）
+                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush）
                 executed++;
             }
             if (executed > 0)
@@ -223,6 +223,7 @@ internal static class RailCommands
             case "storeAll": OpStoreAll(c); break;
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
+            case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }
@@ -641,6 +642,30 @@ internal static class RailCommands
             if (!placed) leftStacks++; // 无匹配/全满：留背包（§4.7）
         }
         VLog(c.Op, $"cabs={cabs.Count} 入库 {movedStacks} 叠/{movedTotal} 件，留背包 {leftStacks} 叠");
+    }
+
+    /// <summary>
+    /// pinOrder{key:场景键, order:[ownerId...]}（四轮 作者#2 定案）：显示序落 cerail_pinorder.json，
+    /// TabInjector 0.5s 轮询把官方 BagTabs 重排成同序（官方 A/D 步进走官方数组序——序一致后
+    /// 步进=显示序邻居）。key 非四注入页=丢弃（其他页官方数组非本 mod 注入域，不动）。
+    /// 调用点：JS 拖拽落序（savePinOrder）+ 场景开启自愈（applyScene）。
+    /// </summary>
+    private static void OpPinOrder(Cmd c)
+    {
+        string pageKey = TabInjector.PageKeyOfScene(c.Key);
+        if (pageKey == null) { WarnOnce("pinOrder:page", "pinOrder 丢弃：非注入页 key=" + c.Key); return; }
+        if (c.Order == null || c.Order.Count == 0) return;
+        // 白名单过滤（红线2 同款纪律）：不在容器名单的 id 剔除（防脏 localStorage 注入幽灵序）
+        var ids = new List<long>(c.Order.Count);
+        int dropped = 0;
+        foreach (var id in c.Order)
+        {
+            if (Whitelisted(id)) ids.Add(id);
+            else dropped++;
+        }
+        if (ids.Count == 0) return;
+        TabInjector.SavePinOrder(pageKey, ids);
+        VLog(c.Op, $"page={pageKey} ids={ids.Count} dropped={dropped}（0.5s 轮询重排官方数组序）");
     }
 
     /// <summary>rename{owner,name}：mod 侧持久化 cerail_names.json（≤8 字截断；空名=删除覆盖回契约名）。</summary>
