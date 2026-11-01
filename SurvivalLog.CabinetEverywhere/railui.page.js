@@ -362,7 +362,8 @@
       id: r[0], n: r[1] != null ? String(r[1]) : '', icon: r[2] != null ? String(r[2]) : '',
       trade: r[3] || 0, stack: r[4] || 1, catId: r[5] || 0, subCatId: r[6] || 0,
       cat: r[7] != null ? String(r[7]) : '', life: r[8] || 0,
-      v1: r[9] || 0, v2: r[10] || 0, v3: r[11] || 0, v4: r[12] || 0, v5: r[13] || 0
+      v1: r[9] || 0, v2: r[10] || 0, v3: r[11] || 0, v4: r[12] || 0, v5: r[13] || 0,
+      uses: r[14] || 0 /* v1.8.5④：cfgUses（交易使用折旧） */
     };
   }
   /* ---- 查表（Produces：ctnById / bagArr；T4/T5 复用）---- */
@@ -1391,7 +1392,7 @@
         out.push({
           id: it.id, x: it.x || 0, y: it.y || 0, w: it.w || 1, h: it.h || 1, count: it.count || 1,
           s1: vd[0] || null, s2: vd[1] || null, s3: vd[2] || null, s4: vd[4] == null ? null : vd[4],
-          trade: cfg ? Math.round((cfg.trade || 0) * (it.count || 1)) : null,
+          trade: cfg ? Math.round((cfg.trade || 0) * dispTradeUses(it.useTimes, it.useTimesMax, cfg.uses || 0) * (it.count || 1)) : null,
           days: it.isExpired ? -100000 : (it.shelfLifeDays != null ? it.shelfLifeDays : null)
         });
       }
@@ -1415,6 +1416,14 @@
       });
     }
     return out;
+  }
+  /* 使用损耗系数（PC TradeUses 逐式）：全新=1；用过的按剩余次数比例折算 */
+  function dispTradeUses(useTimes, maxUseTimes, cfgUses) {
+    var denom = cfgUses < 1 ? 1 : cfgUses;
+    var u = useTimes || 0;
+    if (u < 1) return 1;
+    var mx = maxUseTimes > 0 ? maxUseTimes : denom;
+    return u / mx * denom;
   }
   function dispKeyOf(row, k) {
     if (!row) return null;
@@ -1450,7 +1459,7 @@
     var rows = dispRows(model);
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
-    var key = DISP.choice, sign = key === 'shelf' ? 1 : -1; /* 保质升序（快坏在前）；其余降序 */
+    var key = DISP.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
     pairs.sort(function (a, b) {
       var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
       if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
@@ -1488,28 +1497,34 @@
     }
     if (moved && model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
   }
-  /* 角标行绑定：DOM 格（top,left）序 ↔ 模型 (y,x) 序 zip（同源渲染=恒成立），值=dispRows */
+  /* 角标行绑定（v1.8.5 第四轮：作者缺陷#1/#3）——**下标直配**：Vue v-for 不重排 DOM、
+     webui-bag renderItems 同序 ⇒ cells[i] ↔ model.items[i] 恒成立（ProjectCook 原做法）。
+     旧「位置序 zip」在悬停缩放（rect 抖动）与详情弹层（格容器多节点）下失稳=数值跳动/清空。 */
   function dispCellRows(gridEl) {
     var model = DISP.model;
     if (!model || !gridEl) return null;
-    if (DISP.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格=数值闪错） */
+    if (DISP.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格） */
     var cells = gridEl.querySelectorAll('.item');
     if (!cells.length || cells.length !== model.items.length) return null;
-    /* 行序=**当前显示位**（与 DOM 同步态）：grid 分支 dispRows 的 x/y 是真实位（join 用），
-       此处覆盖为当前 model 位——排序后 DOM 在显示位，行也须按显示序 zip（否则角标配错行） */
-    var rows = dispRows(model);
-    for (var q = 0; q < rows.length; q++) { rows[q].x = model.items[q].x || 0; rows[q].y = model.items[q].y || 0; }
-    rows = rows.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
-    var dom = [];
-    for (var i = 0; i < cells.length; i++) {
-      var r = cells[i].getBoundingClientRect();
-      if (r.width < 2) return null;
-      dom.push([r.top, r.left, cells[i]]);
-    }
-    dom.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
+    var rows = dispRows(model); /* 行序=模型数组序（与 DOM 同序）——不再按位置重排 */
     var m = new Map();
-    for (var j = 0; j < dom.length; j++) m.set(dom[j][2], rows[j]);
+    for (var j = 0; j < cells.length; j++) m.set(cells[j], rows[j]);
     return m;
+  }
+  /* 布局坐标（作者缺陷#1：悬停缩放走 transform，getBoundingClientRect 是视觉框会抖——
+     offset* 是布局值不受影响）。返回 el 相对 stop 的 (x,y)。 */
+  function offsetXY(el, stop) {
+    var x = 0, y = 0, n = el;
+    while (n && n !== stop) {
+      x += n.offsetLeft || 0; y += n.offsetTop || 0;
+      n = n.offsetParent;
+      if (!n) break;
+      if (stop && stop.contains && !stop.contains(n)) {
+        var a = el.getBoundingClientRect(), b2 = stop.getBoundingClientRect();
+        return [a.left - b2.left, a.top - b2.top];
+      }
+    }
+    return [x, y];
   }
   function dispActive() { return !!(DISP.choice && DISP.choice !== 'official' && DISP.model); }
   /* dropFilter（PC dropFilter 移植）：真实布局=模型 real 快照（无快照=未排序=放行原消息） */
@@ -1605,20 +1620,6 @@
     if (isFoodScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
   }
-  /* 图标尾段 → icfg（兜底路专用：同尾段多 cfg=歧义不标） */
-  function iconCfgOf(elx) {
-    var img = elx.querySelector ? elx.querySelector('img') : null;
-    var tail = img ? String(img.getAttribute('src') || '').split('?')[0].split('/').pop().toLowerCase() : '';
-    var e2 = tail ? ICONIDX[tail] : null;
-    if (e2 && !e2.ambig) { for (var cid in e2.ids) return ICFG[parseInt(cid, 10)] || null; }
-    return null;
-  }
-  /* 配置级 stats 文本（icfg v1/v2/v3/v5）——兜底路（模型 zip 未成时保底显示） */
-  function cfgStatText(cfg, k) {
-    var m = { sat: 'v1', mind: 'v2', en: 'v3', hp: 'v5' };
-    var v = cfg ? (cfg[m[k]] || 0) : 0;
-    return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
-  }
   function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值） */
     if (k === 'shelf') return daysText(it ? it.days : null);
     if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '—';
@@ -1644,33 +1645,17 @@
       layer.__srBadgeLayer = true;
       host.appendChild(layer); /* 官方格容器之外的自家层：srGridHost 是壳元素，合法 */
     }
-    var hostRect = host.getBoundingClientRect();
-    var z = (hostRect.width > 0 && host.offsetWidth > 0) ? hostRect.width / host.offsetWidth : 1;
-    var cellRows = dispCellRows(host); /* 模型行绑定（v2：页面模型/契约 join 行，值随物品恒定） */
-    if (!cellRows && !ICONIDX) buildIconIdx();
-    if (!cellRows) { try { console.warn('[CERail] 角标模型 zip 未成（数量不齐/模型未就绪）→ 图标配置级兜底（仅 stats 维）'); } catch (e) { } }
+    var cellRows = dispCellRows(host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
+    if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
     var h = '';
     for (var k = 0; k < its.length; k++) {
       var elx = its[k];
       if (elx.getAttribute('data-srhide')) continue;             /* 被筛掉的格不标 */
-      var it = cellRows ? cellRows.get(elx) : null;
-      if (!it) {
-        if (cellRows) continue; /* zip 成立而行缺：不标（宁缺勿错） */
-        /* v1.8.5（作者缺陷#1 兜底）：zip 未成 → 图标→icfg 配置级 stats（v1.8.3 实机路；
-           保质/交易逐叠维不标 */
-        if (spec.k === 'shelf' || spec.k === 'value' || spec.k === 'tvalue') continue;
-        var fb = iconCfgOf(elx);
-        if (!fb) continue;
-        var rr = elx.getBoundingClientRect();
-        if (rr.width < 2 || rr.height < 2) continue;
-        var fx = (rr.left - hostRect.left) / z + rr.width / z, fy = (rr.top - hostRect.top) / z;
-        h += '<i style="left:' + Math.round(fx) + 'px;top:' + Math.round(fy) + 'px;color:' + spec.color + '">' + cfgStatText(fb, spec.k) + '</i>';
-        continue;
-      }
-      var r = elx.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2) continue;
-      var x = (r.left - hostRect.left) / z + r.width / z;
-      var y = (r.top - hostRect.top) / z;
+      var it = cellRows.get(elx);
+      if (!it) continue;
+      if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
+      var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
+      var x = p[0] + elx.offsetWidth, y = p[1];
       h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
     }
     if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
@@ -2836,33 +2821,23 @@
       var its = grid.querySelectorAll('.item');
       if (!its.length) { if (old && old.parentNode) old.parentNode.removeChild(old); return; }
       var arr = itemsOf(store.bag);
-      var gRect = grid.getBoundingClientRect();
-      var z = (gRect.width > 0 && grid.offsetWidth > 0) ? gRect.width / grid.offsetWidth : 1;
       var color = FBCOLOR[NB.fsort] || '#f0b03c';
       /* v1.8.5：数值=DISP join 行（Vue 页无 id/无 LogicId 通道——视觉序↔网格序 zip 在真实态
          恒成立，行绑定恒定=数值不再错配跳动）；未 join/行缺=不标（宁缺勿错） */
-      var cellRows = dispCellRows(grid); /* 模型行绑定（v2：Vue 模型行——vd/shelfLifeDays 自带） */
-      if (!cellRows && !ICONIDX) buildIconIdx();
-      if (!cellRows) { try { console.warn('[CERail] 角标模型 zip 未成（数量不齐/模型未就绪）→ 图标配置级兜底（仅 stats 维）'); } catch (e) { } }
+      var cellRows = dispCellRows(grid); /* 下标直配（v1.8.5④：悬停缩放/详情弹层零扰动） */
+      if (!cellRows) {
+        /* 配对未成（详情弹层临时节点/模型未就绪）：**保留上一次内容不清空**
+           （作者缺陷#3：点开详情数值消失）；无历史也暂不画，下一轮配对成功再画 */
+        return;
+      }
       var h = '';
       for (var k = 0; k < its.length; k++) {
         var elx = its[k];
-        var it = cellRows ? cellRows.get(elx) : null;
-        if (!it) {
-          if (cellRows) continue;
-          if (NB.fsort === 'shelf' || NB.fsort === 'value') continue;
-          var fb = iconCfgOf(elx);
-          if (!fb) continue;
-          var rr = elx.getBoundingClientRect();
-          if (rr.width < 2 || rr.height < 2) continue;
-          var fx = (rr.left - gRect.left) / z + rr.width / z - 1, fy = (rr.top - gRect.top) / z + 1;
-          h += '<i style="left:' + Math.round(fx) + 'px;top:' + Math.round(fy) + 'px;color:' + color + '">' + cfgStatText(fb, NB.fsort) + '</i>';
-          continue;
-        }
-        var r = elx.getBoundingClientRect();
-        if (r.width < 2 || r.height < 2) continue;
-        var x = (r.left - gRect.left) / z + r.width / z - 1;
-        var y = (r.top - gRect.top) / z + 1;
+        var it = cellRows.get(elx);
+        if (!it) continue;
+        if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
+        var p = offsetXY(elx, grid); /* 布局坐标：悬停 transform 缩放不影响（作者缺陷#1） */
+        var x = p[0] + elx.offsetWidth - 1, y = p[1] + 1;
         h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, NB.fsort) + '</i>';
       }
       if (old && old.__srnH === h) return; /* 同串免写：防自家写入触发观察器回环（v1.8.3 同款） */

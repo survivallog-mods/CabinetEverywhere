@@ -172,8 +172,8 @@ function check(name, ok, detail) {
     const sh = await fr.evaluate(() => [...document.querySelectorAll('#srnBadges i')]
       .map((i) => ({ t: i.textContent, l: parseFloat(i.style.left) || 0, tp: parseFloat(i.style.top) || 0 }))
       .sort((a, b) => (a.tp - b.tp) || (a.l - b.l)).map((x) => x.t));
-    check('bp:shelf-direction', sh[0] === '已过期' && sh[1] === '2天' && sh[2] === '3天',
-      `[${sh.join(',')}]（asc：已过期→2天→3天→— 尾；daysText≥1天取整）`);
+    check('bp:shelf-direction', sh[0] === '3天' && sh[1] === '2天' && sh[2] === '已过期',
+      `[${sh.join(',')}]（desc：3天→2天→已过期→— 尾——作者口径保质长在前；daysText≥1天取整）`);
   } catch (e) { check('bp:shelf-direction', false, String(e).slice(0, 60)); }
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 

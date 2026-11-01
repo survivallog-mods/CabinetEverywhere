@@ -16,7 +16,7 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,view,tradePrefs,lastTidyFail},
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
-///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5]],
+///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]],
 ///     items:{ "bag":[[id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days]], "&lt;ownerId&gt;":[...] } }
 ///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
 ///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
@@ -683,6 +683,7 @@ internal static class RailData
         try { stack = ic.StackLimit; } catch { }
         try { cat = ic.Category; subCat = ic.SubCategory; } catch { }
         try { trade = ic.TradeValue; } catch { } // 交易价值（price=0x80 另有字段，未用）
+        int uses = 0; try { uses = ic.UseTimes; } catch { } // v1.8.5④：vue 页交易折旧 dispTradeUses 的 cfgUses
         try { life = ic.Life; } catch { }
         try { v1 = ic.ValueDisplay1; v2 = ic.ValueDisplay2; v3 = ic.ValueDisplay3; v4 = ic.ValueDisplay4; v5 = ic.ValueDisplay5; } catch { }
 
@@ -697,6 +698,7 @@ internal static class RailData
           .Append(",\"").Append(EscapeJs(CategoryName(cat))).Append('"')
           .Append(',').Append(life)
           .Append(',').Append(F(v1)).Append(',').Append(F(v2)).Append(',').Append(F(v3)).Append(',').Append(F(v4)).Append(',').Append(F(v5))
+          .Append(',').Append(uses) /* v1.8.5④：cfgUses（交易使用折旧） */
           .Append(']');
         return sb.ToString();
     }
