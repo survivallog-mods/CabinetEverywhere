@@ -2598,7 +2598,11 @@
         if (h > sibMax) sibMax = h;
       }
       var wantH = Math.max(778, sibMax);
-      if (wantH > 816) wantH = 816; /* 硬钳：≤旧设计高度，跑飞不可能 */
+      /* 跑飞钳=**视口高**（与量高同空间）：界面不可能高过视口，防反馈跑飞等价；
+         八轮实锤教训：钳数不能拿夹具空间的常数（816）——游戏 webview 带缩放（实测 0.932），
+         官方面板 css 高可到 839 > 816，硬钳把壳截短 23css≈半格=左侧底边与右侧错位。 */
+      var vhCap = doc.defaultView.innerHeight || 0;
+      if (vhCap > 400 && wantH > vhCap) wantH = vhCap;
       var wantHPx = wantH + 'px';
       if (rail.style.height !== wantHPx) {
         rail.style.setProperty('height', wantHPx, 'important');
