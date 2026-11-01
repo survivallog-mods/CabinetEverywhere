@@ -217,15 +217,15 @@
 #srp .sr-rail.plain .sr-hover,
 #srp .sr-rail.plain .sr-foot .fr{display:none}
 #srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单贴 ▾ 钮下锚 */
-/* 2026-11-01 作者#3：机器页显示高度 816→740（缩 2 格=2×38px 烹饪格步距，夹具实测 cell=38）。
-   只缩页面显示高度（格区视口少显 2 行、可滚动），**不减柜子容量行数**；页脚动作组随之上移，
-   避让屏幕底缘「脚边 xx 全拿」快捷拾取条对按钮的遮挡。BackpackUI 原生页/MaterialRack
-   (plainbag)/温室壳不受影响（仍 816 定版）。
-   2026-11-02 四轮（作者原则：固定宽高+单页问题单页修）：自适应高度**只保留给老鼠笼**
-   （sc-ratcage——该页官方格短、定高壳必垫空白，壳随格收、封顶 740 超高滚动）；
-   其余机器页维持定高 740（切换页签壳高恒定，不再缩放跳动）。 */
-#srp .sr-rail.plain{height:740px !important;min-height:740px !important;max-height:740px !important}
-#srp .sr-rail.sc-ratcage{height:auto !important;min-height:0 !important;max-height:740px !important}
+/* 2026-11-02 五轮（作者坐标定版：顶点 x 不动、底边上收一格 x+10→x+9；「不止缩短还上移」=四轮
+   translateY(-38) 方向错误已删）。机器页壳定高 778（=816−38 一格），壳外 #srp 垫 38px 占位
+   （mount 内联）——系统容器布局高度与 816 时代分毫不变：顶边/垂直居中/兄弟面板全不动，
+   只有壳本体矮一格，底缘让出 38px 给「脚边 xx 全拿」拾取条；垫出的空带显示系统面板底色。
+   老鼠笼（sc-ratcage）独例：系统高度由官方鼠笼/电力面板（实测 782px）驱动——壳**填满槽位**
+   （height:100% 跟兄弟同高，零空档；背包格 1428px 在壳内滚动），不适用「缩一格」。
+   BackpackUI 原生页/MaterialRack(plainbag)/温室壳不受影响（仍 816 定版）。 */
+#srp .sr-rail.plain{height:778px !important;min-height:778px !important;max-height:778px !important}
+#srp .sr-rail.sc-ratcage{height:100% !important;min-height:0 !important;max-height:none !important}
 /* 设施排序钮（页脚左下角；作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
 #srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
 #srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}

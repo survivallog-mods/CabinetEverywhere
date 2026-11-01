@@ -101,8 +101,8 @@ const CONTRACT = (page, view, rev) => ({
       blank: host && body ? Math.round(body.getBoundingClientRect().bottom - host.getBoundingClientRect().bottom) : 999
     };
   });
-  check('C:cooking-fixed-740', cookGeo.h === 740 && cookGeo.cls.indexOf('sc-cooking') >= 0 && cookGeo.cls.indexOf('sc-ratcage') < 0,
-    `h=${cookGeo.h} cls含sc-cooking=${cookGeo.cls.indexOf('sc-cooking') >= 0}（其他机器页=定高不动）`);
+  check('C:cooking-fixed-778', cookGeo.h === 778 && cookGeo.cls.indexOf('sc-cooking') >= 0 && cookGeo.cls.indexOf('sc-ratcage') < 0,
+    `h=${cookGeo.h} cls含sc-cooking=${cookGeo.cls.indexOf('sc-cooking') >= 0}（其他机器页=定高 778+底垫 38 顶锚不动）`);
 
   await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
   const rf = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
@@ -110,14 +110,14 @@ const CONTRACT = (page, view, rev) => ({
   await page.waitForTimeout(800);
   const ratGeo = await rf.evaluate(() => {
     const rail = document.getElementById('srRail');
-    const host = document.getElementById('srGridHost'), body = document.getElementById('srBody');
+    const wrap = document.getElementById('srp');
     return {
-      cls: rail.className, h: Math.round(rail.offsetHeight),
-      blank: host && body ? Math.round(body.getBoundingClientRect().bottom - host.getBoundingClientRect().bottom) : 999
+      cls: rail.className, h: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight),
+      pad: getComputedStyle(wrap).paddingBottom
     };
   });
-  check('D:ratcage-auto-fit-only', ratGeo.h < 740 && ratGeo.h > 300 && ratGeo.blank <= 8 && ratGeo.cls.indexOf('sc-ratcage') >= 0,
-    `h=${ratGeo.h} blank=${ratGeo.blank}（老鼠笼独享随格收，格底贴壳底）`);
+  check('D:ratcage-fills-slot', ratGeo.cls.indexOf('sc-ratcage') >= 0 && ratGeo.h === ratGeo.wrapH && ratGeo.pad === '0px',
+    `rail=${ratGeo.h} wrap=${ratGeo.wrapH} pad=${ratGeo.pad}（老鼠笼独享填满槽位=跟兄弟面板同高零空档）`);
 
   /* 非注入页不上报（ToolTable 开启零 pinOrder） */
   await page.evaluate(() => { window.__CAP.cmd.length = 0; });

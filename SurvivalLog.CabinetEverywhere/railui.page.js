@@ -2300,21 +2300,12 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
-    /* 2026-11-02 作者#2 二轮「高度缩了下面仍被遮挡、界面整体下移」：官方机器页 body 是
-       align-items:center 垂直居中——壳 816→740 的 76px 缩减被上下各分走 38px：顶下移 38
-       （=「整体下移」）、底只让出 38（拾取条没让够）。补偿：壳驱动系统高度时（系统容器
-       是 flex stretch——wrap==rail 高 ⟺ 壳最高；兄弟更高时 wrap 会被拉伸超出 rail 固定高
-       =系统由兄弟驱动、顶本来就没动），给系统容器 translateY(-38px)：顶部复位原位、
-       底部让足全 76px。一次性幂等（__srLift 门），transform 纯视觉不参与居中计算。 */
-    if (PLAIN_KEYS[sceneKey] && !bpPanel) {
-      try {
-        var sys = wrap.parentElement;
-        while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
-        if (sys && sys !== doc.body && !sys.__srLift) {
-          sys.__srLift = 1;
-          if (wrap.offsetHeight <= (rail.offsetHeight || wrap.offsetHeight) + 1) sys.style.transform = 'translateY(-38px)';
-        }
-      } catch (e) { }
+    /* 2026-11-02 五轮（作者坐标定版：顶点 x 不动、底边上收一格）：机器页壳定高 778（=816−38），
+       壳外垫 38px 占位——系统容器布局高度与 816 时代完全一致（顶边/居中/兄弟面板零位移），
+       四轮的 translateY(-38) 上提方案已删（作者实锤「界面被抬高」=方向反了：补偿把没被
+       压短的页也推上去了）。老鼠笼例外（sc-ratcage 填满槽位）不垫。 */
+    if (PLAIN_KEYS[sceneKey] && !bpPanel && sceneKey !== 'RatCage') {
+      try { wrap.style.paddingBottom = '38px'; } catch (e) { }
     }
     buildStubs(doc, sc, wrap); /* T9 桩节点（SCENES.stubs 声明驱动；宿主已移除后建，真节点不在=无 id 重复。rack：真节点已 reparent 在文档 → 自愈不建桩） */
     bind(doc, rail); /* bind 内部 el={} 重建引用表并挂 rail（rail.js 同款；T9 重绑路复用同一函数，__srBound 门防监听器重复挂） */
