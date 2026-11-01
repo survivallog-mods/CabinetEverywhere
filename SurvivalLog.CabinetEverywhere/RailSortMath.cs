@@ -31,7 +31,10 @@ namespace SurvivalLog.CabinetEverywhere;
 /// </summary>
 internal static class RailSortMath
 {
-    // =================（已退役 2026-11-01 作者终裁：stats=配置效果值×剩余次数，不叠天赋；
+    private static readonly int[] EatIndex = { 0, 1, 2, 4 }; // Stats[0..3]=效果维[饱腹/心态/精力/生命(=效果4)]
+    private static float _nowFallback; // NowHours 失败回退值（原 _factorsAt 引用随天赋管线退役）
+
+    // =================（已退役 2026-11-01 作者终裁：stats=实例效果总量×剩余次数比，不叠天赋；
     //    天赋管线 EatValues/FactorsNow 整块移除——详见 Of() 注释） =================
     // ================= 交易（ProjectCook TradeUses/鉴定 + Trade 页需求因子） =================
 
@@ -215,23 +218,44 @@ internal static class RailSortMath
                    （山珍菌菇饭(完美) 28×3=84）。单次值=Config_UseAction→Effect.Item*End（完美料理
                    有独立配置，品质已含在配置选择里）——**不再叠实例数组/天赋管线**（旧路 84→26/次
                    =78 与详情 28/次不符；详情=展示口径，作者以详情为准）。 */
-                float[] one = new float[5];
+                /* 2026-11-01 第七轮终解（配置表实锤）：**详情=实例效果总量（InstanceEffectEnd，
+                   掷骰含品质），悬浮 vd=另一套展示掷值**——两套独立（山珍菌菇饭(完美)：实例 [84,18,6]
+                   总量=28/次，vd=[24,6,2]/次；龙虎双拼(完美)：实例 [92,14,21]，配置才 [43,14,0]）。
+                   作者算式：角标 = 单次值 × 剩余次数 = **实例总量 × UseTimes/MaxUseTimes**
+                   （满份=总量 84；吃一口=28）。配置总量仅作无实例数组的兜底（同样是总量，不乘次数）。 */
+                float[] total = new float[5];
+                bool hasInst = false;
                 try
                 {
-                    if (cfg.UseAction > 0)
+                    var ie = it.InstanceEffectEnd;
+                    if (ie != null && ie.Length >= 5)
                     {
-                        var act = cm?.Get_Config_Action(cfg.UseAction);
-                        var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
-                        if (eff != null)
-                            one = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
+                        hasInst = true;
+                        for (int q = 0; q < 5; q++) total[q] = ie[q];
                     }
                 }
                 catch { }
-                int uses = 1;
-                try { uses = Math.Max(1, it.UseTimes); } catch { } /* 剩余使用次数（useTimes 随食用递减） */
+                if (!hasInst)
+                {
+                    try
+                    {
+                        if (cfg.UseAction > 0)
+                        {
+                            var act = cm?.Get_Config_Action(cfg.UseAction);
+                            var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
+                            if (eff != null)
+                                total = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
+                        }
+                    }
+                    catch { }
+                }
+                int uses = 1, usesMax = 1;
+                try { uses = Math.Max(1, it.UseTimes); } catch { }
+                try { usesMax = Math.Max(1, it.MaxUseTimes > 0 ? it.MaxUseTimes : 1); } catch { }
                 for (int i = 0; i < 4; i++)
                 {
-                    int v = (int)Math.Round(one[EatIndex[i]] * uses, MidpointRounding.AwayFromZero);
+                    if (total[EatIndex[i]] == 0f) continue;
+                    int v = (int)Math.Round(total[EatIndex[i]] * uses / (float)usesMax, MidpointRounding.AwayFromZero);
                     if (v != 0) n.Stats[i] = v;
                 }
             }
@@ -271,7 +295,7 @@ internal static class RailSortMath
             if (w != null) return GameCore.HotUpdate.Battle.Logic.RobotSortingManager.GetNowHours(w);
         }
         catch { }
-        return _factorsAt > float.NegativeInfinity / 2 ? _factorsAt : 0f;
+        return _nowFallback;
     }
 
     private static string F(float v) => v.ToString("0.###", CultureInfo.InvariantCulture);
