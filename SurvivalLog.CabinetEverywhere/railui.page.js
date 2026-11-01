@@ -105,7 +105,6 @@
     { k: 'shelf', label: '保质期', ico: '🕐' }
   ];
   var FBCOLOR = { sat: '#8fc06e', mind: '#b08fd6', en: '#6fc7c9', hp: '#e07ab0', value: '#f0b03c', shelf: '#f0b03c', tvalue: '#f0b03c' };
-  var VFMap = { sat: 'v1', mind: 'v2', en: 'v3', hp: 'v5' }; /* 排序键 → icfg 字段（VD_MAP：v4 恒 0 不用） */
 
   /* 12 页场景表 —— host 选择器照 Task 1 取证表逐页抄录
      （docs/superpowers/plans/2026-10-30-cerail-spike-findings.md §6，模板标记已逐页核实）。
@@ -325,7 +324,7 @@
   /* 列表 dyn 列：排序键 → 列头标签 + 取值（rail.js DYN 原样，字段换契约映射） */
   var DYN = {
     value: { label: '总价值', f: function (i) { return i.value * i.count; } },
-    shelf: { label: '保质(h)', f: function (i) { return shelfH(i.shelf); } },
+    shelf: { label: '保质(天)', f: function (i) { return Math.round(((i.shelf || 0) / 24) * 10) / 10; } },
     sat: { label: '饱食', f: function (i) { return i.sat > 0 ? '+' + i.sat : '—'; } },
     hp: { label: '生命', f: function (i) { return i.hp ? '+' + i.hp : '—'; } },
     en: { label: '精力', f: function (i) { return i.en ? '+' + i.en : '—'; } },
@@ -427,7 +426,6 @@
   function catColor(catId) { return CAT_RING[((catId % CAT_RING.length) + CAT_RING.length) % CAT_RING.length]; }
   /* 保质键 → 角标文本（缺陷单#1：单位定案=游戏小时；days=排序键编码——-100001 腐败/
      -100000 过期无计/(-100000,0) 过期计天(距腐败)/>0 剩余天；文本口径=ProjectCook DaysText） */
-  function shelfH(sec) { return Math.round((sec || 0) / 3600); } /* 旧口径保留（列表列等旧消费位） */
   function daysText(k) {
     if (k == null) return '—';
     if (k <= -100001) return '已腐败';
@@ -1014,8 +1012,6 @@
                       （v1.8.2：put1 随右键 mod 语义退役；putAll/takeAll 由中段分类/按标签路
                       复用——cat 恒非 null；tidy 只带 owner/before=命令时该 owner 叠数；
                       storeAll 带 order+全量柜 snaps） */
-  var SORT_PENDING = null; /* 缺陷单#1：用户发起的排序键名——C# ctx.lastSortAck 回执到达时
-                      对得上才 toast，自动路（Trade 默认/切柜续排）静默 */
   function snapOwner(id) { /* ownerId → {s:叠数, p:件数}（契约原始行直读，零渲染对象开销） */
     var raw = id === store.bag ? bagArr() : (store.items[String(id)] || []);
     var s = raw.length, p = 0;
@@ -1345,14 +1341,239 @@
     }
     el.srFootSortBody.innerHTML = h;
   }
+  /* ================= 显示层排序 v2（v1.8.5 缺陷单#1：ProjectCook page.js 机制移植——模型级） =================
+     两轮实机教训：数据层 sortBy（改真实 BagPos）=毁玩家布局且官方格不随改写重渲染；DOM 直写
+     left/top=真实页坐标系与夹具不同（作者实机截图实锤：物品堆右下+溢出）。
+     ProjectCook 真机制=**改页面自己的数据模型让它自己重渲染**：
+       - Vue 背包页（BackpackUI）：#app setupState.bagA/bagB.items（实机实证字段：id/x/y/w/h/
+         cfgId/count/vd[5]/shelfLifeDays/isExpired——数值可直接用，无需 join）；
+       - webui-bag 机器页：w.backpack 网格对象（getItems/getConfig/renderItems——PC sortCooking 同源）。
+     真实位 real=Map(id→[x,y])，按 items 数组身份变化重建（PC fs.items!==items 同款判定：
+     官方刷新必换数组=刷新后必是真实态）；排序=order（无键排尾/保质升序/稳定）+pack 首放 →
+     写模型 x/y → render；还原=写回 real。观察器在官方重渲染后自动重抹（自愈）。
+     dropFilter：排序态下拖放进 sorted 容器→同容器取消/跨容器重定向真实布局 firstFree。 */
+  var DISP = { choice: null, owner: 0, model: null };
+
+  function dispFrame() {
+    for (var i = 0; i < FRAMES.length; i++) {
+      var f = FRAMES[i];
+      if (f && f.el && f.doc && frameVisible(f.el)) return f;
+    }
+    return null;
+  }
+  /* 模型适配器：vue=BackpackUI A 侧（nb 排序对象）；grid=机器页当前容器（w.backpack） */
+  function dispModel() {
+    var f = dispFrame();
+    if (!f) return null;
+    try {
+      if (SCENES[f.key] && SCENES[f.key].native) {
+        var doc = f.doc, app = doc.getElementById('app');
+        var su = app && app._vnode && app._vnode.component && app._vnode.component.setupState;
+        if (!su || !su.bagA || !Array.isArray(su.bagA.items)) return null;
+        return { kind: 'vue', frame: f, items: su.bagA.items, cols: su.bagA.gridCols || 12, rows: su.bagA.gridRows || 33, su: su };
+      }
+      var w = f.el.contentWindow || f.doc.defaultView;
+      var grid = w && w.backpack;
+      if (!grid || typeof grid.getItems !== 'function' || typeof grid.renderItems !== 'function') return null;
+      var cfg = grid.getConfig();
+      return { kind: 'grid', frame: f, items: grid.getItems(), cols: cfg.cols || 12, rows: cfg.rows || 33, grid: grid };
+    } catch (e) { return null; }
+  }
+  /* 数值行（统一形状）：vue=页面模型自带（vd 实例值/shelfLifeDays/count；trade=icfg 单价×数量）；
+     grid=契约行 join（itemsOf(owner) 按 (x,y,w,h) 唯一键——真实态无重叠=恒唯一） */
+  function dispRows(model) {
+    var out = [], i, it;
+    if (model.kind === 'vue') {
+      for (i = 0; i < model.items.length; i++) {
+        it = model.items[i];
+        var vd = it.vd || [];
+        var cfg = ICFG[it.cfgId] || null;
+        out.push({
+          id: it.id, x: it.x || 0, y: it.y || 0, w: it.w || 1, h: it.h || 1, count: it.count || 1,
+          s1: vd[0] || null, s2: vd[1] || null, s3: vd[2] || null, s4: vd[4] == null ? null : vd[4],
+          trade: cfg ? Math.round((cfg.trade || 0) * (it.count || 1)) : null,
+          days: it.isExpired ? -100000 : (it.shelfLifeDays != null ? it.shelfLifeDays : null)
+        });
+      }
+      return out;
+    }
+    var arr = itemsOf(DISP.owner), byPos = {};
+    for (i = 0; i < arr.length; i++) byPos[(arr[i].x || 0) + '_' + (arr[i].y || 0) + '_' + (arr[i].w || 1) + '_' + (arr[i].h || 1)] = arr[i];
+    for (i = 0; i < model.items.length; i++) {
+      it = model.items[i];
+      /* join 键=**真实位**（排序后当前位≠契约位——用 __srReal 快照；无快照=首排，当前即真实） */
+      var realAt = model.items.__srReal ? model.items.__srReal.get(it.id) : null;
+      var jx = realAt ? realAt[0] : (it.x || 0), jy = realAt ? realAt[1] : (it.y || 0);
+      var k = jx + '_' + jy + '_' + (it.w || 1) + '_' + (it.h || 1);
+      var r = byPos[k] || null;
+      out.push({
+        id: it.id, x: jx, y: jy, w: it.w || 1, h: it.h || 1,
+        count: r ? r.count : (it.count || 1),
+        s1: r && r.s1 != null ? r.s1 : null, s2: r && r.s2 != null ? r.s2 : null,
+        s3: r && r.s3 != null ? r.s3 : null, s4: r && r.s4 != null ? r.s4 : null,
+        trade: r && r.tradeV != null ? r.tradeV : null, days: r && r.days != null ? r.days : null
+      });
+    }
+    return out;
+  }
+  function dispKeyOf(row, k) {
+    if (!row) return null;
+    if (k === 'shelf') return row.days == null ? null : row.days;
+    if (k === 'value' || k === 'tvalue') return row.trade == null ? null : row.trade;
+    var v = k === 'sat' ? row.s1 : k === 'mind' ? row.s2 : k === 'en' ? row.s3 : k === 'hp' ? row.s4 : null;
+    return v == null ? null : v;
+  }
+  /* 装填（PC pack 首放，cols/rows=模型官方值；rows+8 余量放不下=整体不排） */
+  function dispPack(ordered, cols, rows) {
+    var used = [];
+    for (var y = 0; y < rows + 8; y++) used.push(new Array(cols).fill(false));
+    var out = new Map();
+    for (var i = 0; i < ordered.length; i++) {
+      var it = ordered[i], w = it.row.w || 1, h = it.row.h || 1, fx = -1, fy = -1;
+      for (var yy = 0; yy + h <= rows + 8 && fx < 0; yy++) for (var xx = 0; xx + w <= cols; xx++) {
+        var free = true;
+        for (var a = yy; a < yy + h && free; a++) for (var b = xx; b < xx + w; b++) if (used[a][b]) { free = false; break; }
+        if (free) { fx = xx; fy = yy; break; }
+      }
+      if (fx < 0) return null;
+      for (var a2 = fy; a2 < fy + h; a2++) for (var b2 = fx; b2 < fx + w; b2++) used[a2][b2] = true;
+      out.set(it.row.id, [fx, fy]);
+    }
+    return out;
+  }
+  /* 主入口：join 模型 → 排序 → 装填 → 写模型 x/y → render（页面自己重渲染）；official=还原 */
+  function dispApply() {
+    var model = dispModel();
+    if (!model) return;
+    DISP.model = model;
+    if (!DISP.choice || DISP.choice === 'official') { dispRestore(model); return; }
+    var rows = dispRows(model);
+    var pairs = [];
+    for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
+    var key = DISP.choice, sign = key === 'shelf' ? 1 : -1; /* 保质升序（快坏在前）；其余降序 */
+    pairs.sort(function (a, b) {
+      var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
+      if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
+      var d = (ka - kb) * sign; /* PC 原式 (a.k-b.k)*sign：desc=-1 高在前；shelf=+1 小在前 */
+      return d !== 0 ? (d > 0 ? 1 : -1) : (a.i - b.i);
+    });
+    var packed = dispPack(pairs, model.cols, model.rows);
+    if (!packed) { dispRestore(model); return; }
+    var items = model.items;
+    if (!items.__srReal) { /* real 快照挂 items 数组本体：适配器每次新建存不住（v138 实锤=二排起
+      把已排位当真实位→乱排/join 全空）；官方刷新必换数组=新数组无快照=自然重采（PC 判定同款） */
+      var real = new Map();
+      for (var r = 0; r < items.length; r++) real.set(items[r].id, [items[r].x || 0, items[r].y || 0]);
+      items.__srReal = real;
+    }
+    var wrote = false;
+    for (var p = 0; p < pairs.length; p++) {
+      var at = packed.get(pairs[p].row.id);
+      if (!at) continue;
+      if (pairs[p].it.x !== at[0]) { pairs[p].it.x = at[0]; wrote = true; }
+      if (pairs[p].it.y !== at[1]) { pairs[p].it.y = at[1]; wrote = true; }
+    }
+    if (model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
+    /* vue：响应式自动重渲染；settling=DOM 未追平窗口（MO 回调清除，角标窗口期跳过） */
+    if (wrote && model.kind === 'vue') DISP.settling = true;
+  }
+  function dispRestore(model) {
+    if (!model || !model.items || !model.items.__srReal) return;
+    var moved = false;
+    for (var i = 0; i < model.items.length; i++) {
+      var it = model.items[i], at = model.items.__srReal.get(it.id);
+      if (!at) continue;
+      if (it.x !== at[0]) { it.x = at[0]; moved = true; }
+      if (it.y !== at[1]) { it.y = at[1]; moved = true; }
+    }
+    if (moved && model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
+  }
+  /* 角标行绑定：DOM 格（top,left）序 ↔ 模型 (y,x) 序 zip（同源渲染=恒成立），值=dispRows */
+  function dispCellRows(gridEl) {
+    var model = DISP.model;
+    if (!model || !gridEl) return null;
+    if (DISP.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格=数值闪错） */
+    var cells = gridEl.querySelectorAll('.item');
+    if (!cells.length || cells.length !== model.items.length) return null;
+    /* 行序=**当前显示位**（与 DOM 同步态）：grid 分支 dispRows 的 x/y 是真实位（join 用），
+       此处覆盖为当前 model 位——排序后 DOM 在显示位，行也须按显示序 zip（否则角标配错行） */
+    var rows = dispRows(model);
+    for (var q = 0; q < rows.length; q++) { rows[q].x = model.items[q].x || 0; rows[q].y = model.items[q].y || 0; }
+    rows = rows.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+    var dom = [];
+    for (var i = 0; i < cells.length; i++) {
+      var r = cells[i].getBoundingClientRect();
+      if (r.width < 2) return null;
+      dom.push([r.top, r.left, cells[i]]);
+    }
+    dom.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
+    var m = new Map();
+    for (var j = 0; j < dom.length; j++) m.set(dom[j][2], rows[j]);
+    return m;
+  }
+  function dispActive() { return !!(DISP.choice && DISP.choice !== 'official' && DISP.model); }
+  /* dropFilter（PC dropFilter 移植）：真实布局=模型 real 快照（无快照=未排序=放行原消息） */
+  function dispFirstFree(w, h) {
+    var model = DISP.model;
+    if (!model || !model.items || !model.items.__srReal) return null;
+    var cols = model.cols, occ = [];
+    for (var y = 0; y < model.rows + 8; y++) occ.push(new Array(cols).fill(false));
+    for (var i = 0; i < model.items.length; i++) {
+      var it = model.items[i], at = model.items.__srReal.get(it.id);
+      if (!at) continue;
+      for (var a = at[1]; a < at[1] + (it.h || 1); a++) for (var b = at[0]; b < at[0] + (it.w || 1); b++)
+        if (a < occ.length && b < cols) occ[a][b] = true;
+    }
+    for (var yy = 0; yy + (h || 1) <= occ.length; yy++) for (var xx = 0; xx + (w || 1) <= cols; xx++) {
+      var free = true;
+      for (var a2 = yy; a2 < yy + (h || 1) && free; a2++) for (var b2 = xx; b2 < xx + (w || 1); b2++) if (occ[a2][b2]) { free = false; break; }
+      if (free) return [xx, yy];
+    }
+    return null;
+  }
+  function installDispDropFilter() {
+    if (window.__srDispDrop) return;
+    try {
+      window.__srDispDrop = 1;
+      var prev = window.postMessage;
+      window.postMessage = function (msg) {
+        try {
+          var m = msg;
+          if (m && typeof m === 'object' && (m.type === 'DRAG_ITEM' || m.type === 'ITEM_MOVE' || m.type === 'GROUND_PICK_TO')) {
+            var d = m.data || {};
+            var to = d.dstOwnerId != null ? d.dstOwnerId : (d.toOwnerId != null ? d.toOwnerId : d.ownerId);
+            if (dispActive() && to != null && String(to) === String(DISP.owner)) {
+              var from = m.type === 'GROUND_PICK_TO' ? null : (d.srcOwnerId != null ? d.srcOwnerId : d.fromOwnerId);
+              if (from != null && String(from) === String(to)) return; /* 同容器拖动：排序态取消 */
+              var cell = dispFirstFree(1, 1); /* 尺寸未知按 1x1（宁占单格） */
+              if (!cell) return;
+              var nd = {};
+              for (var k2 in d) nd[k2] = d[k2];
+              nd.x = cell[0]; nd.y = cell[1];
+              if ('cursorCol' in nd) nd.cursorCol = cell[0];
+              if ('cursorRow' in nd) nd.cursorRow = cell[1];
+              var nm = {};
+              for (var k3 in m) nm[k3] = m[k3];
+              nm.data = nd;
+              return prev.call(this, nm);
+            }
+          }
+        } catch (e) { }
+        return prev.apply(this, arguments);
+      };
+    } catch (e) { }
+  }
+  installDispDropFilter();
+
   function applyFsort(key) {
     st.fsort = key;
-    /* 缺陷单#1：不再 localStorage 持久化（UI-SPEC §4.11「切场景重置为默认」；旧实现恢复标签
-       不重排=标签与格序分裂）；toast 改 settle 回执（C# ctx.lastSortAck，setData 消费）——
-       旧实现 C# 执行前就 toast 成功，失败全静默=「排序不生效」无感 */
-    SORT_PENDING = key;
-    cmdOut('sortBy', { owner: st.currentId, key: key }); /* 统一出口：包装器可截获；入队同 cmd */
+    /* v1.8.5 显示层排序：选择即生效（纯 DOM left/top，真实数据零触碰——ProjectCook 机制）；
+       切场景重置为默认（§4.11）；toast 即时（显示层无失败路径，回执通道退役） */
+    DISP.choice = key;
+    DISP.owner = st.currentId;
+    dispApply();
     render();
+    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
   /* 交易买家条：正式实现无演示切换控件；品类加成数据源（ctx.tradePrefs=[[分类名,加成]…]）
      C# 侧校准后接入——在场则显示加成 chips，暂缺只显示排序口径 */
@@ -1374,44 +1595,16 @@
     if (isFoodScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
   }
-  function badgeTextFor(it, cfg, k) {
-    /* 缺陷单#1：逐叠维度走契约数值段（it.days/it.tradeV/it.s1..s4——C# RailSortMath=
-       ProjectCook 实例+天赋口径）；it 缺位（id/位序双匹配皆失）时属性维退 icfg 配置级、
-       保质/交易不标（宁缺勿错） */
+  function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值） */
     if (k === 'shelf') return daysText(it ? it.days : null);
-    if (k === 'value' || k === 'tvalue') {
-      if (it && it.tradeV != null) return String(it.tradeV);
-      if (!it) return '—';
-      var trade = cfg ? cfg.trade : it.value, cnt = it.count || 1;
-      return String(Math.round((trade || 0) * cnt));
-    }
-    var v = null;
-    if (it) v = k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null;
-    if (v == null && cfg) v = cfg[VFMap[k]] || 0; /* icfg v1/v2/v3/v5=配置级兜底（VD_MAP） */
-    v = v || 0;
+    if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '—';
+    var v = it ? (k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null) : null;
+    v = v == null ? 0 : v;
     return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
   }
-  /* 位序匹配（缺陷单#1 C-b1/C-b2）：Vue 页 .item 无 id、webui-bag 页 id 与契约 InstanceId
-     相等性未证——官方格按 (top,left) 视觉序 ↔ 契约行按 (y,x) 网格序逐位 zip（数量相等才启用）。
-     id 命中优先，位序兜底；数据层重排后两侧坐标同源（BagPos），位序恒成立。 */
-  function buildPosMap(its, arr) {
-    if (!its.length || its.length !== arr.length) return null;
-    var dom = [];
-    for (var i = 0; i < its.length; i++) {
-      var r = its[i].getBoundingClientRect();
-      if (r.width < 2) return null;
-      dom.push([r.top, r.left, its[i]]);
-    }
-    dom.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
-    var rows = arr.slice().sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
-    var m = new Map(); /* 本脚本 realm 的 Map（仅脚本内部用，跨帧元素作键无碍） */
-    for (var j = 0; j < dom.length; j++) m.set(dom[j][2], rows[j]);
-    return m;
-  }
-  /* 匹配口径（缺陷单#1 后）：id 精确 → 位序 zip（buildPosMap）→ 图标尾段（配置级维度）；
-     逐叠维度（保质/交易价值）必须实例级命中，否则不标（宁缺勿错）。
-     zoom 补偿（C-c4）：官方页 CSS zoom 下 getBoundingClientRect 是视觉 px，角标层在
-     zoom 作用域内——按 nbBadges 同款 rect/offsetWidth 比值归一（st.gridScale 恒 1 弃用） */
+  /* 角标（v1.8.5 显示层排序配套）：数值=DISP join 的契约行（RailSortMath 逐叠数值）——
+     每格绑定的行恒定（不再随推送错配=「数值变来变去」根治）；join 未成/行缺=宁缺勿错。
+     zoom 归一（rect/offsetWidth 比值）沿用；位置随格（显示层排序后仍钉在格右上角） */
   function applyBadges() {
     var host = el.srGridHost;
     if (!host || !host.firstElementChild || !el.doc) return;
@@ -1427,43 +1620,32 @@
       layer.__srBadgeLayer = true;
       host.appendChild(layer); /* 官方格容器之外的自家层：srGridHost 是壳元素，合法 */
     }
-    if (!ICONIDX) buildIconIdx();
     var hostRect = host.getBoundingClientRect();
     var z = (hostRect.width > 0 && host.offsetWidth > 0) ? hostRect.width / host.offsetWidth : 1;
-    var arr = itemsOf(st.currentId), byId = {};
-    for (var i = 0; i < arr.length; i++) byId[String(arr[i].id)] = arr[i];
-    var posMap = buildPosMap(its, arr);
+    var cellRows = dispCellRows(host); /* 模型行绑定（v2：页面模型/契约 join 行，值随物品恒定） */
     var h = '';
     for (var k = 0; k < its.length; k++) {
       var elx = its[k];
       if (elx.getAttribute('data-srhide')) continue;             /* 被筛掉的格不标 */
-      var it = byId[String(elx.id || '')] || (posMap ? posMap.get(elx) : null) || null;
-      var cfgId = it ? it.cfgId : 0, cfg = null;
-      if (!cfgId) {
-        var img = elx.querySelector ? elx.querySelector('img') : null;
-        var tail = img ? String(img.getAttribute('src') || '').split('?')[0].split('/').pop().toLowerCase() : '';
-        var e2 = tail ? ICONIDX[tail] : null;
-        if (e2 && !e2.ambig) { for (var cid in e2.ids) { cfgId = parseInt(cid, 10); break; } }
-      }
-      if (cfgId && ICFG[cfgId]) cfg = ICFG[cfgId];
-      if (!it && !cfg) continue;
-      if (!it && (spec.k === 'shelf' || spec.k === 'value' || spec.k === 'tvalue')) continue;
+      var it = cellRows ? cellRows.get(elx) : null;
+      if (!it) continue;                                          /* 行缺：不标（宁缺勿错） */
       var r = elx.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var x = (r.left - hostRect.left) / z + r.width / z;
       var y = (r.top - hostRect.top) / z;
-      h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, cfg, spec.k) + '</i>';
+      h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
     }
     if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
   }
-  /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点），官方改格后重算角标；
+  /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点）——官方改格后先重抹显示层
+     排序（新格=真实态→重 join+重排，ProjectCook 自愈模式）再重算角标；
      v1.8.4 缺陷#5 加宽同步——官方格 cols 异步回推变宽时壳重测跟随（防滚动条压末列） */
   function ensureBadgeObserver() {
     var host = el.srGridHost;
     if (!host || host.__srBadgeMO) return;
     try {
       var V = host.ownerDocument.defaultView.MutationObserver;
-      host.__srBadgeMO = new V(function () { setTimeout(function () { applyBadges(); syncRailWidth(); }, 50); });
+      host.__srBadgeMO = new V(function () { setTimeout(function () { DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); }, 50); });
       host.__srBadgeMO.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     } catch (e) { }
   }
@@ -1537,8 +1719,15 @@
     if (!el.srFootSortPop.hidden) renderFootSortPop();
     ensureBadgeObserver();
     if (st.scene === 'Trade' && !st.tradeSorted && store.items && bagArr().length > 1) {
-      st.tradeSorted = true; /* 每次进页一次性（applyScene 复位）；「默认按交易价值排序」 */
-      cmd('sortBy', { owner: st.currentId, key: 'value' });
+      st.tradeSorted = true; /* 每次进页一次性（applyScene 复位）；「默认按交易价值排序」
+         v1.8.5：显示层（旧数据层 sortBy 废弃——Trade 页同属 Vue 格，重绑链不可靠且毁真实布局） */
+      DISP.choice = 'value'; DISP.owner = st.currentId;
+      dispApply();
+    }
+    /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
+    if (isPlainScene() && st.fsort && st.fsort !== 'official') {
+      DISP.choice = st.fsort; DISP.owner = st.currentId;
+      dispApply();
     }
     var c = ctnById(st.currentId) || railCtns()[0] || null;
     if (!c) return; /* 空契约（无背包无容器）：侧栏保持骨架 */
@@ -2198,12 +2387,9 @@
       return;
     }
     /* v1.8.2：forge 官方切换 → 官方格（在壳内）按新容器重渲染（原生通道）；forge 不可达
-       （无页签族/缓存未到）→ 本地数据仍为真，直接渲染 */
+       （无页签族/缓存未到）→ 本地数据仍为真，直接渲染。
+       v1.8.5：切柜续排改显示层（render 尾部 dispApply 重抹——旧数据层 sortBy 续排废弃） */
     if (!forgeSwitchTo(id)) { if (el.rail) render(); }
-    /* 缺陷单#1：同场景切柜续排（§4.11 排序作用于「当前查看的容器」——旧实现切柜后角标照显
-       而新柜数据未排=显示与数据分裂；ProjectCook 参考行为=排序态跨容器持续生效）。自动路
-       不置 SORT_PENDING（回执静默）。 */
-    if (isPlainScene() && st.fsort && st.fsort !== 'official') cmdOut('sortBy', { owner: id, key: st.fsort });
   }
   /* ---- active 字段读取（附录 A 各族 active 语义，tagfilter readActive 移植 + rack 特例）----
      返回 owner 字符串或 null。索引族（tt/cart/cart0）经 TABS 缓存解下标（pin 占位语义与
@@ -2524,7 +2710,10 @@
       /* 缺陷单#1：切场景重置为默认（§4.11 定版）——**只在进页/换页沿重置**（nbMount 每周期
          重跑，无条件重置会把玩家刚选的排序当场打回；旧实现靠 localStorage 每周期回灌掩盖） */
       var scKey = (store.ctx && store.ctx.page) || '';
-      if (docChanged || NB.sceneKey !== scKey) { NB.sceneKey = scKey; NB.fsort = 'official'; }
+      if (docChanged || NB.sceneKey !== scKey) {
+        NB.sceneKey = scKey; NB.fsort = 'official';
+        DISP.choice = null; DISP.owner = 0; DISP.model = null; /* v1.8.5：进页沿重置显示层排序态 */
+      }
       nbBadges(doc, panel);
       nbEnsureGridMO(doc, panel);
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
@@ -2547,10 +2736,14 @@
   function nbApplyFsort(key, doc) {
     NB.fsort = key;
     var p = doc.getElementById('srnSortPop');
-    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关；toast 走 settle 回执（缺陷单#1） */
-    SORT_PENDING = key;
-    cmdOut('sortBy', { owner: store.bag, key: key }); /* 数据层重排；BackpackUI 页 cmdOut 自带 forge 官方刷新 */
+    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关 */
+    /* v1.8.5 显示层排序（ProjectCook 机制）：纯 DOM left/top，真实摆放零触碰——
+       solo 背包旧路（数据层 sortBy+SWITCH_BAG 重绑）对 bag owner 无效且毁真实布局，废弃 */
+    DISP.choice = key;
+    DISP.owner = store.bag;
+    dispApply();
     nbBadges(doc, nbPanel(doc));
+    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
   function nbOpenConfirm(doc) {
     var p = doc.getElementById('srnSortPop');
@@ -2589,32 +2782,23 @@
       }
       var its = grid.querySelectorAll('.item');
       if (!its.length) { if (old && old.parentNode) old.parentNode.removeChild(old); return; }
-      var arr = itemsOf(store.bag), byId = {};
-      for (var i = 0; i < arr.length; i++) byId[String(arr[i].id)] = arr[i];
+      var arr = itemsOf(store.bag);
       var gRect = grid.getBoundingClientRect();
       var z = (gRect.width > 0 && grid.offsetWidth > 0) ? gRect.width / grid.offsetWidth : 1;
       var color = FBCOLOR[NB.fsort] || '#f0b03c';
-      if (!ICONIDX) buildIconIdx(); /* 三路匹配同 applyBadges：id 精确 / 位序 zip（缺陷单#1，Vue 页无 id 的逐叠维度由此命中）/ 图标尾段→配置级维度 */
-      var posMap = buildPosMap(its, arr);
+      /* v1.8.5：数值=DISP join 行（Vue 页无 id/无 LogicId 通道——视觉序↔网格序 zip 在真实态
+         恒成立，行绑定恒定=数值不再错配跳动）；未 join/行缺=不标（宁缺勿错） */
+      var cellRows = dispCellRows(grid); /* 模型行绑定（v2：Vue 模型行——vd/shelfLifeDays 自带） */
       var h = '';
       for (var k = 0; k < its.length; k++) {
         var elx = its[k];
-        var it = byId[String(elx.id || '')] || (posMap ? posMap.get(elx) : null) || null;
-        var cfgId = it ? it.cfgId : 0, cfg = null;
-        if (!cfgId) { /* Vue 页 .item 无 id 属性：img src 尾段唯一键→配置级（逐叠维度不标，宁缺勿错） */
-          var img = elx.querySelector ? elx.querySelector('img') : null;
-          var tail = img ? String(img.getAttribute('src') || '').split('?')[0].split('/').pop().toLowerCase() : '';
-          var e2 = tail ? ICONIDX[tail] : null;
-          if (e2 && !e2.ambig) { for (var cid in e2.ids) { cfgId = parseInt(cid, 10); break; } }
-        }
-        if (cfgId && ICFG[cfgId]) cfg = ICFG[cfgId];
-        if (!it && !cfg) continue;
-        if (!it && (NB.fsort === 'shelf' || NB.fsort === 'value')) continue;
+        var it = cellRows ? cellRows.get(elx) : null;
+        if (!it) continue;
         var r = elx.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) continue;
         var x = (r.left - gRect.left) / z + r.width / z - 1;
         var y = (r.top - gRect.top) / z + 1;
-        h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, cfg, NB.fsort) + '</i>';
+        h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, NB.fsort) + '</i>';
       }
       if (old && old.__srnH === h) return; /* 同串免写：防自家写入触发观察器回环（v1.8.3 同款） */
       if (!old) {
@@ -2632,7 +2816,7 @@
     try {
       var V = doc.defaultView.MutationObserver;
       grid.__srnMO = new V(function () {
-        setTimeout(function () { if (NB.doc === doc) nbBadges(doc, null); }, 50);
+        setTimeout(function () { if (NB.doc === doc) { DISP.settling = false; dispApply(); nbBadges(doc, null); } }, 50); /* v1.8.5：官方重渲染→重抹显示层排序 */
       });
       grid.__srnMO.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
     } catch (e) { }
@@ -2748,6 +2932,10 @@
        tradeSorted=每次进 Trade 页重置（首包后一次性下发默认排序） */
     st.fsort = (key === 'Trade') ? 'value' : 'official';
     st.tradeSorted = false;
+    /* v1.8.5：显示层排序态随场景重置（Trade=交易价值默认；其余=官方真实顺序）；
+       换场景=换模型（vue/grid 适配器现取），旧模型 real 快照随数组身份自然失效 */
+    DISP.choice = (key === 'Trade') ? 'value' : null;
+    DISP.owner = 0; DISP.model = null;
     /* B 键单独背包 = 纯背包页：进入时全库收紧（rail.js setScene：global 复位回 prevMode） */
     if (sceneBagOnly() && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
     st.sel = null;
@@ -2794,20 +2982,8 @@
        同页首包（mount 先行、数据后到）也补应用一次（sceneApplied 门——mount 时 ctx
        未到，入口默认容器可能落旧值）；同场景回推（rev 变）→ 不动，保住玩家当前页签。
        COMMON 不在此处重置（玩家状态），由 applyScene→loadScenePrefs 按存档/默认赋值。 */
-    /* 缺陷单#1：sortBy 回执 settle（C# ctx.lastSortAck=[key,ok,moved,skip] 一次性带出）——
-       只对用户发起（SORT_PENDING 对得上）toast；自动路（Trade 首包默认/切柜续排）静默。
-       成功=「已按「X」排序 · N 叠重排」（未动=顺序未变），失败=明确报错（治静默）。 */
-    var ack = store.ctx && store.ctx.lastSortAck;
-    if (ack && Array.isArray(ack) && SORT_PENDING === String(ack[0])) {
-      SORT_PENDING = null;
-      var aOk = !!ack[1], aMv = ack[2] | 0, aSk = ack[3] | 0, aK = String(ack[0]);
-      if (aOk) toast(aMv > 0
-        ? '已按「' + fsortLabel(aK) + '」排序 · ' + aMv + ' 叠重排' + (aSk > 0 ? ' · ' + aSk + ' 叠放不下' : '')
-        : '已按「' + fsortLabel(aK) + '」排序（顺序未变）');
-      else toast('「' + fsortLabel(aK) + '」排序未生效（详见 BepInEx 日志）');
-    } else if (ack && Array.isArray(ack)) {
-      SORT_PENDING = null; /* 自动路回执：消费即可，不 toast */
-    }
+    /* v1.8.5：sortBy 数据层通道退役（ctx.lastSortAck 不再消费）——显示层排序即时生效，
+       真实数据零触碰、无失败路径（旧回执/toast 机制随之废弃）。 */
     var page = store.ctx.page || st.scene;
     if (page && (page !== st.scene || page !== sceneApplied)) {
       applyScene(page);
@@ -2826,6 +3002,7 @@
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
   window.__CERAIL__ = {
+    dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0 }; },
     ver: 1,
     /* C# rev 门控直推数据契约 v4 JSON（存入 store 并触发渲染） */
     setData: setData,

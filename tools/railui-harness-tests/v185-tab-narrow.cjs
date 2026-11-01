@@ -107,11 +107,13 @@ const CONTRACT = (page, family, view, rev) => ({
   await cookFrame.waitForFunction(() => !document.getElementById('srFootSortPop').hidden, null, { timeout: 4000 }).catch(() => { });
   await cookFrame.evaluate(() => { const o = document.querySelector('#srFootSortPop [data-fsort="sat"]'); if (o) o.click(); });
   await page.waitForTimeout(200);
+  /* v1.8.5：切柜续排=显示层（render 尾部 dispApply 重抹）——数据层 sortBy 续排退役，
+     断言=切柜后零数据层命令（真实布局零触碰） */
   await page.evaluate(() => { window.__CAP.cmd.length = 0; });
   await cookFrame.evaluate(() => { const b = document.querySelector('#srPinRow [data-ctn="900001"]'); if (b) b.click(); });
   await page.waitForTimeout(250);
   const sortBy = await page.evaluate(() => window.__CAP.cmd.filter((c) => c[0] === 'sortBy').pop());
-  check('cook:resort-on-switch', !!(sortBy && sortBy[1] && String(sortBy[1].owner) === '900001' && sortBy[1].key === 'sat'), JSON.stringify(sortBy && sortBy[1]));
+  check('cook:no-resort-cmd-on-switch', !sortBy, '切柜零数据层命令（显示层 render 重抹）');
 
   /* ---- ② ToolTable · material 视图 ---- */
   await page.evaluate(() => window.__HZ_SHOW__('ToolTable'));

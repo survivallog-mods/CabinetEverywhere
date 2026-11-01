@@ -63,11 +63,19 @@ function check(name, ok, detail) {
   await cf.waitForFunction(() => !document.getElementById('srFootSortPop').hidden, null, { timeout: 4000 });
   const opts = await cf.evaluate(() => [...document.querySelectorAll('[data-fsort]')].map((b) => b.getAttribute('data-fsort') + (b.classList.contains('active') ? '*' : '')));
   check('cook:pop-7', opts.join(',') === 'official*,sat,mind,en,hp,value,shelf', opts.join(','));
+  const before = await cf.evaluate(() => { const h = document.getElementById('srGridHost'); const c = h ? [...h.querySelectorAll('.item')] : []; return c.map((e) => e.style.left + '|' + e.style.top).join(';'); });
   await cf.evaluate(() => document.querySelector('[data-fsort="sat"]').click());
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(250);
+  /* v1.8.5 显示层排序（ProjectCook 机制）：选饱腹 → ①零数据层命令（真实布局零触碰）
+     ②官方格 left/top 被重写（视觉序变化） */
   const cap1 = await page.evaluate(() => window.__SORTCAP.filter((c) => c[0] === 'sortBy').pop());
-  check('cook:sortBy-cmd', !!(cap1 && cap1[1] && cap1[1].key === 'sat'), JSON.stringify(cap1 && cap1[1]));
+  check('cook:no-sortby-cmd', !cap1, '数据层 sortBy 退役（' + JSON.stringify(cap1 && cap1[1]) + '）');
   check('cook:fsort-state', await page.evaluate(() => window.__CERAIL__.state.fsort) === 'sat', 'st.fsort=sat');
+  const after = await cf.evaluate(() => { const h = document.getElementById('srGridHost'); const c = h ? [...h.querySelectorAll('.item')] : []; return c.map((e) => e.style.left + '|' + e.style.top).join(';'); });
+  check('cook:display-reorder', before !== after, '官方格 left/top 显示层重排（before≠after）');
+  /* 方向断言（mock：901 s1=15 / 902 s1=8 / 其余 null）——desc=首两格 15,8（nulls 排尾） */
+  const satBadges = await cf.evaluate(() => [...document.querySelectorAll('#srBadgeLayer i')].map((i) => i.textContent));
+  check('cook:sat-direction', satBadges[0] === '15' && satBadges[1] === '8', `[${satBadges.join(',')}]（desc：15→8→nulls 尾）`);
 
   /* ③ 角标 overlay：夹具页官方格已被 harness 喂数渲染 MOCK 物品（.item 带图标/id），
      观察器路径出角标——910=cfg7 净水（v1=5→'5'）、903=cfg5 铁钉（v1=0→'—'） */

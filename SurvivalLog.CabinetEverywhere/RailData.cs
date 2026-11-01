@@ -12,8 +12,8 @@ namespace SurvivalLog.CabinetEverywhere;
 /// （RailUi.Tick 0.5s 快通道，rev 门控——rev 未变不推）。
 ///
 /// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，2026-11-01 缺陷单#1/#2 增补 ctx.view/tradePrefs/
-/// lastSortAck 与物品行数值段，与 railui.page.js setData 逐字段对齐）：
-///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,view,tradePrefs,lastSortAck,lastTidyFail},
+/// 与物品行数值段对齐；v1.8.5 起 lastSortAck 随数据层 sortBy 退役）。
+///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,view,tradePrefs,lastTidyFail},
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
 ///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5]],
@@ -23,7 +23,6 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   trade=整叠计算后交易价值（null=无价）、days=保质排序键（null=不腐；-100001 腐败/
 ///   -100000 过期/(-100000,0) 过期计天/>0 剩余天数——角标文本 JS 由键推导）。
 ///   view=当前页场景视图（food/material/browser，TagFilter.ViewStr 同源）；tradePrefs=[[分类名,加成]…]；
-///   lastSortAck=[key,ok,moved,skip] 一次性回执（JS settle toast）。
 ///
 /// 取证依据（docs/superpowers/plans/2026-10-30-cerail-spike-findings.md，字段语义以它为准）：
 ///   §1 VD_MAP  v1=饱食 v2=心态 v3=精力 v4=恒0 v5=生命；thirst 退役（不产出）。
@@ -251,14 +250,6 @@ internal static class RailData
         _tidyFailPending = true;
     }
 
-    /// <summary>sortBy 回执（RailCommands.OpSortBy 置位，2026-11-01 缺陷单#1）：下一包
-    /// ctx.lastSortAck=["key",ok,moved,skip] 带出即清；JS settle 后 toast（治排序不生效静默）。</summary>
-    internal static void ReportSortAck(string key, bool ok, int moved, int skip)
-    {
-        _sortAckPending = "[\"" + EscapeJs(key ?? "") + "\"," + (ok ? "true" : "false") + "," + moved + "," + skip + "]";
-        _forcePending = true; // 回执即推（不等差量）
-    }
-
     /// <summary>
     /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
     /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
@@ -333,7 +324,6 @@ internal static class RailData
         // 2026-11-01 缺陷单#1：Trade 买家喜好条 chips（State_Web_TradeUI 当前需求，RailSortMath 读）
         RailSortMath.AppendTradePrefs(sb);
         // sortBy 回执（一次性标志：[key,ok,moved,skip]；JS settle toast——治「排序不生效静默」）
-        sb.Append(",\"lastSortAck\":").Append(_sortAckPending ?? "null");
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
         sb.Append('}');
@@ -395,7 +385,6 @@ internal static class RailData
 
         _forcePending = false;
         _tidyFailPending = false; // 推出即清（一次性标志）
-        _sortAckPending = null;   // 同上（lastSortAck 带出即清）
         _rev++;
         _lastSig = ComputeSig();
         _lastJsonHead = sb.Length > 200 ? sb.ToString(0, 200) : sb.ToString();
@@ -994,7 +983,6 @@ internal static class RailData
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）
-    private static volatile string _sortAckPending; // sortBy 回执一次性 JSON（ReportSortAck 置位，BuildJson 推出即清）
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>

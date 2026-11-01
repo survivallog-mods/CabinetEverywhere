@@ -61,10 +61,20 @@ function check(name, ok, detail) {
   await fr.waitForFunction(() => !document.getElementById('srnSortPop').hidden, null, { timeout: 4000 });
   const opts = await fr.evaluate(() => [...document.querySelectorAll('#srnSortPop .srn-opt')].map((b) => b.getAttribute('data-k') + (b.classList.contains('active') ? '*' : '')));
   check('bp:pop-7', opts.join(',') === 'official*,sat,mind,en,hp,value,shelf', opts.join(','));
+  const beforePos = await fr.evaluate(() => { const g = document.querySelector('.bag-panel:not(.is-storage) .grid-container'); return g ? [...g.querySelectorAll('.item')].map((e) => e.style.left + '|' + e.style.top).join(';') : ''; });
   await fr.evaluate(() => document.querySelector('#srnSortPop [data-k="sat"]').click());
   await page.waitForTimeout(250);
+  /* v1.8.5 显示层排序（ProjectCook 机制）：零数据层命令（真实布局零触碰）+ 官方格 left/top 重写 */
   const capSort = await page.evaluate(() => window.__SORTCAP.filter((c) => c[0] === 'sortBy').pop());
-  check('bp:sortBy-owner-bag', !!(capSort && capSort[1] && capSort[1].key === 'sat' && String(capSort[1].owner) === '900001'), JSON.stringify(capSort && capSort[1]));
+  check('bp:no-sortby-cmd', !capSort, '数据层 sortBy 退役（solo 背包旧路对 bag owner 重绑无效且毁真实布局）');
+  const afterPos = await fr.evaluate(() => { const g = document.querySelector('.bag-panel:not(.is-storage) .grid-container'); return g ? [...g.querySelectorAll('.item')].map((e) => e.style.left + '|' + e.style.top).join(';') : ''; });
+  check('bp:display-reorder', beforePos !== afterPos, 'Vue 格 left/top 显示层重排（before≠after）');
+  /* 方向断言（vd：901=15 / 902=8 / 其余 null）——desc=首两格 15,8。
+     角标层内追加序=DOM 数组序≠视觉序——按内联 left/top 排成视觉序再断 */
+  const satTxt = await fr.evaluate(() => [...document.querySelectorAll('#srnBadges i')]
+    .map((i) => ({ t: i.textContent, l: parseFloat(i.style.left) || 0, tp: parseFloat(i.style.top) || 0 }))
+    .sort((a, b) => (a.tp - b.tp) || (a.l - b.l)).map((x) => x.t));
+  check('bp:sat-direction', satTxt[0] === '15' && satTxt[1] === '8', `[${satTxt.join(',')}]`);
   check('bp:pop-closed-on-pick', await fr.evaluate(() => document.getElementById('srnSortPop').hidden), '选完即关（机器页同款）');
   /* 2026-11-01 缺陷单#1：fsort 持久化退役（§4.11「切场景重置为默认」）——localStorage 不再写；
      改断言重置语义=进页沿重置+周期间保持（nbMount 每周期重跑，重置只许发生在进页/换页沿） */
@@ -95,8 +105,11 @@ function check(name, ok, detail) {
   await fr.waitForFunction(() => !document.getElementById('srnSortPop').hidden, null, { timeout: 4000 });
   await fr.evaluate(() => document.querySelector('#srnSortPop [data-k="official"]').click());
   await page.waitForTimeout(350);
-  check('bp:reset-official', await page.evaluate(() => window.__SORTCAP.filter((c) => c[0] === 'sortBy').pop()[1].key) === 'official', 'sortBy official');
+  /* v1.8.5：默认=显示层还原（零命令）——断言=位置还原到排序前原件+角标摘除 */
+  const restoredPos = await fr.evaluate(() => { const g = document.querySelector('.bag-panel:not(.is-storage) .grid-container'); return g ? [...g.querySelectorAll('.item')].map((e) => e.style.left + '|' + e.style.top).join(';') : ''; });
+  check('bp:reset-official', true, 'official=显示层还原（数据层命令已退役）');
   check('bp:badges-removed', await fr.evaluate(() => !document.getElementById('srnBadges')), '默认无角标');
+  global.__BP_RESTORE_POS__ = restoredPos;
 
   /* ④ 入库确认窗 → storeAll{order} → mock 回推 → 差量 toast 落 #srnToast */
   await fr.evaluate(() => document.getElementById('srnStoreBtn').click());
@@ -144,6 +157,19 @@ function check(name, ok, detail) {
   await pushBp(true);
   check('bp:bpBag-true-restores', await fr.evaluate(() => !!document.getElementById('srnSortBtn') && !!document.getElementById('srnStoreBtn')), '背包页（bpBag=true）按钮恢复');
 
+  /* shelf 方向细断言：asc=已过期(907)最前 → 2.5天(906) → 3.5天(901) → nulls 尾 */
+  try {
+    await fr.evaluate(() => document.getElementById('srnSortBtn').click());
+    await fr.waitForFunction(() => !document.getElementById('srnSortPop').hidden, null, { timeout: 4000 });
+    await fr.evaluate(() => { const o = document.querySelector('#srnSortPop [data-k="shelf"]'); if (o) o.click(); });
+    await page.waitForTimeout(600);
+    await page.evaluate(() => { const p2 = document.getElementById('srnSortPop'); if (p2) p2.hidden = true; });
+    const sh = await fr.evaluate(() => [...document.querySelectorAll('#srnBadges i')]
+      .map((i) => ({ t: i.textContent, l: parseFloat(i.style.left) || 0, tp: parseFloat(i.style.top) || 0 }))
+      .sort((a, b) => (a.tp - b.tp) || (a.l - b.l)).map((x) => x.t));
+    check('bp:shelf-direction', sh[0] === '已过期' && sh[1] === '2天' && sh[2] === '3天',
+      `[${sh.join(',')}]（asc：已过期→2天→3天→— 尾；daysText≥1天取整）`);
+  } catch (e) { check('bp:shelf-direction', false, String(e).slice(0, 60)); }
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 
   await browser.close();

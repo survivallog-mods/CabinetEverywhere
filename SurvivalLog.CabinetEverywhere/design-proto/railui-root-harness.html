@@ -246,16 +246,14 @@ window.__HZ_READY__ = function () {
     ],
     items: {
       bag: [
-        [901, 1, 30, 7200, 0, 0, 1, 1, 0],
-        [902, 3, 5, 10800, 1, 0, 1, 1, 0],
-        [903, 5, 40, 0, 2, 0, 1, 1, 0],
-        [904, 5, 12, 0, 3, 0, 1, 1, 0],
-        [905, 9, 3, 0, 4, 0, 1, 1, 0],
-        [906, 2, 2, 9000, 5, 0, 1, 1, 4],
-        [907, 8, 6, 3600, 6, 0, 1, 1, 2],
-        [908, 4, 1, 0, 7, 0, 2, 2, 1],
-        [909, 6, 25, 0, 0, 1, 1, 1, 0],
-        [910, 7, 4, 43200, 1, 1, 1, 1, 0]
+        [901, 1, 30, 7200, 0, 0, 1, 1, 0, 15, null, null, null, 360, null],
+        [902, 3, 5, 10800, 1, 1, 1, 1, 0, 8, null, null, null, null, null],
+        [903, 5, 40, 0, 2, 0, 1, 1, 0, null, null, null, null, null, null],
+        [904, 5, 12, 0, 3, 1, 1, 1, 0, null, null, null, null, null, null],
+        [905, 9, 3, 0, 4, 0, 1, 1, 0, null, null, null, null, 99, null],
+        [906, 2, 2, 9000, 5, 1, 1, 1, 4, null, 7, null, null, null, 2.5],
+        [907, 8, 6, 3600, 6, 0, 1, 1, 2, null, null, null, null, null, 0.5],
+        [908, 4, 1, 0, 7, 1, 1, 1, 0, null, null, null, null, null, null]
       ],
       '900101': [
         [911, 1, 60, 86400, 0, 0, 1, 1, 0],
@@ -321,7 +319,7 @@ window.__HZ_READY__ = function () {
            右键取 1 被 onBlocked 拦——夹具保真修复） */
         /* v1.8.4：cfg 给定时图标带 '#v<cfg>' 唯一尾段（对齐 MOCK.icfg 与 __HZ_ICOV__，
            BackpackUI 原生页官方格 .item 无 id 属性——角标图标尾段匹配路需要） */
-        return { itemId: itemId, x: x, y: x % 2, w: 1, h: 1, icon: cfg ? window.__HZ_ICOV__(cfg) : ICO, name: '物品' + itemId, count: count || 1, quality: 3 };
+        return { itemId: itemId, x: x, y: x % 2, w: 1, h: 1, cfg: cfg || 0, icon: cfg ? window.__HZ_ICOV__(cfg) : ICO, name: '物品' + itemId, count: count || 1, quality: 3 };
       }
       var bagItems = [mk(901, 0, 30, 1), mk(902, 1, 5, 3), mk(903, 2, 40, 5), mk(904, 3, 12, 5), mk(905, 4, 3, 9), mk(906, 5, 2, 2), mk(907, 6, 6, 8), mk(908, 7, 1, 4)];
       var M = {
@@ -335,8 +333,15 @@ window.__HZ_READY__ = function () {
         ToolTable: ['WebUI_ToolTable_BagMsg', { bagOwnerId: 900001, bagCols: 6, bagRows: 5, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
         DroneHub: ['WebUI_DroneHub_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
         Trade: ['WebUI_Trade_BagMsg', { bagCols: 10, bagRows: 6, bagTabsJson: '[]', bagOwnerKey: '900001', bagItemsJson: JSON.stringify(bagItems) }],
+        /* v1.8.5：itemsJson 对齐真实页模型字段（cfgId/vd/shelfLifeDays/isExpired——显示层排序
+           v2 直接消费页面模型，夹具缺字段=排序键全 null） */
         BackpackUI: [['WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '背包', gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 100 }],
-                     ['WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(bagItems.map(function (b) { return { id: b.itemId, x: b.x, y: b.y, w: 1, h: 1, icon: b.icon, name: b.name, count: b.count, quality: 3 }; })) }]],
+                     ['WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(bagItems.map(function (b) {
+                       var VD = { 1: [15, 0, 0, 0, 0], 3: [8, 0, 0, 0, 0], 2: [0, 7, 0, 0, 0] }[b.cfg || 0] || [];
+                       var SH = { 906: 2.5, 907: 0.5, 901: 3.5 }[b.itemId];
+                       return { id: b.itemId, x: b.x, y: b.y, w: 1, h: 1, icon: b.icon, name: b.name, count: b.count, quality: 3,
+                                cfgId: b.cfg || 0, vd: VD, shelfLifeDays: SH == null ? null : SH, isExpired: b.itemId === 907, isRotten: false };
+                     })) }]],
         /* v1.8.2 v13：MaterialRack 官方 BagMsg 全形状（State_Web_MaterialRack WebBind 字段）——
            背包侧 bagGrid 真渲染 .item、架子侧 rackrows 真渲染 .rk-row。rows 的 configId 对齐
            MOCK icfg（5=铁钉/6=木板/9=？）、icon 用 __HZ_ICOV__ 唯一片段（过滤图标路可测）。 */

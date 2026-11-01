@@ -1,4 +1,5 @@
-/* 2026-11-01 缺陷单#1+#2 实机验收（CDP 9222 + uiShow 官方 ShowUI 重放独驱动）。
+/* 【部分过时】sort 断言仍为数据层旧口径（ack toast/badges）——v1.8.5 显示层排序请用 v190；
+   页签矩阵段仍有效。2026-11-01 缺陷单#1+#2 实机验收（CDP 9222 + uiShow 官方 ShowUI 重放独驱动）。
    #1 排序：食品五页+BackpackUI 逐键（sat/mind/en/hp/value/shelf）→ 回执 toast（moved 数）+
       官方格真实重排（数据层 BagPos 变化：命令前后读契约行 x/y 序）+ 角标在场率与取值域
       （shelf=天/已过期、value=数字、属性=数字或—）；Trade 进页自动交易价值排序+买家条 chips。
