@@ -399,6 +399,16 @@ internal static class RailData
         _lastItemRows = itemRows;
         _lastCtnRows = _ctn.Count;
         _lastIcfgRows = icfgOrder.Count;
+        /* 2026-11-01 第十一轮（实机 rev4 实锤：点详情/切页瞬间 OwnerCache 空窗推了
+           「容器 0/物品行 0/icfg 0」全空包）——落地即摘角标层+进页沿把排序打回 official，
+           数据回来角标也不复活=作者「点详情数值消失」。全空=瞬态（配置表恒非空，icfg=0
+           必为构建空窗），不推等下一周期。T6 裁定 4 的「空态照推」仅指无容器玩家的正常
+           空包（bag 行可在）——本门只拦三零全空。 */
+        if (_ctn.Count == 0 && itemRows == 0 && icfgOrder.Count == 0 && _lastCtnRows + _lastItemRows > 0)
+        {
+            _forcePending = true; /* 瞬态：立刻重试下一周期（真稳态不会三零+有前包） */
+            return (null, _rev);
+        }
         LogVerboseAnchors(icfgOrder, itemDict);
         return (sb.ToString(), _rev);
     }

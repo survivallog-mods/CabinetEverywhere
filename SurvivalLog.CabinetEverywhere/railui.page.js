@@ -3002,6 +3002,13 @@
   /* ---- 数据入口：C# rev 门控直推契约 v4 JSON → 归一化入 store → render ---- */
   function setData(json) {
     if (!json || typeof json !== 'object') return;
+    /* v1.8.5⑫ 三零空契约不落地（实机 rev4 实锤：弹窗/切页瞬间 C# OwnerCache 空窗——
+       落地即摘角标层+进页沿复位把排序打回=「点详情数值消失」终修；icfg=0 必为构建空窗，
+       配置表恒非空）。保留上一包，等下一笔真数据。 */
+    if (store.rev > 0
+      && !(json.ctn && json.ctn.length)
+      && !(json.icfg && json.icfg.length)
+      && !(json.items && Object.keys(json.items).length)) return;
     store.rev = json.rev || 0;
     store.ctx = json.ctx || {};
     store.bag = json.bag || 0;
