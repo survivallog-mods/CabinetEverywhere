@@ -89,7 +89,7 @@ function check(name, ok, detail) {
     check('cook:chrome-hidden', ['head', 'search', 'tools', 'hover', 'fr'].every((k) => ck[k] === 'none'), `head=${ck.head} search=${ck.search} tools=${ck.tools} hover=${ck.hover} fr=${ck.fr}`);
     check('cook:fill-kept', ck.fill !== 'none', '');
     check('cook:acts', ck.acts.join('|') === '📦 一键入库|一键整理', ck.acts.join('|'));
-    check('cook:size', ck.w === 720 && ck.h <= 740 && ck.h >= 480, `${ck.w}x${ck.h}`); /* 2026-11-02 三轮：plain 壳随内容自适应、封顶 740（短容器不垫空白） */
+    check('cook:size', ck.w === 720 && ck.h === 740, `${ck.w}x${ck.h}`); /* 2026-11-01 作者#3：plain 显示高 816→740（缩 2 格避让脚边拾取条） */
     check('cook:items', ck.items > 0, `官方格 items=${ck.items}`);
     await page.screenshot({ path: path.join(OUT, 'm-cooking-plain.png') });
   }
@@ -161,7 +161,7 @@ function check(name, ok, detail) {
     const s = await railState(key);
     if (!s) { check(key + ':rail', false, 'rail 未挂'); continue; }
     check(key + ':plain', s.cls.indexOf('plain') >= 0, s.cls);
-    check(key + ':size', s.w === 720 && s.h <= 740 && s.h >= 480, `${s.w}x${s.h}`); /* 三轮：自适应封顶 740 */
+    check(key + ':size', s.w === 720 && s.h === 740, `${s.w}x${s.h}`); /* 作者#3：plain 740 */
     if (FOOD[key]) check(key + ':sortbtn', s.sortBtn, '');
     else check(key + ':nosortbtn', !s.sortBtn, '');
     if (key === 'Trade') {

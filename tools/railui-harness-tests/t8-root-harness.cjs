@@ -117,8 +117,8 @@ for (const key of SCENE_KEYS) {
     };
   });
   check('mounted:' + key, r.railOk && r.wrapOk, `wrap=${r.wrapOk} rail=${r.railOk}`);
-  var ehFixed = ({ BackpackUI: 816, MaterialRack: 816, GreenhouseBuild: 816 })[key]; /* 2026-11-02 三轮：plain 机器页=自适应封顶 740（区间 480..740，短容器不垫空白），rack/温室 816 不变 */
-  check('size:' + key, r.w === 720 && (ehFixed ? r.h === ehFixed : (r.h <= 740 && r.h >= 300)), `${r.w}x${r.h}（期望 720x${ehFixed || '300..740'}）`); /* v1.8.2.2 宽度归一 UNI_W+20=720 */
+  var EH = ({ BackpackUI: 816, MaterialRack: 816, GreenhouseBuild: 816 })[key] || 740; /* 2026-11-01 作者#3：plain 机器页显示高 816→740（缩 2 格避让脚边拾取条），rack/温室不变 */
+  check('size:' + key, r.w === 720 && r.h === EH, `${r.w}x${r.h}（期望 720x${EH}）`); /* v1.8.2.2 宽度归一 UNI_W+20=720 */
   check('style:' + key, r.styleInjected && r.styleGuardAtEnd, 'style#srpRail 含 #srp .sr-rail 规则 + 末尾 [hidden] 兜底规则');
   check('clickthrough:' + key, r.wrapInteractive && r.railInteractive && r.buttons > 0 && r.inputs >= 1,
     `data-interactive(wrap/rail)=${r.wrapInteractive}/${r.railInteractive} buttons=${r.buttons} inputs=${r.inputs}`);

@@ -217,13 +217,11 @@
 #srp .sr-rail.plain .sr-hover,
 #srp .sr-rail.plain .sr-foot .fr{display:none}
 #srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单贴 ▾ 钮下锚 */
-/* 2026-11-01 作者#3：机器页显示高度 816→740（缩 2 格=2×38px 烹饪格步距，避让屏幕底缘
-   「脚边 xx 全拿」拾取条）。2026-11-02 三轮（作者：老鼠笼格区下面一大截空白）：定高壳
-   （816/740 均）对短容器（格高 < 壳高）必垫空白——实机烹饪 body 639 / grid 476=163px
-   空白。改**自适应内容封顶 740**：短容器壳随格收（无空白，官方原版页即内容高），长容器
-   封顶 740 滚动（避让拾取条的让位保留）。BackpackUI 原生页/MaterialRack(plainbag)/
-   温室壳不受影响（仍 816 定版）。 */
-#srp .sr-rail.plain{height:auto !important;min-height:0 !important;max-height:740px !important}
+/* 2026-11-01 作者#3：机器页显示高度 816→740（缩 2 格=2×38px 烹饪格步距，夹具实测 cell=38）。
+   只缩页面显示高度（格区视口少显 2 行、可滚动），**不减柜子容量行数**；页脚动作组随之上移，
+   避让屏幕底缘「脚边 xx 全拿」快捷拾取条对按钮的遮挡。BackpackUI 原生页/MaterialRack
+   (plainbag)/温室壳不受影响（仍 816 定版）。 */
+#srp .sr-rail.plain{height:740px !important;min-height:740px !important;max-height:740px !important}
 /* 设施排序钮（页脚左下角；作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
 #srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
 #srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}

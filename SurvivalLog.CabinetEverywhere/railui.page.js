@@ -1882,28 +1882,6 @@
     if (el.srMid) renderMidChips(); /* T10 中段联动（v1.8.2）：主侧栏任何渲染（切柜/筛选/
        命令回推/active 跟随都汇于 render）连带刷「按标签放入」色点——随 st.currentId 联动
        （v12 第三连修回归点）；非 rack 场景 el.srMid=null 自然跳过 */
-    if (isPlainScene() && el.rail) applyPlainLift(el.rail.parentElement); /* 2026-11-02 二轮+三轮：封顶提升补偿（幂等动态，见 applyPlainLift） */
-  }
-
-  /* ---- 2026-11-02 作者#2 二轮+三轮：机器页系统容器居中补偿（render 尾幂等动态应用）----
-     官方机器页 body align-items:center——壳被封顶压短（740）时，压短量被居中上下对分：
-     顶下移 38（=作者「界面整体下移」）、底只让 38（拾取条没让够）。壳顶到 740 封顶
-     （rail 高 ≥739 且 wrap==rail 高 ⟺ 壳驱动系统高度；兄弟更高时 wrap 被拉伸超出 rail=
-     系统由兄弟驱动、顶没动）→ 给系统容器 translateY(-38px)：顶复位、底让足 76px；
-     低于封顶（auto 壳=内容高，无压短）→ 撤提。切容器引起壳高变化时随 render 自动收敛。 */
-  function applyPlainLift(wrap) {
-    try {
-      if (!wrap || !wrap.parentElement) return;
-      var doc = wrap.ownerDocument;
-      var sys = wrap.parentElement;
-      while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
-      if (!sys || sys === doc.body) return;
-      var rail = wrap.querySelector('.sr-rail');
-      if (!rail) return;
-      var want = ((rail.offsetHeight || 0) >= 739 && wrap.offsetHeight <= rail.offsetHeight + 1)
-        ? 'translateY(-38px)' : '';
-      if (sys.style.transform !== want) sys.style.transform = want;
-    } catch (e) { }
   }
 
   /* ---- 元素引用收集 + 交互接线 ----
@@ -2314,12 +2292,21 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
-    /* 2026-11-02 作者#2 二轮+三轮：壳顶到 740 封顶时给系统容器 translateY(-38px) 复位顶边
-       （居中会把压短量上下对分：顶下移+底只让一半）——auto 高壳（三轮）只有封顶才存在
-       人为压短。判定需格区就位后量高，改 render 尾幂等动态应用（applyPlainLift，
-       低于封顶自动撤提），mount 这里只挂一次延时兜底。 */
+    /* 2026-11-02 作者#2 二轮「高度缩了下面仍被遮挡、界面整体下移」：官方机器页 body 是
+       align-items:center 垂直居中——壳 816→740 的 76px 缩减被上下各分走 38px：顶下移 38
+       （=「整体下移」）、底只让出 38（拾取条没让够）。补偿：壳驱动系统高度时（系统容器
+       是 flex stretch——wrap==rail 高 ⟺ 壳最高；兄弟更高时 wrap 会被拉伸超出 rail 固定高
+       =系统由兄弟驱动、顶本来就没动），给系统容器 translateY(-38px)：顶部复位原位、
+       底部让足全 76px。一次性幂等（__srLift 门），transform 纯视觉不参与居中计算。 */
     if (PLAIN_KEYS[sceneKey] && !bpPanel) {
-      try { setTimeout(function () { applyPlainLift(wrap); }, 300); } catch (e) { }
+      try {
+        var sys = wrap.parentElement;
+        while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
+        if (sys && sys !== doc.body && !sys.__srLift) {
+          sys.__srLift = 1;
+          if (wrap.offsetHeight <= (rail.offsetHeight || wrap.offsetHeight) + 1) sys.style.transform = 'translateY(-38px)';
+        }
+      } catch (e) { }
     }
     buildStubs(doc, sc, wrap); /* T9 桩节点（SCENES.stubs 声明驱动；宿主已移除后建，真节点不在=无 id 重复。rack：真节点已 reparent 在文档 → 自愈不建桩） */
     bind(doc, rail); /* bind 内部 el={} 重建引用表并挂 rail（rail.js 同款；T9 重绑路复用同一函数，__srBound 门防监听器重复挂） */
@@ -2608,31 +2595,19 @@
       var arr = TABS[f.key];
       var ni = arr ? arr.indexOf(String(v)) : -1;
       var pi = arr ? arr.indexOf(String(st.currentId)) : -1;
-      if (pi < 0 && arr && st.lastStepIdx != null && st.lastStepIdx >= 0) pi = st.lastStepIdx; /* 当前柜不在数组：用上一跟随下标 */
-      var row = pinnedCtns(), cp = -1, lp = -1;
-      for (var r = 0; r < row.length; r++) {
-        if (String(row[r].id) === String(st.currentId)) cp = r;
-        if (String(row[r].id) === String(c.id)) lp = r;
-      }
-      /* 方向：官方数组下标优先；官方锚缺失（任一侧不在数组）用**显示位差**推断；
-         再不可得缺省 +1（D）。作者 2026-11-02 案例：大容量冰柜=我们目录的冰箱(kind f)
-         但游戏 CollectFridges 没收、注入器只注入 c 类 → 不在官方数组 → 官方锚恒缺。 */
-      var dir = 1;
-      if (ni >= 0 && pi >= 0 && ni !== pi) dir = ni > pi ? 1 : -1;
-      else if (lp >= 0 && cp >= 0 && lp !== cp) dir = lp > cp ? 1 : -1;
-      /* 步进判定：官方数组 ±1；官方锚缺失（pi<0/ni<0）也按步进处理——plain 页官方页签
-         UI 已随宿主移除，外部 active 变化只剩 A/D 键，可见落点同样要对齐显示序
-       （旧逻辑此处按非步进直放=跳到显示行另一侧的柜）。 */
-      var adjacentOfficial = !!(arr && ni >= 0 && pi >= 0 && (ni === pi + 1 || ni === pi - 1));
-      var anchored = !!(arr && ni >= 0 && pi >= 0);
-      var treatAsStep = adjacentOfficial || !anchored;
+      if (pi < 0 && arr && st.lastStepIdx != null && st.lastStepIdx >= 0) pi = st.lastStepIdx; /* 当前柜不在数组（罕见）：用上一跟随下标 */
+      var isStep = !!(arr && ni >= 0 && pi >= 0 && (ni === pi + 1 || ni === pi - 1));
       var target = null;
-      if (treatAsStep && cp >= 0) {
+      if (isStep) {
         /* 作者#1 二轮：步进按显示行走——目标=页签行里当前柜的邻居（隐藏柜天然不在行内=自动跳过） */
-        var k = cp + dir;
-        target = (k >= 0 && k < row.length) ? row[k] : row[cp]; /* 到头=弹回原地（v1.7.0 bounced 同义） */
-      } else if (!treatAsStep && landedVisible) {
-        return false; /* 官方锚齐全的非 ±1 落点（官方直切/外部切换）：可见放行 */
+        var row = pinnedCtns(), cp = -1;
+        for (var r = 0; r < row.length; r++) if (String(row[r].id) === String(st.currentId)) { cp = r; break; }
+        if (cp >= 0) {
+          var k = ni > pi ? cp + 1 : cp - 1;
+          target = (k >= 0 && k < row.length) ? row[k] : row[cp]; /* 到头=弹回原地（v1.7.0 bounced 同义） */
+        }
+      } else if (landedVisible) {
+        return false; /* 非步进的可见落点（官方直切/外部切换）：放行跟随 */
       }
       if (!target && !landedVisible && arr) {
         /* 一轮口径保留：非步进落被藏柜（或步进但当前柜不在行内）——官方数组序最近可见弹回 */
@@ -3012,9 +2987,6 @@
      旧角标钉死旧坐标直到下一次格子类变更。节拍器独立于装配循环，任何布局变化 ≤500ms 自愈。 */
   setInterval(function () {
     try { if (NB.doc && NB.doc.body && NB.fsort && NB.fsort !== 'official') nbBadges(NB.doc, null); } catch (e) { }
-    /* 2026-11-02 二轮+三轮：封顶提升补偿巡检——壳高随内容自适应后，封顶与否随容器切换
-       变化（render 尾已挂，此处兜底：render 中途异常/无推送的静默期也收敛），幂等 */
-    try { if (isPlainScene() && el.rail) applyPlainLift(el.rail.parentElement); } catch (e) { }
   }, 500);
 
   function nbEnsureGridMO(doc, panel) {

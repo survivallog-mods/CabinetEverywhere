@@ -148,23 +148,6 @@ const CONTRACT = (rev) => ({
   forged = await page.evaluate(() => window.__CAP.forge);
   check('1h:drag-D-midrow-display-neighbor', forged.length >= 1 && forged[0].data && forged[0].data.ownerId === 900102,
     `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（显示序右邻=冷藏柜，非官方序的蔬果柜）`);
-  /* ---- 1i 仅 rail 侧容器（作者 2026-11-02 案例：大容量冰柜——我们目录是冰箱 kind f，
-     但游戏 CollectFridges 没收、注入器只注入 c 类 → **不在官方数组** → pi=-1。
-     官方锚缺失仍须按步进对齐显示序（方向用显示位差推断）。
-     布景：回包数组（harness FAKE）不含 900106；pin 序 [蔬果,食材,冷藏] → 显示行
-     [背包,蔬果,食材,冷藏]；当前=蔬果(行位1)，D 落冷藏(行位3,可见,跳过行位2)。
-     期望=伪造到显示序右邻 食材柜(900101)；旧逻辑 pi=-1 判非步进 → 直放冷藏=跨格跳。
-     锚定走真实路径=点页签（switchTo 先记 currentId，回包 v==currentId 走 echo 早退，
-     外部消息锚定会被新规则拦截——现实里上到这种柜子正是靠点页签）。 */
-  await cf.evaluate(() => { const b = document.querySelector('#srPinRow [data-ctn="900106"]'); if (b) b.click(); });
-  await page.waitForTimeout(400); /* forge→harness 120ms 回包→followActive 渲染 */
-  check('1i-anchor:on-rail-only', (await activeTab(cf)) === 900106, `active=${await activeTab(cf)}（点页签上到仅 rail 侧容器）`);
-  await page.evaluate(() => { window.__CAP.forge.length = 0; });
-  await stepActive('Cooking', 900102); /* D 落冷藏柜（行位3，跳过行位2） */
-  await page.waitForTimeout(300);
-  forged = await page.evaluate(() => window.__CAP.forge);
-  check('1i:rail-only-ctn-aligns-display', forged.length >= 1 && forged[0].data && forged[0].data.ownerId === 900101,
-    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（官方锚缺失按显示序右邻=食材柜；旧逻辑直放冷藏=跳格）`);
   await cf.evaluate(() => { localStorage.removeItem('srp_pin_order_Cooking'); });
 
   /* ---- #2 编辑误触移除 ---- */
@@ -191,31 +174,12 @@ const CONTRACT = (rev) => ({
   check('2c:menu-dblclick-edits', menuDbl.open === true && menuDbl.name === '食材柜', `open=${menuDbl.open} name=${menuDbl.name}（▾ 行双击仍可达设置）`);
   await cf.evaluate(() => { document.getElementById('srEditCancel').click(); });
 
-  /* ---- #3 高度（三轮：自适应封顶）----
-     3a 短容器：壳随格收（无「格区下面一大截空白」）；3c 长容器：封顶 740+系统提升。 */
-  const h3 = await cf.evaluate(() => {
+  /* ---- #3 高度 ---- */
+  const h = await cf.evaluate(() => {
     const r = document.getElementById('srRail') || document.querySelector('.sr-rail');
-    const host = document.getElementById('srGridHost');
-    const body = document.getElementById('srBody');
-    return {
-      h: r ? Math.round(r.offsetHeight) : 0,
-      blank: host && body ? Math.round(body.getBoundingClientRect().bottom - host.getBoundingClientRect().bottom) : 999
-    };
+    return r ? Math.round(r.offsetHeight) : 0;
   });
-  check('3a:auto-fit-no-blank', h3.h < 740 && h3.h > 300 && h3.blank <= 8, `h=${h3.h} blank=${h3.blank}（壳随格收，格底贴壳底）`);
-  await cf.evaluate(() => {
-    const g = document.getElementById('srGridHost').querySelector('#backpackGrid') || document.getElementById('srGridHost').firstElementChild;
-    if (g) g.style.height = '2000px';
-  });
-  await page.evaluate((x) => window.__CERAIL__.setData(x), CONTRACT(305));
-  await page.waitForTimeout(1200);
-  const h3c = await cf.evaluate(() => {
-    const r = document.getElementById('srRail');
-    let sys = document.getElementById('srp');
-    while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
-    return { h: Math.round(r.offsetHeight), lift: sys.style.transform };
-  });
-  check('3c:capped-740-plus-lift', h3c.h === 740 && h3c.lift === 'translateY(-38px)', `h=${h3c.h} lift=${h3c.lift}（长容器封顶滚动+系统提 38 复位顶边）`);
+  check('3a:cooking-height-740', h === 740, `h=${h}（缩 2 格 38px）`);
   await page.evaluate(() => window.__HZ_SHOW__('MaterialRack'));
   const rf = page.frames().find((f) => f.url().includes('/fixtures/MaterialRack.html'));
   await rf.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
@@ -226,9 +190,11 @@ const CONTRACT = (rev) => ({
   });
   check('3b:rack-height-816-kept', rh === 816, `h=${rh}（plainbag 不受影响）`);
 
-  /* ---- #4 二轮+三轮：封顶提升分治----
-     4a：RatCage 藏兄弟+格撑高（壳封顶 740 且最高）→ 系统提 translateY(-38px)；
-     4b：BrewPanel 兄弟垫高 800（系统由兄弟驱动，顶没动）→ 不提。 */
+  /* ---- #4 二轮：居中补偿（作者：高度缩了下面仍被遮挡=界面整体下移）----
+     官方机器页 body align-items:center——壳缩 76px 被上下各分 38。修：壳为系统容器
+     最高子面板时给系统 translateY(-38px)（顶复位、底让足 76px）；非最高不提。
+     4a：RatCage 预先藏掉兄弟面板（强制壳最高）→ 装配后系统带 translateY(-38px)；
+     4b：BrewPanel 兄弟在场（壳非最高）→ 不提。 */
   await page.evaluate(() => {
     const el = document.getElementById('RatCage');
     const doc = el && el.contentDocument;
@@ -239,20 +205,18 @@ const CONTRACT = (rev) => ({
         if (n.closest && n.closest('#cookingSystem')) return;
         n.style.display = 'none';
       });
-      const g = doc.querySelector('#backpackGrid');
-      if (g) g.style.height = '2000px'; /* 壳封顶（mount reparent 同一元素，样式带过去） */
     }
   });
   await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
   const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
   await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
-  await page.waitForTimeout(1300); /* 提升走 render 尾+500ms 巡检双路 */
+  await page.waitForTimeout(600);
   const liftA = await rcF.evaluate(() => {
     let sys = document.getElementById('srp');
     while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
     return sys ? sys.style.transform : 'NO-SYS';
   });
-  check('4a:lift-when-tallest', liftA === 'translateY(-38px)', `sys.transform=${liftA}（壳封顶且最高=居中被压短 → 提 38 复位顶边）`);
+  check('4a:lift-when-tallest', liftA === 'translateY(-38px)', `sys.transform=${liftA}（壳最高=居中被缩动 → 提 38 复位顶边）`);
 
   /* 4b 对照：强制兄弟面板更高（min-height 800）→ 壳非最高=系统高度由兄弟驱动（顶没动过）
      → 不提。fixture 静态内容里 Brew 兄弟列本就矮于 740，须人为垫高才构成对照。 */
