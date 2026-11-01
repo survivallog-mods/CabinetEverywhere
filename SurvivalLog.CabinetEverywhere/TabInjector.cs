@@ -350,8 +350,12 @@ internal static class TabInjector
 
     /// <summary>
     /// BagTabs 按 pageKey 的显示序稳定重排：背包条目恒首位；在册条目按显示序；未登记条目
-    /// （新柜/原生未拖过的）按现序稳定排尾。选择排序就位（Move 优先，RemoveAt+Insert 兜底——
-    /// interop 代理缺 Move 时等价）。返回 true=发生移动（调用方 Repush）。幂等：序已一致零移动。
+    /// （新柜/原生未拖过的）按现序稳定排尾。返回 true=发生重排（调用方 Repush）。幂等。
+    /// 2026-11-02 九轮（作者实锤老鼠笼滚动条 2Hz 闪烁）：旧实现=RemoveAt+Insert 逐位挪——
+    /// interop Insert 行为可疑致排序**不收敛**（每 0.5s 轮询都判乱序→重排→Repush→整页
+    /// 重渲→滚动条闪烁；活体观测页签数组在两序间 2Hz 摆动实锤）。改为**清空+按目标序整体
+    /// 重建**（条目对象复用；Add=注入器验证过的通道）——一次到位必收敛；每次重排打日志行
+    /// （若再出现循环，LogOutput 每秒两行一眼可见）。
     /// </summary>
     internal static bool ApplyOrder<T>(ObservableCollections.ObservableList<T> tabs, Func<T, long> ownerOf, string pageKey)
     {
@@ -361,42 +365,41 @@ internal static class TabInjector
             if (tabs == null || tabs.Count == 0) return false;
             long bag = RailData.BagOwner();
             int n = tabs.Count;
-            var rank = new int[n];
-            int unk = 0;
+
+            /* 目标序：背包条目（若有）恒首 → desired 序在册条目 → 未登记/重复条目按现序稳定排尾 */
+            var ordered = new List<T>(n);
+            T bagEntry = default;
+            var byOwner = new Dictionary<long, T>();
+            var unknown = new List<T>();
             for (int i = 0; i < n; i++)
             {
-                long o = ownerOf(tabs[i]);
-                if (o != 0 && o == bag) { rank[i] = -1; continue; } /* 背包恒首位（官方 pin 条目） */
-                int idx = desired.IndexOf(o);
-                rank[i] = idx >= 0 ? idx : (int.MaxValue - (unk++)); /* 未登记=稳定排尾（unk 递增保现序） */
+                var e = tabs[i];
+                long o = ownerOf(e);
+                if (o != 0 && o == bag && bagEntry == null) { bagEntry = e; continue; }
+                if (o != 0 && !byOwner.ContainsKey(o)) byOwner[o] = e; else unknown.Add(e);
             }
-            bool moved = false;
-            for (int p = 0; p < n; p++)
-            {
-                int best = p;
-                for (int q = p + 1; q < n; q++)
-                    if (rank[q] < rank[best]) best = q;
-                if (best == p) continue;
-                int tmpR = rank[best];
-                for (int q = best; q > p; q--) rank[q] = rank[q - 1];
-                rank[p] = tmpR;
-                MoveEntry(tabs, best, p);
-                moved = true;
-            }
-            return moved;
+            if (bagEntry != null) ordered.Add(bagEntry);
+            foreach (var id in desired)
+                if (byOwner.TryGetValue(id, out var e2)) { ordered.Add(e2); byOwner.Remove(id); }
+            foreach (var kv in byOwner) ordered.Add(kv.Value); /* desired 未含的在册条目（新柜/新冰箱） */
+            foreach (var e3 in unknown) ordered.Add(e3);
+            if (ordered.Count != n) return false; /* 防御：条目数对不上不动（宁可不排也不错排） */
+
+            /* 与现序比对（幂等：一致零动作） */
+            bool same = true;
+            for (int i = 0; i < n && same; i++) same = ReferenceEquals(tabs[i], ordered[i]);
+            if (same) return false;
+
+            /* 清空+按目标序重建（Add=验证通道；条目对象复用） */
+            tabs.Clear();
+            for (int i = 0; i < ordered.Count; i++) tabs.Add(ordered[i]);
+            CabinetEverywherePlugin.Log.LogInfo($"[CabinetEverywhere] 页签序重排 {pageKey}：{n} 条（拖拽序同步，一次收敛）");
+            return true;
         }
         catch (Exception e)
         {
             WarnOnce("order:" + pageKey, "页签序同步失败: " + e.Message);
             return false;
         }
-    }
-
-    private static void MoveEntry<T>(ObservableCollections.ObservableList<T> tabs, int from, int to)
-    {
-        /* interop 代理无 Move（编译期实锤）——RemoveAt+Insert 等价重排（条目对象复用，不新建） */
-        var t = tabs[from];
-        tabs.RemoveAt(from);
-        tabs.Insert(to, t);
     }
 }
