@@ -253,7 +253,8 @@
     scene: null, currentId: null, mode: 'grid', prevMode: 'grid', sort: 'value', dir: 1,
     query: '', global: false, tags: [], sel: null,
     cap: 0, rows: 0, items: [],
-    dragId: null, editId: null, editTags: []   /* T5：拖拽中页签/编辑弹窗容器与选中集（rail.js st 同形） */
+    dragId: null, editId: null, editTags: [],   /* T5：拖拽中页签/编辑弹窗容器与选中集（rail.js st 同形） */
+    lastStepIdx: null   /* 2026-11-01 作者#1：上一跟随 active 在官方页签数组中的下标（步进方向判据，弹回用） */
   };
   var COMMON = [];     /* 快捷标签名字符串（默认=lib 前 5；持久化 srp_common_tags_<scene>） */
   var CUSTOM = [];     /* 自定义标签词表（全局 srp_custom_tags；管理弹层新增/移除维护） */
@@ -272,7 +273,7 @@
      跟着帧走、不把 A 场景的筛选态渲染进 B。全局单套活跃集 + 每帧快照 = 与「单场景活跃」
      装配语义（frameVisible 门控，T8）一致的多帧安全形态。 */
   var SNAPS = {}; /* sceneKey → { st, COMMON, sceneApplied, PIN_KEY, TM_KEY, LISTGRP } */
-  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'editId', 'editTags'];
+  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'editId', 'editTags', 'lastStepIdx'];
   function saveSnap() {
     if (!st.scene || !SCENES[st.scene]) return;
     var sn = { st: {}, COMMON: COMMON.slice(), sceneApplied: sceneApplied, PIN_KEY: PIN_KEY, TM_KEY: TM_KEY, LISTGRP: LISTGRP };
@@ -654,9 +655,9 @@
      结构（id+顺序+名称）没变就不重建 DOM（key 短路）：切容器只翻 active 类保住节点，
      否则第二次点击落在重建后的新节点上，浏览器会把 dblclick 派发到公共祖先（§4.10）。
      背包固定首位（.main + CSS 2px 竖线、不可拖）；其余页签恒一行横向滚动（CSS）。
-     ✎ 编辑入口（方案2定稿：仅选中页签右侧显示，CSS 控制显隐；双击保留为隐藏快捷方式）
-     ——背包为虚拟容器（契约 ctn 无背包行，rename/setTags 无处落库）不渲染 ✎（rail.js
-     模板对 main 也渲染 ✎，正式版按契约收窄，见 openEdit 守卫）。 */
+     2026-11-01 作者#2：✎ 编辑入口与「双击页签开设置」**移除**（点击柜名老误触编辑模式，
+     作者定版「去掉，只保留筛选规则+拖拽排序」）——容器设置/改名唯一入口收到 ▾ 容器
+     菜单的双击行（藏起来不误触）；页签=纯名称官方式样（单击切换+拖拽排序）。 */
   function renderCtnBar() {
     var pins = pinnedCtns();
     var key = pins.map(function (p) { return p.id + ':' + nm(p); }).join('-');
@@ -664,9 +665,8 @@
       PIN_KEY = key;
       el.pinRow.innerHTML = pins.map(function (p) {
         var main = !!p.fixed;
-        return '<button type="button" draggable="' + (main ? 'false' : 'true') + '" class="sr-pin' + (main ? ' main' : '') + '" data-ctn="' + p.id + '" title="' + esc(nm(p)) + (main ? '（固定首位）' : '（拖拽排序 · 双击设置）') + '">' +
+        return '<button type="button" draggable="' + (main ? 'false' : 'true') + '" class="sr-pin' + (main ? ' main' : '') + '" data-ctn="' + p.id + '" title="' + esc(nm(p)) + (main ? '（固定首位）' : '（拖拽排序）') + '">' +
           '<span class="p-lb">' + esc(nm(p)) + '</span>' +
-          (main ? '' : '<span class="p-edit" draggable="false" role="button" aria-label="编辑名称与标签" title="编辑名称与标签">✎</span>') +
           '</button>';
       }).join('');
     }
@@ -1918,28 +1918,13 @@
     if (railEl) railEl.__srBound = true;
 
     /* T3：① 页签单击切容器——renderCtnBar 的 key 短路正是为它服务（切换只翻 active
-       不重建）；T5 加 ✎ 分支（方案2主入口）：点击开设置弹窗、不切容器；
-       stopPropagation 防冒泡到 document 关闭监听秒关刚开的弹窗（§4.10 豁免同类坑）。
+       不重建）。2026-11-01 作者#2：✎ 分支与 dblclick 开设置**移除**（点柜名老误触编辑，
+       定版「只保留筛选+拖拽」）——容器设置唯一入口=▾ 菜单行双击。
        T9：切换走 switchTo 统一出口（forgeSwitchTo 伪造官方切换，回包确认后才渲染）。 */
     el.pinRow.onclick = function (e) {
-      var ed = e.target.closest('.p-edit');
-      if (ed) {
-        e.stopPropagation();
-        openEdit(parseInt(ed.closest('[data-ctn]').getAttribute('data-ctn'), 10));
-        return;
-      }
       var b = e.target.closest('[data-ctn]'); if (!b) return;
       switchTo(parseInt(b.getAttribute('data-ctn'), 10)); /* T9：切柜统一出口（伪造官方切换+回包确认渲染） */
     };
-    /* T5：✎ 上按下不启动拖拽（draggable=false 之外再加一道保险，rail.js 同款） */
-    el.srPinRow.addEventListener('mousedown', function (e) {
-      if (e.target.closest('.p-edit')) e.stopPropagation();
-    });
-    /* T5：双击页签同开设置弹窗（隐藏快捷方式，方案2降级入口；单击只切换不重建，
-       renderCtnBar key 短路保住节点，dblclick 才能落在同一元素上，§4.10） */
-    el.srPinRow.addEventListener('dblclick', function (e) {
-      var b = e.target.closest('[data-ctn]'); if (b) openEdit(parseInt(b.getAttribute('data-ctn'), 10));
-    });
     /* T5：页签拖拽（背包固定首位不可拖/落点指示/写 srp_pin_order_<scene>） */
     bindPinDrag();
 
@@ -2498,6 +2483,8 @@
     if (!c) return; /* 未知容器不跟（宁可不跟也不错跟） */
     if (store.ctx && store.ctx.family === 'rack' && c.id === store.bag) return; /* rack 场景无背包页签：bagOwnerId 兜底信号解析到背包不跟（只跟 rackOwnerId） */
     var vs = String(c.id);
+    var arrT = TABS[key];
+    st.lastStepIdx = arrT ? arrT.indexOf(vs) : -1; /* 步进方向判据（作者#1 弹回）：跟随过的 active 记官方数组下标 */
     if (String(st.currentId) === vs && String(RENDERED_ID) === vs) return;
     st.currentId = c.id;
     st.sel = null;
@@ -2516,37 +2503,100 @@
       var prev = win.postMessage;
       win.__cerWrapped = 1;
       win.postMessage = function (msg) {
-        relayObserve(f, msg);
+        if (relayObserve(f, msg, prev, win)) return; /* true=本条已扣（弹回期，页面不渲染被藏柜） */
         return prev.apply(this, arguments);
       };
     } catch (e) { f.xorigin = true; }
   }
-  /* 只读截读：页签数组入缓存 + active 跟随。无扣发无丢弃（rail 不做 tagfilter 的藏页签
-     语义，官方页面照常收每条消息；hasActive 清单照附录 A）。
+  /* 只读截读：页签数组入缓存 + active 跟随。扣发仅一处（bounceHidden 弹回期，见下）；
+     hasActive 清单照附录 A。
      2026-11-01 实机「烹饪页签迟到」：TABS 是页签行（railCtns 的 ∩门）的输入，但变化
      从不触发 render——开页首包渲染在 TabInjector 注入 Repush 之前拿到的是**原生数组**
      （背包+冰箱），注入回包更新 TABS 后无人再渲染 → 食物柜要等下一次 render 触发
      （作者点冰箱切柜 followActive）才冒出来。修：TABS 内容变化且帧=活跃场景 → render。 */
-  function relayObserve(f, msg) {
+  function relayObserve(f, msg, orig, win) {
     try {
+      var d = msg && msg.data;
+      if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
+      var isBag = !!(msg && typeof msg.type === 'string' && msg.type.indexOf('BagMsg') >= 0);
+      var hasActive = !!(d && typeof d === 'object' && (d.bagOwnerId != null || d.bagOwnerKey != null || d.activeLeftTab != null || d.activeTab != null
+        || d.rackOwnerId != null)); /* rackOwnerId：rackOpen 重绑后的 active 信号（v1.8.2） */
+      /* 扣发清理（tagfilter 七轮教训原样）：任何 *_BagMsg/带 active 字段的消息都算
+         『官方状态已前进』——弹回伪造生效即丢被扣旧包，不能等 300ms 超时乱序放行 */
+      if (f.pending && (isBag || hasActive)) releasePending(f, false);
       var t = extractTabs(msg);
       if (t) {
-        var prev = TABS[f.key];
-        var changed = !prev || prev.length !== t.length || prev.join('\u0001') !== t.join('\u0001');
+        var prevT = TABS[f.key];
+        var changed = !prevT || prevT.length !== t.length || prevT.join('\u0001') !== t.join('\u0001');
         TABS[f.key] = t;
         if (changed && f.key === st.scene && el.rail) render();
       }
-      var d = msg && msg.data;
-      if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
-      if (!d || typeof d !== 'object') return;
-      var isBag = !!(msg && typeof msg.type === 'string' && msg.type.indexOf('BagMsg') >= 0);
-      var hasActive = !!(d.bagOwnerId != null || d.bagOwnerKey != null || d.activeLeftTab != null || d.activeTab != null
-        || d.rackOwnerId != null); /* rackOwnerId：rackOpen 重绑后的 active 信号（v1.8.2） */
-      if (!isBag && !hasActive) return;
+      if (!d || typeof d !== 'object') return false;
+      if (!isBag && !hasActive) return false;
       var v = activeOwnerOf(f.key, d);
-      if (v == null) return;
+      if (v == null) return false;
+      if (bounceHidden(f, v, msg, orig, win)) return true; /* 作者#1：步进落被藏柜——扣发+弹回，followActive 不走 */
       followActive(f.key, v);
     } catch (e) { }
+    return false;
+  }
+  /* ---- 被扣消息的释放（tagfilter releasePending 的 rail 版）----
+     deliver=false：官方状态已前进（弹回生效）——被扣旧包整条丢弃（页面零闪现）；
+     deliver=true：300ms 超时兜底（伪造没生效）——补投递原消息，且 rail 补跟其 active
+     （页面收到后渲染被藏柜，rail 停在旧柜=页面与 rail 错位，比闪现更糟）。 */
+  function releasePending(f, deliver) {
+    var p = f.pending;
+    if (!p) return;
+    f.pending = null;
+    if (p.timer) { clearTimeout(p.timer); p.timer = 0; }
+    if (deliver) {
+      try { p.orig.apply(p.win, [p.msg]); } catch (e) { }
+      if (p.active != null) followActive(f.key, String(p.active));
+    }
+  }
+  /* ---- 2026-11-01 作者#1：A/D 步进落到本页不可见柜——弹回（v1.7.0 tagfilter
+     tryHold/pickBounceTarget 的 rail 版移植。作者原话：按 D 向右会移动到没有显示的
+     柜子上，1.7.0 解决过）。
+     官方步进走**注入后的官方数组**（26 柜全在内），view/TABS 收窄裁掉的柜子照样被
+     步进命中 → 官方格渲染被藏柜 + rail 跟随 = 「移到没显示的柜子」。弹回语义：
+       ① 本条消息扣下不投递（页面不渲染被藏柜=零闪现，tagfilter 同款）；
+       ② 按步进方向（新 active 下标 vs 上一跟随下标）在官方数组序里找最近**可见**柜，
+          伪造页面同款切换事件（buildSwitchEvent）发 Root→Unity；
+       ③ 回包到达（状态前进）=被扣包丢弃；300ms 无回包=补投递+rail 补跟（兜底不错位）。
+     返回 true=已扣发（调用方不得再放行）；false=不拦（可见柜/未知容器/无伪造链）。 */
+  function bounceHidden(f, v, msg, orig, win) {
+    try {
+      if (st.scene !== f.key || !isPlainScene() || st.plainBag) return false;
+      if (store.ctx && store.ctx.family === 'rack') return false;
+      var c = ctnById(numId(v));
+      if (!c || c.id === store.bag) return false; /* 未知容器/背包：不拦（原行为） */
+      var rc = railCtns(), vis = {};
+      for (var i = 0; i < rc.length; i++) vis[rc[i].id] = true;
+      if (vis[c.id]) return false; /* 可见柜：正常跟随 */
+      var arr = TABS[f.key];
+      var ni = arr ? arr.indexOf(String(v)) : -1;
+      var dir = (ni >= 0 && st.lastStepIdx != null && st.lastStepIdx >= 0 && ni !== st.lastStepIdx)
+        ? (ni > st.lastStepIdx ? 1 : -1) : 1;
+      var target = null;
+      if (arr) {
+        for (var s = ni + dir; s >= 0 && s < arr.length; s += dir) {
+          var cc = arr[s] != null ? ctnById(numId(arr[s])) : null;
+          if (cc && vis[cc.id]) { target = cc; break; }
+        }
+        if (!target) for (var s2 = ni - dir; s2 >= 0 && s2 < arr.length; s2 -= dir) { /* 到头：反向找（弹回原地语义） */
+          var c2 = arr[s2] != null ? ctnById(numId(arr[s2])) : null;
+          if (c2 && vis[c2.id]) { target = c2; break; }
+        }
+      }
+      if (!target && st.currentId && vis[st.currentId]) target = ctnById(st.currentId); /* 无数组/全被藏：回上一柜 */
+      if (!target || target.id === c.id) return false;
+      if (!forgeSwitchTo(target.id, f.key)) return false; /* 无官方链（索引族缓存未到等）：放行走旧路径 */
+      f.pending = {
+        msg: msg, orig: orig, win: win, active: v, timer: 0
+      };
+      f.pending.timer = setTimeout(function () { releasePending(f, true); }, 300); /* 伪造未生效兜底：补投递+rail 补跟 */
+    } catch (e) { return false; }
+    return true;
   }
 
   /* ================= T8 正式装配区（Root 侧扫描/观察器，游戏内自动生效） =================
@@ -3045,6 +3095,7 @@
     /* B 键单独背包 = 纯背包页：进入时全库收紧（rail.js setScene：global 复位回 prevMode） */
     if (sceneBagOnly() && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
     st.sel = null;
+    st.lastStepIdx = null; /* 换场景=方向无意义，回「无方向」语义（tagfilter setSel 同款） */
     PIN_KEY = ''; /* 场景换了/全新侧栏 DOM：页签结构必重建（原地更新纪律，§4.10） */
     RENDERED_ID = null; /* 场景态重置=渲染目标未知，回包门回到「未渲染」 */
     saveSnap(); /* T9：入口态即刻入快照（数据未到时重绑重访也有完整场景态可换回） */

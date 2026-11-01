@@ -4,7 +4,7 @@
    已是覆盖名）；②再开 ✎ 清空→保存→drain 出 rename{name:""}（旧实现静默无效的路径）
    且本地 overlay 删除；③回推官方名包→页签/✎ 回显恢复官方名；④T5「同名不重发」回归
    （显示名未变不发命令）。 */
-const { chromium } = require('playwright');
+const { chromium } = require('C:/temp/baidu_up/node_modules/playwright-core'); /* 2026-11-01：本机只有 playwright-core（无 playwright 包），对齐 v185+ 套件 */
 
 const BASE = 'http://127.0.0.1:8180';
 const results = [];
@@ -14,7 +14,7 @@ function check(name, ok, detail) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const consoleErrors = [];
   const pageErrors = [];
@@ -38,8 +38,11 @@ function check(name, ok, detail) {
     const t = document.querySelector('#srPinRow [data-ctn="900101"]');
     return t ? t.textContent : '';
   });
+  /* 2026-11-01 作者#2：✎/双击页签编辑入口已移除（误触）——本套件改走存活入口：▾ 容器菜单行双击 */
   const openEdit = () => page.evaluate(() => {
-    document.querySelector('#srPinRow [data-ctn="900101"] .p-edit').click();
+    document.getElementById('srAllCtn').click();
+    const row = document.querySelector('#srCtnPopBody [data-ctn="900101"]');
+    if (row) row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
   });
 
   /* ① 改名 A→保存：drain 出 rename{name:A}，overlay 落盘，mock 回推（行名=覆盖名） */

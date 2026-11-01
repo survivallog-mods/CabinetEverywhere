@@ -7,7 +7,7 @@
    ③ A→B→A 重访修复（T8 遗留：重绑后本帧 rail 响应 setData 正确重渲染、他帧不被
       污染、筛选态随帧走）；
    ④ 包装链：预包装（__SLTF__ 同位模拟）与 rail wrapRelay 串联双方都收到消息。 */
-const { chromium } = require("playwright");
+const { chromium } = require('C:/temp/baidu_up/node_modules/playwright-core'); /* 2026-11-01：本机只有 playwright-core（无 playwright 包），对齐 v185+ 套件 */
 
 const BASE = 'http://127.0.0.1:8180';
 const results = [];
@@ -17,7 +17,7 @@ function check(name, ok, detail) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const consoleErrors = [];
   const pageErrors = [];
