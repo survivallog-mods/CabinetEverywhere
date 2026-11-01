@@ -2300,12 +2300,31 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
-    /* 2026-11-02 五轮（作者坐标定版：顶点 x 不动、底边上收一格）：机器页壳定高 778（=816−38），
-       壳外垫 38px 占位——系统容器布局高度与 816 时代完全一致（顶边/居中/兄弟面板零位移），
-       四轮的 translateY(-38) 上提方案已删（作者实锤「界面被抬高」=方向反了：补偿把没被
-       压短的页也推上去了）。老鼠笼例外（sc-ratcage 填满槽位）不垫。 */
+    /* 2026-11-02 六轮（作者#1：光改左侧=「光顾头不顾腚」——右侧官方面板与界面外框底边
+       必须同收一格）。机器页壳定高 778（816−38）**不留垫**→界面外框（系统容器）高度随之
+       −38（底边 x+10→x+9，整界面同收）；顶边钉回原 x：系统容器 margin-top −38px
+       （布局手段非 transform：居中容器里 H 缩 38、margin −38 恰好把顶边从 t+19 拉回 t）。
+       仅壳驱动系统高度的页打（兄弟面板自然高 ≤778——此时系统高度本由壳决定，右面板更矮
+       不受影响）；兄弟更高的页（系统高度=官方设计）不动=官方原貌。老鼠笼走填满路（下方
+       fillRatSlot）不适用。 */
     if (PLAIN_KEYS[sceneKey] && !bpPanel && sceneKey !== 'RatCage') {
-      try { wrap.style.paddingBottom = '38px'; } catch (e) { }
+      try {
+        var sys6 = wrap.parentElement;
+        while (sys6 && sys6.parentElement && sys6.parentElement !== doc.body) sys6 = sys6.parentElement;
+        if (sys6 && sys6 !== doc.body && !sys6.__srPin) {
+          sys6.__srPin = 1;
+          var sibMax = 0;
+          for (var q6 = 0; q6 < sys6.children.length; q6++) {
+            if (sys6.children[q6] === wrap) continue;
+            var h6 = sys6.children[q6].offsetHeight || 0;
+            if (h6 > sibMax) sibMax = h6;
+          }
+          if (sibMax <= 778) sys6.style.marginTop = '-38px';
+        }
+      } catch (e) { }
+    }
+    if (sceneKey === 'RatCage' && !bpPanel) {
+      try { fillRatSlot(wrap, rail); } catch (e) { } /* 老鼠笼填满（见 fillRatSlot） */
     }
     buildStubs(doc, sc, wrap); /* T9 桩节点（SCENES.stubs 声明驱动；宿主已移除后建，真节点不在=无 id 重复。rack：真节点已 reparent 在文档 → 自愈不建桩） */
     bind(doc, rail); /* bind 内部 el={} 重建引用表并挂 rail（rail.js 同款；T9 重绑路复用同一函数，__srBound 门防监听器重复挂） */
@@ -2569,6 +2588,29 @@
       if (p.active != null) followActive(f.key, String(p.active));
     }
   }
+  /* ---- 2026-11-02 六轮（作者#2）：老鼠笼槽位填充——左壳显式=右面板高（行内 important px）。
+     背景：height:100% 对拉伸父级解析有时序循环（挂载瞬间右面板未长高→壳被背包格
+     1428px 内容撑爆=作者截图「顶到屏幕底」跑飞；右面板长好后又碰巧正常=不稳定）。
+     显式量高无循环：rail 高=max(兄弟面板, 300)，网格区在壳内滚动；随 render 重抹自适应。 */
+  function fillRatSlot(wrap, rail) {
+    try {
+      if (!wrap || !wrap.parentElement || !rail) return;
+      var doc = wrap.ownerDocument;
+      var sys = wrap.parentElement;
+      while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
+      if (!sys || sys === doc.body) return;
+      var sibMax = 0;
+      for (var i = 0; i < sys.children.length; i++) {
+        if (sys.children[i] === wrap) continue;
+        var h = sys.children[i].offsetHeight || 0;
+        if (h > sibMax) sibMax = h;
+      }
+      var px = Math.max(sibMax, 300);
+      rail.style.setProperty('height', px + 'px', 'important');
+      rail.style.setProperty('max-height', 'none', 'important');
+    } catch (e) { }
+  }
+
   /* ---- 2026-11-01 作者#1（一轮弹回）+2026-11-02 作者#1（二轮跨柜跳跃）：
      A/D 步进对齐**页签行显示序**（v1.7.0 tagfilter tryHold/pickBounceTarget 的 rail 版，
      二轮改目标序）。两轮缺陷同根的两面：

@@ -217,15 +217,14 @@
 #srp .sr-rail.plain .sr-hover,
 #srp .sr-rail.plain .sr-foot .fr{display:none}
 #srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单贴 ▾ 钮下锚 */
-/* 2026-11-02 五轮（作者坐标定版：顶点 x 不动、底边上收一格 x+10→x+9；「不止缩短还上移」=四轮
-   translateY(-38) 方向错误已删）。机器页壳定高 778（=816−38 一格），壳外 #srp 垫 38px 占位
-   （mount 内联）——系统容器布局高度与 816 时代分毫不变：顶边/垂直居中/兄弟面板全不动，
-   只有壳本体矮一格，底缘让出 38px 给「脚边 xx 全拿」拾取条；垫出的空带显示系统面板底色。
-   老鼠笼（sc-ratcage）独例：系统高度由官方鼠笼/电力面板（实测 782px）驱动——壳**填满槽位**
-   （height:100% 跟兄弟同高，零空档；背包格 1428px 在壳内滚动），不适用「缩一格」。
+/* 2026-11-02 六轮（作者#1「光改左侧=光顾头不顾腚」）：机器页壳定高 778（816−38）**不留垫**
+   →界面外框（系统容器）高度随壳 −38（整界面底边 x+10→x+9，右侧官方面板同收）；顶边钉回
+   原 x=系统容器 margin-top −38px（mount 内联，仅壳驱动高度的页）。老鼠笼（sc-ratcage）独例：
+   系统高度由官方鼠笼/电力面板驱动——壳**填满槽位**（fillRatSlot 每渲染显式量兄弟高、行内
+   important px 填充——height:100% 对拉伸父级有时序循环=五轮跑飞根因），不缩一格。
    BackpackUI 原生页/MaterialRack(plainbag)/温室壳不受影响（仍 816 定版）。 */
 #srp .sr-rail.plain{height:778px !important;min-height:778px !important;max-height:778px !important}
-#srp .sr-rail.sc-ratcage{height:100% !important;min-height:0 !important;max-height:none !important}
+#srp .sr-rail.sc-ratcage{height:auto !important;min-height:0 !important;max-height:none !important} /* 高度由 fillRatSlot 行内 important 驱动 */
 /* 设施排序钮（页脚左下角；作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
 #srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
 #srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}

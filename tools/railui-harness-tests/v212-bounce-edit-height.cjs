@@ -174,10 +174,11 @@ const CONTRACT = (rev) => ({
   check('2c:menu-dblclick-edits', menuDbl.open === true && menuDbl.name === '食材柜', `open=${menuDbl.open} name=${menuDbl.name}（▾ 行双击仍可达设置）`);
   await cf.evaluate(() => { document.getElementById('srEditCancel').click(); });
 
-  /* ---- #3/#4 五轮（作者坐标定版：顶点 x 不动、底边上收一格 x+10→x+9）----
-     3a：机器页壳定高 778（816−38）+ 壳外垫 38 占位（wrap−rail=38）→ 系统布局高与 816
-         时代一致=顶边/居中/兄弟面板零位移；transform 恒空（四轮 translateY 上提已删）；
-     3b：rack 816 不受影响；4：老鼠笼独例=填满槽位（rail==wrap、零垫、零空档）。 */
+  /* ---- #3/#4 六轮（作者#1「光顾头不顾腚」+ #2 老鼠笼跑飞）----
+     3a：机器页壳 778 无垫 + 系统容器 margin-top −38px（外框随壳矮 38、顶边钉回原位
+         =整界面底边上收一格）；3b：rack 不受影响；
+     4：老鼠笼填满槽位（行内 px=兄弟面板高）且**不跑飞**——背包格强撑 2000px 后壳高
+         不变（五轮 height:100% 时序循环=作者截图跑飞根因）。 */
   const h3 = await cf.evaluate(() => {
     const rail = document.getElementById('srRail');
     const wrap = document.getElementById('srp');
@@ -185,11 +186,11 @@ const CONTRACT = (rev) => ({
     while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
     return {
       h: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight),
-      transform: sys ? sys.style.transform : 'nosys', pad: getComputedStyle(wrap).paddingBottom
+      mt: sys ? sys.style.marginTop : 'nosys', pad: getComputedStyle(wrap).paddingBottom
     };
   });
-  check('3a:fixed-778-top-anchored', h3.h === 778 && h3.wrapH - h3.h === 38 && h3.transform === '' && h3.pad === '38px',
-    `rail=${h3.h} wrap=${h3.wrapH} pad=${h3.pad} transform=${JSON.stringify(h3.transform)}（底垫占位=顶零位移，底让一格）`);
+  check('3a:shell-778-frame-pinned', h3.h === 778 && h3.pad === '0px' && h3.mt === '-38px',
+    `rail=${h3.h} wrap=${h3.wrapH} pad=${h3.pad} marginTop=${h3.mt}（外框随壳−38、顶边 margin 钉回=整界面底边上收一格）`);
   await page.evaluate(() => window.__HZ_SHOW__('MaterialRack'));
   const rf = page.frames().find((f) => f.url().includes('/fixtures/MaterialRack.html'));
   await rf.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
@@ -203,18 +204,26 @@ const CONTRACT = (rev) => ({
   const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
   await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
   await page.waitForTimeout(800);
-  const rat = await rcF.evaluate(() => {
+  const rat0 = await rcF.evaluate(() => {
     const rail = document.getElementById('srRail');
     const wrap = document.getElementById('srp');
-    let sys = wrap;
-    while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
-    return {
-      railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight),
-      pad: getComputedStyle(wrap).paddingBottom, transform: sys ? sys.style.transform : 'nosys'
-    };
+    return { railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight) };
   });
-  check('4:ratcage-fills-slot', rat.railH === rat.wrapH && rat.pad === '0px' && rat.transform === '',
-    `rail=${rat.railH} wrap=${rat.wrapH} pad=${rat.pad}（填满槽位跟兄弟面板同高，零空档零位移）`);
+  /* 跑飞回归：背包格强撑 2000px → 重渲染 → 壳高必须仍=槽位（不被内容撑爆） */
+  await rcF.evaluate(() => {
+    const host = document.getElementById('srGridHost');
+    const g = host && (host.querySelector('#backpackGrid') || host.firstElementChild);
+    if (g) g.style.height = '2000px';
+  });
+  await page.evaluate((x) => window.__CERAIL__.setData(x), CONTRACT(306));
+  await page.waitForTimeout(900);
+  const rat1 = await rcF.evaluate(() => {
+    const rail = document.getElementById('srRail');
+    const wrap = document.getElementById('srp');
+    return { railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight) };
+  });
+  check('4:ratcage-fill-stable', rat0.railH === rat0.wrapH && rat1.railH === rat1.wrapH && rat1.railH === rat0.railH,
+    `填满=${rat0.railH}==槽位 ${rat0.wrapH}；格撑 2000px 后=${rat1.railH}（行内 px 填充零跑飞）`);
 
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 

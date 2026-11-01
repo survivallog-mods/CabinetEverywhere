@@ -102,7 +102,7 @@ const CONTRACT = (page, view, rev) => ({
     };
   });
   check('C:cooking-fixed-778', cookGeo.h === 778 && cookGeo.cls.indexOf('sc-cooking') >= 0 && cookGeo.cls.indexOf('sc-ratcage') < 0,
-    `h=${cookGeo.h} cls含sc-cooking=${cookGeo.cls.indexOf('sc-cooking') >= 0}（其他机器页=定高 778+底垫 38 顶锚不动）`);
+    `h=${cookGeo.h}（其他机器页=定高 778，外框 margin 钉顶、整界面底边上收一格）`);
 
   await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
   const rf = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
@@ -117,7 +117,7 @@ const CONTRACT = (page, view, rev) => ({
     };
   });
   check('D:ratcage-fills-slot', ratGeo.cls.indexOf('sc-ratcage') >= 0 && ratGeo.h === ratGeo.wrapH && ratGeo.pad === '0px',
-    `rail=${ratGeo.h} wrap=${ratGeo.wrapH} pad=${ratGeo.pad}（老鼠笼独享填满槽位=跟兄弟面板同高零空档）`);
+    `rail=${ratGeo.h} wrap=${ratGeo.wrapH}（老鼠笼独享填满槽位=跟兄弟面板同高，行内 px 填充稳定）`);
 
   /* 非注入页不上报（ToolTable 开启零 pinOrder） */
   await page.evaluate(() => { window.__CAP.cmd.length = 0; });
