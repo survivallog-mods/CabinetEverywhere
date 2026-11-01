@@ -527,8 +527,12 @@ internal static class RailData
                 return v;
             }
         }
-        if (_bagOwner > 0) return _bagOwner;
-
+        /* 换档竞态终修（第十二轮 b，实机校准行 owner=43170≠PlayerId=79943 实锤）：世界重绑
+           复位后管线立刻重推，此刻 redux 树可能还带**上一档**的 PlayerId → 兜底把旧 pid
+           缓存终身（原下行短路 `if (_bagOwner > 0) return`）→ 新档背包行永远按旧 owner
+           组装=空 → bagArr()=[] 角标层被摘（「读其他档就不行」；同档重读 PlayerId 不变故
+           碰巧没事）。修：PlayerId 每次现读、变了就采用（owner 在签名里=变化即自动重推
+           自愈，坏包至多一帧）；读不到才回退旧缓存。 */
         // 兜底③（findings §4 ②）：State_Data_Player.PlayerId == 背包 owner（假设，校准点 T14）
         try
         {
@@ -539,14 +543,16 @@ internal static class RailData
             long pid = rawP?.TryCast<GameCore.HotUpdate.ReduxUI.State_Data_Player>()?.PlayerId ?? 0;
             if (pid > 0)
             {
-                if (_bagOwner != pid && CabinetEverywherePlugin.Verbose?.Value == true)
-                    CabinetEverywherePlugin.Log.LogInfo($"[CERail] 背包 owner 兜底：State_Data_Player.PlayerId={pid}");
-                _bagOwner = pid;
+                if (_bagOwner != pid)
+                {
+                    CabinetEverywherePlugin.Log.LogInfo($"[CERail] 背包 owner 兜底：PlayerId={pid}（旧缓存 {_bagOwner}→采用新值）");
+                    _bagOwner = pid;
+                }
                 return pid;
             }
         }
         catch { }
-        return 0;
+        return _bagOwner > 0 ? _bagOwner : 0;
     }
 
     /// <summary>BAG_OWNER 校准日志（findings §4 校准点，Debug.Verbose 每会话一次）。</summary>
