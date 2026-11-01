@@ -442,49 +442,54 @@ internal static class RailSortMath
             bool isFood = cat == 1;
             if (isFood)
             {
-                /* 2026-11-01 第九轮终解（作者算式+PC 反编译双实锤）：**InstanceEffectEnd =
-                   单次使用值**（PC OneUse 命名实锤；第七轮误当总量），详情单次值 = 实例值经
-                   天赋管线（PC EatValues：山珍菌菇饭(完美) 实例[24,6,0,0,2]×天赋→28/次）。
-                   角标 = EatValues(单次值) × UseTimes（剩余次数）——28×3=84；吃一口剩 1 次=28。
-                   第六/七/八轮三连错的病根：①删天赋管线（24×3=72）②当总量再除 MaxUseTimes
-                   （=单次值，没乘）③静态配置值不含品质掷骰。 */
-                float[] one = new float[5];
-                bool hasInst = false;
+                /* 2026-11-01 第十轮终解（游戏详情弹窗实机三连证，构建内直验）：
+                   ①包装食品（无实例）详情=vd 原值：红烧牛肉面 vd[25,3]→弹窗 +25/+3、
+                   火腿肠 vd[10,1]→+10/+1（逐字相等，零加成）；
+                   ②熟食（有实例）详情=round(vd×(1+ΣAE_CookDishNourish))：招牌盖饭(完美)
+                   vd[30.5,10,0,0,4]×1.15→+35/+12/+5（35.075→35、11.5→12、4.6→5 全中）；
+                   ③作者「菌菇饭单次 28」=round(24×1.15)=27.6→28（对账实例 24 实锤）。
+                   PC EatValues 的 Gain（BasePermille/satFood/eff/comfort）详情**不叠**——
+                   第九轮整管线全叠（牛肉面 25→45 错）。滋养只乘熟食=PC if(HasInstanceValues)
+                   同分支。角标=round(单次值)×UseTimes（作者算式：弹窗数×剩余次数，
+                   先舍入再乘——27.6→28×3=84 而非 82.8→83）。 */
+                float[] vd = new float[5];
+                bool cooked = false;
+                try
+                {
+                    var iv = it.InstanceVD;
+                    if (iv != null && iv.Length >= 5)
+                        for (int q = 0; q < 5; q++) vd[q] = iv[q];
+                }
+                catch { }
                 try
                 {
                     var ie = it.InstanceEffectEnd;
-                    if (ie != null && ie.Length >= 5)
-                    {
-                        hasInst = true;
-                        for (int q = 0; q < 5; q++) one[q] = ie[q];
-                    }
+                    if (ie != null && ie.Length >= 5) cooked = true; /* 熟食=滋养适用判据（PC 同款） */
                 }
                 catch { }
-                if (!hasInst)
+                if (vd[0] == 0f && vd[1] == 0f && vd[2] == 0f && vd[3] == 0f && vd[4] == 0f)
                 {
-                    try
-                    {
-                        if (cfg.UseAction > 0)
-                        {
-                            var act = cm?.Get_Config_Action(cfg.UseAction);
-                            var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
-                            if (eff != null)
-                                one = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
-                        }
-                    }
-                    catch { }
+                    /* InstanceVD 缺失兜底：Config ValueDisplay（包装食品本就来自这里） */
+                    try { vd = new float[5] { cfg.ValueDisplay1, cfg.ValueDisplay2, cfg.ValueDisplay3, cfg.ValueDisplay4, cfg.ValueDisplay5 }; } catch { }
                 }
-                var fct = FactorsNow();
-                var eaten = EatValues(one, hasInst, cat == 1 && sub == 1, IsPerfect(cm, cfg.ID), sub, 1, fct);
+                float nourish = 0f;
+                if (cooked)
+                {
+                    var f2 = FactorsNow();
+                    foreach (var t in f2.Talents) nourish += t.Nourish; /* AE_CookDishNourish 之和（[因子]行同源可核） */
+                }
                 int uses = 1, usesMax = 0;
                 try { uses = Math.Max(1, it.UseTimes); } catch { } /* 剩余使用次数（随食用递减） */
                 try { usesMax = it.MaxUseTimes; } catch { }
+                var perOnce = new float[5];
+                for (int q = 0; q < 5; q++) perOnce[q] = vd[q] * (cooked ? 1f + nourish : 1f);
                 for (int i = 0; i < 4; i++)
                 {
-                    int v = (int)Math.Round(eaten[EatIndex[i]] * uses, MidpointRounding.AwayFromZero);
+                    int per = (int)Math.Round(perOnce[EatIndex[i]], MidpointRounding.AwayFromZero);
+                    int v = per * uses; /* 弹窗整数×剩余次数（作者算式逐字） */
                     if (v != 0) n.Stats[i] = v;
                 }
-                Vouch(cfg, it, one, hasInst, eaten, uses, usesMax, n); /* 60045/60093 全链路一行对账（仅首次遇到该组合时打） */
+                Vouch(cfg, it, vd, cooked, nourish, perOnce, uses, usesMax, n); /* 60045/60093 全链路一行对账（仅首次遇到该组合时打） */
             }
 
             int useTimes = 0, maxUse = 0, cfgUses = 0;
@@ -516,7 +521,7 @@ internal static class RailSortMath
     private static HashSet<string> _vouched;
 
     private static void Vouch(GameCore.HotUpdate.Config_Item cfg, GameCore.HotUpdate.Battle.Logic.ItemData it,
-        float[] one, bool hasInst, float[] eaten, int uses, int usesMax, Numbers n)
+        float[] vd, bool cooked, float nourish, float[] perOnce, int uses, int usesMax, Numbers n)
     {
         try
         {
@@ -528,8 +533,9 @@ internal static class RailSortMath
             if (_vouched.Contains(key)) return;
             _vouched.Add(key);
             var b = new StringBuilder();
-            b.Append("[CERail][对账] ").Append(cfg.ID).Append(hasInst ? " 实例=" : " 配置=")
-             .Append(Fmt5(one)).Append(" 天赋单次=").Append(Fmt5(eaten))
+            b.Append("[CERail][对账] ").Append(cfg.ID).Append(cooked ? " 熟食" : " 包装")
+             .Append(" vd=").Append(Fmt5(vd)).Append(" 滋养=").Append(nourish.ToString("0.###", CultureInfo.InvariantCulture))
+             .Append(" 单次=").Append(Fmt5(perOnce))
              .Append(" uses=").Append(uses).Append('/').Append(usesMax)
              .Append(" → 角标=").Append(NFmt(n));
             CabinetEverywherePlugin.Log.LogInfo(b.ToString());

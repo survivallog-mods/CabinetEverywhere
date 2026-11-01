@@ -1381,20 +1381,38 @@
       return { kind: 'grid', frame: f, items: grid.getItems(), cols: cfg.cols || 12, rows: cfg.rows || 33, grid: grid };
     } catch (e) { return null; }
   }
+  /* v1.8.5⑪ owner 现解析（实机 11:52 实锤：换存档/换包后旧 owner 留存——applyFsort 先于
+     render 钉正 currentId 取到旧容器 id → itemsOf(旧 id)=空行 → 全 '-'「数值都不显示」）。
+     DISP.owner 降为仅诊断展示；join 每次调本函数现取：vue=store.bag（契约恒新），
+     grid=ctnById 钉正后的 st.currentId（保持机器页语义，只修陈旧）。 */
+  function dispOwnerOf(model) {
+    if (model && model.kind === 'vue') return store.bag;
+    var c = ctnById(st.currentId) || railCtns()[0] || null;
+    if (c) st.currentId = c.id;
+    return c ? c.id : DISP.owner;
+  }
+
   /* 数值行（统一形状）——v1.8.5⑤ 起两路统一契约 join（RailSortMath 实际口径）：
      join 键=真实位 (x,y,w,h)（无重叠=唯一）；无值=null → 角标 '-' + 排尾（作者口径） */
   function dispRows(model) {
-    /* v1.8.5⑤ 统一口径：**全部走契约 join**（C# RailSortMath=实例效果值×天赋管线=
-       实际吃到口径=ProjectCook=详情弹层；作者裁决「以详情为准」，悬浮 vd 展示值弃用——
-       webui-bag 模型本就无属性字段）。join 键=真实位 (x,y,w,h)（无重叠=唯一）。 */
+    /* v1.8.5⑩ join 改 **物品 id 直配**（作者线索实锤：开包后拖拽/一键整理移动物品，
+       契约行还停在推包时的旧位置——按位置配对全错：角标显示成「原来在这个位置的物品」
+       的数值、配不上就 '-'，重开背包=契约重推才恢复。id=InstanceId 双侧同空间实锤：
+       官方拖拽 DRAG_ITEM 本就带同一 it.id 回 C# 搬同一 Data_Item）。位置 join 降为
+       id 缺失时的兜底。数值口径同 v1.8.5⑤：契约 RailSortMath（详情口径）。 */
     var out = [], i, it;
-    var arr = itemsOf(DISP.owner), byPos = {};
-    for (i = 0; i < arr.length; i++) byPos[(arr[i].x || 0) + '_' + (arr[i].y || 0) + '_' + (arr[i].w || 1) + '_' + (arr[i].h || 1)] = arr[i];
+    DISP.owner = dispOwnerOf(model);
+    var arr = itemsOf(DISP.owner), byId = {}, byPos = {};
+    for (i = 0; i < arr.length; i++) {
+      byId[String(arr[i].id)] = arr[i];
+      byPos[(arr[i].x || 0) + '_' + (arr[i].y || 0) + '_' + (arr[i].w || 1) + '_' + (arr[i].h || 1)] = arr[i];
+    }
     for (i = 0; i < model.items.length; i++) {
       it = model.items[i];
+      var row = byId[String(it.id)] || null;
       var realAt = model.items.__srReal ? model.items.__srReal.get(it.id) : null;
       var jx = realAt ? realAt[0] : (it.x || 0), jy = realAt ? realAt[1] : (it.y || 0);
-      var row = byPos[jx + '_' + jy + '_' + (it.w || 1) + '_' + (it.h || 1)] || null;
+      if (!row) row = byPos[jx + '_' + jy + '_' + (it.w || 1) + '_' + (it.h || 1)] || null;
       out.push({
         id: it.id, x: jx, y: jy, w: it.w || 1, h: it.h || 1,
         count: row ? row.count : (it.count || 1),
