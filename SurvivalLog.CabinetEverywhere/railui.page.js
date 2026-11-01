@@ -141,10 +141,10 @@
        仍在文档（官方查询照常命中）即不建桩，任一官方件抓取失败时兜底防 TypeError。 */
     BackpackUI:      { host: '.backpack-container', family: 'backpack', bagOnly: true, duo: false, native: true, grid: '.grid-container', stubs: [] }, /* iframe id 实测 'Backpack'（ID_ALIAS 归一）。v1.8.3：**原生模式（native:true）**——不装配 rail/plainbag（ensureNativeBp 注 style#srNativeBp：高度滚动+滚动条不压格+柜侧隐负重条）；v1.8.4：加 mod 按钮对（nbMount：⇅排序▾/📦一键入库 进官方 .toolbar 行左缘，UI-SPEC §0a-4；装配判据=ctx.bpBag，取用单柜不装）。host/grid/stubs 字段保留供旧 harness mount() 直调参考。列数=官方数据原生（12 列统一待数据层拍板） */
     MaterialRack:    { host: '.bag-panel:not(.is-storage)', family: 'rack', bagOnly: false, duo: false, plainBag: true, rackMid: true, grid: null, stubs: ['wtText', 'wtFill', 'previewLayer'] }, /* v1.8.2.5：**只替换左侧背包 .bag-panel**→简洁背包栏（plainbag）；官方转移列（2 原件+mod 3 增值按钮 append）与右侧柜子面板（普通存储取物界面=官方行组件）原样不动。宿主「替换即消亡」成立（默认 alive）。stubs=随背包面板移除的官方查询目标兜底 */
-    Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中） */
-    BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263） */
-    RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251） */
-    DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317 */
+    Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中）。injTabs=TabInjector 注入页（C# 往官方 BagTabs 补全部柜子）：∩门对 kind 'c' 放行（见 railCtns 注释） */
+    BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263）；injTabs 同 Cooking */
+    RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs 同 Cooking */
+    DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317；injTabs 同 Cooking */
     Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs） */
     Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'cartRack', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned') */
     GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'cartRack', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned') */
@@ -488,7 +488,14 @@
     if (tabsArr && tabsArr.length) {
       var ok = {};
       for (var i = 0; i < tabsArr.length; i++) if (tabsArr[i] != null) ok[String(tabsArr[i])] = true;
-      arr = arr.filter(function (c) { return !!ok[String(c.id)]; });
+      /* 2026-11-01 实机「烹饪页签迟到」终修：四注入页（injTabs，Cooking/RatCage/Brew/Dye）
+         的官方数组由本 mod TabInjector 补全全部柜子（kind 'c'）——原生数组只有背包+冰箱，
+         首包渲染先于注入回包到达时 ∩门把食物柜裁掉=开页只见背包+冰箱（点击切柜才冒出）。
+         bag 族切换=SWITCH_BAG{ownerId} 直给无下标依赖（ApplySwitchBag→GetBagData 无类型
+         过滤，TabInjector 取证）→ 柜子(c)放行零风险；冰箱(f)/架子(r)不在注入集，门照旧
+         （v1.7.0 口径与 v185 夹具契约不变）。 */
+      var injC = !!(SCENES[st.scene] && SCENES[st.scene].injTabs);
+      arr = arr.filter(function (c) { return !!ok[String(c.id)] || (injC && c.kind === 'c'); });
     }
     return [bagCtn()].concat(arr);
   }
@@ -2515,11 +2522,20 @@
     } catch (e) { f.xorigin = true; }
   }
   /* 只读截读：页签数组入缓存 + active 跟随。无扣发无丢弃（rail 不做 tagfilter 的藏页签
-     语义，官方页面照常收每条消息；hasActive 清单照附录 A）。 */
+     语义，官方页面照常收每条消息；hasActive 清单照附录 A）。
+     2026-11-01 实机「烹饪页签迟到」：TABS 是页签行（railCtns 的 ∩门）的输入，但变化
+     从不触发 render——开页首包渲染在 TabInjector 注入 Repush 之前拿到的是**原生数组**
+     （背包+冰箱），注入回包更新 TABS 后无人再渲染 → 食物柜要等下一次 render 触发
+     （作者点冰箱切柜 followActive）才冒出来。修：TABS 内容变化且帧=活跃场景 → render。 */
   function relayObserve(f, msg) {
     try {
       var t = extractTabs(msg);
-      if (t) TABS[f.key] = t;
+      if (t) {
+        var prev = TABS[f.key];
+        var changed = !prev || prev.length !== t.length || prev.join('\u0001') !== t.join('\u0001');
+        TABS[f.key] = t;
+        if (changed && f.key === st.scene && el.rail) render();
+      }
       var d = msg && msg.data;
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { return; } }
       if (!d || typeof d !== 'object') return;
