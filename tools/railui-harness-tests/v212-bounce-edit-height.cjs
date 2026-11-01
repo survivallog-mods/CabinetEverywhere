@@ -88,25 +88,28 @@ const CONTRACT = (rev) => ({
   await stepActive('Cooking', 900104); /* D 步进 → 落被藏杂物柜 */
   await page.waitForTimeout(300);
   let forged = await page.evaluate(() => window.__CAP.forge);
-  check('1b:bounce-D-skips-hidden', forged.length === 1 && forged[0].data && forged[0].data.ownerId === 900106,
-    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（跳过杂物柜→蔬果柜）`);
+  /* 2026-11-02 二轮（作者：跨柜跳跃）：目标=**显示序**邻居。显示行（默认序）=
+     [背包,食材柜,冷藏柜,蔬果柜]——从食材柜(行位1) D → 冷藏柜(行位2)，与官方数组序
+     （杂物柜下一个可见=蔬果柜）无关；旧实现按官方序给 900106=行位 3=视觉跳两格 */
+  check('1b:bounce-D-display-neighbor', forged.length === 1 && forged[0].data && forged[0].data.ownerId === 900102,
+    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（显示序右邻=冷藏柜，非官方序的蔬果柜）`);
   /* harness 模拟 Root case-8：forge 后 120ms 回包（带官方数组 FAKE_IDS——真实游戏同形：
      切换回包可携带页签数组并替换 TABS 缓存）。断言收敛终态=弹回目标，且**从未落被藏柜** */
-  check('1c:never-on-hidden', (await activeTab(cf)) === 900106, `active=${await activeTab(cf)}（扣发+回包收敛到弹回目标，全程不落杂物柜）`);
+  check('1c:never-on-hidden', (await activeTab(cf)) === 900102, `active=${await activeTab(cf)}（扣发+回包收敛到弹回目标，全程不落杂物柜）`);
 
-  /* A 步进：从蔬果柜向左落杂物柜(藏) → 方向-1 → 弹回食材柜。
-     前置：1b 的回包把 TABS 换成了 harness FAKE_IDS（无 900106，lastStepIdx 失锚）——
-     先重注官方数组（=真实游戏 TabInjector Repush 同形）再重新锚定 900106（下标3） */
+  /* A 步进：显示行= [背包,食材柜,冷藏柜,蔬果柜]，从蔬果柜(行位3) A → 冷藏柜(行位2)。
+     前置：1b 的回包把 TABS 换成了 harness FAKE_IDS（无 900106，锚失）——先重注官方数组
+     （=真实游戏 TabInjector Repush 同形）再重新锚定 900106（官方下标3） */
   await injectTabs('Cooking', [900102, 900101, 900104, 900106]);
   await page.waitForTimeout(300);
-  await stepActive('Cooking', 900106); /* 重新锚定：lastStepIdx=3 */
+  await stepActive('Cooking', 900106); /* 重新锚定：行位3 */
   await page.waitForTimeout(300);
   await page.evaluate(() => { window.__CAP.forge.length = 0; });
   await stepActive('Cooking', 900104);
   await page.waitForTimeout(300);
   forged = await page.evaluate(() => window.__CAP.forge);
-  check('1d:bounce-A-reverse', forged.length >= 1 && forged[0].data && forged[0].data.ownerId === 900101,
-    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（反向弹回食材柜）`);
+  check('1d:bounce-A-display-neighbor', forged.length >= 1 && forged[0].data && forged[0].data.ownerId === 900102,
+    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（显示序左邻=冷藏柜）`);
 
   /* 可见柜步进不被拦（正常跟随，无伪造） */
   await page.evaluate(() => { window.__CAP.forge.length = 0; });
@@ -115,6 +118,37 @@ const CONTRACT = (rev) => ({
   forged = await page.evaluate(() => window.__CAP.forge);
   check('1f:visible-no-bounce', forged.length === 0 && (await activeTab(cf)) === 900102,
     `forge=${forged.length} active=${await activeTab(cf)}（可见柜照常跟随零拦截）`);
+
+  /* ---- 1g/1h 拖拽排序后的可见落点跳跃（作者二轮原案例：拖过页签后 D 跨柜跳）----
+     pin 序 [蔬果柜,食材柜,冷藏柜] → 显示行= [背包,蔬果柜,食材柜,冷藏柜]，与官方数组序
+     （冷藏,食材,杂物,蔬果）完全交错。 */
+  await cf.evaluate(() => {
+    localStorage.setItem('srp_pin_order_Cooking', JSON.stringify([900106, 900101, 900102]));
+  });
+  await page.evaluate((x) => window.__CERAIL__.setData(x), CONTRACT(302)); /* 重渲染吃进 pin 序 */
+  await page.waitForTimeout(400);
+  await injectTabs('Cooking', [900102, 900101, 900104, 900106]); /* 1f 回包又换了 TABS，重注 */
+  await page.waitForTimeout(300);
+  await stepActive('Cooking', 900102); /* 锚定：显示行位3（行尾），官方下标0 */
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { window.__CAP.forge.length = 0; });
+  await stepActive('Cooking', 900101); /* 官方 D：下标0→1=食材柜（可见，但显示行位2=行尾左边） */
+  await page.waitForTimeout(300);
+  forged = await page.evaluate(() => window.__CAP.forge);
+  check('1g:drag-D-at-row-end-stays', forged.length === 1 && forged[0].data && forged[0].data.ownerId === 900102
+    && (await activeTab(cf)) === 900102,
+    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))} active=${await activeTab(cf)}（显示行尾 D=弹回原地；旧实现直接跟到显示行左侧的食材柜=视觉左跳）`);
+
+  /* 行中段：官方 D 落被藏柜 → 显示序右邻（与官方序答案相反方向） */
+  await stepActive('Cooking', 900101); /* 锚定：显示行位2，官方下标1 */
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { window.__CAP.forge.length = 0; });
+  await stepActive('Cooking', 900104); /* 官方 D：下标1→2=杂物柜（藏） */
+  await page.waitForTimeout(300);
+  forged = await page.evaluate(() => window.__CAP.forge);
+  check('1h:drag-D-midrow-display-neighbor', forged.length >= 1 && forged[0].data && forged[0].data.ownerId === 900102,
+    `forge=${JSON.stringify(forged.map((f) => f.data.ownerId))}（显示序右邻=冷藏柜，非官方序的蔬果柜）`);
+  await cf.evaluate(() => { localStorage.removeItem('srp_pin_order_Cooking'); });
 
   /* ---- #2 编辑误触移除 ---- */
   const editState = await cf.evaluate(() => ({
@@ -155,6 +189,57 @@ const CONTRACT = (rev) => ({
     return r ? Math.round(r.offsetHeight) : 0;
   });
   check('3b:rack-height-816-kept', rh === 816, `h=${rh}（plainbag 不受影响）`);
+
+  /* ---- #4 二轮：居中补偿（作者：高度缩了下面仍被遮挡=界面整体下移）----
+     官方机器页 body align-items:center——壳缩 76px 被上下各分 38。修：壳为系统容器
+     最高子面板时给系统 translateY(-38px)（顶复位、底让足 76px）；非最高不提。
+     4a：RatCage 预先藏掉兄弟面板（强制壳最高）→ 装配后系统带 translateY(-38px)；
+     4b：BrewPanel 兄弟在场（壳非最高）→ 不提。 */
+  await page.evaluate(() => {
+    const el = document.getElementById('RatCage');
+    const doc = el && el.contentDocument;
+    if (doc) {
+      [...doc.querySelectorAll('.cooking-system > *, body > *')].forEach((n) => {
+        if (n.id === 'RatCage' || n.tagName === 'SCRIPT' || n.tagName === 'STYLE') return;
+        if (n.querySelector && (n.querySelector('#bagTabs') || n.id === 'cookingSystem' || n.querySelector('#cookingSystem'))) return;
+        if (n.closest && n.closest('#cookingSystem')) return;
+        n.style.display = 'none';
+      });
+    }
+  });
+  await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
+  const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
+  await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
+  await page.waitForTimeout(600);
+  const liftA = await rcF.evaluate(() => {
+    let sys = document.getElementById('srp');
+    while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
+    return sys ? sys.style.transform : 'NO-SYS';
+  });
+  check('4a:lift-when-tallest', liftA === 'translateY(-38px)', `sys.transform=${liftA}（壳最高=居中被缩动 → 提 38 复位顶边）`);
+
+  /* 4b 对照：强制兄弟面板更高（min-height 800）→ 壳非最高=系统高度由兄弟驱动（顶没动过）
+     → 不提。fixture 静态内容里 Brew 兄弟列本就矮于 740，须人为垫高才构成对照。 */
+  await page.evaluate(() => {
+    const el = document.getElementById('BrewPanel');
+    const doc = el && el.contentDocument;
+    if (doc) {
+      const host = doc.querySelector('#bagTabs');
+      const col = host ? host.closest('.col') : null;
+      const sys = col ? col.parentElement : doc.body.firstElementChild;
+      if (sys) [...sys.children].forEach((ch) => { if (!(ch.querySelector && ch.querySelector('#bagTabs'))) ch.style.minHeight = '800px'; });
+    }
+  });
+  await page.evaluate(() => window.__HZ_SHOW__('BrewPanel'));
+  const bwF = page.frames().find((f) => f.url().includes('/fixtures/BrewPanel.html'));
+  await bwF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
+  await page.waitForTimeout(600);
+  const liftB = await bwF.evaluate(() => {
+    let sys = document.getElementById('srp');
+    while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
+    return sys ? sys.style.transform : 'NO-SYS';
+  });
+  check('4b:no-lift-when-sibling-taller', liftB === '', `sys.transform=${JSON.stringify(liftB)}（壳非最高=系统没动 → 不提）`);
 
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 

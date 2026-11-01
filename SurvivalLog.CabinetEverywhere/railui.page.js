@@ -2292,6 +2292,22 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
+    /* 2026-11-02 作者#2 二轮「高度缩了下面仍被遮挡、界面整体下移」：官方机器页 body 是
+       align-items:center 垂直居中——壳 816→740 的 76px 缩减被上下各分走 38px：顶下移 38
+       （=「整体下移」）、底只让出 38（拾取条没让够）。补偿：壳驱动系统高度时（系统容器
+       是 flex stretch——wrap==rail 高 ⟺ 壳最高；兄弟更高时 wrap 会被拉伸超出 rail 固定高
+       =系统由兄弟驱动、顶本来就没动），给系统容器 translateY(-38px)：顶部复位原位、
+       底部让足全 76px。一次性幂等（__srLift 门），transform 纯视觉不参与居中计算。 */
+    if (PLAIN_KEYS[sceneKey] && !bpPanel) {
+      try {
+        var sys = wrap.parentElement;
+        while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
+        if (sys && sys !== doc.body && !sys.__srLift) {
+          sys.__srLift = 1;
+          if (wrap.offsetHeight <= (rail.offsetHeight || wrap.offsetHeight) + 1) sys.style.transform = 'translateY(-38px)';
+        }
+      } catch (e) { }
+    }
     buildStubs(doc, sc, wrap); /* T9 桩节点（SCENES.stubs 声明驱动；宿主已移除后建，真节点不在=无 id 重复。rack：真节点已 reparent 在文档 → 自愈不建桩） */
     bind(doc, rail); /* bind 内部 el={} 重建引用表并挂 rail（rail.js 同款；T9 重绑路复用同一函数，__srBound 门防监听器重复挂） */
     /* v1.8.2 核心：官方物品区整体搬进壳 body（appendChild 移动节点=id/官方监听/官方
@@ -2535,7 +2551,7 @@
       if (!isBag && !hasActive) return false;
       var v = activeOwnerOf(f.key, d);
       if (v == null) return false;
-      if (bounceHidden(f, v, msg, orig, win)) return true; /* 作者#1：步进落被藏柜——扣发+弹回，followActive 不走 */
+      if (stepGuard(f, v, msg, orig, win)) return true; /* 作者#1：步进对齐显示序——扣发+伪造，followActive 不走 */
       followActive(f.key, v);
     } catch (e) { }
     return false;
@@ -2554,41 +2570,58 @@
       if (p.active != null) followActive(f.key, String(p.active));
     }
   }
-  /* ---- 2026-11-01 作者#1：A/D 步进落到本页不可见柜——弹回（v1.7.0 tagfilter
-     tryHold/pickBounceTarget 的 rail 版移植。作者原话：按 D 向右会移动到没有显示的
-     柜子上，1.7.0 解决过）。
-     官方步进走**注入后的官方数组**（26 柜全在内），view/TABS 收窄裁掉的柜子照样被
-     步进命中 → 官方格渲染被藏柜 + rail 跟随 = 「移到没显示的柜子」。弹回语义：
-       ① 本条消息扣下不投递（页面不渲染被藏柜=零闪现，tagfilter 同款）；
-       ② 按步进方向（新 active 下标 vs 上一跟随下标）在官方数组序里找最近**可见**柜，
-          伪造页面同款切换事件（buildSwitchEvent）发 Root→Unity；
-       ③ 回包到达（状态前进）=被扣包丢弃；300ms 无回包=补投递+rail 补跟（兜底不错位）。
-     返回 true=已扣发（调用方不得再放行）；false=不拦（可见柜/未知容器/无伪造链）。 */
-  function bounceHidden(f, v, msg, orig, win) {
+  /* ---- 2026-11-01 作者#1（一轮弹回）+2026-11-02 作者#1（二轮跨柜跳跃）：
+     A/D 步进对齐**页签行显示序**（v1.7.0 tagfilter tryHold/pickBounceTarget 的 rail 版，
+     二轮改目标序）。两轮缺陷同根的两面：
+       一轮：步进落**被藏柜**（view/TABS 收窄裁掉）→「移到没显示的柜子上」；
+       二轮：步进落点按**官方数组序**（冰箱原生序+TabInjector 追加柜子序，与显示序天然
+       不同；拖拽排序后差距更大）→ 即便落点可见也常不是显示序邻居 =「跨柜子跳跃」。
+     统一语义：官方 ±1 步进（官方数组下标差 1 判定）→ 目标=**显示序**（pinnedCtns=页签行
+     实际渲染序）里当前柜的左/右邻居；到头=弹回原地（forge 回当前柜拉回官方状态）。
+     落点==显示序邻居→放行正常跟随；否则扣发（页面零闪现）+伪造邻居切换；
+     回包到达=被扣包丢弃；300ms 超时=补投递+rail 补跟（兜底不错位）。
+     非步进的 active 变化（rail 自切回包=v==currentId 早退、官方直切/外部切换）：可见柜
+     放行；被藏柜按官方数组序最近可见弹回（一轮口径保留）。 */
+  function stepGuard(f, v, msg, orig, win) {
     try {
       if (st.scene !== f.key || !isPlainScene() || st.plainBag) return false;
       if (store.ctx && store.ctx.family === 'rack') return false;
       var c = ctnById(numId(v));
       if (!c || c.id === store.bag) return false; /* 未知容器/背包：不拦（原行为） */
+      if (String(c.id) === String(st.currentId)) return false; /* rail 自切回包/重复 active：放行（followActive 幂等） */
       var rc = railCtns(), vis = {};
       for (var i = 0; i < rc.length; i++) vis[rc[i].id] = true;
-      if (vis[c.id]) return false; /* 可见柜：正常跟随 */
+      var landedVisible = !!vis[c.id];
       var arr = TABS[f.key];
       var ni = arr ? arr.indexOf(String(v)) : -1;
-      var dir = (ni >= 0 && st.lastStepIdx != null && st.lastStepIdx >= 0 && ni !== st.lastStepIdx)
-        ? (ni > st.lastStepIdx ? 1 : -1) : 1;
+      var pi = arr ? arr.indexOf(String(st.currentId)) : -1;
+      if (pi < 0 && arr && st.lastStepIdx != null && st.lastStepIdx >= 0) pi = st.lastStepIdx; /* 当前柜不在数组（罕见）：用上一跟随下标 */
+      var isStep = !!(arr && ni >= 0 && pi >= 0 && (ni === pi + 1 || ni === pi - 1));
       var target = null;
-      if (arr) {
-        for (var s = ni + dir; s >= 0 && s < arr.length; s += dir) {
-          var cc = arr[s] != null ? ctnById(numId(arr[s])) : null;
-          if (cc && vis[cc.id]) { target = cc; break; }
+      if (isStep) {
+        /* 作者#1 二轮：步进按显示行走——目标=页签行里当前柜的邻居（隐藏柜天然不在行内=自动跳过） */
+        var row = pinnedCtns(), cp = -1;
+        for (var r = 0; r < row.length; r++) if (String(row[r].id) === String(st.currentId)) { cp = r; break; }
+        if (cp >= 0) {
+          var k = ni > pi ? cp + 1 : cp - 1;
+          target = (k >= 0 && k < row.length) ? row[k] : row[cp]; /* 到头=弹回原地（v1.7.0 bounced 同义） */
         }
-        if (!target) for (var s2 = ni - dir; s2 >= 0 && s2 < arr.length; s2 -= dir) { /* 到头：反向找（弹回原地语义） */
-          var c2 = arr[s2] != null ? ctnById(numId(arr[s2])) : null;
-          if (c2 && vis[c2.id]) { target = c2; break; }
-        }
+      } else if (landedVisible) {
+        return false; /* 非步进的可见落点（官方直切/外部切换）：放行跟随 */
       }
-      if (!target && st.currentId && vis[st.currentId]) target = ctnById(st.currentId); /* 无数组/全被藏：回上一柜 */
+      if (!target && !landedVisible && arr) {
+        /* 一轮口径保留：非步进落被藏柜（或步进但当前柜不在行内）——官方数组序最近可见弹回 */
+        var dir = (ni >= 0 && pi >= 0 && ni !== pi) ? (ni > pi ? 1 : -1) : 1;
+        for (var s = ni + dir; !target && s >= 0 && s < arr.length; s += dir) {
+          var cc = arr[s] != null ? ctnById(numId(arr[s])) : null;
+          if (cc && vis[cc.id]) target = cc;
+        }
+        for (var s2 = ni - dir; !target && s2 >= 0 && s2 < arr.length; s2 -= dir) {
+          var c2 = arr[s2] != null ? ctnById(numId(arr[s2])) : null;
+          if (c2 && vis[c2.id]) target = c2;
+        }
+        if (!target && st.currentId && vis[st.currentId]) target = ctnById(st.currentId); /* 全被藏：回上一柜 */
+      }
       if (!target || target.id === c.id) return false;
       if (!forgeSwitchTo(target.id, f.key)) return false; /* 无官方链（索引族缓存未到等）：放行走旧路径 */
       f.pending = {
