@@ -2638,7 +2638,7 @@
     + '#srnConfirm button{padding:5px 12px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer}'
     + '#srnConfirm .srn-cf-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2}'
     + '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}'
-    + '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:5}'
+    + '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:50}'
     + '#srnBadges i{position:absolute;transform:translateX(-100%);min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.8);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}'
     + '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}'
     + '#srnToast[hidden]{display:none !important}';
@@ -2854,6 +2854,13 @@
       old.innerHTML = h;
     } catch (e) { try { console.warn('[CERail] nbBadges 失败', e && (e.stack || e.message)); } catch (e2) { } }
   }
+  /* 2026-11-01 第十三轮：对齐节拍器——500ms 兜底重算角标（有排序时）。观察器只盯格子/
+     面板的属性变更，纯 CSS 回流（详情弹窗压扁格区 162²→218×50 又复原）不产生变更 →
+     旧角标钉死旧坐标直到下一次格子类变更。节拍器独立于装配循环，任何布局变化 ≤500ms 自愈。 */
+  setInterval(function () {
+    try { if (NB.doc && NB.doc.body && NB.fsort && NB.fsort !== 'official') nbBadges(NB.doc, null); } catch (e) { }
+  }, 500);
+
   function nbEnsureGridMO(doc, panel) {
     var grid = panel && panel.querySelector('.grid-container');
     if (!grid || grid.__srnMO) return;
@@ -2863,6 +2870,16 @@
         setTimeout(function () { if (NB.doc === doc) { DISP.settling = false; dispApply(); nbBadges(doc, null); } }, 50); /* v1.8.5：官方重渲染→重抹显示层排序 */
       });
       grid.__srnMO.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+      /* 2026-11-01 第十三轮：详情弹窗开/关在面板/祖先层切 class 驱动格区压扁(162²→218×50)/
+         复原——纯 CSS 回流不动格内联样式，格子观察器静默 → 角标钉旧坐标（关弹窗也不回来，
+         点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style。 */
+      var host = panel && panel.parentElement ? panel.parentElement : panel;
+      if (host && !host.__srnMO) {
+        host.__srnMO = new V(function () {
+          setTimeout(function () { if (NB.doc === doc) nbBadges(doc, null); }, 50);
+        });
+        host.__srnMO.observe(host, { attributes: true, attributeFilter: ['style', 'class'], subtree: false });
+      }
     } catch (e) { }
   }
   function nbRefresh() { /* setData 后跟随：角标值随新契约重算（网格未变也不漏） */
