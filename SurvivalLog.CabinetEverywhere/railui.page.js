@@ -1889,6 +1889,7 @@
     if (el.srMid) renderMidChips(); /* T10 中段联动（v1.8.2）：主侧栏任何渲染（切柜/筛选/
        命令回推/active 跟随都汇于 render）连带刷「按标签放入」色点——随 st.currentId 联动
        （v12 第三连修回归点）；非 rack 场景 el.srMid=null 自然跳过 */
+    if (isPlainScene() && el.rail) plainSlotSync(el.rail.parentElement, el.rail); /* 七轮：槽位随渲染同步（官方等高契约；ResizeObserver 兜底挂载竞态） */
   }
 
   /* ---- 元素引用收集 + 交互接线 ----
@@ -2300,31 +2301,16 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
-    /* 2026-11-02 六轮（作者#1：光改左侧=「光顾头不顾腚」——右侧官方面板与界面外框底边
-       必须同收一格）。机器页壳定高 778（816−38）**不留垫**→界面外框（系统容器）高度随之
-       −38（底边 x+10→x+9，整界面同收）；顶边钉回原 x：系统容器 margin-top −38px
-       （布局手段非 transform：居中容器里 H 缩 38、margin −38 恰好把顶边从 t+19 拉回 t）。
-       仅壳驱动系统高度的页打（兄弟面板自然高 ≤778——此时系统高度本由壳决定，右面板更矮
-       不受影响）；兄弟更高的页（系统高度=官方设计）不动=官方原貌。老鼠笼走填满路（下方
-       fillRatSlot）不适用。 */
-    if (PLAIN_KEYS[sceneKey] && !bpPanel && sceneKey !== 'RatCage') {
-      try {
-        var sys6 = wrap.parentElement;
-        while (sys6 && sys6.parentElement && sys6.parentElement !== doc.body) sys6 = sys6.parentElement;
-        if (sys6 && sys6 !== doc.body && !sys6.__srPin) {
-          sys6.__srPin = 1;
-          var sibMax = 0;
-          for (var q6 = 0; q6 < sys6.children.length; q6++) {
-            if (sys6.children[q6] === wrap) continue;
-            var h6 = sys6.children[q6].offsetHeight || 0;
-            if (h6 > sibMax) sibMax = h6;
-          }
-          if (sibMax <= 778) sys6.style.marginTop = '-38px';
-        }
-      } catch (e) { }
-    }
-    if (sceneKey === 'RatCage' && !bpPanel) {
-      try { fillRatSlot(wrap, rail); } catch (e) { } /* 老鼠笼填满（见 fillRatSlot） */
+    /* 2026-11-02 七轮（官方模板对照定案，治老鼠笼反复）：官方机器页布局契约=三面板 flex
+       拉伸**等高**（Cooking/RatCage 模板同构，无特例——差异只在运行时兄弟面板数据高度）。
+       壳统一回归该契约：壳高=max(778, 兄弟面板最高自然高)——
+       · 兄弟 ≤778：壳 778=高度驱动方，外框随壳 −38（整界面底边 x+10→x+9）+外框
+         margin-top −38px 钉回顶边（六轮方案保留）；
+       · 兄弟 >778：壳=兄弟高（官方等高拉伸原貌，外框不动、无 margin）。
+       挂载竞态（兄弟面板晚长高、量矮了不再跟=六轮实锤 427/782）由槽位 ResizeObserver
+       即时自愈 + render 尾重抹（见 plainSlotSync/armSlotObserver）。 */
+    if (PLAIN_KEYS[sceneKey] && !bpPanel) {
+      try { plainSlotSync(wrap, rail); armSlotObserver(wrap); } catch (e) { }
     }
     buildStubs(doc, sc, wrap); /* T9 桩节点（SCENES.stubs 声明驱动；宿主已移除后建，真节点不在=无 id 重复。rack：真节点已 reparent 在文档 → 自愈不建桩） */
     bind(doc, rail); /* bind 内部 el={} 重建引用表并挂 rail（rail.js 同款；T9 重绑路复用同一函数，__srBound 门防监听器重复挂） */
@@ -2588,26 +2574,60 @@
       if (p.active != null) followActive(f.key, String(p.active));
     }
   }
-  /* ---- 2026-11-02 六轮（作者#2）：老鼠笼槽位填充——左壳显式=右面板高（行内 important px）。
-     背景：height:100% 对拉伸父级解析有时序循环（挂载瞬间右面板未长高→壳被背包格
-     1428px 内容撑爆=作者截图「顶到屏幕底」跑飞；右面板长好后又碰巧正常=不稳定）。
-     显式量高无循环：rail 高=max(兄弟面板, 300)，网格区在壳内滚动；随 render 重抹自适应。 */
-  function fillRatSlot(wrap, rail) {
+  /* ---- 2026-11-02 七轮：机器页槽位同步（官方等高契约的壳侧实现，全 plain 页统一）----
+     壳高=clamp(778, 兄弟面板最高, 816)（行内 important 覆盖 .plain 定高基线）：
+       · 兄弟 ≤778：壳 778=驱动方，外框随壳缩 38（整界面底边上收一格）+外框 margin-top
+         −38px 钉回顶边（居中容器 H 缩 38、margin −38 恰把顶边从 t+19 拉回 t）；
+       · 兄弟 >778：壳跟随兄弟（官方三面板等高拉伸原貌，外框不动、无 margin）——
+         老鼠笼实机即此态（鼠笼/电力面板 782）。
+     范围纪律（t8 实锤 Trade 反馈跑飞 1381 的教训）：
+       · 兄弟量高范围=**壳父级行**（面板真所在；爬 body 子级在 Vue 页会量到全屏容器）；
+       · margin 只打「行=页面居中根」的官方形态页（行父级=body，Cooking/RatCage 形态），
+         Vue 包裹页（Trade 等）不打=官方原位；
+       · 硬钳 816：任何量测异常壳高不可能超过旧设计高度（跑飞结构性不可能）。
+     幂等（值未变不写 DOM=ResizeObserver 自限）；挂载/render 尾/槽位 RO 三路调用。 */
+  function plainSlotSync(wrap, rail) {
     try {
       if (!wrap || !wrap.parentElement || !rail) return;
       var doc = wrap.ownerDocument;
-      var sys = wrap.parentElement;
-      while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
-      if (!sys || sys === doc.body) return;
+      var row = wrap.parentElement; /* 面板行：壳与兄弟面板的直接容器 */
       var sibMax = 0;
-      for (var i = 0; i < sys.children.length; i++) {
-        if (sys.children[i] === wrap) continue;
-        var h = sys.children[i].offsetHeight || 0;
+      for (var i = 0; i < row.children.length; i++) {
+        if (row.children[i] === wrap) continue;
+        var h = row.children[i].offsetHeight || 0;
         if (h > sibMax) sibMax = h;
       }
-      var px = Math.max(sibMax, 300);
-      rail.style.setProperty('height', px + 'px', 'important');
-      rail.style.setProperty('max-height', 'none', 'important');
+      var wantH = Math.max(778, sibMax);
+      if (wantH > 816) wantH = 816; /* 硬钳：≤旧设计高度，跑飞不可能 */
+      var wantHPx = wantH + 'px';
+      if (rail.style.height !== wantHPx) {
+        rail.style.setProperty('height', wantHPx, 'important');
+        rail.style.setProperty('max-height', 'none', 'important');
+      }
+      /* margin 目标：行外层=body 直接子级（官方形态页：行即页面居中根）才打；Vue 包裹页不打 */
+      var sys = row;
+      while (sys && sys.parentElement && sys.parentElement !== doc.body) sys = sys.parentElement;
+      if (sys && sys !== doc.body) {
+        var canPin = sys === row; /* 行自身=居中根（Cooking/RatCage 形态） */
+        var wantMT = (canPin && sibMax <= 778) ? '-38px' : '';
+        if (sys.style.marginTop !== wantMT) sys.style.marginTop = wantMT;
+      }
+    } catch (e) { }
+  }
+  /* 槽位观察器（per-frame 单挂，__srSlotRO 门）：wrap 尺寸变化=兄弟面板长高/回缩经 flex
+     拉伸传导 → 重同步。回调内只排队下一拍（t8 实锤：回调内同步强制回流会触发
+     "ResizeObserver loop" 交付循环告警——offsetHeight 量高移出交付周期即消）。 */
+  function armSlotObserver(wrap) {
+    try {
+      if (!wrap || wrap.__srSlotRO) return;
+      var rail = wrap.querySelector('.sr-rail');
+      if (!rail) return;
+      var V = wrap.ownerDocument.defaultView.ResizeObserver;
+      if (!V) return;
+      wrap.__srSlotRO = new V(function () {
+        setTimeout(function () { plainSlotSync(wrap, rail); }, 0);
+      });
+      wrap.__srSlotRO.observe(wrap);
     } catch (e) { }
   }
 

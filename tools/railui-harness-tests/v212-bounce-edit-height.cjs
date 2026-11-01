@@ -174,23 +174,43 @@ const CONTRACT = (rev) => ({
   check('2c:menu-dblclick-edits', menuDbl.open === true && menuDbl.name === '食材柜', `open=${menuDbl.open} name=${menuDbl.name}（▾ 行双击仍可达设置）`);
   await cf.evaluate(() => { document.getElementById('srEditCancel').click(); });
 
-  /* ---- #3/#4 六轮（作者#1「光顾头不顾腚」+ #2 老鼠笼跑飞）----
-     3a：机器页壳 778 无垫 + 系统容器 margin-top −38px（外框随壳矮 38、顶边钉回原位
-         =整界面底边上收一格）；3b：rack 不受影响；
-     4：老鼠笼填满槽位（行内 px=兄弟面板高）且**不跑飞**——背包格强撑 2000px 后壳高
-         不变（五轮 height:100% 时序循环=作者截图跑飞根因）。 */
+  /* ---- #3/#4 七轮（官方等高契约统一：壳=max(778,兄弟面板最高)）----
+     3a：兄弟 ≤778（Cooking fixture）→ 壳 778+外框 margin −38（整界面底边上收一格顶边钉回）；
+     4a：兄弟 >778（RatCage fixture 垫高 800）→ 壳跟随 800=官方等高原貌、外框无 margin；
+     4b：背包格强撑 2000px → 壳高不变（五轮跑飞/六轮竞态根治）；render 尾+ResizeObserver 双路。 */
   const h3 = await cf.evaluate(() => {
     const rail = document.getElementById('srRail');
     const wrap = document.getElementById('srp');
     let sys = wrap;
     while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
-    return {
-      h: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight),
-      mt: sys ? sys.style.marginTop : 'nosys', pad: getComputedStyle(wrap).paddingBottom
-    };
+    return { h: Math.round(rail.offsetHeight), mt: sys ? sys.style.marginTop : 'nosys' };
   });
-  check('3a:shell-778-frame-pinned', h3.h === 778 && h3.pad === '0px' && h3.mt === '-38px',
-    `rail=${h3.h} wrap=${h3.wrapH} pad=${h3.pad} marginTop=${h3.mt}（外框随壳−38、顶边 margin 钉回=整界面底边上收一格）`);
+  check('3a:shell-driven-778-pinned', h3.h === 778 && h3.mt === '-38px',
+    `rail=${h3.h} marginTop=${h3.mt}（兄弟矮：壳 778 驱动，外框缩 38 顶边钉回=整界面底边上收一格）`);
+  await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
+  const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
+  await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
+  await page.waitForTimeout(800);
+  /* 分支②：垫高兄弟面板到 800（>778）→ 壳跟随 800、外框 margin 撤销（官方等高原貌） */
+  await rcF.evaluate(() => {
+    /* 只垫高兄弟面板（≥800），不隐藏——隐藏会让 minHeight 无布局效果（旧 4a 遗产坑） */
+    const sys = [...document.querySelectorAll('body > *')].find((n) => n.querySelector && n.querySelector('.panel')) || document.body;
+    [...sys.children].forEach((ch) => { if (!(ch.id === 'srp')) ch.style.minHeight = '800px'; });
+    const host = document.getElementById('srGridHost');
+    const g = host && (host.querySelector('#backpackGrid') || host.firstElementChild);
+    if (g) g.style.height = '2000px'; /* 同时验跑飞：内容撑高不得影响壳高 */
+  });
+  await page.evaluate((x) => window.__CERAIL__.setData(x), CONTRACT(307));
+  await page.waitForTimeout(1000);
+  const rat = await rcF.evaluate(() => {
+    const rail = document.getElementById('srRail');
+    const wrap = document.getElementById('srp');
+    let sys = wrap;
+    while (sys && sys.parentElement && sys.parentElement !== document.body) sys = sys.parentElement;
+    return { railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight), mt: sys.style.marginTop };
+  });
+  check('4a:sibling-driven-follows', rat.railH === 800 && rat.railH === rat.wrapH && rat.mt === '',
+    `rail=${rat.railH} wrap=${rat.wrapH} mt=${JSON.stringify(rat.mt)}（兄弟 800>778：壳跟随=官方等高，外框不动；格撑 2000px 壳高不变=零跑飞）`);
   await page.evaluate(() => window.__HZ_SHOW__('MaterialRack'));
   const rf = page.frames().find((f) => f.url().includes('/fixtures/MaterialRack.html'));
   await rf.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
@@ -199,31 +219,7 @@ const CONTRACT = (rev) => ({
     const r = document.getElementById('srRail') || document.querySelector('.sr-rail');
     return r ? Math.round(r.offsetHeight) : 0;
   });
-  check('3b:rack-height-816-kept', rh === 816, `h=${rh}（plainbag 不受影响）`);
-  await page.evaluate(() => window.__HZ_SHOW__('RatCage'));
-  const rcF = page.frames().find((f) => f.url().includes('/fixtures/RatCage.html'));
-  await rcF.waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 15000 });
-  await page.waitForTimeout(800);
-  const rat0 = await rcF.evaluate(() => {
-    const rail = document.getElementById('srRail');
-    const wrap = document.getElementById('srp');
-    return { railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight) };
-  });
-  /* 跑飞回归：背包格强撑 2000px → 重渲染 → 壳高必须仍=槽位（不被内容撑爆） */
-  await rcF.evaluate(() => {
-    const host = document.getElementById('srGridHost');
-    const g = host && (host.querySelector('#backpackGrid') || host.firstElementChild);
-    if (g) g.style.height = '2000px';
-  });
-  await page.evaluate((x) => window.__CERAIL__.setData(x), CONTRACT(306));
-  await page.waitForTimeout(900);
-  const rat1 = await rcF.evaluate(() => {
-    const rail = document.getElementById('srRail');
-    const wrap = document.getElementById('srp');
-    return { railH: Math.round(rail.offsetHeight), wrapH: Math.round(wrap.offsetHeight) };
-  });
-  check('4:ratcage-fill-stable', rat0.railH === rat0.wrapH && rat1.railH === rat1.wrapH && rat1.railH === rat0.railH,
-    `填满=${rat0.railH}==槽位 ${rat0.wrapH}；格撑 2000px 后=${rat1.railH}（行内 px 填充零跑飞）`);
+  check('4b:rack-height-816-kept', rh === 816, `h=${rh}（plainbag 不受影响）`);
 
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 
