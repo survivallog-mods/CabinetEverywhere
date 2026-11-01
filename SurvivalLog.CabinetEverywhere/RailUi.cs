@@ -168,6 +168,14 @@ internal static class RailUi
             // bootstrap 注入（T8）：幂等，每周期执行（WebView 重建自动重挂）；探活确认见下
             InjectBootstrap(web);
 
+            // 世界重绑检测（第十二轮：退主菜单重读档——LogicWorld 引用变即复位管线，
+            // 否则门②永拦=契约冻结旧世界 id=排序失效+角标全空）
+            if (RailData.CheckWorldRebind())
+            {
+                RailData.OnWorldRebind();
+                _lastPage = null; /* 视为新开机：首个场景必推 */
+            }
+
             // 门控①：无 rail 场景不推（清 _lastPage：重开场景时视为 page 变化必推一包）
             if (!RailData.AnyRailSceneActive()) { _lastPage = null; return; }
 

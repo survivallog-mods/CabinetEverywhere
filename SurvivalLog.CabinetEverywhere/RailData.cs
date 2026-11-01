@@ -246,6 +246,33 @@ internal static class RailData
         return ComputeSig() != _lastSig || _forcePending || _tidyFailPending;
     }
 
+    /* ================= 世界重绑（2026-11-01 第十二轮：作者「退主菜单重读档后排序彻底失效」
+       日志实锤：rev3 之后全程静默——重读档后页沿不翻/签名不变 → 泵门②永拦 → JS 契约冻结在
+       旧世界物品 id → 新模型 id 全 miss=排序键全 null+角标全空。换档=LogicWorld 引用变，
+       泵每帧比对，变了就按新开机复位）。 ================= */
+
+    private static object _lastWorldRef;
+
+    /// <summary>泵每帧调用：世界引用变化且非空=true（调用方随即 OnWorldRebind+清 _lastPage）。</summary>
+    internal static bool CheckWorldRebind()
+    {
+        var w = LogicWorld();
+        bool changed = !ReferenceEquals(w, _lastWorldRef);
+        _lastWorldRef = w;
+        return changed && w != null;
+    }
+
+    /// <summary>按新开机复位（换档重读：PlayerId 变/物品实例全换/缓存键变）。</summary>
+    internal static void OnWorldRebind()
+    {
+        _bagOwner = 0;
+        _bagCalLogged = false;
+        _forcePending = true;
+        _tidyFailPending = false;
+        _lastSig = long.MinValue;   // 首包必推（与静态初值同款）
+        try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
+    }
+
     /// <summary>rev 强制 +1 并重推（T7 命令执行后调用）：仅置脏标记，下一周期 BuildJson 消费。</summary>
     internal static void ForceRepublish()
     {
@@ -395,20 +422,21 @@ internal static class RailData
         _tidyFailPending = false; // 推出即清（一次性标志）
         _rev++;
         _lastSig = ComputeSig();
+        /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
+           再比前包**=恒假死代码（三零空包照推）。正确序=先比后存：三零且前包非空=瞬态
+           （OwnerCache 空窗/换档瞬间），不推立即重试；T6 裁定 4 的正常空态（开局首包/
+           无容器玩家）不受影响。 */
+        bool emptyTransient = _ctn.Count == 0 && itemRows == 0 && icfgOrder.Count == 0
+            && (_lastCtnRows > 0 || _lastItemRows > 0 || _lastIcfgRows > 0);
+        if (emptyTransient)
+        {
+            _forcePending = true; /* 瞬态：下一周期重试 */
+            return (null, _rev);
+        }
         _lastJsonHead = sb.Length > 200 ? sb.ToString(0, 200) : sb.ToString();
         _lastItemRows = itemRows;
         _lastCtnRows = _ctn.Count;
         _lastIcfgRows = icfgOrder.Count;
-        /* 2026-11-01 第十一轮（实机 rev4 实锤：点详情/切页瞬间 OwnerCache 空窗推了
-           「容器 0/物品行 0/icfg 0」全空包）——落地即摘角标层+进页沿把排序打回 official，
-           数据回来角标也不复活=作者「点详情数值消失」。全空=瞬态（配置表恒非空，icfg=0
-           必为构建空窗），不推等下一周期。T6 裁定 4 的「空态照推」仅指无容器玩家的正常
-           空包（bag 行可在）——本门只拦三零全空。 */
-        if (_ctn.Count == 0 && itemRows == 0 && icfgOrder.Count == 0 && _lastCtnRows + _lastItemRows > 0)
-        {
-            _forcePending = true; /* 瞬态：立刻重试下一周期（真稳态不会三零+有前包） */
-            return (null, _rev);
-        }
         LogVerboseAnchors(icfgOrder, itemDict);
         return (sb.ToString(), _rev);
     }
