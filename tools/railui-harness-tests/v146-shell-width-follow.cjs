@@ -59,10 +59,12 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
   await pushCols(6);
   await page.waitForTimeout(450); /* 官方格重建 + sizeLock 补 margin + badge MO 50ms 去抖 + 宽同步 */
   const p1 = await probe();
-  check('brew:shrink-6col-lock-pads-margin', !!p1 && p1.mL + p1.mR > 0 && near(p1.outer, p0.outer, 3),
-    `margin L${p1.mL}+R${p1.mR} 外沿 ${p0.outer}→${p1.outer}（官方锁钉最大列数、格区居中）`);
-  check('brew:shrink-6col-shell-stable', !!p1 && near(p1.railW, p1.outer + 24 + p1.sbW, 2) && near(p1.railW, p0.railW, 4),
-    `rail ${p0.railW}→${p1.railW}（跟外沿=跨宽度稳定，不再锁死也不乱跳）`);
+  /* v1.8.4c（作者缺陷「柜子滚动条」）：unlockGridSize 清官方 sizeLock 的 margin 填充——
+     旧断言（margin>0、外沿钉最大列数）退役；新契约=margin 恒 0、壳贴当前格宽 */
+  check('brew:shrink-6col-unlock-clears-margin', !!p1 && p1.mL + p1.mR === 0 && near(p1.outer, p1.gridW, 3),
+    `margin L${p1.mL}+R${p1.mR} 外沿=${p1.outer} 格宽=${p1.gridW}（官方锁填充已清=滚动极限=当前格）`);
+  check('brew:shrink-6col-shell-hugs-grid', !!p1 && near(p1.railW, p1.gridW + 24 + p1.sbW, 2) && p1.railW < p0.railW,
+    `rail ${p0.railW}→${p1.railW}（贴窄格收窄，无补边空白）`);
   check('brew:shrink-6col-cells-safe-tt-regression', !!p1 && cellsSafe(p1),
     `lastCell=${p1.lastCellR} ≤ bodyRight-sb-1=${p1.bodyRight - p1.sbW - 1}（工作台遮格≈1.5 格的回归断言：格+补边全在壳内）`);
 
@@ -121,11 +123,11 @@ function check(name, ok, detail) { results.push({ name, ok }); console.log((ok ?
     `cols=${t1.cols} grid=${t1.gridW} outer=${t1.outer} rail=${t1.railW} lastCell=${t1.lastCellR} ≤ bodyRight-sb(+1 舍入)=${t1.bodyRight - t1.sbW + 1}（12 列全可见=作者缺陷直接断言）`);
   check('tt:grow-12col-shell-follows', !!t1 && near(t1.railW, t1.outer + 24 + t1.sbW, 3), `rail=${t1.railW} outer=${t1.outer}`);
   check('tt:host-no-frozen-width', !!t1 && t1.hostInline === '' && t1.hostW >= t1.outer - 4, `hostInline='${t1.hostInline}' host=${t1.hostW}（宿主零冻宽，flex 居中）`);
-  await ttPush(6); /* 切回窄：官方锁补边、格居中、末列安全 */
+  await ttPush(6); /* 切回窄：v1.8.4c unlock 清锁补边、格贴内容、末列安全 */
   await page.waitForTimeout(600);
   const t2 = await ttProbe();
-  check('tt:back-6col-cells-safe', !!t2 && t2.lastCellR <= t2.bodyRight - t2.sbW + 1 && t2.mL + t2.mR > 0,
-    `margin L${t2.mL}+R${t2.mR} lastCell=${t2.lastCellR} ≤ ${t2.bodyRight - t2.sbW - 1}`);
+  check('tt:back-6col-cells-safe', !!t2 && t2.lastCellR <= t2.bodyRight - t2.sbW + 2 && t2.mL + t2.mR === 0,
+    `margin L${t2.mL}+R${t2.mR} lastCell=${t2.lastCellR} ≤ ${t2.bodyRight - t2.sbW}（+2 亚像素容差）`);
 
   await browser.close();
   const fail = results.filter((r) => !r.ok).length;

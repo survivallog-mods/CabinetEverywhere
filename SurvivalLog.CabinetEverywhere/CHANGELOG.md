@@ -3,6 +3,34 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·三批（2026-11-01 晚，作者复测：冰箱没进 12 / 柜子滚动条越界空白）
+
+**缺陷「豪华版双门冰箱、冰柜宽度还不是 12」——SizeEngine 目标集漏冷链电器：**
+
+- 根因：上一版目标集=HomeInstances（只有 kind 'c' 柜子）；冰箱是冷链电器 kind 'f'
+  （IsElectrical+ElectricalType==1+ColdRate>0，与官方 CollectFridges 同判定）→ 冰箱包
+  （1004/115000/115001/115005 族）全漏。作者家冰箱在 Cooking 页签可见（豪华版双门冰箱/
+  冰柜/大容量冰柜）正是漏改的直观面。
+- 修：目标集改扫 AllContainers，剔除 kind 'r'（材料架/货架：行式界面且原宽可 >12，收窄
+  =砍容量，保持原宽）——柜子+冰箱统一 12；材料架若也要统一再拍板（说一声即加）。
+
+**缺陷「柜子滚动条：能完整显示还要滚动条、往下滚全是空白、极限=页签最高柜」——官方
+  createGridSizeLock 填充在壳内的越界暴露：**
+
+- 机制（作者括号直觉逐字命中）：官方 webui-bag 的 createGridSizeLock（webui-bag.js@1211）
+  seenRows/seenCols **只增不减**，hint=State.bagMaxRows=页签柜最高行 → 切到矮柜后格容器被
+  上下 margin 撑到「见过的最高柜」（夹具复现：4 行柜 +552px）；壳内 sr-body 的滚动区随格
+  容器外沿走 → 滚动越界全空白、且补边常让「本可完整显示」也出滚动条。
+- 修：`unlockGridSize()`——壳内清零官方锁的格容器 margin（mount 首清 + ensureBadgeObserver
+  50ms 跟清，官方每次 render 后 bagLock.apply 重写即被清）。清零后：滚动极限=当前柜真实
+  行数；容纳即无滚动条（overflow:auto 原生语义）。安全性：官方拖放落点=容器实时
+  getBoundingClientRect（margin 位移天然计入，webui-bag.js@387/406/446），清零不碰落点；
+  锁内部只读 offsetWidth/Height（margin 是输出非输入），清零不污染锁状态；横向居中由
+  .sr-gridhost flex 居中接管（缺陷#5 第三轮同款）。
+- harness：v210（6 断言全绿，官方真页复现 mB=552px→清零→4 行无溢出/20 行滚动极限=自身
+  936px）+红灯（手注 mB=552px 观察器 300ms 内清回 0）；v146 三条「量外沿补偿」时代断言
+  更替为新契约（margin 恒 0、壳贴当前格宽、末列安全 +2 亚像素容差）13/13。
+
 ## 待发版·二批（2026-11-01 下午，作者缺陷单：交易页残留页/柜宽不齐/交易页签全空）
 
 **缺陷#1「进交易界面偶尔显示开发期页面」+ #3「交易页签栏全空」——同根终修（v207/v208 实证）：**

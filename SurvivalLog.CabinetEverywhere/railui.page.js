@@ -1665,14 +1665,36 @@
   }
   /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点）——官方改格后先重抹显示层
      排序（新格=真实态→重 join+重排，ProjectCook 自愈模式）再重算角标；
-     v1.8.4 缺陷#5 加宽同步——官方格 cols 异步回推变宽时壳重测跟随（防滚动条压末列） */
+     v1.8.4 缺陷#5 加宽同步——官方格 cols 异步回推变宽时壳重测跟随（防滚动条压末列）；
+     v1.8.4c 缺陷（柜子滚动条）——官方 createGridSizeLock 的 margin 填充跟清（unlockGridSize） */
   function ensureBadgeObserver() {
     var host = el.srGridHost;
     if (!host || host.__srBadgeMO) return;
     try {
       var V = host.ownerDocument.defaultView.MutationObserver;
-      host.__srBadgeMO = new V(function () { setTimeout(function () { DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); }, 50); });
+      host.__srBadgeMO = new V(function () { setTimeout(function () { unlockGridSize(); DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); }, 50); });
       host.__srBadgeMO.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    } catch (e) { }
+  }
+  /* v1.8.4c 作者缺陷「柜子滚动条」：官方 createGridSizeLock（webui-bag.js@1211）的
+     seenRows/seenCols 只增不减（hint=State.bagMaxRows=页签柜最高行，作者括号直觉逐字命中）
+     → 切到短柜后格容器被上下/左右 margin 撑到「见过的最高/最宽柜」：壳内 sr-body 滚动
+     越界全是空白、且容纳也常显滚动条。壳内抵消锁定：官方每次 render 后 bagLock.apply
+     重写 margin，观察器（ensureBadgeObserver）+ mount 首清跟清。
+     安全性（动作保真红线核查）：官方拖放落点换算=容器实时 getBoundingClientRect（margin
+     位移天然计入，webui-bag.js@387/406/446），清零不影响落点；锁内部 baseW/baseH 只读
+     offsetWidth/offsetHeight（margin 是锁的输出不是输入），清零不污染锁状态；横向居中由
+     .sr-gridhost flex 居中接管（缺陷#5 第三轮同款）。清零后滚动=当前柜真实行数：
+     容纳即无滚动条（overflow:auto 原生语义），滚动极限=当前柜底。 */
+  function unlockGridSize() {
+    var host = el.srGridHost;
+    var g = host && host.firstElementChild;
+    if (!g || !g.style) return;
+    try {
+      if (g.style.marginTop) g.style.marginTop = '';
+      if (g.style.marginBottom) g.style.marginBottom = '';
+      if (g.style.marginLeft) g.style.marginLeft = '';
+      if (g.style.marginRight) g.style.marginRight = '';
     } catch (e) { }
   }
   /* 壳宽同步（v1.8.4 缺陷#5 从 render 抽出，双路调用：render 主路 + badge MO 官方重渲染路）：
@@ -2288,6 +2310,7 @@
        取出最多/落点预览全原生，rackOpen 切柜后官方重渲染写进同一容器。 */
     if (officialGrid && !bpPanel && el.srGridHost) {
       try { el.srGridHost.appendChild(officialGrid); } catch (e) { }
+      unlockGridSize(); /* v1.8.4c：入壳首清官方 sizeLock 的 margin 填充（后续由观察器跟清） */
     }
     if (sc.rackMid) bindMid(); /* 中段 mod 三按钮接线（mid 容器 __srMidBound 门防重绑双挂；官方两按钮零接线） */
     /* T4 场景态随装配应用：st.scene←sceneKey（T3 评审随行项①——分场景 localStorage 键

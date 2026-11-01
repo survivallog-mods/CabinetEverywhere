@@ -90,10 +90,13 @@ internal static class RailUi
             var furns = BagTable.FurnDict(cm);
             if (bags == null || furns == null || bags.Count == 0) return; // 配置表未就绪：下轮再试
 
-            // ① 目标包=家中柜子子集
+            // ① 目标包=家中柜子 + 冷链冰箱（作者 2026-11-01 复测缺陷：豪华版双门冰箱/冰柜没进 12——
+            //    上一版只扫 HomeInstances=kind 'c'，冰箱是冷链电器 kind 'f' 全漏；改扫 AllContainers
+            //    并剔除 'r' 材料架/货架——行式界面且原宽可 >12，收窄=砍容量，保持原宽）
             var ids = new HashSet<int>();
-            foreach (var c in CabinetCatalog.HomeInstances)
+            foreach (var c in CabinetCatalog.AllContainers)
             {
+                if (c.Kind == 'r') continue;
                 try { if (furns.TryGetValue(c.ConfigId, out var f) && f != null && f.BagId > 0) ids.Add(f.BagId); } catch { }
             }
             if (ids.Count == 0) return; // 目录未就绪/家中无柜：下轮再看
@@ -148,7 +151,7 @@ internal static class RailUi
                     ? $"[CERail] SizeEngine：柜宽统一 {w} 列——改写 {changed} 包：" + string.Join("、", detail)
                     : $"[CERail] SizeEngine：目标 {targets.Count} 包均已 {w} 列")
                 + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                + "（目标=家中柜子；排除=ExcludeBagIds+家中排除家具共包；Config_Bag 内存直写，5s 幂等重扫）");
+                + "（目标=家中柜子+冰箱，材料架不动；排除=ExcludeBagIds+家中排除家具共包；Config_Bag 内存直写，5s 幂等重扫）");
         }
         catch (Exception e)
         {
