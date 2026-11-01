@@ -78,6 +78,9 @@ function check(name, ok, detail) {
   check('bp:pop-closed-on-pick', await fr.evaluate(() => document.getElementById('srnSortPop').hidden), '选完即关（机器页同款）');
   /* 2026-11-01 缺陷单#1：fsort 持久化退役（§4.11「切场景重置为默认」）——localStorage 不再写；
      改断言重置语义=进页沿重置+周期间保持（nbMount 每周期重跑，重置只许发生在进页/换页沿） */
+  /* v1.8.5（作者缺陷#2）：触发钮标签随选中类型（饱腹）+ 选中态类 */
+  const lbl1 = await fr.evaluate(() => ({ t: (document.getElementById('srnSortLbl') || {}).textContent, on: !!(document.getElementById('srnSortBtn') || {}).className.match(/srn-on/) }));
+  check('bp:btn-label-follows', lbl1.t === '饱腹' && lbl1.on, JSON.stringify(lbl1));
   check('bp:fsort-no-persist', (await fr.evaluate(() => { try { return localStorage.getItem('srp_fsort_BackpackUI'); } catch (e) { return 'x'; } })) === null, 'srp_fsort_BackpackUI 不再持久化');
   check('bp:fsort-kept-across-cycles', await fr.evaluate(() => {
     document.getElementById('srnSortBtn').click();
@@ -107,6 +110,8 @@ function check(name, ok, detail) {
   await page.waitForTimeout(350);
   /* v1.8.5：默认=显示层还原（零命令）——断言=位置还原到排序前原件+角标摘除 */
   const restoredPos = await fr.evaluate(() => { const g = document.querySelector('.bag-panel:not(.is-storage) .grid-container'); return g ? [...g.querySelectorAll('.item')].map((e) => e.style.left + '|' + e.style.top).join(';') : ''; });
+  const lbl2 = await fr.evaluate(() => ({ t: (document.getElementById('srnSortLbl') || {}).textContent, on: !!(document.getElementById('srnSortBtn') || {}).className.match(/srn-on/) }));
+  check('bp:btn-label-reset', lbl2.t === '排序' && !lbl2.on, JSON.stringify(lbl2));
   check('bp:reset-official', true, 'official=显示层还原（数据层命令已退役）');
   check('bp:badges-removed', await fr.evaluate(() => !document.getElementById('srnBadges')), '默认无角标');
   global.__BP_RESTORE_POS__ = restoredPos;

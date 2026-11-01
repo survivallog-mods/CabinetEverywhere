@@ -1565,6 +1565,15 @@
   }
   installDispDropFilter();
 
+  /* v1.8.5（作者缺陷#2）：页脚排序钮标签随当前类型（选中=亮金；默认=「排序」） */
+  function footSortLabel() {
+    var lbl = el.srFoodSortLbl, btn = el.srFoodSort;
+    if (!lbl || !btn || !el.doc) return;
+    var t = st.fsort && st.fsort !== 'official' ? fsortLabel(st.fsort) : '排序';
+    if (lbl.textContent !== t) lbl.textContent = t;
+    var on = !!(st.fsort && st.fsort !== 'official');
+    if (btn.classList.contains('on') !== on) btn.classList.toggle('on', on);
+  }
   function applyFsort(key) {
     st.fsort = key;
     /* v1.8.5 显示层排序：选择即生效（纯 DOM left/top，真实数据零触碰——ProjectCook 机制）；
@@ -1572,6 +1581,7 @@
     DISP.choice = key;
     DISP.owner = st.currentId;
     dispApply();
+    footSortLabel();
     render();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
@@ -1594,6 +1604,20 @@
     if (st.scene === 'Trade') return { k: 'value', color: FBCOLOR.tvalue };
     if (isFoodScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
+  }
+  /* 图标尾段 → icfg（兜底路专用：同尾段多 cfg=歧义不标） */
+  function iconCfgOf(elx) {
+    var img = elx.querySelector ? elx.querySelector('img') : null;
+    var tail = img ? String(img.getAttribute('src') || '').split('?')[0].split('/').pop().toLowerCase() : '';
+    var e2 = tail ? ICONIDX[tail] : null;
+    if (e2 && !e2.ambig) { for (var cid in e2.ids) return ICFG[parseInt(cid, 10)] || null; }
+    return null;
+  }
+  /* 配置级 stats 文本（icfg v1/v2/v3/v5）——兜底路（模型 zip 未成时保底显示） */
+  function cfgStatText(cfg, k) {
+    var m = { sat: 'v1', mind: 'v2', en: 'v3', hp: 'v5' };
+    var v = cfg ? (cfg[m[k]] || 0) : 0;
+    return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
   }
   function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值） */
     if (k === 'shelf') return daysText(it ? it.days : null);
@@ -1623,12 +1647,26 @@
     var hostRect = host.getBoundingClientRect();
     var z = (hostRect.width > 0 && host.offsetWidth > 0) ? hostRect.width / host.offsetWidth : 1;
     var cellRows = dispCellRows(host); /* 模型行绑定（v2：页面模型/契约 join 行，值随物品恒定） */
+    if (!cellRows && !ICONIDX) buildIconIdx();
+    if (!cellRows) { try { console.warn('[CERail] 角标模型 zip 未成（数量不齐/模型未就绪）→ 图标配置级兜底（仅 stats 维）'); } catch (e) { } }
     var h = '';
     for (var k = 0; k < its.length; k++) {
       var elx = its[k];
       if (elx.getAttribute('data-srhide')) continue;             /* 被筛掉的格不标 */
       var it = cellRows ? cellRows.get(elx) : null;
-      if (!it) continue;                                          /* 行缺：不标（宁缺勿错） */
+      if (!it) {
+        if (cellRows) continue; /* zip 成立而行缺：不标（宁缺勿错） */
+        /* v1.8.5（作者缺陷#1 兜底）：zip 未成 → 图标→icfg 配置级 stats（v1.8.3 实机路；
+           保质/交易逐叠维不标 */
+        if (spec.k === 'shelf' || spec.k === 'value' || spec.k === 'tvalue') continue;
+        var fb = iconCfgOf(elx);
+        if (!fb) continue;
+        var rr = elx.getBoundingClientRect();
+        if (rr.width < 2 || rr.height < 2) continue;
+        var fx = (rr.left - hostRect.left) / z + rr.width / z, fy = (rr.top - hostRect.top) / z;
+        h += '<i style="left:' + Math.round(fx) + 'px;top:' + Math.round(fy) + 'px;color:' + spec.color + '">' + cfgStatText(fb, spec.k) + '</i>';
+        continue;
+      }
       var r = elx.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       var x = (r.left - hostRect.left) / z + r.width / z;
@@ -1715,6 +1753,7 @@
       st.mode = 'grid'; st.global = false; st.query = ''; st.tags = [];
     }
     el.srFoodSort.hidden = !isFoodScene();
+    footSortLabel();
     renderTradeInfo();
     if (!el.srFootSortPop.hidden) renderFootSortPop();
     ensureBadgeObserver();
@@ -2591,6 +2630,7 @@
     + '.srn-sort,.srn-store{position:relative;flex:0 0 auto}'
     + '.srn-sort{background:#1a1a1e !important;border-color:rgba(240,176,60,.45) !important;color:#f0b03c !important}'
     + '.srn-sort:hover{color:#ffe1a0 !important;border-color:rgba(240,176,60,.68) !important}'
+    + '.srn-sort.srn-on{color:#ffe1a0 !important;border-color:rgba(240,176,60,.85) !important;background:rgba(240,176,60,.14) !important}'
     + '.srn-caret{font-size:10px;color:#c9932f;margin-left:1px}'
     + '.srn-store{border-color:rgba(240,176,60,.5) !important;background:rgba(240,176,60,.14) !important;color:#ffe1a0 !important;margin-right:auto !important}'
     + '.srn-store:hover{background:rgba(240,176,60,.26) !important}'
@@ -2661,7 +2701,7 @@
         sortBtn.id = 'srnSortBtn';
         sortBtn.type = 'button';
         sortBtn.title = '排序：官方默认，或按属性排序（格子右上角显示数值）';
-        sortBtn.innerHTML = '<span>⇅</span><span>排序</span><span class="srn-caret">▾</span>';
+        sortBtn.innerHTML = '<span>⇅</span><span id="srnSortLbl">排序</span><span class="srn-caret">▾</span>';
         var pop = doc.createElement('div');
         pop.className = 'srn-pop';
         pop.id = 'srnSortPop';
@@ -2714,6 +2754,7 @@
         NB.sceneKey = scKey; NB.fsort = 'official';
         DISP.choice = null; DISP.owner = 0; DISP.model = null; /* v1.8.5：进页沿重置显示层排序态 */
       }
+      nbSortLabel(doc);
       nbBadges(doc, panel);
       nbEnsureGridMO(doc, panel);
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
@@ -2733,6 +2774,17 @@
       btns[j].onclick = function () { nbApplyFsort(this.getAttribute('data-k'), doc); };
     }
   }
+  /* v1.8.5（作者缺陷#2）：触发钮标签随当前排序类型（参考图口径：选中=亮金；默认=「排序」） */
+  function nbSortLabel(doc) {
+    var d = doc || NB.doc;
+    if (!d) return;
+    var lbl = d.getElementById('srnSortLbl'), btn = d.getElementById('srnSortBtn');
+    if (!lbl || !btn) return;
+    var t = NB.fsort && NB.fsort !== 'official' ? fsortLabel(NB.fsort) : '排序';
+    if (lbl.textContent !== t) lbl.textContent = t;
+    var on = !!(NB.fsort && NB.fsort !== 'official');
+    if (btn.classList.contains('srn-on') !== on) btn.classList.toggle('srn-on', on);
+  }
   function nbApplyFsort(key, doc) {
     NB.fsort = key;
     var p = doc.getElementById('srnSortPop');
@@ -2742,6 +2794,7 @@
     DISP.choice = key;
     DISP.owner = store.bag;
     dispApply();
+    nbSortLabel(doc);
     nbBadges(doc, nbPanel(doc));
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
@@ -2789,11 +2842,23 @@
       /* v1.8.5：数值=DISP join 行（Vue 页无 id/无 LogicId 通道——视觉序↔网格序 zip 在真实态
          恒成立，行绑定恒定=数值不再错配跳动）；未 join/行缺=不标（宁缺勿错） */
       var cellRows = dispCellRows(grid); /* 模型行绑定（v2：Vue 模型行——vd/shelfLifeDays 自带） */
+      if (!cellRows && !ICONIDX) buildIconIdx();
+      if (!cellRows) { try { console.warn('[CERail] 角标模型 zip 未成（数量不齐/模型未就绪）→ 图标配置级兜底（仅 stats 维）'); } catch (e) { } }
       var h = '';
       for (var k = 0; k < its.length; k++) {
         var elx = its[k];
         var it = cellRows ? cellRows.get(elx) : null;
-        if (!it) continue;
+        if (!it) {
+          if (cellRows) continue;
+          if (NB.fsort === 'shelf' || NB.fsort === 'value') continue;
+          var fb = iconCfgOf(elx);
+          if (!fb) continue;
+          var rr = elx.getBoundingClientRect();
+          if (rr.width < 2 || rr.height < 2) continue;
+          var fx = (rr.left - gRect.left) / z + rr.width / z - 1, fy = (rr.top - gRect.top) / z + 1;
+          h += '<i style="left:' + Math.round(fx) + 'px;top:' + Math.round(fy) + 'px;color:' + color + '">' + cfgStatText(fb, NB.fsort) + '</i>';
+          continue;
+        }
         var r = elx.getBoundingClientRect();
         if (r.width < 2 || r.height < 2) continue;
         var x = (r.left - gRect.left) / z + r.width / z - 1;

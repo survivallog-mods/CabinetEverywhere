@@ -167,7 +167,15 @@ internal static class RailData
             if (st == null) return true;
             long a = st.OwnerId_A;
             if (a == 0) return true;
-            return a == ResolveBagOwner(null);
+            if (a == ResolveBagOwner(null)) return true;
+            // 2026-11-01 作者实机缺陷#3：页面 bagA.ownerId=**背包实体 id**（与 PlayerId 不同
+            // id 空间，实测 12884906630 vs 12884906565）→ 旧「相等」判恒假=solo 背包被误判
+            // 取用单柜（排序/入库按钮不装配；整理物资双背包因 nbPanel 双形态无条件分支而幸存）。
+            // 新判据：A 侧是白名单容器（真取用柜）→false；否则（背包实体/玩家）→true
+            var all = CabinetCatalog.AllContainers;
+            for (int i = 0; i < all.Count; i++)
+                if (all[i].OwnerId == a) return false;
+            return true;
         }
         catch { return true; }
     }

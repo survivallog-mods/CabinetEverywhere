@@ -76,6 +76,8 @@ function check(name, ok, detail) {
   /* 方向断言（mock：901 s1=15 / 902 s1=8 / 其余 null）——desc=首两格 15,8（nulls 排尾） */
   const satBadges = await cf.evaluate(() => [...document.querySelectorAll('#srBadgeLayer i')].map((i) => i.textContent));
   check('cook:sat-direction', satBadges[0] === '15' && satBadges[1] === '8', `[${satBadges.join(',')}]（desc：15→8→nulls 尾）`);
+  const footLbl = await cf.evaluate(() => ({ t: (document.getElementById('srFoodSortLbl') || {}).textContent, on: document.getElementById('srFoodSort').classList.contains('on') }));
+  check('cook:foot-label-follows', footLbl.t === '饱腹' && footLbl.on, JSON.stringify(footLbl));
 
   /* ③ 角标 overlay：夹具页官方格已被 harness 喂数渲染 MOCK 物品（.item 带图标/id），
      观察器路径出角标——910=cfg7 净水（v1=5→'5'）、903=cfg5 铁钉（v1=0→'—'） */
