@@ -80,14 +80,14 @@ function check(name, ok, detail) {
   check('cook:foot-label-follows', footLbl.t === '饱腹' && footLbl.on, JSON.stringify(footLbl));
 
   /* ③ 角标 overlay：夹具页官方格已被 harness 喂数渲染 MOCK 物品（.item 带图标/id），
-     观察器路径出角标——910=cfg7 净水（v1=5→'5'）、903=cfg5 铁钉（v1=0→'—'） */
+     观察器路径出角标——910=cfg7 净水（v1=5→'5'）、903=cfg5 铁钉（v1=0→'-'） */
   await page.waitForTimeout(400); /* 观察器 50ms 防抖 */
   const bl = await cf.evaluate(() => {
     const lay = document.getElementById('srBadgeLayer');
     return { layer: !!lay, n: lay ? lay.querySelectorAll('i').length : 0, texts: lay ? [...lay.querySelectorAll('i')].map((i) => i.textContent) : [] };
   });
   check('cook:badge-layer', bl.layer && bl.n >= 8, `layer=${bl.layer} n=${bl.n}（官方格 10 件全量角标）`);
-  check('cook:badge-values', bl.texts.indexOf('15') >= 0 && bl.texts.indexOf('—') >= 0, `[${bl.texts}]（cfg1 饱腹15 / 零维物品 —）`);
+  check('cook:badge-values', bl.texts.indexOf('15') >= 0 && bl.texts.indexOf('-') >= 0, `[${bl.texts}]（cfg1 饱腹15 / 零维物品 —）`);
 
   /* ④ ToolTable（机器非食品）：plain 但无排序钮；GreenhouseBuild（温室，作者清单外）非 plain */
   const tf = await waitRail('ToolTable');

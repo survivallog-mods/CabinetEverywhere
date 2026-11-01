@@ -90,7 +90,7 @@ function check(name, ok, detail) {
     return !!(act && act.getAttribute('data-k') === 'sat');
   }), 'scan 周期后 NB.fsort=sat 保持（进页沿才重置）');
 
-  /* ③ 角标：#srnBadges 在官方 .grid-container 内，值=icfg 维度（901=cfg1 饱腹15、903=cfg5 0→—） */
+  /* ③ 角标：#srnBadges 在官方 .grid-container 内，值=icfg 维度（901=cfg1 饱腹15、903=cfg5 0→-） */
   await page.waitForTimeout(500); /* forge 刷新+观察器 50ms 防抖 */
   const bl = await fr.evaluate(() => {
     const lay = document.getElementById('srnBadges');
@@ -102,7 +102,7 @@ function check(name, ok, detail) {
     };
   });
   check('bp:badge-layer-in-grid', bl.inGrid && bl.n >= 8, `inGrid=${bl.inGrid} n=${bl.n}`);
-  check('bp:badge-values', bl.texts.indexOf('15') >= 0 && bl.texts.indexOf('—') >= 0, `[${bl.texts.join(',')}]`);
+  check('bp:badge-values', bl.texts.indexOf('15') >= 0 && bl.texts.indexOf('-') >= 0, `[${bl.texts.join(',')}]`);
   /* 默认复位：角标摘除 + sortBy official */
   await fr.evaluate(() => document.getElementById('srnSortBtn').click());
   await fr.waitForFunction(() => !document.getElementById('srnSortPop').hidden, null, { timeout: 4000 });
@@ -151,7 +151,7 @@ function check(name, ok, detail) {
           [1, '生态香米', 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==#v1', 12, 99, 1, 1, '食材', 0, 15, 0, 0, 0, 0],
           [5, '铁钉', 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==#v5', 4, 999, 9, 0, '材料', 0, 0, 0, 0, 0, 0]
         ],
-        items: { bag: [[901, 1, 30, 7200, 0, 0, 1, 1, 0], [903, 5, 40, 0, 2, 0, 1, 1, 0]] }
+        items: { bag: [[901, 1, 30, 7200, 0, 0, 1, 1, 0, 15, null, null, null, 360, 3.5], [902, 3, 5, 10800, 1, 1, 1, 1, 0, 8, null, null, null, null, null], [903, 5, 40, 0, 2, 0, 1, 1, 0, null, null, null, null, null, null], [904, 5, 12, 0, 3, 1, 1, 1, 0, null, null, null, null, null, null], [905, 9, 3, 0, 4, 0, 1, 1, 0, null, null, null, null, 99, null], [906, 2, 2, 9000, 5, 1, 1, 1, 4, null, 7, null, null, null, 2.5], [907, 8, 6, 3600, 6, 0, 1, 1, 2, null, null, null, null, null, 0.5], [908, 4, 1, 0, 7, 1, 1, 1, 0, null, null, null, null, null, null]] }
       };
       window.__CERAIL__.setData(j);
     }, bpBag);
@@ -172,8 +172,8 @@ function check(name, ok, detail) {
     const sh = await fr.evaluate(() => [...document.querySelectorAll('#srnBadges i')]
       .map((i) => ({ t: i.textContent, l: parseFloat(i.style.left) || 0, tp: parseFloat(i.style.top) || 0 }))
       .sort((a, b) => (a.tp - b.tp) || (a.l - b.l)).map((x) => x.t));
-    check('bp:shelf-direction', sh[0] === '3天' && sh[1] === '2天' && sh[2] === '已过期',
-      `[${sh.join(',')}]（desc：3天→2天→已过期→— 尾——作者口径保质长在前；daysText≥1天取整）`);
+    check('bp:shelf-direction', sh[0] === '3天' && sh[1] === '2天' && sh[2] === '0.5天',
+      `[${sh.join(',')}]（desc：3天→2天→0.5天→- 尾——作者口径保质长在前）`);
   } catch (e) { check('bp:shelf-direction', false, String(e).slice(0, 60)); }
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 3)));
 

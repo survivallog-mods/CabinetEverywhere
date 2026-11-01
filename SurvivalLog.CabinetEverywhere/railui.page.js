@@ -428,7 +428,7 @@
   /* 保质键 → 角标文本（缺陷单#1：单位定案=游戏小时；days=排序键编码——-100001 腐败/
      -100000 过期无计/(-100000,0) 过期计天(距腐败)/>0 剩余天；文本口径=ProjectCook DaysText） */
   function daysText(k) {
-    if (k == null) return '—';
+    if (k == null) return '-';
     if (k <= -100001) return '已腐败';
     if (k <= -100000) return '已过期';
     var d = k < 0 ? k + 100000 : k;
@@ -1347,7 +1347,8 @@
      left/top=真实页坐标系与夹具不同（作者实机截图实锤：物品堆右下+溢出）。
      ProjectCook 真机制=**改页面自己的数据模型让它自己重渲染**：
        - Vue 背包页（BackpackUI）：#app setupState.bagA/bagB.items（实机实证字段：id/x/y/w/h/
-         cfgId/count/vd[5]/shelfLifeDays/isExpired——数值可直接用，无需 join）；
+         cfgId/count/useTimes——**数值不走 vd**（悬浮展示值≠实际，作者裁决以详情为准）；
+         统一走契约 join（RailSortMath=实例效果×天赋=详情口径=PC）；
        - webui-bag 机器页：w.backpack 网格对象（getItems/getConfig/renderItems——PC sortCooking 同源）。
      真实位 real=Map(id→[x,y])，按 items 数组身份变化重建（PC fs.items!==items 同款判定：
      官方刷新必换数组=刷新后必是真实态）；排序=order（无键排尾/保质升序/稳定）+pack 首放 →
@@ -1380,50 +1381,32 @@
       return { kind: 'grid', frame: f, items: grid.getItems(), cols: cfg.cols || 12, rows: cfg.rows || 33, grid: grid };
     } catch (e) { return null; }
   }
-  /* 数值行（统一形状）：vue=页面模型自带（vd 实例值/shelfLifeDays/count；trade=icfg 单价×数量）；
-     grid=契约行 join（itemsOf(owner) 按 (x,y,w,h) 唯一键——真实态无重叠=恒唯一） */
+  /* 数值行（统一形状）——v1.8.5⑤ 起两路统一契约 join（RailSortMath 实际口径）：
+     join 键=真实位 (x,y,w,h)（无重叠=唯一）；无值=null → 角标 '-' + 排尾（作者口径） */
   function dispRows(model) {
+    /* v1.8.5⑤ 统一口径：**全部走契约 join**（C# RailSortMath=实例效果值×天赋管线=
+       实际吃到口径=ProjectCook=详情弹层；作者裁决「以详情为准」，悬浮 vd 展示值弃用——
+       webui-bag 模型本就无属性字段）。join 键=真实位 (x,y,w,h)（无重叠=唯一）。 */
     var out = [], i, it;
-    if (model.kind === 'vue') {
-      for (i = 0; i < model.items.length; i++) {
-        it = model.items[i];
-        var vd = it.vd || [];
-        var cfg = ICFG[it.cfgId] || null;
-        out.push({
-          id: it.id, x: it.x || 0, y: it.y || 0, w: it.w || 1, h: it.h || 1, count: it.count || 1,
-          s1: vd[0] || null, s2: vd[1] || null, s3: vd[2] || null, s4: vd[4] == null ? null : vd[4],
-          trade: cfg ? Math.round((cfg.trade || 0) * dispTradeUses(it.useTimes, it.useTimesMax, cfg.uses || 0) * (it.count || 1)) : null,
-          days: it.isExpired ? -100000 : (it.shelfLifeDays != null ? it.shelfLifeDays : null)
-        });
-      }
-      return out;
-    }
     var arr = itemsOf(DISP.owner), byPos = {};
     for (i = 0; i < arr.length; i++) byPos[(arr[i].x || 0) + '_' + (arr[i].y || 0) + '_' + (arr[i].w || 1) + '_' + (arr[i].h || 1)] = arr[i];
     for (i = 0; i < model.items.length; i++) {
       it = model.items[i];
-      /* join 键=**真实位**（排序后当前位≠契约位——用 __srReal 快照；无快照=首排，当前即真实） */
       var realAt = model.items.__srReal ? model.items.__srReal.get(it.id) : null;
       var jx = realAt ? realAt[0] : (it.x || 0), jy = realAt ? realAt[1] : (it.y || 0);
-      var k = jx + '_' + jy + '_' + (it.w || 1) + '_' + (it.h || 1);
-      var r = byPos[k] || null;
+      var row = byPos[jx + '_' + jy + '_' + (it.w || 1) + '_' + (it.h || 1)] || null;
       out.push({
         id: it.id, x: jx, y: jy, w: it.w || 1, h: it.h || 1,
-        count: r ? r.count : (it.count || 1),
-        s1: r && r.s1 != null ? r.s1 : null, s2: r && r.s2 != null ? r.s2 : null,
-        s3: r && r.s3 != null ? r.s3 : null, s4: r && r.s4 != null ? r.s4 : null,
-        trade: r && r.tradeV != null ? r.tradeV : null, days: r && r.days != null ? r.days : null
+        count: row ? row.count : (it.count || 1),
+        s1: row && row.s1 != null ? row.s1 : null,
+        s2: row && row.s2 != null ? row.s2 : null,
+        s3: row && row.s3 != null ? row.s3 : null,
+        s4: row && row.s4 != null ? row.s4 : null,
+        trade: row && row.tradeV != null ? row.tradeV : null,
+        days: row && row.days != null ? row.days : null /* 不腐/无保质=null → '-' + 排尾（C# DaysLeftOf：life<1 → null） */
       });
     }
     return out;
-  }
-  /* 使用损耗系数（PC TradeUses 逐式）：全新=1；用过的按剩余次数比例折算 */
-  function dispTradeUses(useTimes, maxUseTimes, cfgUses) {
-    var denom = cfgUses < 1 ? 1 : cfgUses;
-    var u = useTimes || 0;
-    if (u < 1) return 1;
-    var mx = maxUseTimes > 0 ? maxUseTimes : denom;
-    return u / mx * denom;
   }
   function dispKeyOf(row, k) {
     if (!row) return null;
@@ -1456,6 +1439,13 @@
     if (!model) return;
     DISP.model = model;
     if (!DISP.choice || DISP.choice === 'official') { dispRestore(model); return; }
+    var items = model.items;
+    if (!items.__srReal) { /* real 快照挂 items 数组本体：先于 dispRows（join 需真实位）；
+      数组被官方刷新替换=新数组无快照=自然重采（PC 判定同款） */
+      var real = new Map();
+      for (var r0 = 0; r0 < items.length; r0++) real.set(items[r0].id, [items[r0].x || 0, items[r0].y || 0]);
+      items.__srReal = real;
+    }
     var rows = dispRows(model);
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
@@ -1468,13 +1458,6 @@
     });
     var packed = dispPack(pairs, model.cols, model.rows);
     if (!packed) { dispRestore(model); return; }
-    var items = model.items;
-    if (!items.__srReal) { /* real 快照挂 items 数组本体：适配器每次新建存不住（v138 实锤=二排起
-      把已排位当真实位→乱排/join 全空）；官方刷新必换数组=新数组无快照=自然重采（PC 判定同款） */
-      var real = new Map();
-      for (var r = 0; r < items.length; r++) real.set(items[r].id, [items[r].x || 0, items[r].y || 0]);
-      items.__srReal = real;
-    }
     var wrote = false;
     for (var p = 0; p < pairs.length; p++) {
       var at = packed.get(pairs[p].row.id);
@@ -1622,10 +1605,10 @@
   }
   function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值） */
     if (k === 'shelf') return daysText(it ? it.days : null);
-    if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '—';
+    if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '-';
     var v = it ? (k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null) : null;
     v = v == null ? 0 : v;
-    return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
+    return v > 0 ? String(v) : (v < 0 ? String(v) : '-');
   }
   /* 角标（v1.8.5 显示层排序配套）：数值=DISP join 的契约行（RailSortMath 逐叠数值）——
      每格绑定的行恒定（不再随推送错配=「数值变来变去」根治）；join 未成/行缺=宁缺勿错。
@@ -1638,7 +1621,7 @@
     var spec = badgeSpec();
     if (!spec || st.mode !== 'grid' || st.global) { if (layer) layer.innerHTML = ''; return; }
     var its = host.querySelectorAll('.item');
-    if (!its.length) { if (layer) layer.innerHTML = ''; return; }
+    if (!its.length) { return; } /* 瞬时零格（弹层/重渲染窗口）不清角标——只在没有排序时清（上方 spec 分支） */
     if (!layer) {
       layer = d.createElement('div');
       layer.id = 'srBadgeLayer';
@@ -2819,7 +2802,7 @@
         return;
       }
       var its = grid.querySelectorAll('.item');
-      if (!its.length) { if (old && old.parentNode) old.parentNode.removeChild(old); return; }
+      if (!its.length) { return; } /* 瞬时零格不清（见 applyBadges 同款） */
       var arr = itemsOf(store.bag);
       var color = FBCOLOR[NB.fsort] || '#f0b03c';
       /* v1.8.5：数值=DISP join 行（Vue 页无 id/无 LogicId 通道——视觉序↔网格序 zip 在真实态
