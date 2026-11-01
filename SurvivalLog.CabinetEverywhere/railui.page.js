@@ -2232,6 +2232,8 @@
     rail.setAttribute('data-interactive', '');
     rail.innerHTML = RAIL_HTML;
     if (st.plainBag) rail.className += ' plainbag'; /* v1.8.2.5：简洁背包栏（CSS 隐 ctnbar/搜索/标签/工具行） */
+    if (PLAIN_KEYS[sceneKey]) rail.className += ' plain'; /* v1.8.4 缺陷#1：首包前的骨架也按 plain 呈现
+       （render 才正式 toggle；防 Trade 等机器页在数据到达前闪出非 plain 的搜索/工具行） */
     /* v1.8.2.5：BP/rack 官方格与页签行在**替换面板前**入壳（格进 srGridHost、页签行进
        #srOffTabs 槽，Vue 后续 patch 按引用继续渲染） */
     if (bpPanel) {
@@ -2303,9 +2305,13 @@
     st.global = false;
     st.lockW = 0; /* Bug2 壳宽只增锁：全新页面重置 */
     try { rail.style.removeProperty('width'); rail.style.removeProperty('min-width'); rail.style.removeProperty('max-width'); } catch (e) { }
-    if (mountedOk(doc, sc)) return;                    /* 在位且宿主未复活：观察器/interval 噪声快速路径（BP 形态翻转由 Vue 重建摘壳→hostAlive('bp')=true→自然重装） */    applyScene(sceneKey);
+    applyScene(sceneKey); /* v1.8.4 缺陷#1/#3 终修：v1.8.3 起此处被误插 `if (mountedOk) return` ——
+       装配替换宿主后 mountedOk 恒真 → mount 每次都在做完替换后早退：applyScene/render 被跳过，
+       侧栏停在**骨架态**（标题空/页签栏全空/plain 未应用=作者截到的「开发期页面」），只能等
+       下一包 setData 才自愈；Trade 浏览期物品零变化无推送 → 骨架卡死（无人机交易页签栏全空）。
+       噪声快速路径只属于 ensureMountedFrame（mount 的前置检查），mount 尾部不留任何早退。 */
     TM_KEY = ''; /* 全新弹层 DOM：管理弹层结构必重建（同 PIN_KEY 道理，key 短路只对同一棵节点有效） */
-    if (store.ctx) render(); /* 数据先到、装配后到：补一次渲染 */
+    if (store.ctx) render(); /* 数据先到、装配后到：补一次渲染（Vue 重建宿主复活重装配后立即恢复完整渲染，不再等下一包） */
     return true;
   }
 

@@ -229,6 +229,10 @@ internal static class RailData
 
             long bagOwner = ResolveBagOwner(null);
             _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
+
+            // v1.8.4b：柜宽统一（作者 2026-11-01 缺陷#2）移到本 5s 慢通道——HomeInstances/
+            // AllContainers 已在上方同一周期刷新，SizeEngine 按「家中在场」算目标与排除共包
+            RailUi.SizeEnginePoll();
         }
         catch (Exception e)
         {
