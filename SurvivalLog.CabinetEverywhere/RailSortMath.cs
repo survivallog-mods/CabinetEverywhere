@@ -34,8 +34,236 @@ internal static class RailSortMath
     private static readonly int[] EatIndex = { 0, 1, 2, 4 }; // Stats[0..3]=效果维[饱腹/心态/精力/生命(=效果4)]
     private static float _nowFallback; // NowHours 失败回退值（原 _factorsAt 引用随天赋管线退役）
 
-    // =================（已退役 2026-11-01 作者终裁：stats=实例效果总量×剩余次数比，不叠天赋；
-    //    天赋管线 EatValues/FactorsNow 整块移除——详见 Of() 注释） =================
+    // ================= 吃入天赋管线（2026-11-01 第九轮恢复；68fb926 版逐字回归 + 诊断日志。
+    //    第六轮整块删除是误判：详情 28/次 = 实例 24 × 天赋管线（PC OneUse→EatValues 实锤，
+    //    PC 在冰箱/烹饪页的角标曾被作者实机验证与详情一致）。无管线 24×3=72≠84。） =================
+
+    internal sealed class Talent
+    {
+        public float Nourish;
+        public float PerfectMorale;
+        public int[] AddPermille;      // [5]（0饱腹/1心态/2精力/3健康(弃)/4生命）
+        public float[] SatietyFood;    // [12] 按食物子类
+        public float[] MoraleFood;
+        public int EfficientPermille;
+        public int ComfortPermille;
+    }
+
+    internal sealed class Factors
+    {
+        public List<Talent> Talents = new List<Talent>();
+        public int[] BasePermille;     // null=未读到（全按 0）
+        public float LifeDelta;
+    }
+
+    /// <summary>AttrName.Add*_Ratio（HotUpdate.dll 反编译实锤：20001-20005 =
+    /// SatietyAdd/MoraleAdd/StaminaAdd/HealthAdd/VitalityAdd_Ratio，与效果数组序一致）。</summary>
+    private static readonly int[] AddRatioIds = { 20001, 20002, 20003, 20004, 20005 };
+
+    private static Factors _factors;
+    private static int _factorsAtMs = int.MinValue;
+    private static string _factorsSig;
+    private static bool _factorsWarned;
+
+    /// <summary>因子缓存 2s（buff/难度缓变）。签名变化时打一行诊断（第九轮对账用：
+    /// 若角标仍≠详情，从这行直接读出 base/talents 与 PC 期望的差异）。</summary>
+    internal static Factors FactorsNow()
+    {
+        int nowMs = Environment.TickCount;
+        if (_factors != null && nowMs - _factorsAtMs < 2000) return _factors;
+        var f = new Factors();
+        var sig = new StringBuilder();
+        try
+        {
+            var cm = BagTable.Cm();
+            var world = RailData.World();
+            var role = world?._AgentManager?.GetLeadingRole();
+            if (cm != null && role != null)
+            {
+                var ac = GameCore.HotUpdate.Battle.Logic.AgentTools.GetAgentComponent<GameCore.HotUpdate.Battle.Logic.AttributeComponent>(role);
+                if (ac != null)
+                {
+                    f.BasePermille = new int[5];
+                    for (int i = 0; i < 5; i++)
+                    {
+                        try { f.BasePermille[i] = ac.GetBaseValue_Int((GameCore.HotUpdate.AttrName)AddRatioIds[i]); } catch { }
+                    }
+                }
+                try { f.LifeDelta = GameCore.HotUpdate.Battle.Logic.DifficultyTools.GetVitalityItemAddDelta(); } catch { }
+
+                var bc = GameCore.HotUpdate.Battle.Logic.AgentTools.GetAgentComponent<GameCore.HotUpdate.Battle.Logic.BuffComponent>(role);
+                var buffs = bc?.buffIdMap;
+                if (buffs != null)
+                {
+                    var byBuff = TalentsByBuff(cm);
+                    foreach (var kv in buffs)
+                    {
+                        GameCore.HotUpdate.Config_Talent tCfg = null;
+                        try { byBuff?.TryGetValue(kv.Key, out tCfg); } catch { }
+                        if (tCfg == null) continue;
+                        var bCfg = cm.Get_Config_Buff(kv.Key);
+                        if (bCfg == null || bCfg.BuffDuring >= 0f) continue; // 永久 buff 才算天赋
+                        var eff = cm.Get_Config_Effect(bCfg.EffectConfigId);
+                        if (eff == null) continue;
+                        int cnt = 1;
+                        try { cnt = Math.Max(1, kv.Value?.Count ?? 1); } catch { sig.Append("(Count读失败:").Append(kv.Key).Append(") "); }
+                        var t = ToTalent(eff);
+                        if (t != null)
+                        {
+                            for (int j = 0; j < cnt; j++) f.Talents.Add(t);
+                            sig.Append("buff").Append(kv.Key).Append("x").Append(cnt).Append("(").Append(TalentBrief(t)).Append(") ");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            if (!_factorsWarned) { _factorsWarned = true; CabinetEverywherePlugin.Log.LogWarning("[CERail] 排序天赋因子读取失败（按无天赋计）: " + e.Message); }
+            sig.Append("failed:").Append(e.Message);
+        }
+        if (f.BasePermille != null) sig.Append("base=").Append(string.Join("/", f.BasePermille)).Append(' ');
+        sig.Append("life=").Append(f.LifeDelta);
+        if (sig.ToString() != _factorsSig)
+        {
+            _factorsSig = sig.ToString();
+            CabinetEverywherePlugin.Log.LogInfo("[CERail][因子] " + _factorsSig);
+        }
+        _factors = f; _factorsAtMs = nowMs;
+        return f;
+    }
+
+    private static string TalentBrief(Talent t)
+    {
+        var b = new StringBuilder();
+        if (t.Nourish != 0f) b.Append("nourish=").Append(t.Nourish.ToString("0.###", CultureInfo.InvariantCulture)).Append(',');
+        if (t.EfficientPermille != 0) b.Append("eff=").Append(t.EfficientPermille).Append(',');
+        if (t.ComfortPermille != 0) b.Append("comfort=").Append(t.ComfortPermille).Append(',');
+        if (t.AddPermille != null) b.Append("add=").Append(string.Join("/", t.AddPermille)).Append(',');
+        if (t.SatietyFood != null) b.Append("satFood,");
+        if (t.MoraleFood != null) b.Append("morFood,");
+        return b.Length > 0 ? b.ToString(0, b.Length - 1) : "?";
+    }
+
+    private static Dictionary<int, GameCore.HotUpdate.Config_Talent> _talentByBuff;
+    private static object _talentByBuffSrc;
+
+    private static Dictionary<int, GameCore.HotUpdate.Config_Talent> TalentsByBuff(GameCore.HotUpdate.ConfigManager cm)
+    {
+        var src = cm?._Config_Talent_Dict;
+        if (src == null) return null;
+        if (_talentByBuff != null && ReferenceEquals(src, _talentByBuffSrc)) return _talentByBuff;
+        var d = new Dictionary<int, GameCore.HotUpdate.Config_Talent>();
+        try
+        {
+            foreach (var kv in src)
+                if (kv.Value != null && kv.Value.BuffID > 0) d[kv.Value.BuffID] = kv.Value;
+        }
+        catch { }
+        _talentByBuff = d; _talentByBuffSrc = src;
+        return d;
+    }
+
+    /// <summary>Config_Effect → Talent（ProjectCook ToTalent 逐分支移植；ConfigName 键照抄）。</summary>
+    private static Talent ToTalent(GameCore.HotUpdate.Config_Effect e)
+    {
+        var t = new Talent();
+        bool any = false;
+        string name = null;
+        try { name = e.ConfigName; } catch { }
+        if (name == "Buff/AE_CookDishNourish") { t.Nourish = e.FloatValue0; any = true; }
+        else if (name == "Buff/AE_CookEatPerfectMorale") { t.PerfectMorale = e.FloatValue0; any = true; }
+        else if (name == "Buff/Efficient_Nutrition") { t.EfficientPermille = (int)(e.FloatValue0 * 1000f); any = true; }
+        else if (name == "Buff/Buff_304310_ComfortFood") { t.ComfortPermille = (int)(e.FloatValue0 * 1000f); any = true; }
+        var add = new float[5];
+        try { add[0] = e.BuffSatietyAdd; add[1] = e.BuffMoraleAdd; add[2] = e.BuffStaminaAdd; add[4] = e.BuffVitalityAdd; } catch { }
+        bool hasAdd = false;
+        for (int i = 0; i < 5; i++) if (add[i] != 0f) hasAdd = true;
+        if (hasAdd)
+        {
+            t.AddPermille = new int[5];
+            for (int i = 0; i < 5; i++) t.AddPermille[i] = (int)(add[i] * 1000f);
+            any = true;
+        }
+        t.SatietyFood = FoodRatios(e, "BuffSatietyFood{0}Add_Ratio");
+        t.MoraleFood = FoodRatios(e, "EF_BuffMoraleFood{0}Add_Ratio");
+        if (!any && t.SatietyFood == null && t.MoraleFood == null) return null;
+        return t;
+    }
+
+    private static float[] FoodRatios(GameCore.HotUpdate.Config_Effect e, string fmt)
+    {
+        float[] arr = null;
+        for (int i = 1; i < 12; i++)
+        {
+            float v = 0f;
+            try
+            {
+                var p = typeof(GameCore.HotUpdate.Config_Effect).GetProperty(string.Format(CultureInfo.InvariantCulture, fmt, i));
+                if (p == null) continue;
+                v = Convert.ToSingle(p.GetValue(e), CultureInfo.InvariantCulture);
+            }
+            catch { continue; }
+            if (v != 0f) { arr = arr ?? new float[12]; arr[i] = v; }
+        }
+        return arr;
+    }
+
+    /// <summary>EatValues+Gain（ProjectCook EatLogic 逐式；values=单次食用效果值[5]，
+    /// hasInstance 时 Nourish 只乘实例值）。i=3(Fitness) 跳过——PC 同款。</summary>
+    private static float[] EatValues(float[] values, bool hasInstance, bool isStaple, bool isPerfect, int subCategory, int portions, Factors f)
+    {
+        var r = new float[5];
+        float nourish = 0f, perfectMorale = 0f;
+        foreach (var t in f.Talents) { nourish += t.Nourish; perfectMorale += t.PerfectMorale; }
+        for (int i = 0; i < 5; i++)
+        {
+            if (i == 3) continue; // 3=Fitness（ProjectCook 同款跳过）
+            float v = Get(values, i);
+            if (hasInstance) v *= 1f + nourish;
+            r[i] = Gain(i, v, isStaple, subCategory, f);
+        }
+        if (isPerfect && perfectMorale != 0f)
+            r[1] += Math.Max(1, portions) * Gain(1, perfectMorale, isStaple, subCategory, f);
+        return r;
+    }
+
+    private static float Gain(int stat, float value, bool isStaple, int subCategory, Factors f)
+    {
+        if (value <= 0f) return value;
+        float satFood = 0f;
+        int permille = Get(f.BasePermille, stat);
+        foreach (var t in f.Talents)
+        {
+            if (stat == 0) satFood += Get(t.SatietyFood, subCategory);
+            if (stat == 1) satFood += Get(t.MoraleFood, subCategory);
+            permille += Get(t.AddPermille, stat);
+            if (stat == 0) permille += t.EfficientPermille + (isStaple ? t.ComfortPermille : 0);
+        }
+        if (stat == 0 || stat == 1) value *= 1f + Math.Min(2f, Math.Max(-1f, satFood));
+        if (stat == 4) value = Math.Max(0f, (1f + f.LifeDelta) * value);
+        return value * (1f + Math.Min(2000, Math.Max(-500, permille)) / 1000f);
+    }
+
+    private static float Get(float[] a, int i) => (a == null || i < 0 || i >= a.Length) ? 0f : a[i];
+    private static int Get(int[] a, int i) => (a == null || i < 0 || i >= a.Length) ? 0 : a[i];
+
+    private static HashSet<int> _perfectIds;
+    private static object _perfectSrc;
+
+    private static bool IsPerfect(GameCore.HotUpdate.ConfigManager cm, int cfgId)
+    {
+        var src = cm?._Config_CookingRecipe_Dict;
+        if (src == null) return false;
+        if (_perfectIds == null || !ReferenceEquals(src, _perfectSrc))
+        {
+            var set = new HashSet<int>();
+            try { foreach (var kv in src) if (kv.Value != null && kv.Value.PerfectItemID > 0) set.Add(kv.Value.PerfectItemID); } catch { }
+            _perfectIds = set; _perfectSrc = src;
+        }
+        return _perfectIds.Contains(cfgId);
+    }
+
     // ================= 交易（ProjectCook TradeUses/鉴定 + Trade 页需求因子） =================
 
     /// <summary>使用损耗系数（ProjectCook TradeUses 逐式：全新=1；用过的按剩余次数比例折算）。</summary>
@@ -214,16 +442,13 @@ internal static class RailSortMath
             bool isFood = cat == 1;
             if (isFood)
             {
-                /* 2026-11-01 作者终裁（缺陷单#1 第六轮）：角标=**详情单次值 × 剩余使用次数**
-                   （山珍菌菇饭(完美) 28×3=84）。单次值=Config_UseAction→Effect.Item*End（完美料理
-                   有独立配置，品质已含在配置选择里）——**不再叠实例数组/天赋管线**（旧路 84→26/次
-                   =78 与详情 28/次不符；详情=展示口径，作者以详情为准）。 */
-                /* 2026-11-01 第七轮终解（配置表实锤）：**详情=实例效果总量（InstanceEffectEnd，
-                   掷骰含品质），悬浮 vd=另一套展示掷值**——两套独立（山珍菌菇饭(完美)：实例 [84,18,6]
-                   总量=28/次，vd=[24,6,2]/次；龙虎双拼(完美)：实例 [92,14,21]，配置才 [43,14,0]）。
-                   作者算式：角标 = 单次值 × 剩余次数 = **实例总量 × UseTimes/MaxUseTimes**
-                   （满份=总量 84；吃一口=28）。配置总量仅作无实例数组的兜底（同样是总量，不乘次数）。 */
-                float[] total = new float[5];
+                /* 2026-11-01 第九轮终解（作者算式+PC 反编译双实锤）：**InstanceEffectEnd =
+                   单次使用值**（PC OneUse 命名实锤；第七轮误当总量），详情单次值 = 实例值经
+                   天赋管线（PC EatValues：山珍菌菇饭(完美) 实例[24,6,0,0,2]×天赋→28/次）。
+                   角标 = EatValues(单次值) × UseTimes（剩余次数）——28×3=84；吃一口剩 1 次=28。
+                   第六/七/八轮三连错的病根：①删天赋管线（24×3=72）②当总量再除 MaxUseTimes
+                   （=单次值，没乘）③静态配置值不含品质掷骰。 */
+                float[] one = new float[5];
                 bool hasInst = false;
                 try
                 {
@@ -231,7 +456,7 @@ internal static class RailSortMath
                     if (ie != null && ie.Length >= 5)
                     {
                         hasInst = true;
-                        for (int q = 0; q < 5; q++) total[q] = ie[q];
+                        for (int q = 0; q < 5; q++) one[q] = ie[q];
                     }
                 }
                 catch { }
@@ -244,20 +469,22 @@ internal static class RailSortMath
                             var act = cm?.Get_Config_Action(cfg.UseAction);
                             var eff = act == null ? null : cm.Get_Config_Effect(act.EffectConfigID);
                             if (eff != null)
-                                total = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
+                                one = new float[5] { eff.ItemSatietyEnd, eff.ItemMoraleEnd, eff.ItemStaminaEnd, eff.ItemHealthEnd, eff.ItemVitalityEnd };
                         }
                     }
                     catch { }
                 }
-                int uses = 1, usesMax = 1;
-                try { uses = Math.Max(1, it.UseTimes); } catch { }
-                try { usesMax = Math.Max(1, it.MaxUseTimes > 0 ? it.MaxUseTimes : 1); } catch { }
+                var fct = FactorsNow();
+                var eaten = EatValues(one, hasInst, cat == 1 && sub == 1, IsPerfect(cm, cfg.ID), sub, 1, fct);
+                int uses = 1, usesMax = 0;
+                try { uses = Math.Max(1, it.UseTimes); } catch { } /* 剩余使用次数（随食用递减） */
+                try { usesMax = it.MaxUseTimes; } catch { }
                 for (int i = 0; i < 4; i++)
                 {
-                    if (total[EatIndex[i]] == 0f) continue;
-                    int v = (int)Math.Round(total[EatIndex[i]] * uses / (float)usesMax, MidpointRounding.AwayFromZero);
+                    int v = (int)Math.Round(eaten[EatIndex[i]] * uses, MidpointRounding.AwayFromZero);
                     if (v != 0) n.Stats[i] = v;
                 }
+                Vouch(cfg, it, one, hasInst, eaten, uses, usesMax, n); /* 60045/60093 全链路一行对账（仅首次遇到该组合时打） */
             }
 
             int useTimes = 0, maxUse = 0, cfgUses = 0;
@@ -281,6 +508,47 @@ internal static class RailSortMath
         }
         catch { }
         return n;
+    }
+
+    // ================= 对账日志（第九轮：作者两份料理的全链路数字，写进 BepInEx 日志
+    //    供事后核对——不给作者加任何验证负担） =================
+
+    private static HashSet<string> _vouched;
+
+    private static void Vouch(GameCore.HotUpdate.Config_Item cfg, GameCore.HotUpdate.Battle.Logic.ItemData it,
+        float[] one, bool hasInst, float[] eaten, int uses, int usesMax, Numbers n)
+    {
+        try
+        {
+            if (cfg.ID != 60045 && cfg.ID != 60093) return; /* 山珍菌菇饭(完美)/龙虎双拼(完美) */
+            long iid = 0;
+            try { iid = it.InstanceId; } catch { }
+            var key = cfg.ID + ":" + iid + ":" + uses;
+            if (_vouched == null) _vouched = new HashSet<string>();
+            if (_vouched.Contains(key)) return;
+            _vouched.Add(key);
+            var b = new StringBuilder();
+            b.Append("[CERail][对账] ").Append(cfg.ID).Append(hasInst ? " 实例=" : " 配置=")
+             .Append(Fmt5(one)).Append(" 天赋单次=").Append(Fmt5(eaten))
+             .Append(" uses=").Append(uses).Append('/').Append(usesMax)
+             .Append(" → 角标=").Append(NFmt(n));
+            CabinetEverywherePlugin.Log.LogInfo(b.ToString());
+        }
+        catch { }
+    }
+
+    private static string Fmt5(float[] a)
+    {
+        var b = new StringBuilder("[");
+        for (int i = 0; i < 5; i++) { if (i > 0) b.Append(','); b.Append((a != null && i < a.Length ? a[i] : 0f).ToString("0.##", CultureInfo.InvariantCulture)); }
+        return b.Append(']').ToString();
+    }
+
+    private static string NFmt(Numbers n)
+    {
+        var b = new StringBuilder("[");
+        for (int i = 0; i < 4; i++) { if (i > 0) b.Append(','); b.Append(n.Stats[i].HasValue ? n.Stats[i].Value.ToString() : "-"); }
+        return b.Append(']').ToString();
     }
 
     // ================= 杂项 =================

@@ -27,6 +27,15 @@
   BpBagDyn 改「A 侧非白名单容器即背包」；②触发钮标签随选中类型（饱腹/心态/…/默认=「排序」）
   +选中态亮金（nb 钮 srn-on / 页脚钮 on，作者缺陷#2 参考图口径）；③角标模型 zip 未成时恢复
   图标→icfg 配置级 stats 兜底（v1.8.3 实机路）+ console 诊断一行（治「数值完全不显示」）。
+- **属性角标第九轮终解（同日；「没一个算对的」根因=三连误读）**：ProjectCook 反编译
+  `OneUse()` 命名实锤——**InstanceEffectEnd=单次使用值**（非总量）；详情弹窗的单次值=实例值经
+  **天赋管线**（PC `EatLogic.EatValues`：实例×(1+滋养)×Gain(BasePermille/食材系天赋/高效营养/
+  LifeDelta 难度；i=3 Fitness 跳过）——第六轮删管线、第七轮当总量再除 MaxUseTimes 皆误判。
+  **终公式：角标 = EatValues(单次值) × UseTimes（剩余次数）**——山珍菌菇饭(完美) 实例[24,6,0,0,2]
+  ×天赋=28/次 ×3 次=84；吃一口剩 1 次=28。天赋管线逐字回归（68fb926 版）+AddRatioIds 实锤
+  （HotUpdate.dll 反编译：20001-20005=SatietyAdd/MoraleAdd/StaminaAdd/HealthAdd/VitalityAdd_Ratio）；
+  新增 [因子]/[对账] 诊断日志（天赋签名变化一行；60045/60093 两份料理全链路数字入 BepInEx 日志，
+  事后核对零作者负担）。
 - **作者复测四修（同日第五轮）**：①悬停两物品间数值跳动——角标定位弃 getBoundingClientRect
   （悬停缩放=transform，视觉框抖）改 **offset 布局坐标**；②配对弃「位置序 zip」改**下标直配**
   （Vue v-for 不重排 DOM、webui-bag renderItems 同序——PC 原做法；位置序在悬停/弹层下失稳）；
