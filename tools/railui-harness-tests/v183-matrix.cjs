@@ -3,7 +3,7 @@
    ④柜宽 12/高度 ⑤切大小柜不变形 ⑥一键整理不变形 ⑦Trade 自动价值排序 ⑧零控制台错误。 */
 const { chromium } = require('C:/temp/baidu_up/node_modules/playwright-core');
 const path = require('path');
-const OUT = 'E:/Game/Mod/survivallog-mods/CabinetEverywhere/.worktrees/cerail-storage-rail/SurvivalLog.CabinetEverywhere/design-proto/shots/ingame-v183';
+const OUT = 'E:/Game/Mod/survivallog-mods/CabinetEverywhere/SurvivalLog.CabinetEverywhere/design-proto/shots/ingame-v183';
 const results = [];
 function check(name, ok, detail) {
   results.push({ name, ok, detail: detail || '' });
