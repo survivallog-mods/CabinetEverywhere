@@ -440,7 +440,12 @@ internal static class RailSortMath
             try { cat = cfg.Category; sub = cfg.SubCategory; } catch { }
             try { count = it.ItemCount; } catch { }
             bool isFood = cat == 1;
-            if (isFood)
+            /* 2026-11-03 作者口径：药物（cat=2，兴奋剂 -10生命×3次 / 急救绷带 +20生命…）同出
+               属性角标——实例→配置取值链与「弹窗数×剩余次数」算式全同食物；滋养
+               （AE_CookDishNourish）只乘熟食=烹饪特产，药物有 InstanceEffectEnd（时效效果，
+               如兴奋剂）也不吃滋养，恒 ×1。 */
+            bool isDrug = cat == 2;
+            if (isFood || isDrug)
             {
                 /* 2026-11-01 第十轮终解（游戏详情弹窗实机三连证，构建内直验）：
                    ①包装食品（无实例）详情=vd 原值：红烧牛肉面 vd[25,3]→弹窗 +25/+3、
@@ -473,10 +478,10 @@ internal static class RailSortMath
                     try { vd = new float[5] { cfg.ValueDisplay1, cfg.ValueDisplay2, cfg.ValueDisplay3, cfg.ValueDisplay4, cfg.ValueDisplay5 }; } catch { }
                 }
                 float nourish = 0f;
-                if (cooked)
+                if (cooked && isFood)
                 {
                     var f2 = FactorsNow();
-                    foreach (var t in f2.Talents) nourish += t.Nourish; /* AE_CookDishNourish 之和（[因子]行同源可核） */
+                    foreach (var t in f2.Talents) nourish += t.Nourish; /* AE_CookDishNourish 之和（[因子]行同源可核）；食物限定=药物不吃烹饪滋养 */
                 }
                 int uses = 1, usesMax = 0;
                 try { uses = Math.Max(1, it.UseTimes); } catch { } /* 剩余使用次数（随食用递减） */
