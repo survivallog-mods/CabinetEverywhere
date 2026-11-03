@@ -1670,12 +1670,16 @@
     if (isFoodScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
   }
-  function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值） */
+  function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值）。
+     2026-11-03 作者数值显示口径：属性维（饱腹/心态/精力/生命）正值带「+」、负值显实际数
+     （String 自带负号，如 -2）、无属性/0=「-」；交易价值=金额不带符号、保质期=daysText
+     文本——两键不进 +／- 规则（与列表模式 DYN 列同口径）。C# 契约 0 已折 null
+     （RailSortMath「v!=0 才落值」），v===0 分支仅为防御旧契约/mock。 */
     if (k === 'shelf') return daysText(it ? it.days : null);
     if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '-';
     var v = it ? (k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null) : null;
-    v = v == null ? 0 : v;
-    return v > 0 ? String(v) : (v < 0 ? String(v) : '-');
+    if (v == null || v === 0) return '-';
+    return v > 0 ? '+' + v : String(v);
   }
   /* 角标（v1.8.5 显示层排序配套）：数值=DISP join 的契约行（RailSortMath 逐叠数值）——
      每格绑定的行恒定（不再随推送错配=「数值变来变去」根治）；join 未成/行缺=宁缺勿错。
