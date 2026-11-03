@@ -641,7 +641,6 @@
     for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
     return null;
   }
-  function sortLabel() { for (var i = 0; i < SORTS.length; i++) if (SORTS[i].k === st.sort) return SORTS[i].label; return '按分类'; }
   /* ---- 格子（Produces：slotHtml）----
      原型 emoji（POOL.e）换 icfg.icon 的 <img>（Task 1 ICON_RULE：WebIcon 原样作 src，勿加工）。
      分类点：原型 CAT_COLORS[分类名] → catColor(catId) 23 色环。
@@ -759,16 +758,7 @@
       chips[q].classList.toggle('active', st.tags.indexOf(chips[q].getAttribute('data-tg')) >= 0);
     }
   }
-  /* ---- 排序下拉内容（rail.js 原样；hidden 早退守卫照 rail.js）---- */
-  function renderSortPop() {
-    if (el.srSortPop.hidden) return;
-    var h = '';
-    for (var i = 0; i < SORTS.length; i++) {
-      var s = SORTS[i];
-      h += '<button type="button" class="sr-sortopt' + (s.k === st.sort ? ' active' : '') + '" data-sort="' + s.k + '">' + s.label + '</button>';
-    }
-    el.srSortPopBody.innerHTML = h;
-  }
+  /* 排序下拉渲染已收敛 makeSortMenu 实例（menuSort，bind 创建；rail.js 原样 hidden 早退守卫在 refresh 内） */
 
   /* ---- toast（rail.js 同款：2s 常显后淡出，重复调用重置计时）---- */
   function toastAt(tEl, msg) {
@@ -1346,16 +1336,7 @@
   function isPlainScene() { return !!PLAIN_KEYS[st.scene]; }
   function isFoodScene() { return !!FOOD_KEYS[st.scene]; }
   function fsortLabel(k) { for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
-  function renderFootSortPop() {
-    if (el.srFootSortPop.hidden) return;
-    var h = '';
-    for (var i = 0; i < FSORTS.length; i++) {
-      var s = FSORTS[i];
-      h += '<button type="button" class="sr-fsopt' + (s.k === st.fsort ? ' active' : '') + '" data-fsort="' + s.k + '">' +
-        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + s.label + '</button>';
-    }
-    el.srFootSortBody.innerHTML = h;
-  }
+  /* renderFootSortPop 已收敛 makeSortMenu 实例（menuFoot，bind 创建） */
   /* ================= 显示层排序 v2（v1.8.5 缺陷单#1：ProjectCook page.js 机制移植——模型级） =================
      两轮实机教训：数据层 sortBy（改真实 BagPos）=毁玩家布局且官方格不随改写重渲染；DOM 直写
      left/top=真实页坐标系与夹具不同（作者实机截图实锤：物品堆右下+溢出）。
@@ -1596,24 +1577,77 @@
   }
   installDispDropFilter();
 
-  /* v1.8.5（作者缺陷#2）：页脚排序钮标签随当前类型（选中=亮金；默认=「排序」） */
-  function footSortLabel() {
-    var lbl = el.srFoodSortLbl, btn = el.srFoodSort;
-    if (!lbl || !btn || !el.doc) return;
-    var t = st.fsort && st.fsort !== 'official' ? fsortLabel(st.fsort) : '排序';
-    if (lbl.textContent !== t) lbl.textContent = t;
-    var on = !!(st.fsort && st.fsort !== 'official');
-    if (btn.classList.contains('on') !== on) btn.classList.toggle('on', on);
+  /* ================= 排序/角标 prefab（2026-11-03 复用化：三处手搓排序 UI 收敛） =================
+     三入口（rail 工具行 srSortBtn / 机器页页脚 srFoodSort / NB 原生页 srnSortBtn）与
+     apply/角标双份拷贝收敛为三件可复用件（**只复用行为**：markup/id/类名留在各页模板原处，
+     CSS 与 harness 契约零移动）：
+       makeSortMenu(cfg)      排序钮+弹层：开合/渲染/标签同步/选键接线（元素按 cfg id 现取）。
+       applyDispSort(key,cfg) 显示层排序统一应用（合并 applyFsort/nbApplyFsort）：setKey 回写
+                              页面态（st.fsort / NB.fsort）→ dispReapply 施 DISP → menu.sync 触发钮
+                              → after 页面各自跟随 → toast（v1.8.5 显示层排序：选择即生效，纯模型
+                              x/y 写+官方自渲染，真实摆放零触碰——ProjectCook 机制；切场景重置
+                              §4.11；toast 即时，显示层无失败路径）。
+       makeBadgeLayer(cfg)    角标层（合并 applyBadges/nbBadges）：spec()=null 走清路（rail 留空层/
+                              NB 删层节点，各随原行为）；dx/dy=右上角坐标微调；skipHide=rail 被
+                              筛掉的格不标。三道防抖全保留（瞬时零格/配对未成保旧、同串免写
+                              ——v1.8.5 作者缺陷#2/#3 定稿语义）。
+     新页面要排序 = 一处 makeSortMenu + 一份 applyDispSort cfg + 一个 makeBadgeLayer 实例。 */
+  var menuSort = null, menuFoot = null, menuNB = null; /* bind()/nbMount 每周期重建（换 doc 换元素） */
+
+  function makeSortMenu(cfg) {
+    var d = cfg.doc || document;
+    var btn = d.getElementById(cfg.btnId), pop = d.getElementById(cfg.popId);
+    var lbl = cfg.lblId ? d.getElementById(cfg.lblId) : null;
+    var body = cfg.bodyId ? d.getElementById(cfg.bodyId) : pop; /* rail 弹层=头+体两层；NB 选项直写 pop */
+    if (!btn || !pop || !body) return null;
+    function labelOf(k) {
+      for (var i = 0; i < cfg.keys.length; i++) if (cfg.keys[i].k === k) return cfg.keys[i].label;
+      return cfg.defLbl || k;
+    }
+    var M = {
+      btn: btn, pop: pop,
+      open: function () { pop.hidden = false; M.renderPop(); },
+      close: function () { pop.hidden = true; },
+      toggle: function () { if (pop.hidden) M.open(); else M.close(); },
+      refresh: function () { if (!pop.hidden) M.renderPop(); }, /* render 主路：弹层开着才重渲染 */
+      renderPop: function () {
+        var h = '';
+        for (var i = 0; i < cfg.keys.length; i++) {
+          var s = cfg.keys[i], on = s.k === cfg.getKey();
+          h += '<button type="button" class="' + cfg.optCls + (on ? ' active' : '') + '" ' + cfg.attr + '="' + s.k + '">' +
+            (cfg.ico ? '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' : '') + s.label +
+            (on && cfg.tick ? '<span class="srn-tick">✓</span>' : '') + '</button>';
+        }
+        body.innerHTML = h;
+      },
+      /* v1.8.5（作者缺陷#2）：触发钮标签随当前类型（选中=亮金 onCls；默认=defLbl「排序」） */
+      sync: function () {
+        if (!lbl || !btn) return;
+        var k = cfg.getKey(), t = (k && k !== 'official') ? labelOf(k) : cfg.defLbl;
+        if (lbl.textContent !== t) lbl.textContent = t;
+        if (cfg.onCls) {
+          var on = !!(k && k !== 'official');
+          if (btn.classList.contains(cfg.onCls) !== on) btn.classList.toggle(cfg.onCls, on);
+        }
+      }
+    };
+    btn.onclick = function () { if (cfg.pre) cfg.pre(); M.toggle(); };
+    body.onclick = function (e) { /* 委托选键：选完即关（三入口同款口径） */
+      var b = e.target.closest('[' + cfg.attr + ']'); if (!b) return;
+      M.close();
+      cfg.onPick(b.getAttribute(cfg.attr));
+    };
+    return M;
   }
-  function applyFsort(key) {
-    st.fsort = key;
-    /* v1.8.5 显示层排序：选择即生效（纯 DOM left/top，真实数据零触碰——ProjectCook 机制）；
-       切场景重置为默认（§4.11）；toast 即时（显示层无失败路径，回执通道退役） */
-    DISP.choice = key;
-    DISP.owner = st.currentId;
-    dispApply();
-    footSortLabel();
-    render();
+
+  /* 显示层排序应用：非用户路径（Trade 首包默认值排序/机器页每次渲染重抹）走 dispReapply——
+     无菜单同步、无 toast（与 v1.8.5 行为一致） */
+  function dispReapply(key, ownerId) { DISP.choice = key; DISP.owner = ownerId; dispApply(); }
+  function applyDispSort(key, cfg) {
+    cfg.setKey(key);
+    dispReapply(key, cfg.owner());
+    if (cfg.menu) cfg.menu.sync();
+    if (cfg.after) cfg.after();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
   /* 交易买家条：正式实现无演示切换控件；品类加成数据源（ctx.tradePrefs=[[分类名,加成]…]）
@@ -1645,50 +1679,72 @@
   }
   /* 角标（v1.8.5 显示层排序配套）：数值=DISP join 的契约行（RailSortMath 逐叠数值）——
      每格绑定的行恒定（不再随推送错配=「数值变来变去」根治）；join 未成/行缺=宁缺勿错。
-     zoom 归一（rect/offsetWidth 比值）沿用；位置随格（显示层排序后仍钉在格右上角） */
-  function applyBadges() {
-    var host = el.srGridHost;
-    if (!host || !host.firstElementChild || !el.doc) return;
-    var d = el.doc;
-    var layer = d.getElementById('srBadgeLayer');
-    var spec = badgeSpec();
-    if (!spec || st.mode !== 'grid' || st.global) { if (layer) layer.innerHTML = ''; return; }
-    var its = host.querySelectorAll('.item');
-    if (!its.length) { return; } /* 瞬时零格（弹层/重渲染窗口）不清角标——只在没有排序时清（上方 spec 分支） */
-    if (!layer) {
-      layer = d.createElement('div');
-      layer.id = 'srBadgeLayer';
-      layer.__srBadgeLayer = true;
-      host.appendChild(layer); /* 官方格容器之外的自家层：srGridHost 是壳元素，合法 */
-    }
-    var cellRows = dispCellRows(host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
-    if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
-    var h = '';
-    for (var k = 0; k < its.length; k++) {
-      var elx = its[k];
-      if (elx.getAttribute('data-srhide')) continue;             /* 被筛掉的格不标 */
-      var it = cellRows.get(elx);
-      if (!it) continue;
-      if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
-      var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
-      var x = p[0] + elx.offsetWidth, y = p[1];
-      h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
-    }
-    if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
-    if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
+     zoom 归一（rect/offsetWidth 比值）沿用；位置随格（显示层排序后仍钉在格右上角）。
+     v2（2026-11-03）：绘制主体收敛 makeBadgeLayer prefab，rail/NB 两实例各传宿主/键色/微调。 */
+  function makeBadgeLayer(cfg) {
+    return function () {
+      try {
+        var host = cfg.host();
+        if (!host) return;
+        var doc = host.ownerDocument;
+        var layer = doc.getElementById(cfg.layerId);
+        var spec = cfg.spec();
+        if (!spec) { /* 无排序/页隐藏：rail 留空层、NB 删层节点（各随原行为） */
+          if (layer && layer.parentNode) {
+            if (cfg.removeOnClear) layer.parentNode.removeChild(layer);
+            else layer.innerHTML = '';
+          }
+          return;
+        }
+        var its = host.querySelectorAll('.item');
+        if (!its.length) { return; } /* 瞬时零格（弹层/重渲染窗口）不清角标——只在没有排序时清（上方 spec 分支） */
+        if (!layer) {
+          layer = doc.createElement('div');
+          layer.id = cfg.layerId;
+          layer.__srBadgeLayer = true;
+          host.appendChild(layer); /* 官方格容器之外的自家层：壳元素/格节点，合法 */
+        }
+        var cellRows = dispCellRows(host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
+        if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
+        var h = '';
+        for (var k = 0; k < its.length; k++) {
+          var elx = its[k];
+          if (cfg.skipHide && elx.getAttribute('data-srhide')) continue; /* 被筛掉的格不标（rail 筛选态） */
+          var it = cellRows.get(elx);
+          if (!it) continue;
+          if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
+          var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
+          var x = p[0] + elx.offsetWidth + (cfg.dx || 0), y = p[1] + (cfg.dy || 0);
+          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
+        }
+        if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
+        if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
+      } catch (e) { try { console.warn('[CERail] 角标绘制失败', e && (e.stack || e.message)); } catch (e2) { } }
+    };
+  }
+  var applyBadges = makeBadgeLayer({ /* rail/机器页实例：srGridHost 壳内 #srBadgeLayer，Trade=交易价值金/食品设施=当前属性维 */
+    host: function () { return el.srGridHost; },
+    layerId: 'srBadgeLayer',
+    spec: function () { var s = badgeSpec(); return (!s || st.mode !== 'grid' || st.global) ? null : s; },
+    dx: 0, dy: 0, skipHide: true, removeOnClear: false
+  });
+  /* 格观察器 prefab（ensureBadgeObserver/nbEnsureGridMO 挂 MO 段共用）：marker 幂等，
+     50ms 防抖回调（settling 窗口校准同源——v1.8.5 定版节拍） */
+  function watchGrid(target, marker, opts, cb) {
+    if (!target || target[marker]) return;
+    try {
+      var V = target.ownerDocument.defaultView.MutationObserver;
+      target[marker] = new V(function () { setTimeout(cb, 50); });
+      target[marker].observe(target, opts);
+    } catch (e) { }
   }
   /* 官方格重渲染跟随：观察自家 srGridHost（合法，非官方节点）——官方改格后先重抹显示层
      排序（新格=真实态→重 join+重排，ProjectCook 自愈模式）再重算角标；
      v1.8.4 缺陷#5 加宽同步——官方格 cols 异步回推变宽时壳重测跟随（防滚动条压末列）；
      v1.8.4c 缺陷（柜子滚动条）——官方 createGridSizeLock 的 margin 填充跟清（unlockGridSize） */
   function ensureBadgeObserver() {
-    var host = el.srGridHost;
-    if (!host || host.__srBadgeMO) return;
-    try {
-      var V = host.ownerDocument.defaultView.MutationObserver;
-      host.__srBadgeMO = new V(function () { setTimeout(function () { unlockGridSize(); DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); }, 50); });
-      host.__srBadgeMO.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-    } catch (e) { }
+    watchGrid(el.srGridHost, '__srBadgeMO', { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
+      function () { unlockGridSize(); DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); });
   }
   /* v1.8.4c 作者缺陷「柜子滚动条」：官方 createGridSizeLock（webui-bag.js@1211）的
      seenRows/seenCols 只增不减（hint=State.bagMaxRows=页签柜最高行，作者括号直觉逐字命中）
@@ -1777,21 +1833,17 @@
       st.mode = 'grid'; st.global = false; st.query = ''; st.tags = [];
     }
     el.srFoodSort.hidden = !isFoodScene();
-    footSortLabel();
+    if (menuFoot) menuFoot.sync();
     renderTradeInfo();
-    if (!el.srFootSortPop.hidden) renderFootSortPop();
+    if (menuFoot) menuFoot.refresh();
     ensureBadgeObserver();
     if (st.scene === 'Trade' && !st.tradeSorted && store.items && bagArr().length > 1) {
       st.tradeSorted = true; /* 每次进页一次性（applyScene 复位）；「默认按交易价值排序」
          v1.8.5：显示层（旧数据层 sortBy 废弃——Trade 页同属 Vue 格，重绑链不可靠且毁真实布局） */
-      DISP.choice = 'value'; DISP.owner = st.currentId;
-      dispApply();
+      dispReapply('value', st.currentId);
     }
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
-    if (isPlainScene() && st.fsort && st.fsort !== 'official') {
-      DISP.choice = st.fsort; DISP.owner = st.currentId;
-      dispApply();
-    }
+    if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(st.fsort, st.currentId);
     var c = ctnById(st.currentId) || railCtns()[0] || null;
     if (!c) return; /* 空契约（无背包无容器）：侧栏保持骨架 */
     st.currentId = c.id;
@@ -1814,7 +1866,7 @@
     el.srScope.classList.toggle('active', st.global);
     el.rail.classList.toggle('bagonly', sceneBagOnly()); /* 场景态类：SCENES 表 + ctx.bagOnly 双源，随数据/场景同步（§4.5） */
     el.srSeg.classList.toggle('lock', st.global);
-    el.srSortLbl.textContent = sortLabel();
+    if (menuSort) menuSort.sync();
     el.srDir.textContent = st.dir === 1 ? '↓' : '↑';
     el.srDir.title = st.dir === 1 ? '当前：数值高在前（点击切倒序）' : '当前：数值低在前（点击切回）';
     el.srFill.textContent = st.global
@@ -1826,7 +1878,7 @@
     var seg = el.srSeg.querySelectorAll('[data-mode]');
     for (var s = 0; s < seg.length; s++) seg[s].classList.toggle('active', seg[s].getAttribute('data-mode') === st.mode);
     renderCtnBar(); renderTags();
-    if (!el.srSortPop.hidden) renderSortPop();
+    if (menuSort) menuSort.refresh();
 
     if (st.mode === 'grid' && !st.global) {
       /* 网格模式（v1.8.2）：物品区=官方原版格（mount 时搬进 srGridHost），壳只管显隐与
@@ -1919,6 +1971,28 @@
     el.pinRow = el.srPinRow;
     el.rail = railEl || null;
     el.doc = d; /* T10：closeMidMenus 模块级取用（bindBagPanel 开下拉前先收旧菜单） */
+    /* 排序钮 prefab 实例（每帧 doc 重建；onclick 属性重挂天然幂等——重绑只是换指新 doc 元素）：
+       工具行 SORTS 6 键=排侧栏自身列表（sortArr）；页脚 FSORTS 7 键=官方格显示层排序（DISP） */
+    menuSort = makeSortMenu({
+      doc: d, btnId: 'srSortBtn', lblId: 'srSortLbl', popId: 'srSortPop', bodyId: 'srSortPopBody',
+      keys: SORTS, optCls: 'sr-sortopt', attr: 'data-sort', defLbl: '按分类',
+      pre: function () { closePops('sort'); },
+      getKey: function () { return st.sort; },
+      onPick: function (k) { st.sort = k; render(); }
+    });
+    menuFoot = makeSortMenu({
+      doc: d, btnId: 'srFoodSort', lblId: 'srFoodSortLbl', popId: 'srFootSortPop', bodyId: 'srFootSortBody',
+      keys: FSORTS, optCls: 'sr-fsopt', attr: 'data-fsort', defLbl: '排序', ico: true, onCls: 'on',
+      pre: function () { closePops('fsort'); },
+      getKey: function () { return st.fsort; },
+      onPick: function (k) {
+        applyDispSort(k, {
+          setKey: function (v) { st.fsort = v; },
+          owner: function () { return st.currentId; },
+          menu: menuFoot, after: render
+        });
+      }
+    });
     /* T9 重绑幂等门：rail 节点已带监听器（首次 bind 挂过，节点未换）→ 引用表重收即可，
        不再重挂（addEventListener 重复挂会让 contextmenu/drag/dblclick 双发）。
        mount 路（全新 DOM）无标记 → 正常挂全量。 */
@@ -2071,22 +2145,9 @@
     }
     el.srTagNewBtn.onclick = addCustom;
     el.srTagNew.onkeydown = function (e) { if (e.key === 'Enter') addCustom(); };
-    /* 排序：自定义下拉 + 方向切换 */
-    el.srSortBtn.onclick = function () { closePops('sort'); el.srSortPop.hidden = !el.srSortPop.hidden; renderSortPop(); };
-    el.srSortPopBody.onclick = function (e) {
-      var b = e.target.closest('[data-sort]'); if (!b) return;
-      st.sort = b.getAttribute('data-sort');
-      el.srSortPop.hidden = true; render();
-    };
+    /* 排序钮对（srSortBtn/srFoodSort）开合与选键接线已收敛 bind 头部 makeSortMenu 实例
+       （menuSort/menuFoot，v13.5-v13.8 页脚排序 v1.8.5 起为显示层排序）；方向切换仍在此 */
     el.srDir.onclick = function () { st.dir = -st.dir; render(); };
-    /* ---- v13.5-v13.8：食品五设施页脚排序钮（作者参考图 7 项）→ C# sortBy 数据层重排 ---- */
-    el.srFoodSort.onclick = function () { closePops('fsort'); el.srFootSortPop.hidden = !el.srFootSortPop.hidden; renderFootSortPop(); };
-    el.srFootSortBody.onclick = function (e) {
-      var b = e.target.closest('[data-fsort]'); if (!b) return;
-      var key = b.getAttribute('data-fsort');
-      el.srFootSortPop.hidden = true;
-      applyFsort(key);
-    };
     /* 选中态（左键点物品/列表行切换；右键取出 = T5） */
     el.srBody.onclick = function (e) {
       var n = e.target.closest('[data-it]'); if (!n) return;
@@ -2901,14 +2962,7 @@
         storeBtn.appendChild(cf);
         row.insertBefore(sortBtn, row.firstChild); /* 行首左缘；storeBtn margin-right:auto 吃余空间 */
         row.insertBefore(storeBtn, sortBtn.nextSibling);
-        sortBtn.onclick = function () {
-          var c = doc.getElementById('srnConfirm');
-          if (c) c.hidden = true;
-          var p = doc.getElementById('srnSortPop');
-          if (!p) return;
-          p.hidden = !p.hidden;
-          nbRenderSortPop(doc);
-        };
+        /* sortBtn 开合/选键接线=makeSortMenu 实例（nbMount 尾统一创建，见下） */
         storeBtn.onclick = function () { nbOpenConfirm(doc); };
       }
       if (!doc.__srnDocBound) {
@@ -2935,50 +2989,30 @@
         NB.sceneKey = scKey; NB.fsort = 'official';
         DISP.choice = null; DISP.owner = 0; DISP.model = null; /* v1.8.5：进页沿重置显示层排序态 */
       }
-      nbSortLabel(doc);
+      /* 排序钮 prefab 实例（每 nbMount 周期重建：onclick 重挂幂等，换 doc 换元素集）。
+         v1.8.5 显示层排序（ProjectCook 机制）：solo 背包旧路（数据层 sortBy+SWITCH_BAG 重绑）
+         对 bag owner 无效且毁真实布局，废弃——走 DISP + applyDispSort 统一入口 */
+      menuNB = makeSortMenu({
+        doc: doc, btnId: 'srnSortBtn', lblId: 'srnSortLbl', popId: 'srnSortPop',
+        keys: FSORTS, optCls: 'srn-opt', attr: 'data-k', defLbl: '排序', ico: true, tick: true, onCls: 'srn-on',
+        pre: function () { var c = doc.getElementById('srnConfirm'); if (c) c.hidden = true; }, /* 开排序弹层先收入库确认弹层 */
+        getKey: function () { return NB.fsort; },
+        onPick: function (k) {
+          applyDispSort(k, {
+            setKey: function (v) { NB.fsort = v; },
+            owner: function () { return store.bag; },
+            menu: menuNB,
+            after: function () { nbBadges(); }
+          });
+        }
+      });
+      if (menuNB) menuNB.sync();
       nbBadges(doc, panel);
       nbEnsureGridMO(doc, panel);
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
   }
-  function nbRenderSortPop(doc) {
-    var pop = doc.getElementById('srnSortPop');
-    if (!pop || pop.hidden) return;
-    var h = '';
-    for (var i = 0; i < FSORTS.length; i++) {
-      var s = FSORTS[i], on = s.k === NB.fsort;
-      h += '<button type="button" class="srn-opt' + (on ? ' active' : '') + '" data-k="' + s.k + '">' +
-        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + s.label + (on ? '<span class="srn-tick">✓</span>' : '') + '</button>';
-    }
-    pop.innerHTML = h;
-    var btns = pop.querySelectorAll('.srn-opt');
-    for (var j = 0; j < btns.length; j++) {
-      btns[j].onclick = function () { nbApplyFsort(this.getAttribute('data-k'), doc); };
-    }
-  }
-  /* v1.8.5（作者缺陷#2）：触发钮标签随当前排序类型（参考图口径：选中=亮金；默认=「排序」） */
-  function nbSortLabel(doc) {
-    var d = doc || NB.doc;
-    if (!d) return;
-    var lbl = d.getElementById('srnSortLbl'), btn = d.getElementById('srnSortBtn');
-    if (!lbl || !btn) return;
-    var t = NB.fsort && NB.fsort !== 'official' ? fsortLabel(NB.fsort) : '排序';
-    if (lbl.textContent !== t) lbl.textContent = t;
-    var on = !!(NB.fsort && NB.fsort !== 'official');
-    if (btn.classList.contains('srn-on') !== on) btn.classList.toggle('srn-on', on);
-  }
-  function nbApplyFsort(key, doc) {
-    NB.fsort = key;
-    var p = doc.getElementById('srnSortPop');
-    if (p) p.hidden = true; /* 与机器页设施排序弹层同款：选完即关 */
-    /* v1.8.5 显示层排序（ProjectCook 机制）：纯 DOM left/top，真实摆放零触碰——
-       solo 背包旧路（数据层 sortBy+SWITCH_BAG 重绑）对 bag owner 无效且毁真实布局，废弃 */
-    DISP.choice = key;
-    DISP.owner = store.bag;
-    dispApply();
-    nbSortLabel(doc);
-    nbBadges(doc, nbPanel(doc));
-    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
-  }
+  /* nbRenderSortPop/nbSortLabel/nbApplyFsort 已收敛：弹层渲染/标签同步=makeSortMenu 实例
+     （menuNB，nbMount 创建），应用=applyDispSort 统一入口（选完即关/亮金态/toast 文案原样） */
   function nbOpenConfirm(doc) {
     var p = doc.getElementById('srnSortPop');
     if (p) p.hidden = true;
@@ -3003,50 +3037,17 @@
   /* 数值角标（v13.5 同款 overlay；挂官方 .grid-container 内 pointer-events:none，跟随官方
      重渲染由 nbEnsureGridMO 观察器驱动）。webui-bag 页 .item id=logicId 精确匹配契约背包行，
      无主格不标（宁缺勿错）；几何按官方 zoom 归一（rect/offsetWidth），角标锚格右上角。 */
-  function nbBadges(doc, panel) {
-    try {
-      if (!doc || !doc.body) return;
-      if (!panel) panel = nbPanel(doc);
-      var grid = panel && panel.querySelector('.grid-container');
-      if (!grid) return;
-      var old = doc.getElementById('srnBadges');
-      if (NB.fsort === 'official' || !bagArr().length) {
-        if (old && old.parentNode) old.parentNode.removeChild(old);
-        return;
-      }
-      var its = grid.querySelectorAll('.item');
-      if (!its.length) { return; } /* 瞬时零格不清（见 applyBadges 同款） */
-      var arr = itemsOf(store.bag);
-      var color = FBCOLOR[NB.fsort] || '#f0b03c';
-      /* v1.8.5：数值=DISP join 行（Vue 页无 id/无 LogicId 通道——视觉序↔网格序 zip 在真实态
-         恒成立，行绑定恒定=数值不再错配跳动）；未 join/行缺=不标（宁缺勿错） */
-      var cellRows = dispCellRows(grid); /* 下标直配（v1.8.5④：悬停缩放/详情弹层零扰动） */
-      if (!cellRows) {
-        /* 配对未成（详情弹层临时节点/模型未就绪）：**保留上一次内容不清空**
-           （作者缺陷#3：点开详情数值消失）；无历史也暂不画，下一轮配对成功再画 */
-        return;
-      }
-      var h = '';
-      for (var k = 0; k < its.length; k++) {
-        var elx = its[k];
-        var it = cellRows.get(elx);
-        if (!it) continue;
-        if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
-        var p = offsetXY(elx, grid); /* 布局坐标：悬停 transform 缩放不影响（作者缺陷#1） */
-        var x = p[0] + elx.offsetWidth - 1, y = p[1] + 1;
-        h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + color + '">' + badgeTextFor(it, NB.fsort) + '</i>';
-      }
-      if (h === '' && old && old.__srnH) return; /* 空结果不覆写（隐藏/窗口期保上一次） */
-      if (old && old.__srnH === h) return; /* 同串免写：防自家写入触发观察器回环（v1.8.3 同款） */
-      if (!old) {
-        old = doc.createElement('div');
-        old.id = 'srnBadges';
-        grid.appendChild(old);
-      }
-      old.__srnH = h;
-      old.innerHTML = h;
-    } catch (e) { try { console.warn('[CERail] nbBadges 失败', e && (e.stack || e.message)); } catch (e2) { } }
-  }
+  /* NB 原生页角标=makeBadgeLayer 实例（v1.8.5：数值=DISP join 行——Vue 页无 id/无 LogicId
+     通道，视觉序↔网格序 zip 在真实态恒成立，行绑定恒定=数值不再错配跳动；未 join/行缺=
+     不标宁缺勿错）。保留旧 nbBadges(doc,panel) 调用形（doc 恒=NB.doc，panel 实例内部自解析）；
+     清路=删层节点（nbStrip/nbMount 形态翻转同语义） */
+  var nbBadgesCore = makeBadgeLayer({
+    host: function () { var p = nbPanel(NB.doc); return p ? p.querySelector('.grid-container') : null; },
+    layerId: 'srnBadges',
+    spec: function () { return (NB.fsort === 'official' || !bagArr().length) ? null : { k: NB.fsort, color: FBCOLOR[NB.fsort] || '#f0b03c' }; },
+    dx: -1, dy: 1, skipHide: false, removeOnClear: true
+  });
+  function nbBadges(doc, panel) { if (NB.doc && NB.doc.body) nbBadgesCore(); }
   /* 2026-11-01 第十三轮：对齐节拍器——500ms 兜底重算角标（有排序时）。观察器只盯格子/
      面板的属性变更，纯 CSS 回流（详情弹窗压扁格区 162²→218×50 又复原）不产生变更 →
      旧角标钉死旧坐标直到下一次格子类变更。节拍器独立于装配循环，任何布局变化 ≤500ms 自愈。 */
@@ -3056,24 +3057,14 @@
 
   function nbEnsureGridMO(doc, panel) {
     var grid = panel && panel.querySelector('.grid-container');
-    if (!grid || grid.__srnMO) return;
-    try {
-      var V = doc.defaultView.MutationObserver;
-      grid.__srnMO = new V(function () {
-        setTimeout(function () { if (NB.doc === doc) { DISP.settling = false; dispApply(); nbBadges(doc, null); } }, 50); /* v1.8.5：官方重渲染→重抹显示层排序 */
-      });
-      grid.__srnMO.observe(grid, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
-      /* 2026-11-01 第十三轮：详情弹窗开/关在面板/祖先层切 class 驱动格区压扁(162²→218×50)/
-         复原——纯 CSS 回流不动格内联样式，格子观察器静默 → 角标钉旧坐标（关弹窗也不回来，
-         点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style。 */
-      var host = panel && panel.parentElement ? panel.parentElement : panel;
-      if (host && !host.__srnMO) {
-        host.__srnMO = new V(function () {
-          setTimeout(function () { if (NB.doc === doc) nbBadges(doc, null); }, 50);
-        });
-        host.__srnMO.observe(host, { attributes: true, attributeFilter: ['style', 'class'], subtree: false });
-      }
-    } catch (e) { }
+    watchGrid(grid, '__srnMO', { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
+      function () { if (NB.doc === doc) { DISP.settling = false; dispApply(); nbBadges(); } }); /* v1.8.5：官方重渲染→重抹显示层排序 */
+    /* 2026-11-01 第十三轮：详情弹窗开/关在面板/祖先层切 class 驱动格区压扁(162²→218×50)/
+       复原——纯 CSS 回流不动格内联样式，格子观察器静默 → 角标钉旧坐标（关弹窗也不回来，
+       点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style。 */
+    var host = panel && panel.parentElement ? panel.parentElement : panel;
+    watchGrid(host, '__srnMO', { attributes: true, attributeFilter: ['style', 'class'], subtree: false },
+      function () { if (NB.doc === doc) nbBadges(); });
   }
   function nbRefresh() { /* setData 后跟随：角标值随新契约重算（网格未变也不漏） */
     if (NB.doc && NB.doc.body) nbBadges(NB.doc, null);

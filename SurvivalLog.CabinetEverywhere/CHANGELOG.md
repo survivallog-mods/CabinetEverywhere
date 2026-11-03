@@ -3,6 +3,33 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·四批（2026-11-03，排序/角标复用化重构——行为零变化）
+
+**背景：同一套「排序钮+弹层+应用+角标」在 railui.page.js 手搓了三份**（rail 工具行
+srSortBtn / 机器页页脚 srFoodSort / NB 原生页 srnSortBtn），应用与角标各两份逐行雷同
+（applyFsort/nbApplyFsort、applyBadges/nbBadges，连 toast 文案都是复制的）——修一处 bug
+要同步改两三处。收敛为三件 prefab（**只复用行为**：markup/id/类名留在各页模板原处，
+CSS 与 harness 契约零移动；玩家可见行为、外观、文案逐字节不变）：
+
+- `makeSortMenu(cfg)`：排序钮+弹层（开合/渲染/标签亮金同步/委托选键选完即关）。
+  三入口改为各传一份 cfg（键表 SORTS/FSORTS、皮肤类名、pre/onPick 回调）。
+- `applyDispSort(key, cfg)`：显示层排序统一应用（合并 applyFsort/nbApplyFsort；Trade
+  首包默认值/机器页渲染重抹走 `dispReapply`——非用户路径无 toast）。DISP 引擎本体
+  （join→排→pack→写模型→还原）一直是单份，未动。
+- `makeBadgeLayer(cfg)`：格子右上角数值角标（合并 applyBadges/nbBadges）；三道防抖
+  （瞬时零格/配对未成保旧、同串免写）与 NB 的 -1/+1 像素微调、删层/空层清路原样参数化。
+  观察器挂 MO 段收敛 `watchGrid(target, marker, opts, cb)`（50ms 防抖节拍不变；NB 500ms
+  对齐节拍器与面板级观察器保留）。
+
+- 删旧函数：sortLabel/renderSortPop/renderFootSortPop/footSortLabel/applyFsort/
+  nbRenderSortPop/nbSortLabel/nbApplyFsort（净 -212/+203 行）。C# 侧（RailSortMath/
+  RailCommands/sortBy）与 railui.css 零改动。
+- 回归：node --check 过；本地 harness mount 114/127、tagfilter-gate 15/15、switch-cabinet
+  与基线（重构前）逐条一致（mount 的 13 个 size FAIL 为 fixtures 环境固有，对照排除）；
+  排序三入口交互冒烟 15/15（含 NB 点外收起、official 还原、toast 文案）；角标探针：
+  选键后 8 格画 8 角标（值取 mock 真实饱腹 15）、还原后层清空、零 pageerror。
+  实机建议跟一轮 ingame-matrix（排序相关页×动作矩阵）再发版。
+
 ## 待发版·三批（2026-11-01 晚，作者复测：冰箱没进 12 / 柜子滚动条越界空白）
 
 **缺陷「豪华版双门冰箱、冰柜宽度还不是 12」——SizeEngine 目标集漏冷链电器：**
