@@ -1,5 +1,17 @@
 /* CERail 储物侧栏 —— 游戏内 WebView 注入版（railui.page.js）。
    fork 自 design-proto/rail.js（v12 定稿原型），按计划分任务移植：
+   v1.8.7（作者 2026-11-03 令「页签区还原官方设计，保留 rail 全部功能」）：
+       **官方页签栏 DOM 原件还原**——mount 不再销毁页签栏建桩，改为把官方页签栏
+       （SCENES.tabs：bag 族 #bagTabs / tt·cart 族 .left-tabs / trade .bag-tabs /
+       compressor #tabs）reparent 进壳的 #srTabs 槽（mount 期先取引用、buildStubs 前
+       入槽→页签类桩自愈跳过；ensureTabsInSlot 每周期兜底补挂）。自绘页签行
+       （.sr-ctnbar/.sr-pinrow/renderCtnBar/bindPinDrag/pinnedCtns/savePinOrder）与
+       A/D 拦截层（stepGuard/releasePending/f.pending）整体退役。
+       由此复活两个官方原生功能（作者报告被打断的）：①A/D 切页签（C#
+       ContainerTabHotKey→RA_SwitchTabByKey，宽度>0 守卫——真页签栏在位即过）；
+       ②拖物品到页签转柜（webui-tabdrop 真件矩形命中）。页签点击/active/滚动/锁定
+       全官方；rail 只经 followActive 跟随同步自身状态（▾ 菜单跳柜仍走 forgeSwitchTo）。
+       场景视图可见性与拖拽排序后续任务移到 C# 状态层收口（数组=可见集，A/D 零拦截）。
    2026-11-01 作者缺陷单#1（排序不生效/数据不显示/显示错误）+#2（9 机器页页签柜子显示错/缺）：
        #1 数值口径整体换 C# RailSortMath（ProjectCook.dll 反编译移植：实例效果值+天赋管线/
           交易损耗×鉴定+Trade 需求因子/保质期 DaysLeft 状态机升序），契约物品行尾增
@@ -8,6 +20,15 @@
           （§4.11 定版，localStorage 持久化退役）；同场景切柜续排。
        #2 railCtns 机器页按 v1.7.0 逐页语义收窄（ctx.view food/material/browser 视图谓词
           =tagfilter viewAllows 移植 + TABS 官方页签成员过滤）；页签行平铺本页全集（默认前 4 退役）。
+   v1.8.6（作者 2026-11-03 令「排序按钮复制到所有储物柜的取用与整理物资界面，位置左下角；
+       只排序不入库；材料架不做——行组件页无网格」）：
+       **NB 原生页双侧装配**——袋侧（B键/整理物资 A 面板）排序+入库原样；柜侧**新增仅排序钮**
+       （取用单柜 A 面板 / 整理物资 B 面板 .is-storage，id 后缀 2）；DISP 双实例化（DISP_CT），
+       双面板同屏各自独立排序互不顶替，dropFilter 双实例取落点命中者。
+       **装配判据换 Vue 真源**（setupState.bagA/bagB.ownerId 白名单柜判定；兜底链=DOM chips
+       →ctx.bpBag→保守袋侧）——旧判据 ctx.bpBag 为上一包快照，开取用柜瞬间滞后=true →按钮对
+       先装后摘=「左下角排序钮闪一下就没了」（v1.8.4 起固有竞态）根治；dispOwnerOf vue 分支
+       改页面 ownerId 直取（v1.8.5⑪ 陈旧 owner 病灶同类根治）。
    v1.8.3（作者 2026-10-31 执行令「把背包、取用、整理物资三个界面改了」＝原型 v13.2/v13.3 落地）：
        **BackpackUI 页转原生模式**——B 键单独背包 / 开柜双背包（整理物资）两形态都不再装配
        rail/plainbag，官方页整页原生；mod 仅注入原生改造 CSS（style#srNativeBp）三点：
@@ -141,24 +162,28 @@
        仍在文档（官方查询照常命中）即不建桩，任一官方件抓取失败时兜底防 TypeError。 */
     BackpackUI:      { host: '.backpack-container', family: 'backpack', bagOnly: true, duo: false, native: true, grid: '.grid-container', stubs: [] }, /* iframe id 实测 'Backpack'（ID_ALIAS 归一）。v1.8.3：**原生模式（native:true）**——不装配 rail/plainbag（ensureNativeBp 注 style#srNativeBp：高度滚动+滚动条不压格+柜侧隐负重条）；v1.8.4：加 mod 按钮对（nbMount：⇅排序▾/📦一键入库 进官方 .toolbar 行左缘，UI-SPEC §0a-4；装配判据=ctx.bpBag，取用单柜不装）。host/grid/stubs 字段保留供旧 harness mount() 直调参考。列数=官方数据原生（12 列统一待数据层拍板） */
     MaterialRack:    { host: '.bag-panel:not(.is-storage)', family: 'rack', bagOnly: false, duo: false, plainBag: true, rackMid: true, grid: null, stubs: ['wtText', 'wtFill', 'previewLayer'] }, /* v1.8.2.5：**只替换左侧背包 .bag-panel**→简洁背包栏（plainbag）；官方转移列（2 原件+mod 3 增值按钮 append）与右侧柜子面板（普通存储取物界面=官方行组件）原样不动。宿主「替换即消亡」成立（默认 alive）。stubs=随背包面板移除的官方查询目标兜底 */
-    Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中）。injTabs=TabInjector 注入页（C# 往官方 BagTabs 补全部柜子）：∩门对 kind 'c' 放行（见 railCtns 注释） */
-    BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263）；injTabs 同 Cooking */
-    RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs 同 Cooking */
-    DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, injTabs: true, grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317；injTabs 同 Cooking */
-    Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs） */
-    Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'cartRack', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned') */
-    GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'cartRack', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned') */
-    ToolTable:       { host: '.backpack-panel', family: 'tt',    bagOnly: false, duo: false, grid: 'backpack-grid', stubs: ['tab-bag', 'tabScrollLeft', 'leftTabsScroll', 'tab-drawer', 'tabScrollRight', 'cabinetGuide', 'cabinetGuideBtn', 'rack-rows', 'bagToolbar', 'btn-sort-bag', '.weight-text', '.weight-fill'] }, /* 内含 .left-tabs 页签列（@ToolTable.html @1947）；首抛 applyLeftGrid 的 getElementById('backpack-grid')（@2610 无守卫 .style 解引用）；类桩 '.weight-text'/'.weight-fill'=StatusMsg 无守卫解引用（markup L1968/L1971 仅类名无 id） */
-    Trade:           { host: '.cols>.col:first-child', family: 'trade', bagOnly: false, duo: false, grid: 'tradeBagGrid', stubs: [] }, /* 第 1 个 .col=背包列（@TradeUI.html @2518；:first-child 收窄防级联，T8 评审 Critical）；grid=Vue 格（移动后 Vue 按元素引用继续 patch） */
-    DroneHub:        { host: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, grid: 'bagGrid', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagRackWrap', 'bagRack', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] }  /* section.pane.mine（@DroneHub.html @408） */
+    Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中）。injTabs=TabInjector 注入页（C# 往官方 BagTabs 补全部柜子）：∩门对 kind 'c' 放行（见 railCtns 注释）。tabs=官方页签栏原件（v1.8.7 reparent 进 #srTabs；含 pin/滚动钮/滚动区/fridgeGuide 整件） */
+    BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263）；injTabs 同 Cooking；tabs 同 Cooking */
+    RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs/tabs 同 Cooking */
+    DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317；injTabs/tabs 同 Cooking */
+    Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, tabs: '#tabs', grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs）；tabs=#tabs 平铺无 pin */
+    Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'cartRack', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned')；tabs=.left-tabs（pin+scroll 整件） */
+    GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'cartRack', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned')；tabs 同 Shredder */
+    ToolTable:       { host: '.backpack-panel', family: 'tt',    bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'backpack-grid', stubs: ['tab-bag', 'tabScrollLeft', 'leftTabsScroll', 'tab-drawer', 'tabScrollRight', 'cabinetGuide', 'cabinetGuideBtn', 'rack-rows', 'bagToolbar', 'btn-sort-bag', '.weight-text', '.weight-fill'] }, /* 内含 .left-tabs 页签列（@ToolTable.html @1947）；首抛 applyLeftGrid 的 getElementById('backpack-grid')（@2610 无守卫 .style 解引用）；类桩 '.weight-text'/'.weight-fill'=StatusMsg 无守卫解引用（markup L1968/L1971 仅类名无 id）；tabs=.left-tabs 整列（pin #tab-bag/滚动钮/#leftTabsScroll(含 #tab-drawer)/cabinetGuide；官方 document.querySelector('.left-tabs')/'.left-tabs .cabinet-tab' 同文档照常命中） */
+    Trade:           { host: '.cols>.col:first-child', family: 'trade', bagOnly: false, duo: false, tabs: '.bag-tabs', grid: 'tradeBagGrid', stubs: [] }, /* 第 1 个 .col=背包列（@TradeUI.html @2518；:first-child 收窄防级联，T8 评审 Critical）；grid=Vue 格（移动后 Vue 按元素引用继续 patch）；tabs=.bag-tabs（Vue v-if tabs>1——reparent 与 Vue patch 互作走宿主复活重挂兜底，实机校准点） */
+    DroneHub:        { host: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagRackWrap', 'bagRack', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] }  /* section.pane.mine（@DroneHub.html @408）；tabs=#bagTabs（自带 padding 头+尾 sortBagBtn2 官方排序钮，随件还原） */
   };
 
   /* 侧栏 DOM 常量（每次切场景重建后重绑；控件入口各只有一个）——原样拷自 rail.js。 */
   var RAIL_HTML =
     '<div class="sr-head"><div class="sr-headtxt"><div class="sr-title" id="srTitle"></div>' +
     '<div class="sr-sub"><b id="srCols"></b><span id="srCap"></span><span id="srTags"></span></div></div></div>' +
-    '<div class="sr-offtabs" id="srOffTabs" hidden></div>' + /* v1.8.2.2：BackpackUI aTabs 模式——官方柜签页签行原件搬入此槽（原生切换） */
-    '<div class="sr-ctnbar"><div class="sr-pinrow" id="srPinRow"></div>' +
+    '<div class="sr-offtabs" id="srOffTabs" hidden></div>' + /* v1.8.2.2：BackpackUI aTabs 模式——官方柜签页签行原件搬入此槽（原生切换；v1.8.3 原生模式后休眠） */
+    /* v1.8.7（作者 2026-11-03 令「页签区还原官方设计」）：自绘页签行（.sr-ctnbar/.sr-pinrow）
+       退役——页签槽 #srTabs 装**官方页签栏 DOM 原件**（mount 时 reparent，SCENES.tabs 逐页
+       指路），A/D 步进/点击切换/拖物到页签（webui-tabdrop）全部官方原生；▾ 菜单保留在行尾。 */
+    '<div class="sr-tabsrow" id="srTabsRow"><div class="sr-tabslot" id="srTabs"></div>' +
+    '<button class="sr-fsel" id="srFSel" type="button" hidden title="按标签筛选柜子页签（本页 Browser 视图）"><span id="srFSelLbl">全部柜子</span><span class="sb-caret" aria-hidden="true">▾</span></button>' +
     '<button class="sr-allctn" id="srAllCtn" type="button" aria-label="全部容器" title="全部容器">▾</button></div>' +
     '<div class="sr-tradeinfo" id="srTrade" hidden></div>' +
     '<div class="sr-searchrow"><div class="sr-search">🔍 <input id="srSearch" type="text" placeholder="搜索物品" autocomplete="off"></div>' +
@@ -195,6 +220,8 @@
     '<button class="sr-popclear" id="srTagNewBtn" type="button">添加</button></div></div></div>' +
     '<div class="sr-pop sr-popsort" id="srSortPop" hidden><div class="sr-pophead"><span>排序方式</span></div>' +
     '<div class="sr-popbody" id="srSortPopBody"></div></div>' +
+    '<div class="sr-pop sr-fselpop" id="srFSelPop" hidden><div class="sr-pophead"><span>筛选柜子页签</span></div>' +
+    '<div class="sr-popbody" id="srFSelBody"></div></div>' +
     '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-popbody" id="srFootSortBody"></div></div>';
 
   /* 整理柜中段 mod 增值三按钮（v1.8.2 v13 口径）：「放入材料/全部取出」两按钮=官方
@@ -253,14 +280,13 @@
     scene: null, currentId: null, mode: 'grid', prevMode: 'grid', sort: 'value', dir: 1,
     query: '', global: false, tags: [], sel: null,
     cap: 0, rows: 0, items: [],
-    dragId: null, editId: null, editTags: [],   /* T5：拖拽中页签/编辑弹窗容器与选中集（rail.js st 同形） */
-    lastStepIdx: null   /* 2026-11-01 作者#1：上一跟随 active 在官方页签数组中的下标（步进方向判据，弹回用） */
+    dragId: null, editId: null, editTags: []    /* T5：拖拽中页签/编辑弹窗容器与选中集（rail.js st 同形；v1.8.7 lastStepIdx 随 stepGuard 退役） */
   };
   var COMMON = [];     /* 快捷标签名字符串（默认=lib 前 5；持久化 srp_common_tags_<scene>） */
   var CUSTOM = [];     /* 自定义标签词表（全局 srp_custom_tags；管理弹层新增/移除维护） */
   var el = {};
   var LISTGRP = [];    /* 列表模式当前渲染的同名汇总行（右键按行取出用，T5 消费） */
-  var PIN_KEY = '';    /* renderCtnBar 结构短路键（原地更新纪律，§4.10） */
+  var PIN_KEY = '';    /* v1.8.7：自绘页签行退役后仅作快照形状字段保留（恒 ''，无消费方） */
   var sceneApplied = null; /* 已应用过场景态的 ctx.page（mount 先行时，首包 setData 补应用） */
   var RENDERED_ID = null;  /* 当前 rail 实际渲染出的容器（T9 防回环门：forge 回包到达时区分
                               「已渲染该柜」（幂等早退）与「currentId 已记下但未渲染」（补渲染）） */
@@ -273,7 +299,7 @@
      跟着帧走、不把 A 场景的筛选态渲染进 B。全局单套活跃集 + 每帧快照 = 与「单场景活跃」
      装配语义（frameVisible 门控，T8）一致的多帧安全形态。 */
   var SNAPS = {}; /* sceneKey → { st, COMMON, sceneApplied, PIN_KEY, TM_KEY, LISTGRP } */
-  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'editId', 'editTags', 'lastStepIdx'];
+  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'editId', 'editTags'];
   function saveSnap() {
     if (!st.scene || !SCENES[st.scene]) return;
     var sn = { st: {}, COMMON: COMMON.slice(), sceneApplied: sceneApplied, PIN_KEY: PIN_KEY, TM_KEY: TM_KEY, LISTGRP: LISTGRP };
@@ -500,8 +526,10 @@
     }
     return [bagCtn()].concat(arr);
   }
-  /* ---- §4.9 分场景记忆：localStorage 五键（键名冻结，persist 区）----
-     srp_pin_order_<scene>   页签常用顺序 ownerId 数组（读=pinOrderIds 渲染即用；写=T5 拖拽 savePinOrder）
+  /* ---- §4.9 分场景记忆：localStorage 键（键名冻结，persist 区）----
+     v1.8.7：srp_pin_order_<scene> 退役——页签顺序唯一权威=C# cerail_pinorder.json
+     （拖拽经 cmd pinOrder 落库，各页轮询 ApplyOrder 对账官方数组序；浏览器侧不再
+     存序，storeAll 路由序改读 TABS 官方数组缓存）。存留四键：
      srp_common_tags_<scene> 快捷标签名字符串数组（T4 chips × /管理弹层写）
      srp_ctn_names           容器改名覆盖 id→名（全局；T5 已接线：启动载入→nm() 消费，
                              编辑弹窗保存写+cmd('rename') 主通道由 C# 持久化随契约回推）
@@ -515,17 +543,7 @@
   function lsSet(key, v) {
     try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) { }
   }
-  function pinKey() { return 'srp_pin_order_' + st.scene; }
   function commonKey() { return 'srp_common_tags_' + st.scene; }
-  function loadPinOrder() { var v = lsGet(pinKey()); return Array.isArray(v) ? v : null; }
-  /* T5 拖拽调用。2026-11-02 四轮（作者#2 定案：拖拽同步官方序）：显示序写入 localStorage
-     的同时同步官方 BagTabs 数组序（cmd→C# TabInjector 重排+Repush）——官方 A/D 步进走
-     官方数组序，序一致后步进=显示序邻居，无需拦截校正；显示序≠官方序的整类错位消失。 */
-  var INJ_PAGES = { Cooking: 1, RatCage: 1, BrewPanel: 1, DyePanel: 1 }; /* TabInjector 四注入页（pinOrder 只对这些页上报——其他页官方数组非本 mod 域） */
-  function savePinOrder(ids) {
-    lsSet(pinKey(), ids || []);
-    try { if (INJ_PAGES[st.scene] && Array.isArray(ids) && ids.length) cmdOut('pinOrder', { key: st.scene, order: ids.slice() }); } catch (e) { }
-  }
   function loadCommon() { var v = lsGet(commonKey()); return Array.isArray(v) ? v.slice() : null; }
   function saveCommon() { lsSet(commonKey(), COMMON); }
   function loadNames() {
@@ -540,39 +558,6 @@
   function saveCtnTags(m) { lsSet('srp_ctn_tags', m || {}); }                /* T5 已接：saveEdit 写（自定义词 overlay） */
   function loadCustom() { var v = lsGet('srp_custom_tags'); return Array.isArray(v) ? v.slice() : []; }
   function saveCustom() { lsSet('srp_custom_tags', CUSTOM); }
-  function pinOrderIds() {
-    var po = loadPinOrder();
-    if (!po || !po.length) return null;
-    var have = {}, out = [];
-    for (var i = 0; i < store.ctn.length; i++) have[store.ctn[i].id] = true;
-    for (var j = 0; j < po.length; j++) {
-      var id = po[j];
-      if (have[id] && out.indexOf(id) < 0) out.push(id); /* 已删容器/重复 id 剔除 */
-    }
-    return out.length ? out : null;
-  }
-  function pinnedCtns() {
-    var rc = railCtns();
-    var bag = rc.length && rc[0].fixed ? rc[0] : null;
-    var ids = pinOrderIds();
-    if (!ids) {
-      ids = [];
-      if (isPlainScene()) {
-        /* 缺陷单#2：机器页页签行平铺**本页语义全集**（v1.7.0 原生页签=全量平铺可点；
-           v1.8.3 默认只锔前 4 个+其余收 ▾=「未显示」根源）。玩家拖拽过（pinOrderIds 命中）
-           仍按记忆序全量平铺。 */
-        for (var p = 0; p < rc.length; p++) if (!rc[p].fixed) ids.push(rc[p].id);
-      } else {
-        for (var i = 0; i < store.ctn.length && i < 4; i++) ids.push(store.ctn[i].id);
-      }
-    }
-    var byId = {};
-    for (var j = 0; j < rc.length; j++) byId[rc[j].id] = rc[j]; /* 源=收窄集（防页签记忆复活被收窄柜） */
-    var out = [];
-    if (bag) out.push(bag);
-    for (var q = 0; q < ids.length; q++) { var c = byId[ids[q]]; if (c && !c.fixed) out.push(c); }
-    return out;
-  }
   /* 容量换列数+行数（cosmetic：页脚 N 行估算用；网格模式物品区=官方格，尺寸官方自带；
      duo 背包面板仍用 COLS×SLOT 定版几何） */
   function applySize(cap) {
@@ -657,29 +642,9 @@
       '<span class="cin">' + esc(nm(c)) + '</span></button>';
   }
 
-  /* ---- 页签栏（Produces：renderCtnBar）----
-     结构（id+顺序+名称）没变就不重建 DOM（key 短路）：切容器只翻 active 类保住节点，
-     否则第二次点击落在重建后的新节点上，浏览器会把 dblclick 派发到公共祖先（§4.10）。
-     背包固定首位（.main + CSS 2px 竖线、不可拖）；其余页签恒一行横向滚动（CSS）。
-     2026-11-01 作者#2：✎ 编辑入口与「双击页签开设置」**移除**（点击柜名老误触编辑模式，
-     作者定版「去掉，只保留筛选规则+拖拽排序」）——容器设置/改名唯一入口收到 ▾ 容器
-     菜单的双击行（藏起来不误触）；页签=纯名称官方式样（单击切换+拖拽排序）。 */
-  function renderCtnBar() {
-    var pins = pinnedCtns();
-    var key = pins.map(function (p) { return p.id + ':' + nm(p); }).join('-');
-    if (key !== PIN_KEY) {
-      PIN_KEY = key;
-      el.pinRow.innerHTML = pins.map(function (p) {
-        var main = !!p.fixed;
-        return '<button type="button" draggable="' + (main ? 'false' : 'true') + '" class="sr-pin' + (main ? ' main' : '') + '" data-ctn="' + p.id + '" title="' + esc(nm(p)) + (main ? '（固定首位）' : '（拖拽排序）') + '">' +
-          '<span class="p-lb">' + esc(nm(p)) + '</span>' +
-          '</button>';
-      }).join('');
-    }
-    el.pinRow.querySelectorAll('[data-ctn]').forEach(function (b) {
-      b.classList.toggle('active', parseInt(b.getAttribute('data-ctn'), 10) === st.currentId);
-    });
-  }
+  /* ---- 页签栏：v1.8.7 起自绘页签行（renderCtnBar/sr-pin）整体退役——官方页签栏 DOM
+     原件 reparent 进 #srTabs 槽（mount/ensureTabsInSlot），渲染/active/滚动/点击全部
+     官方原生；rail 只经 followActive 跟随 active 同步自身状态。▾ 菜单照旧（renderCtnPop）。 ---- */
   /* ---- ▾ 容器菜单内容（Produces：renderCtnPop；开关/单击切换/双击开设置 = T5 bind）----
      分组照 rail.js：按容器标签命中的 lib 分组（dimGroup 三组：食品类/材料类/功能类）
      逐组列出，再「自定义标签」组（fix-2 双层：自定义词 overlay 挂到柜上的容器入此组，
@@ -804,6 +769,7 @@
     if (keep !== 'ctn') el.srCtnPop.hidden = true;
     if (keep !== 'tag') el.srTagManage.hidden = true;
     if (keep !== 'sort') el.srSortPop.hidden = true;
+    if (keep !== 'fsel') el.srFSelPop.hidden = true;
     if (keep !== 'fsort') el.srFootSortPop.hidden = true;
     if (keep !== 'edit') el.srCtnEdit.hidden = true;
     if (keep !== 'store') el.srStoreConfirm.hidden = true;
@@ -912,58 +878,9 @@
     render();
   }
 
-  /* ---- 页签拖拽（rail.js bindPinDrag 移植）----
-     背包固定首位：模板 draggable=false + dragstart JS 守卫 + drop 落到背包位拒绝；
-     落点指示 drop-before/after 按指针在目标页签左右半区（CSS box-shadow 橙线）；
-     drop 只算序并写 srp_pin_order_<scene>（persist 区 savePinOrder），DOM 重排交给
-     dragend→render()（pinnedCtns→pinOrderIds 渲染层现读解出，store 只读不重排）。 */
-  function bindPinDrag() {
-    var row = el.srPinRow;
-    row.addEventListener('dragstart', function (e) {
-      var b = e.target.closest('[data-ctn]'); if (!b) return;
-      if (b.classList.contains('main')) { st.dragId = null; return; } /* 背包固定首位不可拖 */
-      st.dragId = parseInt(b.getAttribute('data-ctn'), 10);
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', String(st.dragId)); } catch (x) { }
-      b.classList.add('dragging');
-    });
-    row.addEventListener('dragend', function () {
-      st.dragId = null;
-      row.querySelectorAll('.sr-pin').forEach(function (b) { b.classList.remove('dragging', 'drop-before', 'drop-after'); });
-      render();
-    });
-    row.addEventListener('dragover', function (e) {
-      if (st.dragId == null) return;
-      e.preventDefault();
-      var b = e.target.closest('[data-ctn]');
-      row.querySelectorAll('.sr-pin').forEach(function (x) { x.classList.remove('drop-before', 'drop-after'); });
-      if (!b || parseInt(b.getAttribute('data-ctn'), 10) === st.dragId) return;
-      if (parseInt(b.getAttribute('data-ctn'), 10) === store.bag) return; /* 背包位不显示落点指示（drop 亦拒） */
-      var r = b.getBoundingClientRect();
-      b.classList.add((e.clientX - r.left) < r.width / 2 ? 'drop-before' : 'drop-after');
-    });
-    row.addEventListener('drop', function (e) {
-      e.preventDefault();
-      var b = e.target.closest('[data-ctn]'); if (!b || st.dragId == null) return;
-      var target = parseInt(b.getAttribute('data-ctn'), 10);
-      if (target === st.dragId) return;
-      /* 角色背包固定首位不参与排序：落到背包位直接拒绝（rail.js fixedC[0] 同款） */
-      if (target === store.bag) return;
-      var pins = pinnedCtns().filter(function (p) { return !p.fixed; });
-      var from = -1, to = -1;
-      for (var i = 0; i < pins.length; i++) {
-        if (pins[i].id === st.dragId) from = i;
-        if (pins[i].id === target) to = i;
-      }
-      if (from < 0 || to < 0) return;
-      var r = b.getBoundingClientRect();
-      var after = (e.clientX - r.left) >= r.width / 2;
-      var order = pins.map(function (p) { return p.id; });
-      order.splice(from, 1);
-      order.splice(order.indexOf(target) + (after ? 1 : 0), 0, st.dragId);
-      savePinOrder(order); /* §4.9：srp_pin_order_<scene>（pinnedCtns 每次渲染现读） */
-    });
-  }
+  /* ---- 页签拖拽排序：v1.8.7 起随自绘页签行退役（bindPinDrag 删除）——T3 将在
+     官方页签元素上重接 HTML5 dnd（身份按族取：data-owner/_ownerId/TABS 位序），
+     命令通道沿用 pinOrder（C# 重排官方数组+Repush，A/D 天然跟随新序）。 ---- */
 
   /* ================= T10 整理柜三段壳（v1.8.2 v13：壳+官方 DOM 原件） =================
      装配在 mount()（sc.rack 分支：作用域容器 #rackSystem.rack-system + 官方左面板/
@@ -1110,13 +1027,22 @@
      bottom:44px，T2 已就位）。sbStoreAll 已入 bind() document 级关闭监听豁免清单
      （防同次点击冒泡秒关=v9 踩坑，rail.js 豁免清单同位）。 */
 
-  /* §4.7 路由顺序：srp_pin_order_<scene> 现值在前（常用柜优先，§4.9），未覆盖容器按契约
-     序补尾（柜满顺延要能到达全部柜——rail.js storeAll 遍历全 CTN 同口径；C# OpStoreAll
-     只遍历 order，故 order 必须全量）；无存档 = 契约序全量（默认页签顺序）。 */
+  /* §4.7 路由顺序（v1.8.7：官方数组序=显示序=C# cerail_pinorder.json 落库的权威序）：
+     TABS 缓存（官方页签数组）在前，未进数组的容器按契约序补尾（柜满顺延要能到达全部柜
+     ——C# OpStoreAll 只遍历 order，故 order 必须全量）。旧 srp_pin_order_<scene>
+     localStorage 读路退役（写路已随自绘页签行删除；C# 每轮 ApplyOrder 自愈数组序）。 */
   function storeAllOrder() {
-    var out = [], seen = {}, po = pinOrderIds();
-    if (po) for (var i = 0; i < po.length; i++) { out.push(po[i]); seen[po[i]] = true; }
-    for (var j = 0; j < store.ctn.length; j++) if (!seen[store.ctn[j].id]) out.push(store.ctn[j].id);
+    var out = [], seen = {};
+    var arrT = TABS[st.scene];
+    if (arrT) {
+      for (var i = 0; i < arrT.length; i++) {
+        if (arrT[i] == null) continue;
+        var id = numId(arrT[i]);
+        if (String(id) === String(store.bag)) continue;
+        if (ctnById(id) && !seen[id]) { out.push(id); seen[id] = true; }
+      }
+    }
+    for (var j = 0; j < store.ctn.length; j++) if (!seen[store.ctn[j].id]) { out.push(store.ctn[j].id); seen[store.ctn[j].id] = true; }
     return out;
   }
   /* 确认文案（rail.js openStoreConfirm 逐字）：X=件数 Σcount、Y=叠数。 */
@@ -1349,7 +1275,24 @@
      官方刷新必换数组=刷新后必是真实态）；排序=order（无键排尾/保质升序/稳定）+pack 首放 →
      写模型 x/y → render；还原=写回 real。观察器在官方重渲染后自动重抹（自愈）。
      dropFilter：排序态下拖放进 sorted 容器→同容器取消/跨容器重定向真实布局 firstFree。 */
-  var DISP = { choice: null, owner: 0, model: null };
+  /* v1.8.6 双实例：DISP=rail/机器页+NB 袋侧（现状不变）；DISP_CT=NB 柜侧（取用单柜 A /
+     整理物资 B）——BackpackUI 双面板同屏时各自独立排序、互不顶替。settling 入初始形状
+     （原为动态挂字段）。函数一律带实例参 D，调用点显式传（机器页/rail 全传 DISP=行为零变化）。 */
+  function makeDisp() { return { choice: null, owner: 0, model: null, settling: false }; }
+  var DISP = makeDisp();
+  var DISP_CT = makeDisp();
+  /* Vue 真源读取（BackpackUI 原生页）：setupState 是 setup() 原始返回——ref 不解包
+     （isDualBag 需 refVal 双形态兼容），bagA/bagB 为 reactive 对象直取。v1.8.6 起装配判据
+     （nbPanels）与柜侧模型选取都走页面自带态——零推送延迟，开取用柜瞬间当场可判
+     （旧 ctx.bpBag 快照滞后的「左下角排序钮闪一下」竞态根治）。 */
+  function nbVueSu(doc) {
+    try {
+      var app = doc && doc.getElementById('app');
+      var c = app && app._vnode && app._vnode.component;
+      return (c && c.setupState) ? c.setupState : null;
+    } catch (e) { return null; }
+  }
+  function refVal(v) { return (v && typeof v === 'object' && typeof v.value !== 'undefined') ? v.value : v; }
 
   function dispFrame() {
     for (var i = 0; i < FRAMES.length; i++) {
@@ -1358,16 +1301,19 @@
     }
     return null;
   }
-  /* 模型适配器：vue=BackpackUI A 侧（nb 排序对象）；grid=机器页当前容器（w.backpack） */
-  function dispModel() {
+  /* 模型适配器：vue=BackpackUI（袋侧=A；柜侧=dual?B:A——取用单柜也在 bagA 槽）；
+     grid=机器页当前容器（w.backpack）。ownerId=页面自带权威（袋侧=背包实体 id、柜侧=柜
+     ownerId），dispOwnerOf 消费 */
+  function dispModel(D) {
     var f = dispFrame();
     if (!f) return null;
     try {
       if (SCENES[f.key] && SCENES[f.key].native) {
-        var doc = f.doc, app = doc.getElementById('app');
-        var su = app && app._vnode && app._vnode.component && app._vnode.component.setupState;
+        var doc = f.doc, su = nbVueSu(doc);
         if (!su || !su.bagA || !Array.isArray(su.bagA.items)) return null;
-        return { kind: 'vue', frame: f, items: su.bagA.items, cols: su.bagA.gridCols || 12, rows: su.bagA.gridRows || 33, su: su };
+        var dual = !!refVal(su.isDualBag);
+        var bag = (D === DISP_CT && dual && su.bagB && Array.isArray(su.bagB.items)) ? su.bagB : su.bagA;
+        return { kind: 'vue', frame: f, items: bag.items, cols: bag.gridCols || 12, rows: bag.gridRows || 33, su: su, ownerId: bag.ownerId || 0 };
       }
       var w = f.el.contentWindow || f.doc.defaultView;
       var grid = w && w.backpack;
@@ -1380,24 +1326,24 @@
      render 钉正 currentId 取到旧容器 id → itemsOf(旧 id)=空行 → 全 '-'「数值都不显示」）。
      DISP.owner 降为仅诊断展示；join 每次调本函数现取：vue=store.bag（契约恒新），
      grid=ctnById 钉正后的 st.currentId（保持机器页语义，只修陈旧）。 */
-  function dispOwnerOf(model) {
-    if (model && model.kind === 'vue') return store.bag;
+  function dispOwnerOf(D, model) {
+    if (model && model.kind === 'vue') return model.ownerId || store.bag; /* v1.8.6：页面 ownerId 直取（取用柜/背包实体/双背包 B 柜三形态都对，v1.8.5⑪ 陈旧 owner 病灶顺带根治） */
     var c = ctnById(st.currentId) || railCtns()[0] || null;
     if (c) st.currentId = c.id;
-    return c ? c.id : DISP.owner;
+    return c ? c.id : D.owner;
   }
 
   /* 数值行（统一形状）——v1.8.5⑤ 起两路统一契约 join（RailSortMath 实际口径）：
      join 键=真实位 (x,y,w,h)（无重叠=唯一）；无值=null → 角标 '-' + 排尾（作者口径） */
-  function dispRows(model) {
+  function dispRows(D, model) {
     /* v1.8.5⑩ join 改 **物品 id 直配**（作者线索实锤：开包后拖拽/一键整理移动物品，
        契约行还停在推包时的旧位置——按位置配对全错：角标显示成「原来在这个位置的物品」
        的数值、配不上就 '-'，重开背包=契约重推才恢复。id=InstanceId 双侧同空间实锤：
        官方拖拽 DRAG_ITEM 本就带同一 it.id 回 C# 搬同一 Data_Item）。位置 join 降为
        id 缺失时的兜底。数值口径同 v1.8.5⑤：契约 RailSortMath（详情口径）。 */
     var out = [], i, it;
-    DISP.owner = dispOwnerOf(model);
-    var arr = itemsOf(DISP.owner), byId = {}, byPos = {};
+    D.owner = dispOwnerOf(D, model);
+    var arr = itemsOf(D.owner), byId = {}, byPos = {}; /* v1.8.6：join 跟实例 D（柜侧=柜 owner；漏参=误 join 袋行全 null 的实锤病灶） */
     for (i = 0; i < arr.length; i++) {
       byId[String(arr[i].id)] = arr[i];
       byPos[(arr[i].x || 0) + '_' + (arr[i].y || 0) + '_' + (arr[i].w || 1) + '_' + (arr[i].h || 1)] = arr[i];
@@ -1447,22 +1393,22 @@
     return out;
   }
   /* 主入口：join 模型 → 排序 → 装填 → 写模型 x/y → render（页面自己重渲染）；official=还原 */
-  function dispApply() {
-    var model = dispModel();
+  function dispApply(D) {
+    var model = dispModel(D);
     if (!model) return;
-    DISP.model = model;
-    if (!DISP.choice || DISP.choice === 'official') { dispRestore(model); return; }
+    D.model = model;
+    if (!D.choice || D.choice === 'official') { dispRestore(D, model); return; }
     var items = model.items;
     if (!items.__srReal) { /* real 快照挂 items 数组本体：先于 dispRows（join 需真实位）；
-      数组被官方刷新替换=新数组无快照=自然重采（PC 判定同款） */
+       数组被官方刷新替换=新数组无快照=自然重采（PC 判定同款） */
       var real = new Map();
       for (var r0 = 0; r0 < items.length; r0++) real.set(items[r0].id, [items[r0].x || 0, items[r0].y || 0]);
       items.__srReal = real;
     }
-    var rows = dispRows(model);
+    var rows = dispRows(D, model);
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
-    var key = DISP.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
+    var key = D.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
     pairs.sort(function (a, b) {
       var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
       if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
@@ -1470,7 +1416,7 @@
       return d !== 0 ? (d > 0 ? 1 : -1) : (a.i - b.i);
     });
     var packed = dispPack(pairs, model.cols, model.rows);
-    if (!packed) { dispRestore(model); return; }
+    if (!packed) { dispRestore(D, model); return; }
     var wrote = false;
     for (var p = 0; p < pairs.length; p++) {
       var at = packed.get(pairs[p].row.id);
@@ -1480,9 +1426,9 @@
     }
     if (model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
     /* vue：响应式自动重渲染；settling=DOM 未追平窗口（MO 回调清除，角标窗口期跳过） */
-    if (wrote && model.kind === 'vue') DISP.settling = true;
+    if (wrote && model.kind === 'vue') D.settling = true;
   }
-  function dispRestore(model) {
+  function dispRestore(D, model) {
     if (!model || !model.items || !model.items.__srReal) return;
     var moved = false;
     for (var i = 0; i < model.items.length; i++) {
@@ -1496,14 +1442,14 @@
   /* 角标行绑定（v1.8.5 第四轮：作者缺陷#1/#3）——**下标直配**：Vue v-for 不重排 DOM、
      webui-bag renderItems 同序 ⇒ cells[i] ↔ model.items[i] 恒成立（ProjectCook 原做法）。
      旧「位置序 zip」在悬停缩放（rect 抖动）与详情弹层（格容器多节点）下失稳=数值跳动/清空。 */
-  function dispCellRows(gridEl) {
-    var model = DISP.model;
+  function dispCellRows(D, gridEl) {
+    var model = D.model;
     if (!model || !gridEl) return null;
-    if (DISP.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格） */
+    if (D.settling) return null; /* 模型刚写、DOM 未追平的窗口期：跳过（防新行配旧格） */
     var cells = gridEl.querySelectorAll('.item');
     if (!cells.length || cells.length !== model.items.length) return null;
     if (cells[0].offsetWidth < 2) return null; /* 页面隐藏（详情弹层顶替）=全格零尺寸：保留上一次 */
-    var rows = dispRows(model); /* 行序=模型数组序（与 DOM 同序）——不再按位置重排 */
+    var rows = dispRows(D, model); /* 行序=模型数组序（与 DOM 同序）——不再按位置重排 */
     var m = new Map();
     for (var j = 0; j < cells.length; j++) m.set(cells[j], rows[j]);
     return m;
@@ -1523,10 +1469,10 @@
     }
     return [x, y];
   }
-  function dispActive() { return !!(DISP.choice && DISP.choice !== 'official' && DISP.model); }
+  function dispActive(D) { return !!(D.choice && D.choice !== 'official' && D.model); }
   /* dropFilter（PC dropFilter 移植）：真实布局=模型 real 快照（无快照=未排序=放行原消息） */
-  function dispFirstFree(w, h) {
-    var model = DISP.model;
+  function dispFirstFree(D, w, h) {
+    var model = D.model;
     if (!model || !model.items || !model.items.__srReal) return null;
     var cols = model.cols, occ = [];
     for (var y = 0; y < model.rows + 8; y++) occ.push(new Array(cols).fill(false));
@@ -1554,10 +1500,15 @@
           if (m && typeof m === 'object' && (m.type === 'DRAG_ITEM' || m.type === 'ITEM_MOVE' || m.type === 'GROUND_PICK_TO')) {
             var d = m.data || {};
             var to = d.dstOwnerId != null ? d.dstOwnerId : (d.toOwnerId != null ? d.toOwnerId : d.ownerId);
-            if (dispActive() && to != null && String(to) === String(DISP.owner)) {
+            var D = null; /* v1.8.6 双实例：取落点 owner 命中的活动排序（袋/柜同屏各自排序各自接） */
+            if (to != null) {
+              if (dispActive(DISP) && String(to) === String(DISP.owner)) D = DISP;
+              else if (dispActive(DISP_CT) && String(to) === String(DISP_CT.owner)) D = DISP_CT;
+            }
+            if (D) {
               var from = m.type === 'GROUND_PICK_TO' ? null : (d.srcOwnerId != null ? d.srcOwnerId : d.fromOwnerId);
               if (from != null && String(from) === String(to)) return; /* 同容器拖动：排序态取消 */
-              var cell = dispFirstFree(1, 1); /* 尺寸未知按 1x1（宁占单格） */
+              var cell = dispFirstFree(D, 1, 1); /* 尺寸未知按 1x1（宁占单格） */
               if (!cell) return;
               var nd = {};
               for (var k2 in d) nd[k2] = d[k2];
@@ -1592,7 +1543,7 @@
                               筛掉的格不标。三道防抖全保留（瞬时零格/配对未成保旧、同串免写
                               ——v1.8.5 作者缺陷#2/#3 定稿语义）。
      新页面要排序 = 一处 makeSortMenu + 一份 applyDispSort cfg + 一个 makeBadgeLayer 实例。 */
-  var menuSort = null, menuFoot = null, menuNB = null; /* bind()/nbMount 每周期重建（换 doc 换元素） */
+  var menuSort = null, menuFoot = null, menuNB = null, menuNB2 = null; /* bind()/nbMount 每周期重建（换 doc 换元素）；menuNB2=NB 柜侧（v1.8.6） */
 
   function makeSortMenu(cfg) {
     var d = cfg.doc || document;
@@ -1642,10 +1593,11 @@
 
   /* 显示层排序应用：非用户路径（Trade 首包默认值排序/机器页每次渲染重抹）走 dispReapply——
      无菜单同步、无 toast（与 v1.8.5 行为一致） */
-  function dispReapply(key, ownerId) { DISP.choice = key; DISP.owner = ownerId; dispApply(); }
+  function dispReapply(D, key, ownerId) { D.choice = key; D.owner = ownerId; dispApply(D); }
   function applyDispSort(key, cfg) {
+    var D = cfg.disp || DISP; /* v1.8.6：cfg.disp 指定实例（NB 柜侧传 DISP_CT；缺省 DISP=机器页/rail/袋侧现状） */
     cfg.setKey(key);
-    dispReapply(key, cfg.owner());
+    dispReapply(D, key, cfg.owner());
     if (cfg.menu) cfg.menu.sync();
     if (cfg.after) cfg.after();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
@@ -1705,10 +1657,11 @@
         if (!layer) {
           layer = doc.createElement('div');
           layer.id = cfg.layerId;
+          if (cfg.layerCls) layer.className = cfg.layerCls; /* v1.8.6：样式走类（NB 双层同规同款，id 仅作寻址） */
           layer.__srBadgeLayer = true;
           host.appendChild(layer); /* 官方格容器之外的自家层：壳元素/格节点，合法 */
         }
-        var cellRows = dispCellRows(host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
+        var cellRows = dispCellRows(cfg.disp || DISP, host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
         if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
         var h = '';
         for (var k = 0; k < its.length; k++) {
@@ -1730,7 +1683,7 @@
     host: function () { return el.srGridHost; },
     layerId: 'srBadgeLayer',
     spec: function () { var s = badgeSpec(); return (!s || st.mode !== 'grid' || st.global) ? null : s; },
-    dx: 0, dy: 0, skipHide: true, removeOnClear: false
+    disp: DISP, dx: 0, dy: 0, skipHide: true, removeOnClear: false
   });
   /* 格观察器 prefab（ensureBadgeObserver/nbEnsureGridMO 挂 MO 段共用）：marker 幂等，
      50ms 防抖回调（settling 窗口校准同源——v1.8.5 定版节拍） */
@@ -1748,7 +1701,7 @@
      v1.8.4c 缺陷（柜子滚动条）——官方 createGridSizeLock 的 margin 填充跟清（unlockGridSize） */
   function ensureBadgeObserver() {
     watchGrid(el.srGridHost, '__srBadgeMO', { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
-      function () { unlockGridSize(); DISP.settling = false; dispApply(); applyBadges(); syncRailWidth(); });
+      function () { unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth(); });
   }
   /* v1.8.4c 作者缺陷「柜子滚动条」：官方 createGridSizeLock（webui-bag.js@1211）的
      seenRows/seenCols 只增不减（hint=State.bagMaxRows=页签柜最高行，作者括号直觉逐字命中）
@@ -1844,10 +1797,10 @@
     if (st.scene === 'Trade' && !st.tradeSorted && store.items && bagArr().length > 1) {
       st.tradeSorted = true; /* 每次进页一次性（applyScene 复位）；「默认按交易价值排序」
          v1.8.5：显示层（旧数据层 sortBy 废弃——Trade 页同属 Vue 格，重绑链不可靠且毁真实布局） */
-      dispReapply('value', st.currentId);
+      dispReapply(DISP, 'value', st.currentId);
     }
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
-    if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(st.fsort, st.currentId);
+    if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(DISP, st.fsort, st.currentId);
     var c = ctnById(st.currentId) || railCtns()[0] || null;
     if (!c) return; /* 空契约（无背包无容器）：侧栏保持骨架 */
     st.currentId = c.id;
@@ -1881,7 +1834,8 @@
 
     var seg = el.srSeg.querySelectorAll('[data-mode]');
     for (var s = 0; s < seg.length; s++) seg[s].classList.toggle('active', seg[s].getAttribute('data-mode') === st.mode);
-    renderCtnBar(); renderTags();
+    renderTags(); /* 页签行=官方 DOM 原件（v1.8.7），官方渲染；rail 无页签渲染职责 */
+    renderFilterSel(); /* T4 Browser 下拉（非 browser 视图/无页签场景自动隐藏） */
     if (menuSort) menuSort.refresh();
 
     if (st.mode === 'grid' && !st.global) {
@@ -1960,7 +1914,7 @@
      / 左面板 sbTidy→goTidy(store.bag)，见「T12 一键整理」区）。 */
   function bind(doc, railEl) {
     var ids = ['srTitle', 'srCols', 'srCap', 'srTags', 'srTidy', 'srStoreAll', 'srStoreConfirm', 'srStoreText', 'srStoreCancel', 'srStoreGo',
-      'srPinRow', 'srOffTabs', 'srAllCtn', 'srSearch', 'srScope',
+      'srTabs', 'srOffTabs', 'srAllCtn', 'srFSel', 'srFSelLbl', 'srFSelPop', 'srFSelBody', 'srSearch', 'srScope',
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGridHost', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
       'srCtnPop', 'srCtnPopBody',
       'srCtnEdit', 'srEditName', 'srEditTags', 'srEditSave', 'srEditCancel',
@@ -1972,7 +1926,6 @@
     el = {};
     var d = doc || document; /* mount 传入宿主文档（与 rail 同文档），直开时兜底 window 文档 */
     for (var i = 0; i < ids.length; i++) el[ids[i]] = d.getElementById(ids[i]);
-    el.pinRow = el.srPinRow;
     el.rail = railEl || null;
     el.doc = d; /* T10：closeMidMenus 模块级取用（bindBagPanel 开下拉前先收旧菜单） */
     /* 排序钮 prefab 实例（每帧 doc 重建；onclick 属性重挂天然幂等——重绑只是换指新 doc 元素）：
@@ -2003,16 +1956,15 @@
     if (railEl && railEl.__srBound) return;
     if (railEl) railEl.__srBound = true;
 
-    /* T3：① 页签单击切容器——renderCtnBar 的 key 短路正是为它服务（切换只翻 active
-       不重建）。2026-11-01 作者#2：✎ 分支与 dblclick 开设置**移除**（点柜名老误触编辑，
-       定版「只保留筛选+拖拽」）——容器设置唯一入口=▾ 菜单行双击。
-       T9：切换走 switchTo 统一出口（forgeSwitchTo 伪造官方切换，回包确认后才渲染）。 */
-    el.pinRow.onclick = function (e) {
-      var b = e.target.closest('[data-ctn]'); if (!b) return;
-      switchTo(parseInt(b.getAttribute('data-ctn'), 10)); /* T9：切柜统一出口（伪造官方切换+回包确认渲染） */
+    /* v1.8.7：页签单击切换=官方原生（官方页签元素上的官方监听），rail 不接线不拦截——
+       切柜统一出口 switchTo 仅保留给 ▾ 容器菜单（T5）与 rackOpen。 */
+
+    /* ---- T4：Browser 下拉（fsel 触发钮开合 + 选项委托选完即关）---- */
+    if (el.srFSel) el.srFSel.onclick = function () { closePops('fsel'); el.srFSelPop.hidden = !el.srFSelPop.hidden; renderFilterSel(); };
+    if (el.srFSelBody) el.srFSelBody.onclick = function (e) {
+      var b = e.target.closest('[data-sel]'); if (!b) return;
+      pickFilterSel(b.getAttribute('data-sel'));
     };
-    /* T5：页签拖拽（背包固定首位不可拖/落点指示/写 srp_pin_order_<scene>） */
-    bindPinDrag();
 
     /* ---- T5：▾ 容器菜单（rail.js el.srAllCtn.onclick/srCtnPopBody.onclick 移植）----
        ▾ 唯一入口；点空白处收起（document 级监听已在下方）。 */
@@ -2278,6 +2230,14 @@
         ? (doc.querySelector(sc.grid) || null)
         : (doc.getElementById(sc.grid) || null);
     }
+    /* v1.8.7：官方页签栏引用同样必须在摘除/替换【前】取（与 officialGrid 同规则）。
+       tabs 缺省（BackpackUI/MaterialRack）=null，槽留空（plainbag/bagonly CSS 隐藏整行）。 */
+    var officialTabs = null;
+    if (sc.tabs) {
+      officialTabs = sc.tabs.charAt(0) === '#'
+        ? (doc.getElementById(sc.tabs.slice(1)) || null)
+        : (doc.querySelector(sc.tabs) || null);
+    }
     var host = resolveHost(doc, sc.host);
     if (!host) return false;
     /* v1.8.2.5 统一口径（作者裁决：整理物资=简洁存储取物界面）——BackpackUI 与 MaterialRack
@@ -2366,6 +2326,18 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
+    /* v1.8.7 核心还原：官方页签栏 DOM 原件挂进壳的 #srTabs 槽（取代销毁+建桩）——
+       官方页面 JS 按 id/class 渲染页签（getElementById/querySelector 与位置无关，同文档
+       照常命中），pin 槽/滚动按钮/active 类/locked 态全部官方原生；A/D 步进（C# 侧
+       ContainerTabHotKey→RA_SwitchTabByKey，宽度>0 守卫）与拖物到页签（webui-tabdrop
+       命中测试）由此整体复活。必须在 buildStubs **之前**（真节点在文档→页签类桩自愈跳过，
+       官方查询命中真件不命中桩）。mount 期页签栏未建（Vue 异步）=null 留空，
+       ensureTabsInSlot 每周期补挂。 */
+    if (officialTabs) {
+      var slotT = rail.querySelector('#srTabs');
+      if (slotT) { try { slotT.appendChild(officialTabs); } catch (e) { } }
+      bindTabDrag(officialTabs, sceneKey); /* T3 拖拽排序（幂等 __srTabDrag 门） */
+    }
     /* 2026-11-02 七轮（官方模板对照定案，治老鼠笼反复）：官方机器页布局契约=三面板 flex
        拉伸**等高**（Cooking/RatCage 模板同构，无特例——差异只在运行时兄弟面板数据高度）。
        壳统一回归该契约：壳高=max(778, 兄弟面板最高自然高)——
@@ -2425,13 +2397,12 @@
      页面来源（tagfilter forgeSwitch 同款通道，resolveSourceId claimed 分支）。
 
      族别判定与 tagfilter 的差异（裁定记录）：tagfilter 用 detectC 从 DOM 探族（bag 容器
-     class 与 trade 同名 .bag-tabs-scroll，必须 bag 先于 trade 判）；rail 侧官方页签栏在
-     宿主替换后已不存在（SCENES.host 的「替换即消亡」裁定，T8——Cooking 宿主 .panel 内含
-     #bagTabs、ToolTable 宿主 .backpack-panel 内含 .left-tabs 列等，12 页页签容器全部随
-     宿主移除，rail 自身即页签 UI），detectC 的 DOM 探测在装配后恒 null，故族别改由
+     class 与 trade 同名 .bag-tabs-scroll，必须 bag 先于 trade 判）；rail 侧族别由
      SCENES.family 静态表给出（同一取证表产物，与 detectC 五族一一对应：
      bag/bag、tt/tt、trade/trade、cart/cart、cart0/cart0、backpack·rack=无页签族），
-     页签数组改由回包消息缓存（extractTabs，tagfilter st.tabs 同语义）。
+     页签数组由回包消息缓存（extractTabs，tagfilter st.tabs 同语义）。
+     v1.8.7：官方页签栏 DOM 原件已 reparent 进壳（SCENES.tabs 指路，不再是「替换即销毁」）
+     ——forgeSwitchTo 仅服务 ▾ 菜单跳柜（页签点击=官方原生，不经此路）。
      各族签名照附录 A 照抄：bag=SWITCH_BAG{ownerId:数字}、trade=SWITCH_BAG{ownerId:字符串}
      （官方=String(tab.owner) attr 直读——rail 直知 ownerId 同型直给）、
      tt=TAB_SWITCH{tab:数组下标+2}（0=背包/1=抽屉在栏外；edge：背包首位→tab:0 显式分支）、
@@ -2568,19 +2539,18 @@
     if (!c) return; /* 未知容器不跟（宁可不跟也不错跟） */
     if (store.ctx && store.ctx.family === 'rack' && c.id === store.bag) return; /* rack 场景无背包页签：bagOwnerId 兜底信号解析到背包不跟（只跟 rackOwnerId） */
     var vs = String(c.id);
-    var arrT = TABS[key];
-    st.lastStepIdx = arrT ? arrT.indexOf(vs) : -1; /* 步进方向判据（作者#1 弹回）：跟随过的 active 记官方数组下标 */
     if (String(st.currentId) === vs && String(RENDERED_ID) === vs) return;
     st.currentId = c.id;
     st.sel = null;
     saveSnap();
     if (el.rail) render();
   }
-  /* ---- postMessage 包装链（tagfilter wrapRelay 同构，只读观察不扣发）----
+  /* ---- postMessage 包装链（tagfilter wrapRelay 同构，只读观察恒放行）----
      保留前一引用并在尾部调用=串联：__SLTF__ 先包装则 rail 挂其后、rail 先包装则
-     __SLTF__ 挂 rail 后。共存链各自按需消费（rail 只读恒放行）；外层丢弃回声时内层
-     不见该条（tagfilter skipEcho 路径）——rail 幂等无依赖（RENDERED_ID 门兜底），
-     下一包自然收敛。 */
+     __SLTF__ 挂 rail 后。共存链各自按需消费（rail 只读恒放行）。
+     v1.8.7：扣发/伪造拦截层（stepGuard/releasePending/f.pending）整体退役——官方页签栏
+     复活后 A/D 步进=官方原生链路，rail 对消息零干预（v1.7.0 tagfilter 的扣发+弹回工程
+     一并不再需要；场景视图收窄改由 C# 状态层收口=数组=可见集，步进天然只落可见页签）。 */
   function wrapRelay(f) {
     try {
       var win = f.el.contentWindow;
@@ -2588,27 +2558,23 @@
       var prev = win.postMessage;
       win.__cerWrapped = 1;
       win.postMessage = function (msg) {
-        if (relayObserve(f, msg, prev, win)) return; /* true=本条已扣（弹回期，页面不渲染被藏柜） */
+        relayObserve(f, msg);
         return prev.apply(this, arguments);
       };
     } catch (e) { f.xorigin = true; }
   }
-  /* 只读截读：页签数组入缓存 + active 跟随。扣发仅一处（bounceHidden 弹回期，见下）；
-     hasActive 清单照附录 A。
+  /* 只读截读：页签数组入缓存 + active 跟随（followActive 只同步 rail 自身状态，不碰消息）。
      2026-11-01 实机「烹饪页签迟到」：TABS 是页签行（railCtns 的 ∩门）的输入，但变化
      从不触发 render——开页首包渲染在 TabInjector 注入 Repush 之前拿到的是**原生数组**
      （背包+冰箱），注入回包更新 TABS 后无人再渲染 → 食物柜要等下一次 render 触发
      （作者点冰箱切柜 followActive）才冒出来。修：TABS 内容变化且帧=活跃场景 → render。 */
-  function relayObserve(f, msg, orig, win) {
+  function relayObserve(f, msg) {
     try {
       var d = msg && msg.data;
       if (typeof d === 'string') { try { d = JSON.parse(d); } catch (e) { d = null; } }
       var isBag = !!(msg && typeof msg.type === 'string' && msg.type.indexOf('BagMsg') >= 0);
       var hasActive = !!(d && typeof d === 'object' && (d.bagOwnerId != null || d.bagOwnerKey != null || d.activeLeftTab != null || d.activeTab != null
         || d.rackOwnerId != null)); /* rackOwnerId：rackOpen 重绑后的 active 信号（v1.8.2） */
-      /* 扣发清理（tagfilter 七轮教训原样）：任何 *_BagMsg/带 active 字段的消息都算
-         『官方状态已前进』——弹回伪造生效即丢被扣旧包，不能等 300ms 超时乱序放行 */
-      if (f.pending && (isBag || hasActive)) releasePending(f, false);
       var t = extractTabs(msg);
       if (t) {
         var prevT = TABS[f.key];
@@ -2616,28 +2582,12 @@
         TABS[f.key] = t;
         if (changed && f.key === st.scene && el.rail) render();
       }
-      if (!d || typeof d !== 'object') return false;
-      if (!isBag && !hasActive) return false;
+      if (!d || typeof d !== 'object') return;
+      if (!isBag && !hasActive) return;
       var v = activeOwnerOf(f.key, d);
-      if (v == null) return false;
-      if (stepGuard(f, v, msg, orig, win)) return true; /* 作者#1：步进对齐显示序——扣发+伪造，followActive 不走 */
+      if (v == null) return;
       followActive(f.key, v);
     } catch (e) { }
-    return false;
-  }
-  /* ---- 被扣消息的释放（tagfilter releasePending 的 rail 版）----
-     deliver=false：官方状态已前进（弹回生效）——被扣旧包整条丢弃（页面零闪现）；
-     deliver=true：300ms 超时兜底（伪造没生效）——补投递原消息，且 rail 补跟其 active
-     （页面收到后渲染被藏柜，rail 停在旧柜=页面与 rail 错位，比闪现更糟）。 */
-  function releasePending(f, deliver) {
-    var p = f.pending;
-    if (!p) return;
-    f.pending = null;
-    if (p.timer) { clearTimeout(p.timer); p.timer = 0; }
-    if (deliver) {
-      try { p.orig.apply(p.win, [p.msg]); } catch (e) { }
-      if (p.active != null) followActive(f.key, String(p.active));
-    }
   }
   /* ---- 2026-11-02 七轮：机器页槽位同步（官方等高契约的壳侧实现，全 plain 页统一）----
      壳高=clamp(778, 兄弟面板最高, 816)（行内 important 覆盖 .plain 定高基线）：
@@ -2700,66 +2650,198 @@
     } catch (e) { }
   }
 
-  /* ---- 2026-11-01 作者#1（一轮弹回）+2026-11-02 作者#1（二轮跨柜跳跃）：
-     A/D 步进对齐**页签行显示序**（v1.7.0 tagfilter tryHold/pickBounceTarget 的 rail 版，
-     二轮改目标序）。两轮缺陷同根的两面：
-       一轮：步进落**被藏柜**（view/TABS 收窄裁掉）→「移到没显示的柜子上」；
-       二轮：步进落点按**官方数组序**（冰箱原生序+TabInjector 追加柜子序，与显示序天然
-       不同；拖拽排序后差距更大）→ 即便落点可见也常不是显示序邻居 =「跨柜子跳跃」。
-     统一语义：官方 ±1 步进（官方数组下标差 1 判定）→ 目标=**显示序**（pinnedCtns=页签行
-     实际渲染序）里当前柜的左/右邻居；到头=弹回原地（forge 回当前柜拉回官方状态）。
-     落点==显示序邻居→放行正常跟随；否则扣发（页面零闪现）+伪造邻居切换；
-     回包到达=被扣包丢弃；300ms 超时=补投递+rail 补跟（兜底不错位）。
-     非步进的 active 变化（rail 自切回包=v==currentId 早退、官方直切/外部切换）：可见柜
-     放行；被藏柜按官方数组序最近可见弹回（一轮口径保留）。 */
-  function stepGuard(f, v, msg, orig, win) {
-    try {
-      if (st.scene !== f.key || !isPlainScene() || st.plainBag) return false;
-      if (store.ctx && store.ctx.family === 'rack') return false;
-      var c = ctnById(numId(v));
-      if (!c || c.id === store.bag) return false; /* 未知容器/背包：不拦（原行为） */
-      if (String(c.id) === String(st.currentId)) return false; /* rail 自切回包/重复 active：放行（followActive 幂等） */
-      var rc = railCtns(), vis = {};
-      for (var i = 0; i < rc.length; i++) vis[rc[i].id] = true;
-      var landedVisible = !!vis[c.id];
-      var arr = TABS[f.key];
-      var ni = arr ? arr.indexOf(String(v)) : -1;
-      var pi = arr ? arr.indexOf(String(st.currentId)) : -1;
-      if (pi < 0 && arr && st.lastStepIdx != null && st.lastStepIdx >= 0) pi = st.lastStepIdx; /* 当前柜不在数组（罕见）：用上一跟随下标 */
-      var isStep = !!(arr && ni >= 0 && pi >= 0 && (ni === pi + 1 || ni === pi - 1));
-      var target = null;
-      if (isStep) {
-        /* 作者#1 二轮：步进按显示行走——目标=页签行里当前柜的邻居（隐藏柜天然不在行内=自动跳过） */
-        var row = pinnedCtns(), cp = -1;
-        for (var r = 0; r < row.length; r++) if (String(row[r].id) === String(st.currentId)) { cp = r; break; }
-        if (cp >= 0) {
-          var k = ni > pi ? cp + 1 : cp - 1;
-          target = (k >= 0 && k < row.length) ? row[k] : row[cp]; /* 到头=弹回原地（v1.7.0 bounced 同义） */
+  /* ---- stepGuard/releasePending/pending（2026-11-01/02 作者#1 两轮「步进对齐显示序」
+     的扣发+伪造拦截层）已随 v1.8.7 官方页签栏还原整体退役：A/D 步进走官方原生链
+     （ContainerTabHotKey→RA_SwitchTabByKey→官方渲染），可见性/顺序在 C# 状态层收口
+     （数组=可见集、pinOrder 重排=显示序），步进落点天然=页签行邻居，无需任何拦截。 ---- */
+
+  /* ================= v1.8.7 T4 Browser 视图下拉（标签筛选柜子页签，状态层收口版） =================
+     v1.7.0 tagfilter 下拉的服务对象换轨：选中不再走 JS DOM 隐藏，而是 cmd setFilter →
+     C# cerail_filter.json 落库 → TabGate 下轮把官方数组收窄到选中集（数组=可见集，
+     A/D/tabdrop 原生）。选项语义照旧：全部柜子(0)/其他(other=未打标签容器)/逐标签
+     （官方 Config_FurnitureTag 库经契约 lib 透传；材料架自动匹配"材料"标签=C# SelMatch
+     伪标签同语义）。选中按场景记忆（srp_filter_<scene> 浏览器侧回显 + C# 文件权威），
+     场景开启即上报存档值（C# 文件与浏览器侧自愈对齐，pinOrder 旧上报同模式）。 */
+  function filterSelKey() { return 'srp_filter_' + st.scene; }
+  function loadFilterSel() {
+    try { var v = localStorage.getItem(filterSelKey()); return (v == null || v === '') ? '0' : String(v); } catch (e) { return '0'; }
+  }
+  function saveFilterSel(sel) {
+    try { if (sel === '0' || sel == null) localStorage.removeItem(filterSelKey()); else localStorage.setItem(filterSelKey(), String(sel)); } catch (e) { }
+  }
+  function filterOptions() {
+    var opts = [{ sel: '0', label: '全部柜子' }, { sel: 'other', label: '其他（未打标签）' }];
+    var lib = store.lib.slice();
+    lib.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
+    for (var i = 0; i < lib.length; i++) opts.push({ sel: String(lib[i].id), label: lib[i].n });
+    return opts;
+  }
+  function filterLabel(sel) {
+    var opts = filterOptions();
+    for (var i = 0; i < opts.length; i++) if (opts[i].sel === String(sel)) return opts[i].label;
+    return '全部柜子';
+  }
+  function renderFilterSel() {
+    if (!el.srFSel || !el.srFSelLbl) return;
+    /* 仅 Browser 视图的 tab 场景显示（固定视图页=视图即筛选，无下拉） */
+    var view = (store.ctx && store.ctx.view) || 'browser';
+    var sc = SCENES[st.scene];
+    el.srFSel.hidden = !(view === 'browser' && sc && sc.tabs);
+    var sel = loadFilterSel();
+    var lb = filterLabel(sel);
+    if (el.srFSelLbl.textContent !== lb) el.srFSelLbl.textContent = lb;
+    if (el.srFSelBody) {
+      el.srFSelBody.innerHTML = filterOptions().map(function (o) {
+        return '<button type="button" class="sr-fselopt' + (o.sel === sel ? ' active' : '') + '" data-sel="' + esc(o.sel) + '">' + esc(o.label) + '</button>';
+      }).join('');
+    }
+  }
+  function pickFilterSel(sel) {
+    sel = String(sel);
+    saveFilterSel(sel);
+    try { cmdOut('setFilter', { key: st.scene, sel: sel }); } catch (e) { }
+    renderFilterSel();
+    el.srFSelPop.hidden = true;
+    toast(sel === '0' ? '已显示全部柜子页签' : '页签已收窄到「' + filterLabel(sel) + '」（≤0.5 秒生效）');
+  }
+
+  /* ================= v1.8.7 T3 官方页签拖拽排序（HTML5 dnd 挂官方页签元素） =================
+     官方页签栏还原后的「我们的设计」之一：拖页签改序 → cmd pinOrder → C# 重排官方数组
+     +Repush → 官方渲染按新序重建（A/D 步进=数组邻居，天然跟随新序——零拦截）。
+     手法照 v1.8.2 时代 bindPinDrag（.sr-pin 已验证的 dnd 路线：dragstart 阈值不吞 click、
+     落点半宽前后指示），身份按族取（附录 A 对照）：
+       Cooking=el._ownerId（官方 createTabEl 写入）；DroneHub/Trade=el[data-owner]；
+       RatCage/Brew/Dye=滚动区位序→TABS 缓存（bag 族 pin 在栏外，scroll[i]=TABS[i+1]）；
+       tt=.cabinet-tab 位序→TABS（背包/抽屉在栏外，offset 0）；
+       cart=scroll 位序→TABS[i+1]（pin 占 0）；cart0=容器平铺位序→TABS[i]。
+     纪律：锁定页签不可拖；身份解析不出=放弃本次拖拽（宁可不排也不错排）；drop 时 DOM
+     已重建（官方重渲染竞态）=按现 DOM 现算序，被拖柜已不在=丢弃；pin/背包位永不参与
+     （不在滚动集内天然排除；tt 的 #tab-drawer 无 .cabinet-tab 类同排除）。
+     官方元素只加 draggable 属性与本模块类名（纯叠加），官方 click/active/tabdrop 零触碰。 */
+  var TAB_DRAG = { key: null, owner: null }; /* 拖拽中：目标场景键 + 被拖 ownerId（字符串口径） */
+
+  function tabDragCfg(key) {
+    var sc = SCENES[key];
+    if (!sc || !sc.tabs) return null;
+    var f = sc.family;
+    if (f === 'bag') {
+      return {
+        item: '.bag-tab',
+        /* Cooking 官方写 _ownerId；DroneHub 官方写 data-owner——元素现况优先；
+           RatCage/Brew/Dye 无身份属性→位序对 TABS（pin 在栏外 offset 1）。解析不出返 null 丢弃 */
+        idOf: function (el, i) {
+          if (el._ownerId != null) return String(el._ownerId);
+          if (el.getAttribute && el.getAttribute('data-owner') != null) return el.getAttribute('data-owner');
+          var t = TABS[key];
+          return t ? (t[i + 1] != null ? String(t[i + 1]) : null) : null;
         }
-      } else if (landedVisible) {
-        return false; /* 非步进的可见落点（官方直切/外部切换）：放行跟随 */
-      }
-      if (!target && !landedVisible && arr) {
-        /* 一轮口径保留：非步进落被藏柜（或步进但当前柜不在行内）——官方数组序最近可见弹回 */
-        var dir = (ni >= 0 && pi >= 0 && ni !== pi) ? (ni > pi ? 1 : -1) : 1;
-        for (var s = ni + dir; !target && s >= 0 && s < arr.length; s += dir) {
-          var cc = arr[s] != null ? ctnById(numId(arr[s])) : null;
-          if (cc && vis[cc.id]) target = cc;
-        }
-        for (var s2 = ni - dir; !target && s2 >= 0 && s2 < arr.length; s2 -= dir) {
-          var c2 = arr[s2] != null ? ctnById(numId(arr[s2])) : null;
-          if (c2 && vis[c2.id]) target = c2;
-        }
-        if (!target && st.currentId && vis[st.currentId]) target = ctnById(st.currentId); /* 全被藏：回上一柜 */
-      }
-      if (!target || target.id === c.id) return false;
-      if (!forgeSwitchTo(target.id, f.key)) return false; /* 无官方链（索引族缓存未到等）：放行走旧路径 */
-      f.pending = {
-        msg: msg, orig: orig, win: win, active: v, timer: 0
       };
-      f.pending.timer = setTimeout(function () { releasePending(f, true); }, 300); /* 伪造未生效兜底：补投递+rail 补跟 */
-    } catch (e) { return false; }
-    return true;
+    }
+    if (f === 'trade') {
+      return {
+        item: '.bag-tab',
+        idOf: function (el) { var v = el.getAttribute && el.getAttribute('data-owner'); return v != null ? String(v) : null; }
+      };
+    }
+    if (f === 'tt') {
+      return {
+        item: '.cabinet-tab',
+        idOf: function (el, i) { var t = TABS[key]; return t ? (t[i] != null ? String(t[i]) : null) : null; }
+      };
+    }
+    if (f === 'cart') {
+      return {
+        item: '.left-tab',
+        idOf: function (el, i) { var t = TABS[key]; return t ? (t[i + 1] != null ? String(t[i + 1]) : null) : null; }
+      };
+    }
+    if (f === 'cart0') {
+      return {
+        item: '.left-tab',
+        idOf: function (el, i) { var t = TABS[key]; return t ? (t[i] != null ? String(t[i]) : null) : null; }
+      };
+    }
+    return null;
+  }
+
+  /* 官方页签重建后补标 draggable（锁定页签除外）。观察器挂页签行（childList subtree：
+     官方 renderTabs 每次整建 scroll 子节点=必触发）——标记幂等。 */
+  function markTabDrag(row, cfg) {
+    if (!row || !cfg) return;
+    var items = row.querySelectorAll(cfg.item);
+    for (var i = 0; i < items.length; i++) {
+      var el = items[i];
+      var lock = (el.classList && el.classList.contains('locked')) || el.disabled === true;
+      if (lock) { if (el.getAttribute('draggable') === 'true') el.removeAttribute('draggable'); continue; }
+      if (el.getAttribute('draggable') !== 'true') el.setAttribute('draggable', 'true');
+    }
+  }
+
+  function bindTabDrag(row, key) {
+    if (!row || row.__srTabDrag) return;
+    var cfg = tabDragCfg(key);
+    if (!cfg) return;
+    row.__srTabDrag = key;
+    markTabDrag(row, cfg);
+    try {
+      var V = row.ownerDocument.defaultView.MutationObserver;
+      row.__srTabMO = new V(function () { markTabDrag(row, cfg); });
+      row.__srTabMO.observe(row, { childList: true, subtree: true });
+    } catch (e) { }
+    row.addEventListener('dragstart', function (e) {
+      var el = e.target.closest && e.target.closest(cfg.item);
+      if (!el || (el.classList && el.classList.contains('locked')) || el.disabled === true) { TAB_DRAG.key = null; TAB_DRAG.owner = null; return; }
+      var items = row.querySelectorAll(cfg.item), i = Array.prototype.indexOf.call(items, el);
+      var owner = cfg.idOf(el, i);
+      if (owner == null) { e.preventDefault(); return; } /* 身份解析不出：宁可不拖也不错拖 */
+      TAB_DRAG.key = key;
+      TAB_DRAG.owner = owner;
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', owner); } catch (x) { }
+      el.classList.add('sr-dragging');
+    });
+    row.addEventListener('dragend', function () {
+      TAB_DRAG.key = null; TAB_DRAG.owner = null;
+      row.querySelectorAll('.sr-dragging,.sr-drop-before,.sr-drop-after').forEach(function (x) {
+        x.classList.remove('sr-dragging', 'sr-drop-before', 'sr-drop-after');
+      });
+    });
+    row.addEventListener('dragover', function (e) {
+      if (TAB_DRAG.key !== key || TAB_DRAG.owner == null) return;
+      e.preventDefault();
+      var el = e.target.closest && e.target.closest(cfg.item);
+      row.querySelectorAll('.sr-drop-before,.sr-drop-after').forEach(function (x) { x.classList.remove('sr-drop-before', 'sr-drop-after'); });
+      if (!el) return;
+      var items = row.querySelectorAll(cfg.item), i = Array.prototype.indexOf.call(items, el);
+      if (cfg.idOf(el, i) === TAB_DRAG.owner) return;
+      var r = el.getBoundingClientRect();
+      el.classList.add((e.clientX - r.left) < r.width / 2 ? 'sr-drop-before' : 'sr-drop-after');
+    });
+    row.addEventListener('drop', function (e) {
+      if (TAB_DRAG.key !== key || TAB_DRAG.owner == null) return;
+      e.preventDefault();
+      var el = e.target.closest && e.target.closest(cfg.item);
+      if (!el) return;
+      /* 按现 DOM 现算全序（官方重渲染竞态下身份仍真）；被拖柜已不在=丢弃 */
+      var items = row.querySelectorAll(cfg.item), ids = [];
+      for (var i = 0; i < items.length; i++) {
+        var id = cfg.idOf(items[i], i);
+        if (id == null) return;
+        ids.push(id);
+      }
+      var from = ids.indexOf(TAB_DRAG.owner);
+      if (from < 0) return;
+      var ti = Array.prototype.indexOf.call(items, el);
+      var target = cfg.idOf(el, ti);
+      var to = ids.indexOf(target);
+      if (to < 0 || to === from) return;
+      var r = el.getBoundingClientRect();
+      var after = (e.clientX - r.left) >= r.width / 2;
+      ids.splice(from, 1);
+      ids.splice(ids.indexOf(target) + (after ? 1 : 0), 0, TAB_DRAG.owner);
+      var order = [];
+      for (var q = 0; q < ids.length; q++) { var n = parseInt(ids[q], 10); if (!isNaN(n)) order.push(n); }
+      if (order.length) cmdOut('pinOrder', { key: key, order: order });
+    });
   }
 
   /* ================= T8 正式装配区（Root 侧扫描/观察器，游戏内自动生效） =================
@@ -2860,18 +2942,28 @@
     doc.head.appendChild(st);
   }
 
-  /* ================= v1.8.4 原生背包页 mod 按钮对（UI-SPEC §0a-4，v13.9 作者缺陷单#1） =================
-     v13.4 转原生时排序/入库随 rail 离开本页 → 作者缺陷单补回，原型 v13.9 三轮定稿：
-     背包面板官方 .toolbar 行**行首左缘**两钮（margin-right:auto 钉左缘，官方丢弃/整理
-     保持右缘），基类=官方 .action-btn 同尺寸观感。⇅排序 ▾=FSORTS 7 项弹层（挂触发钮内
-     absolute 上弹）→ sortBy{owner:bag} 数据层重排（cmdOut 对 BackpackUI 自带 forge 官方
-     刷新）+ 属性排序时背包格右上角数值角标（#srnBadges overlay，MutationObserver 跟随
-     官方重渲染，同串免写防回环）；📦一键入库=§4.6 确认窗 → storeAll{order}（settleXfer
-     差量 toast 经 toast() 兜底路由落本页 #srnToast）。装配判据=面板带 .weight-section
-     （背包有负重；取用=单柜面板无负重条不装配）；柜侧（is-storage）恒不装配。
+  /* ================= v1.8.4 原生背包页 mod 按钮（UI-SPEC §0a-4；v1.8.6 扩柜侧排序） =================
+     v13.4 转原生时排序/入库随 rail 离开本页 → 作者缺陷单补回，原型 v13.9 定稿：
+     面板官方 .toolbar 行**行首左缘**（margin-right:auto 钉左缘，官方丢弃/整理保持右缘），
+     基类=官方 .action-btn 同尺寸观感。⇅排序▾=FSORTS 7 项弹层（挂触发钮内 absolute 上弹）→
+     DISP 显示层排序（v1.8.5 ProjectCook 机制：纯模型 x/y 写+官方自渲染，真实摆放零触碰）
+     +属性排序时格子右上角数值角标（makeBadgeLayer 实例，MutationObserver 跟随官方重渲染）；
+     📦一键入库=§4.6 确认窗 → storeAll{order}（settleXfer 差量 toast 经 toast() 兜底路由
+     落本页 #srnToast）——**仅袋侧**（入库语义只对背包成立）。
+     v1.8.6 双侧装配（作者令「排序按钮复制到所有储物柜的取用与整理物资界面」）：
+       袋侧=B键单背包/整理物资 A 面板（排序+入库，id 沿用不变）；
+       柜侧=取用单柜 A 面板/整理物资 B 面板 .is-storage（**仅排序**，id 后缀 2）——
+       双面板同屏两侧各自独立排序（DISP/DISP_CT 双实例），互不顶替。
+     装配判据 v1.8.6 改**页面 Vue 真源**（setupState.bagA/bagB.ownerId——契约白名单柜=取用/
+     柜侧，背包实体/其余=袋侧），兜底链=DOM chips（取用柜 canTag 挂 chips）→ ctx.bpBag
+     （旧契约快照，仅缺前两者时）→ 保守袋侧。旧判据 ctx.bpBag 是上一包快照：开取用柜瞬间
+     滞后为 true → 袋侧按钮对先装后摘=「左下角排序钮闪一下就没了」实锤根因（v1.8.4 起固有，
+     非尸体代码）；真源判当场可判（官方 ready 门保证面板出现时 ownerId 已绑定），竞态根治。
+     材料架页（行组件无网格，作者拍板）不在此列。
      官方元素零 addEventListener（监听只在 mod 自有钮/弹层/文档级收弹层含 mod 钮豁免=v9
      同款）；.srn-pop[hidden] 必须 !important 压 ID display（v13.9 实测常驻黑条教训）。 */
-  var NB = { doc: null, fsort: 'official' };
+  var NB = { doc: null, fsort: 'official' };   /* 袋侧页面态（B键/整理物资 A 面板） */
+  var NB2 = { doc: null, fsort: 'official' };  /* 柜侧页面态（v1.8.6：取用 A / 整理物资 B） */
   var NB_CSS = ''
     + '.srn-sort,.srn-store{position:relative;flex:0 0 auto}'
     + '.srn-sort{background:#1a1a1e !important;border-color:rgba(240,176,60,.45) !important;color:#f0b03c !important}'
@@ -2880,15 +2972,16 @@
     + '.srn-caret{font-size:10px;color:#c9932f;margin-left:1px}'
     + '.srn-store{border-color:rgba(240,176,60,.5) !important;background:rgba(240,176,60,.14) !important;color:#ffe1a0 !important;margin-right:auto !important}'
     + '.srn-store:hover{background:rgba(240,176,60,.26) !important}'
+    + '.srn-sort.srn-only{margin-right:auto !important}' /* v1.8.6 柜侧单钮自钉左缘（无入库钮吃 auto 余空间） */
     + '.srn-sort span,.srn-store span{display:inline-block;white-space:nowrap;flex:0 0 auto}'
     + '.srn-pop{position:absolute;bottom:calc(100% + 8px);z-index:30;border-radius:10px;background:rgba(10,10,12,.94);box-shadow:0 8px 24px rgba(0,0,0,.5)}'
     + '.srn-pop[hidden]{display:none !important}'
-    + '#srnSortPop{left:0;width:128px;border:1px solid rgba(255,255,255,.12);padding:6px;display:flex;flex-direction:column;gap:5px}'
-    + '#srnSortPop .srn-opt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;text-align:left;font-family:inherit;cursor:pointer}'
-    + '#srnSortPop .srn-opt:hover{color:#fff;border-color:rgba(255,255,255,.30)}'
-    + '#srnSortPop .srn-opt.active{color:#f0b03c}'
-    + '#srnSortPop .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}'
-    + '#srnSortPop .srn-tick{margin-left:auto;font-size:11px}'
+    + '.srn-sortpop{left:0;width:128px;border:1px solid rgba(255,255,255,.12);padding:6px;display:flex;flex-direction:column;gap:5px}'
+    + '.srn-sortpop .srn-opt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;text-align:left;font-family:inherit;cursor:pointer}'
+    + '.srn-sortpop .srn-opt:hover{color:#fff;border-color:rgba(255,255,255,.30)}'
+    + '.srn-sortpop .srn-opt.active{color:#f0b03c}'
+    + '.srn-sortpop .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}'
+    + '.srn-sortpop .srn-tick{margin-left:auto;font-size:11px}'
     + '#srnConfirm{left:0;width:300px;border:1px solid rgba(240,176,60,.4);padding:10px 12px}'
     + '#srnConfirm .srn-cf-head{font-size:13px;color:#ffe1a0;margin-bottom:6px}'
     + '#srnConfirm .srn-cf-body{font-size:12px;color:#cfc8bc;line-height:1.5;margin-bottom:10px}'
@@ -2896,63 +2989,106 @@
     + '#srnConfirm button{padding:5px 12px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer}'
     + '#srnConfirm .srn-cf-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2}'
     + '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}'
-    + '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:50}'
-    + '#srnBadges i{position:absolute;transform:translateX(-100%);min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.8);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}'
+    + '.srn-badges{position:absolute;inset:0;pointer-events:none;z-index:50}'
+    + '.srn-badges i{position:absolute;transform:translateX(-100%);min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.8);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}'
     + '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}'
     + '#srnToast[hidden]{display:none !important}';
-  function nbPanel(doc) {
-    /* 双背包形态：A 侧（:not(.is-storage)）恒为背包，直接装配。
-       单面板形态 B键背包 vs 取用（同页同构，负重条判据不成立——柜子也有负重）：
-       权威判据=ctx.bpBag（C# 直读 State_Web_BackpackUI.OwnerId_A 比对背包 owner）；
-       缺字段（旧契约/harness mock）兜底=头部分类 chips（取用柜 canTag 挂 chips，B键背包无）。 */
+  /* 契约白名单柜判定（v1.8.6 装配判据核心）：命中=储物柜（取用/柜侧装配对象）。不能走
+     ctnById——它对背包有特判直返 bagCtn（store.bag 先行剔除；背包实体 id 空间不同实锤，
+     v1.8.5④ BpBagDyn 同款教训）。 */
+  function nbIsCtnOwner(id) {
+    if (id == null || !(id > 0)) return false;
+    if (store.bag && String(id) === String(store.bag)) return false;
+    for (var i = 0; i < store.ctn.length; i++) if (String(store.ctn[i].id) === String(id)) return true;
+    return false;
+  }
+  /* 页面侧容器 ownerId 现取（Vue 真源）：side='ctn' 取 dual?bagB:bagA（取用单柜也在 bagA
+     槽）；side='bag' 恒 bagA。无 Vue/未就绪返回 0。 */
+  function nbVueBagOwner(doc, side) {
+    var su = nbVueSu(doc);
+    if (!su) return 0;
+    var dual = !!refVal(su.isDualBag);
+    var bag = (side === 'ctn' && dual) ? su.bagB : su.bagA;
+    return bag ? (bag.ownerId || 0) : 0;
+  }
+  /* v1.8.6 双侧面板解析（取代旧 nbPanel 单面板判定），返回 {bag,ctn}；无面板返回 null：
+     dual（.is-storage 在场）→ bag=A 面板、ctn=B 面板（白名单门——行级安全同机器页 railCtns）；
+     单面板 → A 侧身份判据链：Vue ownerId（白名单柜=取用；背包实体/后备箱等其余=袋侧）
+       → DOM chips（取用柜 canTag 挂 chips，B键背包无——harness 夹具路）
+       → ctx.bpBag===false（旧契约兜底）→ 保守袋侧。 */
+  function nbPanels(doc) {
     var panels = doc.querySelectorAll('.bag-panel:not(.is-storage)');
     if (!panels.length) return null;
     var dual = !!doc.querySelector('.bag-panel.is-storage');
-    if (dual) return panels[0];
-    var ctx = store.ctx || {};
-    var isBag;
-    if (typeof ctx.bpBag === 'boolean') isBag = ctx.bpBag;
-    else isBag = !panels[0].querySelector('.header .tag-chips');
-    return isBag ? panels[0] : null;
+    var out = { bag: null, ctn: null };
+    if (dual) {
+      out.bag = panels[0];
+      var bp = doc.querySelector('.bag-panel.is-storage');
+      out.ctn = (bp && bp.querySelector('.toolbar') && nbIsCtnOwner(nbVueBagOwner(doc, 'ctn'))) ? bp : null;
+      return out;
+    }
+    var aOwner = nbVueBagOwner(doc, 'bag');
+    if (aOwner > 0) {
+      if (nbIsCtnOwner(aOwner)) out.ctn = panels[0].querySelector('.toolbar') ? panels[0] : null;
+      else out.bag = panels[0];
+      return out;
+    }
+    if (panels[0].querySelector('.header .tag-chips')) { out.ctn = panels[0].querySelector('.toolbar') ? panels[0] : null; return out; }
+    if (store.ctx && store.ctx.bpBag === false) { out.ctn = panels[0].querySelector('.toolbar') ? panels[0] : null; return out; }
+    out.bag = panels[0];
+    return out;
   }
-  function nbStrip(doc) { /* 形态翻转（B键↔取用）摘按钮对+角标；style/toast 留着无害 */
+  function nbSidePanel(doc, side) { /* 角标层宿主现解析（nbBadgesCore/Core2 host 用） */
+    if (!doc) return null;
+    var pp = nbPanels(doc);
+    return pp ? (side === 'ctn' ? pp.ctn : pp.bag) : null;
+  }
+  function nbCtnOwner() { /* 柜侧当前容器 owner（菜单 owner/角标 spec 用）：Vue 现取，缺 Vue 回退上一应用值 */
+    var v = NB2.doc ? nbVueBagOwner(NB2.doc, 'ctn') : 0;
+    return v || DISP_CT.owner || 0;
+  }
+  function nbStripSide(doc, sfx, withStore) { /* 摘单侧钮+角标（形态翻转=面板换边即摘，另一侧不受连坐） */
     if (!doc) return;
-    var b = doc.getElementById('srnSortBtn');
-    if (b && b.parentNode) b.parentNode.removeChild(b);
-    var s = doc.getElementById('srnStoreBtn');
-    if (s && s.parentNode) s.parentNode.removeChild(s);
-    var lay = doc.getElementById('srnBadges');
-    if (lay && lay.parentNode) lay.parentNode.removeChild(lay);
+    var ids = ['srnSortBtn' + sfx, 'srnBadges' + sfx];
+    if (withStore) ids.push('srnStoreBtn');
+    for (var i = 0; i < ids.length; i++) {
+      var n = doc.getElementById(ids[i]);
+      if (n && n.parentNode) n.parentNode.removeChild(n);
+    }
   }
-  function nbMount(f) {
-    try {
-      var doc = f.doc;
-      if (!doc || !doc.body) return;
-      var panel = nbPanel(doc);
-      if (!panel) { nbStrip(doc); if (NB.doc === doc) NB.doc = null; return; } /* 取用形态：不装配（翻转即摘） */
-      var row = panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
-      if (!row) return;
-      var docChanged = NB.doc !== doc; /* nbMount 每 scan 周期重跑——重置只许发生在进页/换页沿 */
-      if (NB.doc !== doc) NB.doc = doc;
-      if (!doc.getElementById('srnStyle')) {
-        var stl = doc.createElement('style');
-        stl.id = 'srnStyle';
-        stl.setAttribute('data-cer-native', '1');
-        stl.textContent = NB_CSS;
-        doc.head.appendChild(stl);
-      }
-      if (!doc.getElementById('srnSortBtn')) {
-        var sortBtn = doc.createElement('button');
-        sortBtn.className = 'action-btn srn-sort';
-        sortBtn.id = 'srnSortBtn';
-        sortBtn.type = 'button';
-        sortBtn.title = '排序：官方默认，或按属性排序（格子右上角显示数值）';
-        sortBtn.innerHTML = '<span>⇅</span><span id="srnSortLbl">排序</span><span class="srn-caret">▾</span>';
-        var pop = doc.createElement('div');
-        pop.className = 'srn-pop';
-        pop.id = 'srnSortPop';
-        pop.hidden = true;
-        sortBtn.appendChild(pop);
+  function nbStrip(doc) { /* 形态翻转/离页全摘（两侧）；style/toast 留着无害 */
+    if (!doc) return;
+    nbStripSide(doc, '', true);
+    nbStripSide(doc, '2', false);
+  }
+  /* 单侧装配（v1.8.6 从 nbMount 抽出）：panel 在场=装钮+接线+菜单+角标+观察器；
+     不在场=摘本侧（形态翻转即摘）。isBag 决定钮组（袋侧排序+入库 / 柜侧仅排序）与
+     DISP 实例（DISP / DISP_CT）、id 后缀（'' / '2'）。 */
+  function nbSide(doc, panel, isBag) {
+    var S = isBag ? NB : NB2;
+    var D = isBag ? DISP : DISP_CT;
+    var sfx = isBag ? '' : '2';
+    var sortId = 'srnSortBtn' + sfx, lblId = 'srnSortLbl' + sfx, popId = 'srnSortPop' + sfx;
+    var row = panel && panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
+    if (!row) {
+      nbStripSide(doc, sfx, isBag);
+      if (isBag) menuNB = null; else menuNB2 = null;
+      return;
+    }
+    if (!doc.getElementById(sortId)) {
+      var sortBtn = doc.createElement('button');
+      sortBtn.className = 'action-btn srn-sort' + (isBag ? '' : ' srn-only'); /* 柜侧单钮自钉左缘 */
+      sortBtn.id = sortId;
+      sortBtn.type = 'button';
+      sortBtn.title = '排序：官方默认，或按属性排序（格子右上角显示数值）';
+      sortBtn.innerHTML = '<span>⇅</span><span id="' + lblId + '">排序</span><span class="srn-caret">▾</span>';
+      var pop = doc.createElement('div');
+      pop.className = 'srn-pop srn-sortpop';
+      pop.id = popId;
+      pop.hidden = true;
+      sortBtn.appendChild(pop);
+      row.insertBefore(sortBtn, row.firstChild); /* 行首左缘；margin-right:auto 钉左缘 */
+      if (isBag) { /* 入库仅袋侧；storeBtn margin-right:auto 吃余空间（官方钮保持右缘） */
         var storeBtn = doc.createElement('button');
         storeBtn.className = 'action-btn srn-store';
         storeBtn.id = 'srnStoreBtn';
@@ -2964,19 +3100,57 @@
         cf.id = 'srnConfirm';
         cf.hidden = true;
         storeBtn.appendChild(cf);
-        row.insertBefore(sortBtn, row.firstChild); /* 行首左缘；storeBtn margin-right:auto 吃余空间 */
         row.insertBefore(storeBtn, sortBtn.nextSibling);
-        /* sortBtn 开合/选键接线=makeSortMenu 实例（nbMount 尾统一创建，见下） */
         storeBtn.onclick = function () { nbOpenConfirm(doc); };
+      }
+    }
+    /* 排序钮 prefab 实例（每 nbMount 周期重建：onclick 重挂幂等，换 doc 换元素集）。
+       v1.8.5 显示层排序（ProjectCook 机制）：solo 背包旧路（数据层 sortBy+SWITCH_BAG 重绑）
+       对 bag owner 无效且毁真实布局，废弃——走 DISP + applyDispSort 统一入口；
+       v1.8.6 cfg.disp 指定实例（柜侧=DISP_CT），menu 引用在 onPick 体内取=点击时新值 */
+    var m = makeSortMenu({
+      doc: doc, btnId: sortId, lblId: lblId, popId: popId,
+      keys: FSORTS, optCls: 'srn-opt', attr: 'data-k', defLbl: '排序', ico: true, tick: true, onCls: 'srn-on',
+      pre: function () { /* 开本侧弹层：先收对侧排序弹层+入库确认弹层（同款 v9 教训） */
+        var ids = isBag ? ['srnSortPop2', 'srnConfirm'] : ['srnSortPop', 'srnConfirm'];
+        for (var i = 0; i < ids.length; i++) { var p = doc.getElementById(ids[i]); if (p) p.hidden = true; }
+      },
+      getKey: function () { return S.fsort; },
+      onPick: function (k) {
+        applyDispSort(k, {
+          setKey: function (v) { S.fsort = v; },
+          owner: isBag ? (function () { return store.bag; }) : nbCtnOwner,
+          disp: D,
+          menu: isBag ? menuNB : menuNB2,
+          after: isBag ? (function () { nbBadges(); }) : (function () { nbBadges2(); })
+        });
+      }
+    });
+    if (isBag) menuNB = m; else menuNB2 = m;
+    if (m) m.sync();
+    if (isBag) { nbBadges(); nbEnsureGridMO(doc, panel, DISP, nbBadges, true); }
+    else { nbBadges2(); nbEnsureGridMO(doc, panel, DISP_CT, nbBadges2, false); }
+  }
+  function nbMount(f) {
+    try {
+      var doc = f.doc;
+      if (!doc || !doc.body) return;
+      var pp = nbPanels(doc);
+      if (!pp) { nbStrip(doc); if (NB.doc === doc) NB.doc = null; if (NB2.doc === doc) NB2.doc = null; return; } /* 无面板（页面未建树/特殊形态）：全摘 */
+      /* 样式/文档级收弹层/toast：双侧共用一份，幂等 */
+      if (!doc.getElementById('srnStyle')) {
+        var stl = doc.createElement('style');
+        stl.id = 'srnStyle';
+        stl.setAttribute('data-cer-native', '1');
+        stl.textContent = NB_CSS;
+        doc.head.appendChild(stl);
       }
       if (!doc.__srnDocBound) {
         doc.__srnDocBound = true;
         doc.addEventListener('click', function (ev) { /* 点空白收弹层；mod 钮内点击豁免（v9 同款教训） */
           if (ev.target && ev.target.closest && ev.target.closest('.srn-sort,.srn-store')) return;
-          var p = doc.getElementById('srnSortPop');
-          if (p) p.hidden = true;
-          var c = doc.getElementById('srnConfirm');
-          if (c) c.hidden = true;
+          var closeIds = ['srnSortPop', 'srnSortPop2', 'srnConfirm'];
+          for (var i = 0; i < closeIds.length; i++) { var p = doc.getElementById(closeIds[i]); if (p) p.hidden = true; }
         });
       }
       var t = doc.getElementById('srnToast');
@@ -2986,33 +3160,19 @@
         t.hidden = true;
         doc.body.appendChild(t);
       }
+      var docChanged = NB.doc !== doc || NB2.doc !== doc; /* nbMount 每 scan 周期重跑——重置只许发生在进页/换页沿 */
+      NB.doc = doc; NB2.doc = doc;
+      nbSide(doc, pp.bag, true);   /* 袋侧：排序+入库（取用形态不在场即摘） */
+      nbSide(doc, pp.ctn, false);  /* 柜侧：仅排序（v1.8.6） */
       /* 缺陷单#1：切场景重置为默认（§4.11 定版）——**只在进页/换页沿重置**（nbMount 每周期
          重跑，无条件重置会把玩家刚选的排序当场打回；旧实现靠 localStorage 每周期回灌掩盖） */
       var scKey = (store.ctx && store.ctx.page) || '';
       if (docChanged || NB.sceneKey !== scKey) {
         NB.sceneKey = scKey; NB.fsort = 'official';
+        NB2.sceneKey = scKey; NB2.fsort = 'official';
         DISP.choice = null; DISP.owner = 0; DISP.model = null; /* v1.8.5：进页沿重置显示层排序态 */
+        DISP_CT.choice = null; DISP_CT.owner = 0; DISP_CT.model = null; /* v1.8.6：柜侧同沿重置 */
       }
-      /* 排序钮 prefab 实例（每 nbMount 周期重建：onclick 重挂幂等，换 doc 换元素集）。
-         v1.8.5 显示层排序（ProjectCook 机制）：solo 背包旧路（数据层 sortBy+SWITCH_BAG 重绑）
-         对 bag owner 无效且毁真实布局，废弃——走 DISP + applyDispSort 统一入口 */
-      menuNB = makeSortMenu({
-        doc: doc, btnId: 'srnSortBtn', lblId: 'srnSortLbl', popId: 'srnSortPop',
-        keys: FSORTS, optCls: 'srn-opt', attr: 'data-k', defLbl: '排序', ico: true, tick: true, onCls: 'srn-on',
-        pre: function () { var c = doc.getElementById('srnConfirm'); if (c) c.hidden = true; }, /* 开排序弹层先收入库确认弹层 */
-        getKey: function () { return NB.fsort; },
-        onPick: function (k) {
-          applyDispSort(k, {
-            setKey: function (v) { NB.fsort = v; },
-            owner: function () { return store.bag; },
-            menu: menuNB,
-            after: function () { nbBadges(); }
-          });
-        }
-      });
-      if (menuNB) menuNB.sync();
-      nbBadges(doc, panel);
-      nbEnsureGridMO(doc, panel);
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
   }
   /* nbRenderSortPop/nbSortLabel/nbApplyFsort 已收敛：弹层渲染/标签同步=makeSortMenu 实例
@@ -3020,6 +3180,8 @@
   function nbOpenConfirm(doc) {
     var p = doc.getElementById('srnSortPop');
     if (p) p.hidden = true;
+    var p2 = doc.getElementById('srnSortPop2'); /* v1.8.6：柜侧弹层一并收 */
+    if (p2) p2.hidden = true;
     var cf = doc.getElementById('srnConfirm');
     if (!cf) return;
     if (!bagArr().length) { toast('背包是空的'); return; } /* §4.6：空背包 toast 不弹窗 */
@@ -3039,39 +3201,81 @@
     };
   }
   /* 数值角标（v13.5 同款 overlay；挂官方 .grid-container 内 pointer-events:none，跟随官方
-     重渲染由 nbEnsureGridMO 观察器驱动）。webui-bag 页 .item id=logicId 精确匹配契约背包行，
-     无主格不标（宁缺勿错）；几何按官方 zoom 归一（rect/offsetWidth），角标锚格右上角。 */
-  /* NB 原生页角标=makeBadgeLayer 实例（v1.8.5：数值=DISP join 行——Vue 页无 id/无 LogicId
+     重渲染由 nbEnsureGridMO 观察器驱动）。 */
+  /* NB 原生页角标=makeBadgeLayer 实例×2（v1.8.5 数值=DISP join 行——Vue 页无 id/无 LogicId
      通道，视觉序↔网格序 zip 在真实态恒成立，行绑定恒定=数值不再错配跳动；未 join/行缺=
-     不标宁缺勿错）。保留旧 nbBadges(doc,panel) 调用形（doc 恒=NB.doc，panel 实例内部自解析）；
-     清路=删层节点（nbStrip/nbMount 形态翻转同语义） */
+     不标宁缺勿错）。v1.8.6 柜侧第二实例（layerId=srnBadges2，样式走 .srn-badges 类同规）。
+     保留 nbBadges(doc,panel) 调用形（doc 恒=NB.doc，panel 由 host 闭包现解析）；
+     清路=删层节点（nbStripSide/nbMount 形态翻转同语义） */
   var nbBadgesCore = makeBadgeLayer({
-    host: function () { var p = nbPanel(NB.doc); return p ? p.querySelector('.grid-container') : null; },
-    layerId: 'srnBadges',
+    host: function () { var p = nbSidePanel(NB.doc, 'bag'); return p ? p.querySelector('.grid-container') : null; },
+    layerId: 'srnBadges', layerCls: 'srn-badges',
     spec: function () { return (NB.fsort === 'official' || !bagArr().length) ? null : { k: NB.fsort, color: FBCOLOR[NB.fsort] || '#f0b03c' }; },
-    dx: -1, dy: 1, skipHide: false, removeOnClear: true
+    disp: DISP, dx: -1, dy: 1, skipHide: false, removeOnClear: true
   });
   function nbBadges(doc, panel) { if (NB.doc && NB.doc.body) nbBadgesCore(); }
+  var nbBadgesCore2 = makeBadgeLayer({ /* v1.8.6 柜侧：取用单柜 A / 整理物资 B 面板 */
+    host: function () { var p = nbSidePanel(NB2.doc, 'ctn'); return p ? p.querySelector('.grid-container') : null; },
+    layerId: 'srnBadges2', layerCls: 'srn-badges',
+    spec: function () { var o = nbCtnOwner(); return (NB2.fsort === 'official' || !o || !itemsOf(o).length) ? null : { k: NB2.fsort, color: FBCOLOR[NB2.fsort] || '#f0b03c' }; },
+    disp: DISP_CT, dx: -1, dy: 1, skipHide: false, removeOnClear: true
+  });
+  function nbBadges2(doc, panel) { if (NB2.doc && NB2.doc.body) nbBadgesCore2(); }
   /* 2026-11-01 第十三轮：对齐节拍器——500ms 兜底重算角标（有排序时）。观察器只盯格子/
      面板的属性变更，纯 CSS 回流（详情弹窗压扁格区 162²→218×50 又复原）不产生变更 →
-     旧角标钉死旧坐标直到下一次格子类变更。节拍器独立于装配循环，任何布局变化 ≤500ms 自愈。 */
+     旧角标钉死旧坐标直到下一次格子类变更。节拍器独立于装配循环，任何布局变化 ≤500ms 自愈。
+     v1.8.6 双侧各自节拍（柜侧 NB2 同款跟随）。 */
   setInterval(function () {
-    try { if (NB.doc && NB.doc.body && NB.fsort && NB.fsort !== 'official') nbBadges(NB.doc, null); } catch (e) { }
+    try {
+      if (NB.doc && NB.doc.body && NB.fsort && NB.fsort !== 'official') nbBadges(NB.doc, null);
+      if (NB2.doc && NB2.doc.body && NB2.fsort && NB2.fsort !== 'official') nbBadges2(NB2.doc, null);
+    } catch (e) { }
   }, 500);
 
-  function nbEnsureGridMO(doc, panel) {
+  function nbEnsureGridMO(doc, panel, D, badgeFn, isBag) {
+    var home = D === DISP ? NB : NB2; /* 回调门：本侧 doc 仍当前（离页/换文档即失效） */
+    var side = isBag ? 'bag' : 'ctn';
+    /* v1.8.6 marker 按侧别：solo↔取用翻转是同面板节点换内容（Vue 原地复用）——共用
+       marker 会让后到的一侧 watchGrid 视「已挂」而跳过（袋侧观察器占位后柜侧永远挂不上，
+       settling 无人清=角标层恒空，实锤病灶）。 */
+    var mk = isBag ? '__srnMO' : '__srnMO2';
     var grid = panel && panel.querySelector('.grid-container');
-    watchGrid(grid, '__srnMO', { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
-      function () { if (NB.doc === doc) { DISP.settling = false; dispApply(); nbBadges(); } }); /* v1.8.5：官方重渲染→重抹显示层排序 */
+    watchGrid(grid, mk, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
+      function () {
+        /* v1.8.6 双门：观察器挂在格容器上随节点存活，旧侧观察器不会自然消亡。回调必须
+           现验「本侧面板仍在场」：否则翻转后旧袋侧观察器拿 DISP（choice 空）对本面板现柜
+           模型 dispRestore，会把柜侧刚写的显示层排序当场回滚（实锤病灶）。 */
+        if (home.doc !== doc) return;
+        if (!nbSidePanel(doc, side)) return;
+        D.settling = false; dispApply(D); badgeFn();
+      }); /* v1.8.5：官方重渲染→重抹显示层排序 */
     /* 2026-11-01 第十三轮：详情弹窗开/关在面板/祖先层切 class 驱动格区压扁(162²→218×50)/
        复原——纯 CSS 回流不动格内联样式，格子观察器静默 → 角标钉旧坐标（关弹窗也不回来，
-       点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style。 */
+       点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style（角标重算只读
+       模型，doc 一道门即可）。 */
     var host = panel && panel.parentElement ? panel.parentElement : panel;
-    watchGrid(host, '__srnMO', { attributes: true, attributeFilter: ['style', 'class'], subtree: false },
-      function () { if (NB.doc === doc) nbBadges(); });
+    watchGrid(host, mk, { attributes: true, attributeFilter: ['style', 'class'], subtree: false },
+      function () { if (home.doc === doc) badgeFn(); });
   }
-  function nbRefresh() { /* setData 后跟随：角标值随新契约重算（网格未变也不漏） */
+  function nbRefresh() { /* setData 后跟随：角标值随新契约重算（网格未变也不漏）——双侧 */
     if (NB.doc && NB.doc.body) nbBadges(NB.doc, null);
+    if (NB2.doc && NB2.doc.body) nbBadges2(NB2.doc, null);
+  }
+  /* v1.8.7：官方页签栏进槽兜底——mount 期页签栏未建（Vue 异步渲染/官方晚建）或被官方
+     重建到文档别处时，把真件搬进 #srTabs 槽（槽内已有匹配件=幂等早退）。挂在
+     ensureMountedFrame 的「在位」快速路径上：rail 装配不变量不动，只补页签件。 */
+  function ensureTabsInSlot(f) {
+    try {
+      var sc = SCENES[f.key], doc = f.doc;
+      if (!sc || !sc.tabs || !doc) return;
+      var slot = doc.getElementById('srTabs');
+      if (!slot) return;
+      if (slot.querySelector(sc.tabs)) return; /* 真件已在槽内（#bagTabs/.left-tabs/.bag-tabs 均容器内可查） */
+      var t = sc.tabs.charAt(0) === '#'
+        ? doc.getElementById(sc.tabs.slice(1))
+        : doc.querySelector(sc.tabs);
+      if (t && t !== slot) { slot.appendChild(t); bindTabDrag(t, f.key); }
+    } catch (e) { }
   }
   function ensureMountedFrame(f) {
     var doc = f.doc, key = f.key, sc = SCENES[key];
@@ -3082,7 +3286,7 @@
        桩的重复 id 会让官方 $() 命中桩而非真节点；撤桩后 mount 重替换并重建新桩。
        （官方格引用在 mount 内先于摘除取得，复活重装配不丢格。） */
     if (doc.getElementById('srRail') && hostAlive(doc, sc)) stripStubs(doc);
-    if (mountedOk(doc, sc)) return;                    /* 在位且宿主未复活：观察器/interval 噪声快速路径（BP 形态翻转由 Vue 重建摘壳→hostAlive('bp')=true→自然重装） */
+    if (mountedOk(doc, sc)) { ensureTabsInSlot(f); return; } /* 在位且宿主未复活：观察器/interval 噪声快速路径（BP 形态翻转由 Vue 重建摘壳→hostAlive('bp')=true→自然重装）；v1.8.7 快路径上补挂页签件 */
     var railHere = doc.getElementById('srRail');
     if (railHere && railHere.isConnected && !hostAlive(doc, sc)) {
       rebindFrame(f, railHere);                        /* T9 重绑：rail 在位但 el 引用表在他帧（A→B→A 重访） */
@@ -3169,8 +3373,7 @@
   function loadScenePrefs() {
     var sc = loadCommon();
     COMMON = (sc && sc.length) ? sc : defaultCommon();
-    /* 页签顺序无需显式应用：pinnedCtns→pinOrderIds 每次渲染按 srp_pin_order_<scene>
-       现读（rail.js applyPinOrder 重排 CTN 数组；正式版 store 只读，顺序在渲染层解）。 */
+    /* 页签顺序无需显式应用：storeAllOrder 现读 TABS（官方数组序=C# pinorder.json 权威序）。 */
   }
   function applyScene(key) {
     st.scene = key;
@@ -3185,17 +3388,16 @@
        换场景=换模型（vue/grid 适配器现取），旧模型 real 快照随数组身份自然失效 */
     DISP.choice = (key === 'Trade') ? 'value' : null;
     DISP.owner = 0; DISP.model = null;
+    DISP_CT.choice = null; DISP_CT.owner = 0; DISP_CT.model = null; /* v1.8.6 柜侧同沿重置（换模型实例，快照随数组身份失效） */
     /* B 键单独背包 = 纯背包页：进入时全库收紧（rail.js setScene：global 复位回 prevMode） */
     if (sceneBagOnly() && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
     st.sel = null;
-    st.lastStepIdx = null; /* 换场景=方向无意义，回「无方向」语义（tagfilter setSel 同款） */
-    /* 2026-11-02 四轮：场景开启即上报本页显示序（C# 侧注入/重排用它对齐官方数组序——
-       游戏重推 tabs/换档重开后顺序自愈；pinOrder 命令幂等，序未变 C# 不动） */
+    /* v1.8.7：场景开启上报本页显示序退役——顺序唯一权威=C# cerail_pinorder.json，
+       各页轮询（TabInjector/TabGate/Pruner 的 ApplyOrder）每 0.5s 对账自愈，
+       无需 JS 浏览器侧回灌（旧 srp_pin_order_<scene> localStorage 读写路整体下线）。 */
+    /* T4：Browser 选中上报（浏览器记忆 → C# 文件；选中收窄在 C# 状态层，此处只对齐两份存档） */
     try {
-      if (INJ_PAGES[key]) {
-        var po0 = loadPinOrder();
-        if (po0 && po0.length) cmdOut('pinOrder', { key: key, order: po0 });
-      }
+      if (SCENES[key] && SCENES[key].tabs) cmdOut('setFilter', { key: key, sel: loadFilterSel() });
     } catch (e) { }
     PIN_KEY = ''; /* 场景换了/全新侧栏 DOM：页签结构必重建（原地更新纪律，§4.10） */
     RENDERED_ID = null; /* 场景态重置=渲染目标未知，回包门回到「未渲染」 */
@@ -3267,7 +3469,7 @@
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
   window.__CERAIL__ = {
-    dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0 }; },
+    dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0, ct: { choice: DISP_CT.choice, owner: DISP_CT.owner, items: DISP_CT.model ? DISP_CT.model.items.length : 0 }, nb: { bag: NB.fsort, ctn: NB2.fsort } }; },
     ver: 1,
     /* C# rev 门控直推数据契约 v4 JSON（存入 store 并触发渲染） */
     setData: setData,

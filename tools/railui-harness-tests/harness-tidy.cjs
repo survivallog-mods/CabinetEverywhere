@@ -6,7 +6,9 @@
    ③ rack 左面板 sbTidy=背包整理（MaterialRack duo）：drain owner=bag + toast 主侧栏 +
       T8 桩 16 回归；
    ④ 全库视图 srTidy 隐藏回归（真装配路径 render 规则）。 */
-const { chromium } = require('playwright');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch { ({ chromium } = require('C:/temp/baidu_up/node_modules/playwright-core')); } /* 环境漂移兜底（tagfilter-gate 同款） */
 
 const BASE = 'http://127.0.0.1:8180';
 const EXEC = 'C:/Users/wangk/AppData/Local/ms-playwright/chromium-1223/chrome-win64/chrome.exe';

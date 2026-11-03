@@ -249,5 +249,9 @@ internal sealed class AccessTicker : MonoBehaviour
         if (CabinetEverywherePlugin.EnableCraftSource.Value &&
             CabinetEverywherePlugin.FilterEnable.Value)
             ToolTablePruner.Poll();
+
+        // v1.8.7 T2 场景视图状态层对账（DroneHub/cart×3/Trade——bag×4 在 TabInjector 内联、
+        // 工作台=上方 Pruner；总门 [Filter] Enable 在 TabGate.PollAll 首行，false=全显零动作）
+        TabGate.PollAll();
     }
 }

@@ -17,8 +17,14 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   ① 注入集=HomeInstances（柜子 c）∪ AllContainers 的冰箱（f）——官方 CollectFridges
 ///      漏收的冷链（大容量冰柜类）补进官方数组，否则不在数组=步进锚缺失（三轮案例根因）；
 ///   ② BagTabs 序对齐显示序（cerail_pinorder.json，JS 拖拽/场景开启经 cmd pinOrder 上报）：
-///      官方 A/D 步进走官方数组序，序一致后步进=显示序邻居；重排 Move 优先/RemoveAt+Insert
-///      兜底，背包条目恒首位、未登记条目稳定排尾，变化才 Repush（幂等零刷屏）。
+///      官方 A/D 步进走官方数组序，序一致后步进=显示序邻居；重排 清空+按目标序整体重建
+///      （九轮定案），背包条目恒首位、未登记条目稳定排尾，变化才 Repush（幂等零刷屏）。
+/// v1.8.7 T2（官方页签栏还原第二批——场景视图状态层收口）：注入集按视图谓词过滤
+///   （TabGate.JudgeInst：Food=冰箱+食物域柜/Material=材料·工具柜+架/Browser=全量，
+///   [Filter] Enable=false 等效 Browser=注入页既有语义）+ RemoveUndesired 移出数组里
+///   不匹配的**原生条目**（Material 视图下的原生冰箱等；活动页签本轮不剪）。数组=可见集
+///   ⇒ A/D 官方步进天然只落可见页签（v1.7.0 tagfilter 的 DOM 隐藏+扣发工程全面让位）。
+///   随移出解除会话防重标记（s.Injected），视图切回后 AddMissing 能重新补挂。
 /// </summary>
 internal static class TabInjector
 {
@@ -36,27 +42,37 @@ internal static class TabInjector
     private static readonly Il2CppSystem.Type BrewType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Brew));
     private static readonly Il2CppSystem.Type DyeType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Dye));
 
-    /// <summary>JS 场景键（pinOrder cmd 的 key）→ 会话键（cerail_pinorder.json 与 Sessions 共用）。</summary>
+    /// <summary>JS 场景键（pinOrder cmd 的 key）→ 会话键（cerail_pinorder.json 与 Sessions 共用）。
+    /// v1.8.7 T3：全十页拖拽排序接入（bag×4=本类轮询、DroneHub/cart×3=TabGate、ToolTable=Pruner、
+    /// Trade=TabGate List 路）。</summary>
     internal static string PageKeyOfScene(string sceneKey) => sceneKey switch
     {
         "Cooking" => "cooking",
         "RatCage" => "ratcage",
         "BrewPanel" => "brew",
         "DyePanel" => "dye",
+        "ToolTable" => "tooltable",
+        "Shredder" => "shredder",
+        "GreenhouseBuild" => "greenhouse",
+        "Compressor" => "compressor",
+        "Trade" => "trade",
+        "DroneHub" => "dronehub",
         _ => null,
     };
 
     private static UiSession Session(string key) => Sessions.TryGetValue(key, out var s) ? s : Sessions[key] = new UiSession();
 
     /// <summary>
-    /// 注入集（四轮①）：柜子子集 HomeInstances + 全容器里的冰箱（f）。冰箱多已在官方原生
+    /// 注入集（四轮① + v1.8.7 T2 视图过滤）：柜子子集 HomeInstances + 全容器里的冰箱（f），
+    /// 按 TabGate.JudgeInst 过滤到当前视图（Browser=不过滤=四轮原语义）。冰箱多已在官方原生
     /// tabs（CollectFridges 收录的）——have 集去重，实际补进的是漏收的（大容量冰柜类）。
     /// </summary>
-    private static IEnumerable<CabinetCatalog.ContainerInst> Injectable()
+    private static IEnumerable<CabinetCatalog.ContainerInst> Injectable(string view, string sel, TabGate.TagCtx ctx)
     {
-        foreach (var c in CabinetCatalog.HomeInstances) yield return c;
+        foreach (var c in CabinetCatalog.HomeInstances)
+            if (TabGate.JudgeInstSel(c, view, sel, ctx) == TabGate.Verdict.Keep) yield return c;
         foreach (var c in CabinetCatalog.AllContainers)
-            if (c.Kind == 'f')
+            if (c.Kind == 'f' && TabGate.JudgeInstSel(c, view, sel, ctx) == TabGate.Verdict.Keep)
                 yield return c;
     }
 
@@ -101,8 +117,11 @@ internal static class TabInjector
         var tabs = st?.BagTabs;
         if (tabs == null || tabs.Count == 0) return;
 
+        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewCooking);
+        TabGate.LoadFilters().TryGetValue("cooking", out var sel); /* T4 Browser 下拉选中 */
+        var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("烹饪", s, have, tabs.Count,
+        var added = AddMissing("烹饪", s, have, tabs.Count, Injectable(view, sel, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Cooking_BagTab();
@@ -114,7 +133,8 @@ internal static class TabInjector
                 tab.IsNew = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        if (added > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "cooking")) Repush(rus, CookingType);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "cooking")) Repush(rus, CookingType);
     }
 
     // ---- 老鼠笼 ----
@@ -129,8 +149,11 @@ internal static class TabInjector
         var tabs = st?.BagTabs;
         if (tabs == null || tabs.Count == 0) return;
 
+        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewRatCage);
+        TabGate.LoadFilters().TryGetValue("ratcage", out var sel); /* T4 Browser 下拉选中 */
+        var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("老鼠笼", s, have, tabs.Count,
+        var added = AddMissing("老鼠笼", s, have, tabs.Count, Injectable(view, sel, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_RatCage_BagTab();
@@ -140,7 +163,8 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        if (added > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "ratcage")) Repush(rus, RatCageType);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "ratcage")) Repush(rus, RatCageType);
     }
 
     // ---- 酿酒桶 ----
@@ -155,8 +179,11 @@ internal static class TabInjector
         var tabs = st?.BagTabs;
         if (tabs == null || tabs.Count == 0) return;
 
+        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewBrewPanel);
+        TabGate.LoadFilters().TryGetValue("brew", out var sel); /* T4 Browser 下拉选中 */
+        var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("酿酒", s, have, tabs.Count,
+        var added = AddMissing("酿酒", s, have, tabs.Count, Injectable(view, sel, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Brew_BagTab();
@@ -166,7 +193,8 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        if (added > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "brew")) Repush(rus, BrewType);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "brew")) Repush(rus, BrewType);
     }
 
     // ---- 颜料桶 ----
@@ -181,8 +209,11 @@ internal static class TabInjector
         var tabs = st?.BagTabs;
         if (tabs == null || tabs.Count == 0) return;
 
+        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewDyePanel);
+        TabGate.LoadFilters().TryGetValue("dye", out var sel); /* T4 Browser 下拉选中 */
+        var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("颜料桶", s, have, tabs.Count,
+        var added = AddMissing("颜料桶", s, have, tabs.Count, Injectable(view, sel, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Dye_BagTab();
@@ -192,7 +223,8 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        if (added > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "dye")) Repush(rus, DyeType);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "dye")) Repush(rus, DyeType);
     }
 
     // ---- 公共 ----
@@ -200,6 +232,31 @@ internal static class TabInjector
     {
         try { return rus.IsUIActive(t); }
         catch { return false; }
+    }
+
+    // bag 族四状态同构（dump.cs：BagOwnerId=ReactiveProperty<long>，active 容器）——重载小面
+    private static long ActiveOwner(State_Web_Cooking st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
+    private static long ActiveOwner(State_Web_RatCage st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
+    private static long ActiveOwner(State_Web_Brew st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
+    private static long ActiveOwner(State_Web_Dye st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
+
+    /// <summary>
+    /// v1.8.7 T2：移出数组里视图不匹配的原生条目（活动页签跳过——防官方 active 错位，
+    /// 玩家切走/重开自然收敛）；随移出解除会话防重标记（s.Injected），视图切回后
+    /// AddMissing 能重新补挂。返回移出数（并入调用方 Repush 条件）。
+    /// </summary>
+    private static int RemoveUndesired<T>(UiSession s, ObservableCollections.ObservableList<T> tabs,
+        Func<T, long> ownerOf, long activeOwner, string view, string sel, TabGate.TagCtx ctx)
+    {
+        var removedOwners = new HashSet<long>();
+        int removed = TabGate.RemoveUndesired(tabs, ownerOf, activeOwner, view, sel, ctx, removedOwners);
+        if (removedOwners.Count > 0)
+        {
+            foreach (var o in removedOwners) s.Injected.Remove(o);
+            CabinetEverywherePlugin.Log.LogInfo(
+                $"[CabinetEverywhere] 视图={view} 移出 {removed} 条不匹配页签（数组=可见集，A/D 原生步进）");
+        }
+        return removed;
     }
 
     private static HashSet<long> CollectOwners<T>(ObservableCollections.ObservableList<T> tabs, Func<T, long> getOwner)
@@ -235,9 +292,9 @@ internal static class TabInjector
     }
 
     private static int AddMissing(string uiName, UiSession s, HashSet<long> have, int currentCount,
+        IEnumerable<CabinetCatalog.ContainerInst> cabinets,
         Action<long, string, int> create)
     {
-        var cabinets = Injectable(); /* 四轮①：柜子 ∪ 漏收冰箱（have 集去重，原生已有的不重复注入） */
         int added = 0, index = currentCount;
         var names = new List<string>();
         foreach (var c in cabinets)

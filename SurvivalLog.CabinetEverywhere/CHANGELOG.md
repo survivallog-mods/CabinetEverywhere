@@ -3,6 +3,52 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·六批（2026-11-03，页签区还原官方设计——官方页签栏 DOM 原件 + 视图/排序状态层收口）
+
+**作者令：「页签区还原为官方的设计。在保留官方原有功能的基础上添加我们自己的设计：
+①标签拖拽移动顺序，不能影响 AD 左右移动；②储物柜直达，按场景在页签里显示对应柜子
+（如烹饪=全部冰箱+食物标签柜）。不能影响官方原生功能：AD 切页签、拖物品到页签转柜。」**
+
+**根因（作者报告「官方设计的部分原生功能不生效」）**：v1.8.x rail 宿主替换把官方页签栏
+**销毁**（只留 display:none 桩）——①A/D 切页签是 C# `ContainerTabHotKey→RA_SwitchTabByKey`
+（各面板"页签栏宽度>0"守卫，页签栏被桩后失效，rail 的 stepGuard 只是事后补救重定向）；
+②拖物到页签是官方 `webui-tabdrop` 真件矩形命中（页签 DOM 销毁后全灭）。
+
+- **T1 官方页签栏还原**：mount 不再销毁页签栏——官方页签栏 DOM 原件（SCENES.tabs 逐页
+  指路：bag 族 `#bagTabs` / tt·cart 族 `.left-tabs` / 压制机 `#tabs` / 交易 `.bag-tabs`）
+  reparent 进壳的 `#srTabs` 槽（buildStubs 前入槽→页签类桩自愈跳过；ensureTabsInSlot
+  每周期兜底补挂）。自绘页签行（.sr-ctnbar/.sr-pinrow/renderCtnBar/bindPinDrag/
+  pinnedCtns/savePinOrder）与 A/D 拦截层（stepGuard/releasePending/f.pending）整体退役。
+  **A/D、点击切柜、active 高亮、滚动按钮、锁定态、拖物到页签=100% 官方原生链**。
+- **T2 场景视图状态层收口（新 TabGate.cs）**：视图谓词（Food=冰箱+食物域柜 dim1-4 /
+  Material=材料·工具柜+架 / Browser=全显）从「全量进数组+JS 藏显示」改为 **C# 对账**
+  ——官方数组=可见集，A/D 官方步进天然只落可见页签，零拦截零弹回零闪烁（v1.7.0
+  tagfilter 十七轮扣发工程让位，保留为 `[Rail] Enable=false` 回退通道）。覆盖：bag×4
+  （TabInjector 注入集按视图过滤+移出不匹配原生条目，随移除解除会话防重标记）、
+  ToolTable（Pruner 存量机制不动）、**DroneHub（BagTabs）/粉碎机·温室·压制机（CartTabs）
+  /交易（BagTabs=List<BagTabEntry>，attr 制无下标耦合）**——活动页签本轮不剪、cart 族
+  Index/ActiveTab 平移（pruner 同款舞步）、`[Filter] Enable` 关=全显零动作。
+- **T3 页签拖拽排序（官方页签上的 HTML5 dnd）**：拖官方页签 → `pinOrder` →
+  cerail_pinorder.json（页键扩到全十页）→ 各页轮询 ApplyOrder 重排官方数组+Repush →
+  官方按新序重建（**A/D=数组邻居天然跟随新序**）。身份按族：Cooking=`_ownerId` /
+  DroneHub·Trade=`data-owner` / RatCage·Brew·Dye·tt·cart=位序对 TABS 缓存；锁定页签
+  不可拖；drop 按现 DOM 现算序（重渲染竞态防护）。localStorage `srp_pin_order` 读写路
+  退役（C# 文件唯一权威；storeAll 路由序改读官方数组序）。
+- **T4 Browser 下拉（标签筛选，状态层版）**：v1.7.0 下拉换轨——选中不再 JS DOM 隐藏，
+  改 `setFilter` → cerail_filter.json → TabGate 按选中收窄（"0"=全部/"other"=未打标签/
+  tagId，材料架自动匹配"材料"伪标签）；下拉 UI 进 rail 页签行（▾ 左侧，仅 Browser 视图
+  tab 场景显示），选中按场景记忆（浏览器回显 + C# 文件权威，场景开启上报对齐）。
+- **取证**：cart×3/DroneHub/Trade 状态类与字段全部 gamekb dump.cs 实证（Trade
+  BagTabs@0x100=POCO 公有字段 owner/player/pin/rack…无 Index；DroneHub BagTabs 与烹饪族
+  同构；cart 三页 ActiveTab/CartOwnerId 齐）。
+- **回归**：mount harness **tabs 断言 40/40 全绿**（十页：官方页签栏在槽内+非桩+可见宽
+  >0（=A/D 宽度守卫判据）+官方 BagMsg 渲染落槽+自绘行已退役）；switch-cabinet 驱动重接
+  官方页签点击（**附录 A 六族签名全部由官方点击事件复现**，27/27）；tagfilter-gate
+  15/15（回退通道无恙）；node --check×2、dotnet build 0 错。已知：Trade 为 Vue v-if 页，
+  「装配后数据才到」的重建路径走脱离树（探针实证）——真机开页数据先于装配不触发，
+  列 T14 实机校准点；store-all/tidy/regression 三驱动在改造前即环境性超时（新旧
+  page.js 对照一致失败，与本次无关）。
+
 ## 待发版·五批（2026-11-03，排序钮扩全储物柜取用/整理界面 + 开柜闪钮根治）
 
 **作者令：「排序按钮与功能复制到所有储物柜的取用与整理物资界面，位置左下角；只要排序

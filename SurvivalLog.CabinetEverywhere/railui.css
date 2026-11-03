@@ -30,14 +30,13 @@
 #srp .sr-act[hidden]{display:none}
 /* v1.8.2.5 简洁背包栏（plainbag：整理物资/材料架的背包侧，作者裁决"普通存储取物界面"）：
    只留 标题/官方格/悬停条/页脚——页签栏/搜索行/快捷标签行/工具行(排序+网格列表切换) 全隐 */
-#srp .sr-rail.plainbag .sr-ctnbar{display:none !important}
+#srp .sr-rail.plainbag .sr-tabsrow{display:none !important}
 #srp .sr-rail.plainbag .sr-searchrow{display:none !important}
 #srp .sr-rail.plainbag .sr-tagrow{display:none !important}
 #srp .sr-rail.plainbag .sr-tools{display:none !important}
 #srp .sr-rail.plainbag .sr-offtabs{display:none !important}
-/* BackpackUI aTabs 模式（v1.8.2.2 Bug1 真因）：官方柜签页签行原件进 #srOffTabs 槽，
-   我方柜签栏隐藏（官方页签=原生切换器，active 由 followActive 跟随） */
-#srp .sr-rail.atabs .sr-ctnbar{display:none}
+/* BackpackUI aTabs 模式（v1.8.2.2 Bug1 真因；v1.8.3 原生模式后休眠路径，规则保留无害） */
+#srp .sr-rail.atabs .sr-tabsrow{display:none}
 #srp .sr-offtabs{margin-top:8px;overflow-x:auto;scrollbar-width:none}
 #srp .sr-offtabs::-webkit-scrollbar{display:none}
 /* BackpackUI 双背包三段壳（v1.8.2.1：后备箱/购物袋形态）——A 袋原件|官方五按钮原件|rail 壳。
@@ -68,25 +67,30 @@
 #srp .tag-putin-btn .putin-more{font-size:12px;line-height:13px;opacity:.8}
 #srp .tag-putin-btn .pi-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 /* B 键单独背包 = 纯背包页：柜子页签栏与全库切换不显示（柜子页签在其余场景照常） */
-#srp .sr-rail.bagonly .sr-ctnbar{display:none}
+#srp .sr-rail.bagonly .sr-tabsrow{display:none}
 #srp .sr-rail.bagonly .sr-scope{display:none}
-#srp .sr-ctnbar{display:flex;align-items:flex-start;gap:6px;margin-top:8px}
-/* 页签名完整显示（不省略）且只占一行：页签按内容自适应宽，放不下横向滚动（滚动条隐藏） */
-#srp .sr-pinrow{flex:1 1 0;min-width:0;display:flex;flex-wrap:nowrap;gap:5px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-#srp .sr-pinrow::-webkit-scrollbar{display:none}
-#srp .sr-pin{position:relative;flex:0 0 auto;height:30px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;display:inline-flex;align-items:center;gap:2px;cursor:pointer;user-select:none}
-#srp .sr-pin .p-lb{flex:0 0 auto;white-space:nowrap;text-align:center}
-#srp .sr-pin:hover{color:#ece5d8;border-color:rgba(255,255,255,.18)}
-#srp .sr-pin.active{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.12)}
-/* 方案2：仅选中页签右侧显示编辑按钮 */
-#srp .sr-pin .p-edit{display:none;flex:0 0 auto;width:15px;height:15px;border-radius:4px;align-items:center;justify-content:center;font-size:10.5px;line-height:1;color:#c9a86a;cursor:pointer}
-#srp .sr-pin.active .p-edit{display:inline-flex}
-#srp .sr-pin .p-edit:hover{color:#ffe1a0;background:rgba(240,176,60,.22)}
-/* 背包固定首位：竖线分隔，不可拖拽 */
-#srp .sr-pin.main{cursor:default}
-#srp .sr-pin.main::after{content:'';position:absolute;right:-5px;top:8px;bottom:8px;width:2px;border-radius:1px;background:rgba(255,255,255,.38)}
-#srp .sr-pin.dragging{opacity:.45;border-style:dashed}
+/* v1.8.7 官方页签行槽：#srTabs 装官方页签栏 DOM 原件（SCENES.tabs 指路，mount reparent）
+   ——官方 .bag-tabs/.left-tabs 自带 flex/滚动/active 样式与 width:0;min-width:100% 撑满
+   技法，全部保留（勿覆写 width/min-width——harness 实测覆写 min-width:0 会把页签栏压成
+   0 宽）；此处只做槽布局 + 抵消官方页签栏的竖直外边距（原位在官方面板顶部有
+   margin-bottom:6~10px，入槽后由行距接管，防行高抖动）。▾ 全部容器按钮同行尾置。 */
+#srp .sr-tabsrow{display:flex;align-items:center;gap:6px;margin-top:8px;min-width:0}
+#srp .sr-tabslot{flex:1 1 0;min-width:0;overflow:visible}
+#srp .sr-tabslot>.bag-tabs,#srp .sr-tabslot>.left-tabs{margin:0 !important}
 #srp .sr-allctn{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:13px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+/* v1.8.7 T4 Browser 下拉（标签筛选柜子页签）：触发钮贴 ▾ 左侧，选中=亮金 */
+#srp .sr-fsel{flex:0 0 auto;height:30px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;display:none;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+#srp .sr-fsel[hidden]{display:none !important}
+#srp .sr-tabsrow .sr-fsel:not([hidden]){display:inline-flex}
+#srp .sr-fsel:hover{color:#ece5d8;border-color:rgba(255,255,255,.22)}
+#srp .sr-fsel.on{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
+#srp .sr-fsel .sb-caret{font-size:10px;color:#7a7268}
+#srp .sr-fselpop{left:auto;right:10px;width:172px;top:86px;max-height:360px}
+#srp .sr-rail.plain .sr-fselpop{top:48px}
+#srp .sr-fselpop .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:4px}
+#srp .sr-fselopt{display:flex;align-items:center;width:100%;min-height:27px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#c8cde0;font-size:12px;text-align:left;cursor:pointer;font-family:inherit}
+#srp .sr-fselopt:hover{background:rgba(255,255,255,.06);color:#fff}
+#srp .sr-fselopt.active{color:#f0b03c}
 #srp .sr-allctn:hover{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.10)}
 #srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
 #srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
@@ -198,9 +202,13 @@
 #srp .sr-sortopt.active{color:#ffe1a0;background:rgba(240,176,60,.10)}
 #srp .sr-sortopt.active::after{content:'✓';margin-left:auto;font-size:11px}
 
-/* 页签拖拽指示 */
-#srp .sr-pin.drop-before{box-shadow:-3px 0 0 0 #f0b03c}
-#srp .sr-pin.drop-after{box-shadow:3px 0 0 0 #f0b03c}
+/* v1.8.7 T3 官方页签拖拽指示（挂官方 .bag-tab/.left-tab/.cabinet-tab 上的叠加类，
+   仅 #srp 壳内生效——官方样式零触碰；锁定页签不可拖不标） */
+#srp .sr-tabslot .bag-tab.sr-dragging,#srp .sr-tabslot .left-tab.sr-dragging{opacity:.45}
+#srp .sr-tabslot .bag-tab.sr-drop-before,#srp .sr-tabslot .left-tab.sr-drop-before,
+#srp .sr-tabslot .cabinet-tab.sr-drop-before{box-shadow:-3px 0 0 0 #f0b03c}
+#srp .sr-tabslot .bag-tab.sr-drop-after,#srp .sr-tabslot .left-tab.sr-drop-after,
+#srp .sr-tabslot .cabinet-tab.sr-drop-after{box-shadow:3px 0 0 0 #f0b03c}
 
 /* v-if 静态隐藏：官方 display 规则会盖过 UA 的 [hidden]，必须强制。
    （原型写死 .gpage 画布层级；游戏内页没有 .gpage，改为全 #srp 生效） */

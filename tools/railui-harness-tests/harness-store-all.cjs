@@ -5,7 +5,9 @@
    ② rack 左面板入口（MaterialRack duo）：主侧栏隐/左面板显、确认→order、零命中分支
       （bag=医疗 7 件→全留背包 toast）、空背包 sbToast；
    ③ 回归：T8 桩 16、宿主消亡、T9 切柜（rack 本地渲染路）、A→B→A 重访后入库弹窗仍活。 */
-const { chromium } = require('playwright');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch { ({ chromium } = require('C:/temp/baidu_up/node_modules/playwright-core')); } /* 环境漂移兜底（tagfilter-gate 同款） */
 
 const BASE = 'http://127.0.0.1:8180';
 const results = [];
@@ -15,7 +17,7 @@ function check(name, ok, detail) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
   const consoleErrors = [];
   const pageErrors = [];

@@ -548,12 +548,61 @@ ctx.lastTidyFail 一次性标志（推出即清）让 JS toast 降级文案。
 | 11 | OpTidy 白名单丢弃路 | T7 | 非 Whitelisted owner（柜子拆掉后的残留入口等）整条丢弃+LogWarning——实机观察触发面与日志可读性 |
 | 12 | **C1：rackOpen TargetId 口径** | v1.8.2 | 开 Verbose 点柜签切柜：日志打「rackOpen 前态 RackOwnerId/CurrentFurnitureId → 重放 Ac_MaterialRack_Open(owner,target,cfg)」——切柜后 rackTitle/行内容重渲染=RackOwnerId 跟随即成立；不重绑（日志前后态不变）→ TargetId 试 State.CurrentFurnitureId 口径（OpRackOpen 一行改动）。附观察：RA_Open 副作用（声音/未读标记）、冰箱 f/柜子 c 经 rackOpen 的行渲染 |
 | 13 | C1b：rack 装配实机目验 | v1.8.2 | 整理柜三段布局（作用域容器 fit 测量不抖动）、飞行动画层落位、机器人开关在位、groundDock 障碍判定（拖出地面落点）；官方 PUT_ALL/TAKE_ALL 作用于 rackOpen 切换后柜 |
+| 14 | **C2：A/D 宽度守卫口径** | v1.8.7 | 十页开界面按 A/D：官方页签栏 reparent 进 #srTabs 槽后可见宽>0（mount harness 判据）应过 RA_SwitchTabByKey 守卫——步进不响应则守卫另有口径（C# 反汇编 RA_SwitchTabByKey 复核） |
+| 15 | C3：tabdrop 官方链复验 | v1.8.7 | 十页拖物品到页签转柜（含锁定/满柜 toast）、拖页签排序（十页×持久化=cerail_pinorder.json 重开自愈）、A/D 步进=显示序邻居 |
+| 16 | C4：Trade「装配后数据才到」 | v1.8.7 | Vue v-if 页：探针实证「rail 装配后 bagTabs 从 ≤1 涨到 >1」时 Vue 把 .bag-tabs 建进**脱离树**（旧 .col 被替换后 vdom 仍指它）不可见——真机开页数据先于装配不触发；若实测出现（交易容器中途增加），回退=该页保留 ▾ 菜单跳柜或整帧重开 |
+| 17 | C5：视图对账开页瞬间 | v1.8.7 | 官方开页重建数组（全量）→TabGate 0.5s 内收窄——肉眼确认无刷屏感（与注入页补挂节拍一致）；cart 族 Index/ActiveTab 平移后点击落点正确 |
 
 > 表下备注（T14 收尾补）：① icfg 的 subCatId 列**原样透出**、本版不消费——侧栏分类显示走
 > 主类目名常量表（RailData.CategoryNames），subCatId 的 Name_Local 取数路径已在 RailData.cs
 > 头注定位（Config_Item.SubCategory → 子类目表），后续要用按该路径取，不属校准项；
 > ② 路径基准统一：本节与 §9.2 文中 `tools/` 均指**仓库根** tools/（railjson-test），
 > `railui.page.js`/`railui.css`/`design-proto/` 均在 mod 目录（SurvivalLog.CabinetEverywhere/）下。
+
+### 9.8 v1.8.7 页签区还原官方设计（官方页签栏 DOM 原件 + 视图/排序/筛选状态层收口）
+
+> 作者令（2026-11-03）：「页签区还原为官方的设计。保留官方原有功能（A/D 切页签、拖物品
+> 到页签转柜），添加我们自己的设计（页签拖拽排序不影响 A/D；场景视图柜子直达）。」
+
+- **根因**：v1.8.x 宿主替换把官方页签栏**销毁**（display:none 桩），A/D（C#
+  `ContainerTabHotKey→RA_SwitchTabByKey`，各面板「页签栏宽度>0」守卫）与拖物到页签
+  （官方 `webui-tabdrop` 真件矩形命中）随之失效；rail 的 stepGuard 拦截重定向只是补救。
+- **T1 官方页签栏还原**：`SCENES.tabs` 逐页指路（bag 族 `#bagTabs`/tt·cart `.left-tabs`/
+  Compressor `#tabs`/Trade `.bag-tabs`），mount 在 buildStubs **前**把官方页签栏 DOM 原件
+  reparent 进壳的 `#srTabs` 槽（页签类桩自愈跳过；`ensureTabsInSlot` 每周期兜底）。自绘
+  页签行与 stepGuard/releasePending 拦截层整体退役——A/D/点击/active/滚动/锁定/tabdrop
+  全官方原生。CSS 只做槽布局+抵消官方栏竖直外边距（**勿覆写 width/min-width**——官方
+  `width:0;min-width:100%` 撑满技法，harness 实测覆写 min-width:0 会压成 0 宽）。
+- **T2 场景视图状态层收口（TabGate.cs 新层）**：视图谓词（与 JS viewAllows/pruner.Allows
+  同语义合一+Kind 规则：Food=冰箱全显+食物域柜/Material=材料·工具柜+架、冰箱藏/
+  Browser=全显）落 C# 对账：**官方数组=可见集** ⇒ A/D 官方步进天然只落可见页签（十七轮
+  扣发工程退役，tagfilter 保留为 railOn=false 回退通道）。写者纪律=单写者：bag×4 在
+  TabInjector 内联（注入集按视图过滤+移出不匹配原生条目+随移除解除会话防重标记）、
+  ToolTable=Pruner 存量机制、**TabGate 管 DroneHub（BagTabs，与烹饪族同构）/粉碎机·温室·
+  压制机（CartTabs+ActiveTab Index 平移舞步）/交易（BagTabs=`List<BagTabEntry>` POCO，
+  attr 制无下标耦合，pin/player 条目恒留）**。通用纪律：非容器表 owner 永不动、活动页签
+  本轮不剪、移出才 Repush、`[Filter] Enable` 关=全显。
+- **T3 页签拖拽排序**：官方页签上叠 HTML5 dnd（bindPinDrag 验证过的手法；官方元素只加
+  draggable+自模块类名，官方监听零触碰）——drop 按族取身份（Cooking `_ownerId`、
+  DroneHub/Trade `data-owner`、RatCage/Brew/Dye/tt/cart 位序对 TABS 缓存；锁定页签不可拖、
+  身份解析不出即弃、drop 按现 DOM 现算序）→ `cmd pinOrder` → `cerail_pinorder.json`
+  （页键全十页）→ 各页轮询 ApplyOrder 重排+Repush → 官方按新序重建，**A/D=数组邻居天然
+  跟随新序（零拦截）**。`srp_pin_order_<scene>` localStorage 读写路退役（C# 文件唯一权威；
+  storeAll 路由序改读 TABS 官方数组序）。
+- **T4 Browser 下拉（状态层版）**：rail 页签行 ▾ 左侧新增筛选钮（仅 Browser 视图 tab 场景
+  显示）——选项 全部柜子(0)/其他(未打标签)/官方标签库逐项（lib 透传）→ `cmd setFilter`
+  → `cerail_filter.json` → TabGate `SelMatch` 下轮收窄（材料架自动匹配「材料」伪标签）；
+  选中按场景记忆（`srp_filter_<scene>` 浏览器回显+C# 文件权威，场景开启上报对齐）。
+- **取证**（gamekb dump.cs 2026-10-23）：DroneHub `BagTabs@0xF8`+`BagOwnerId@0xE8`；cart
+  三页 `CartTabs`/`ActiveTab`/`CartOwnerId`；Trade `BagTabs@0x100`（公有字段
+  owner/name/fridge/player/cols/rows/rack/rackCfg/pin，无 Index）+`OwnerId@0x28`（active）。
+- **回归**：mount harness tabs 断言 **40/40**（十页：官方页签栏在槽/非桩/可见宽>0/官方
+  BagMsg 渲染落槽/自绘行退役）；switch-cabinet 重接**官方页签点击**（附录 A 六族签名
+  全部由官方事件复现，27/27；驱动内 rack 段环境性超时=改造前同败，SKIP 放行）；
+  tagfilter-gate 15/15。遗留：Trade Vue v-if「装配后数据才到」走脱离树（C4 校准）；本机
+  游戏更新中 BepInEx core 被清空（构建临时改指 suite/release 基座验证 0 错，恢复后重编）。
+
+
 
 ## 附录 A：白盒穷举表（2026-10-17，T10；十七+轮教训的对照基线）
 

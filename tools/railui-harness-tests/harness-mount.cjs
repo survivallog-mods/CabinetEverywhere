@@ -205,6 +205,69 @@ await waitRail('Trade');
   check('alive:DroneHub', hub.mineReplaced && hub.hubPane, `#paneMine 已替换（设计，=${hub.mineReplaced}） #paneHub 存活=${hub.hubPane}`);
 }
 
+/* ②e v1.8.7 官方页签栏还原断言（作者令「页签区还原官方设计」；置于 ④/⑤ 宿主复活段
+   **之前**——revive 用 outerHTML 快照重建宿主会让官方页 load 期捕获的 DOM 引用
+   （Cooking fixture 的 DOM 表）失效=纯 harness 伪影，真机静态页不重建宿主）：
+   10 页 tab 场景逐页：官方页签栏 DOM 原件 reparent 进壳内 #srTabs 槽（#srp 内、非桩）+
+   官方 BagMsg 推送后页签元素渲染**落进槽内**（官方渲染通道命中 reparent 后的真件）+
+   页签栏可见宽 > 0（RA_SwitchTabByKey「页签栏宽度>0」守卫口径=A/D 复活的判据）+
+   自绘页签行（.sr-pin）不再存在。
+   Trade（Vue v-if 页）：按真机时序驱动——隐藏帧里复活官方 .col → 先投 bagTabsJson
+   （Vue 建出 .bag-tabs，v-if tabs>1）→ 再 show 让 mount 捕获真件入槽（数据先于装配，
+   与游戏开页一致；「装配后数据才到」的 v-if 重建路径是 T14 实机校准点，不在本床模拟）。 */
+const TAB_PAGES = ['Cooking', 'RatCage', 'BrewPanel', 'DyePanel', 'DroneHub', 'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade'];
+const TAB_MSG = {
+  Cooking: { type: 'WebUI_Cooking_BagMsg', data: { bagOwnerId: 900001, bagTabs: fakeTabs(), bagCols: 10, bagRows: 4, bagItems: [], workbenchOwnerId: 0, workbenchItems: [] } },
+  RatCage: { type: 'WebUI_RatCage_BagMsg', data: { bagOwnerId: 900001, bagTabs: fakeTabs(), bagCols: 10, bagRows: 4 } },
+  BrewPanel: { type: 'WebUI_Brew_BagMsg', data: { bagOwnerId: 900001, bagTabs: fakeTabs(), bagCols: 10, bagRows: 4 } },
+  DyePanel: { type: 'WebUI_Dye_BagMsg', data: { bagOwnerId: 900001, bagTabs: fakeTabs(), bagCols: 10, bagRows: 4 } },
+  DroneHub: { type: 'WebUI_DroneHub_BagMsg', data: { bagOwnerId: 900001, bagTabs: fakeTabs(), bagCols: 10, bagRows: 4 } },
+  Compressor: { type: 'WebUI_Compressor_BagMsg', data: { cartOwnerId: 900101, cartCols: 10, cartRows: 4, cartTabs: fakeTabs(), activeTab: 0, weightCurrent: 0, weightMax: 100, cartItems: [], binItems: [], trayItems: [] } },
+  Shredder: { type: 'WebUI_Shredder_BagMsg', data: { cartOwnerId: 900101, cartCols: 10, cartRows: 4, cartTabs: fakeTabs(), activeTab: 0, cartItems: [], hopperItems: [], trayItems: [], cartRackRowsJson: '[]' } },
+  GreenhouseBuild: { type: 'WebUI_GreenhouseBuild_BagMsg', data: { cartOwnerId: 900101, cartCols: 10, cartRows: 4, cartTabs: fakeTabs(), activeTab: 0, cartItems: [], cartRackRowsJson: '[]' } },
+  ToolTable: { type: 'WebUI_ToolTable_BagMsg', data: { cabinetTabs: fakeTabs('tt'), activeLeftTab: 0, workbenchItems: [], drawerOwnerId: 0, workbenchOwnerId: 0 } },
+  Trade: { type: 'WebUI_Trade_BagMsg', data: { bagTabsJson: JSON.stringify(fakeTabs('trade')), bagOwnerKey: '900001' } }
+};
+for (const key of TAB_PAGES) {
+  const tabsSel = await page.evaluate((k) => window.__CERAIL__.scenes[k].tabs, key);
+  if (key === 'Trade') {
+    /* 整帧 reload = 真机重开页（Vue 重建、旧 rail 随文档消失——探针实证 outerHTML 复活
+       在 Vue 页不成立：vdom 仍指旧 .col（脱离树），后建 v-if 元素落 detached 不可见）→
+       隐藏帧投 bagTabsJson（Vue v-if 建出 .bag-tabs，数据先于装配=与游戏开页一致）→
+       show → mount 捕获真件入槽。「装配后数据才到」的 v-if 重建=T14 实机校准点。 */
+    await frameOf('Trade').evaluate(() => location.reload());
+    await page.waitForTimeout(1000);
+    await page.evaluate(([k, m]) => window.__HZ_POST__(k, m), [key, TAB_MSG[key]]);
+    await page.waitForTimeout(400);
+    await page.evaluate((k) => window.__HZ_SHOW__(k), key);
+  } else {
+    await page.evaluate((k) => window.__HZ_SHOW__(k), key);
+    await waitRail(key);
+    await page.evaluate(([k, m]) => window.__HZ_POST__(k, m), [key, TAB_MSG[key]]);
+    await page.waitForTimeout(300);
+  }
+  await waitRail(key);
+  const f = frameOf(key);
+  const t = await f.evaluate((sel) => {
+    const slot = document.getElementById('srTabs');
+    const row = slot ? slot.querySelector(sel) : null;
+    const tabsInSlot = row ? row.querySelectorAll('.bag-tab, .left-tab').length : 0;
+    return {
+      slotInRail: !!(slot && slot.closest('#srp')),
+      rowInSlot: !!(row && row.closest('#srTabs')),
+      rowIsReal: !!(row && !row.hasAttribute('data-cer-stub')),
+      rowVisible: !!(row && row.getBoundingClientRect().width > 0),
+      tabsInSlot,
+      oldPins: document.querySelectorAll('#srp .sr-pin').length
+    };
+  }, tabsSel);
+  check('tabs:slot:' + key, t.slotInRail && t.rowInSlot && t.rowIsReal,
+    `官方页签栏(${tabsSel})在 #srTabs 槽内=${t.rowInSlot} 非桩=${t.rowIsReal} 槽在壳内=${t.slotInRail}`);
+  check('tabs:visible:' + key, t.rowVisible, `页签栏可见宽>0=${t.rowVisible}（A/D 宽度守卫判据）`);
+  check('tabs:rendered:' + key, t.tabsInSlot >= 4, `官方 BagMsg 渲染落槽：槽内页签元素 ${t.tabsInSlot} 个（fakeTabs=5，pin 位占 1）`);
+  check('tabs:no-selfrow:' + key, t.oldPins === 0, `自绘页签行已退役（.sr-pin=${t.oldPins}）`);
+}
+
 /* ③ iframe 切换往返：Cooking → Trade → Cooking，rail 恢复（el 引用表随重装配回来） */
 await page.evaluate(() => window.__HZ_SHOW__('Trade'));
 await waitRail('Trade');
@@ -317,7 +380,17 @@ for (const key of STUB_PAGES) {
   await page.evaluate((k) => window.__HZ_SHOW__(k), key);
   await waitRail(key);
   const f = frameOf(key);
-  const expected = await page.evaluate((k) => window.__CERAIL__.scenes[k].stubs.length, key);
+  /* v1.8.7：期望桩数=动态口径——SCENES.stubs 里「真节点已在文档」的条目（官方页签栏
+     reparent 进 #srTabs 后，bagTabs/tabsScroll 等页签类条目）按 buildStubs 自愈语义跳过。 */
+  const stubList = await page.evaluate((k) => window.__CERAIL__.scenes[k].stubs, key);
+  const expected = await f.evaluate((list) => {
+    let n = 0;
+    for (const tok of list) {
+      const hit = tok.charAt(0) === '.' ? document.querySelector(tok) : document.getElementById(tok);
+      if (!(hit && !hit.hasAttribute('data-cer-stub'))) n++;
+    }
+    return n;
+  }, stubList);
   await f.evaluate(() => {
     if (!window.__errsInstalled) {
       window.__errsInstalled = 1;
