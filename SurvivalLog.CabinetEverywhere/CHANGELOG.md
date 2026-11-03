@@ -3,6 +3,39 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·五批（2026-11-03，排序钮扩全储物柜取用/整理界面 + 开柜闪钮根治）
+
+**作者令：「排序按钮与功能复制到所有储物柜的取用与整理物资界面，位置左下角；只要排序
+按钮（不入库）；材料架不做——行组件页无网格。」**
+
+- **NB 原生页（BackpackUI）双侧装配**：
+  - **柜侧新增仅排序钮**（`srnSortBtn2` 等 id 后缀 2）——**取用单柜 A 面板 / 整理物资
+    B 面板（.is-storage）**两形态，官方 `.toolbar` 行首左缘同位（柜侧单钮
+    `.srn-only` 自钉左缘）；📦一键入库**仅袋侧**（B键/整理物资 A 面板，id 沿用不变）。
+  - **DISP 双实例化**（`makeDisp()` 工厂 + `DISP_CT` 柜侧实例）：整理物资双面板同屏
+    **各自独立排序互不顶替**（袋按饱腹、柜按保质期同时成立）；全部 DISP 函数带实例参
+    （机器页/rail 调用点显式传 `DISP`=行为零变化）；dropFilter 双实例取落点 owner 命中者。
+  - `dispOwnerOf` vue 分支改**页面自带 ownerId 直取**（取用柜/背包实体/双背包 B 柜三形态
+    都对——v1.8.5⑪「陈旧 owner」病灶同类根治）。
+- **开柜「左下角排序钮闪一下就没了」根治（v1.8.4 起固有竞态，非尸体代码）**：装配判据
+  从 `ctx.bpBag`（**上一包快照**，开取用柜瞬间滞后=true → 袋侧按钮对先装上柜面板、下包
+  推到即摘=闪钮）改为**页面 Vue 真源**（`setupState.bagA/bagB.ownerId` 白名单柜判定；
+  官方 ready 门保证面板出现时 ownerId 已绑定=当场可判零推送延迟）；兜底链=DOM chips
+  （取用柜 canTag）→ ctx.bpBag → 保守袋侧。C# 零改动（bpBag 保留作兜底+签名）。
+- **两枚连带 bug（双侧同节点复用暴露）**：① `dispRows` join 漏参 `itemsOf(DISP.owner)`
+  （柜侧误 join 袋行=角标全 '-'+排序稳定不排）改 `itemsOf(D.owner)`；② solo↔取用翻转是
+  **同面板节点换内容**（Vue 原地复用）——旧袋侧格观察器存活且 marker 共用（后到侧挂不上
+  =settling 无人清角标恒空），且其回调拿 DISP(choice 空) 对现柜模型 dispRestore **回滚
+  柜侧刚写的排序**。修=marker 按侧别（`__srnMO`/`__srnMO2`）+ 回调现验「本侧面板在场」。
+- CSS：`#srnSortPop/#srnBadges` ID 选择器改类（`.srn-sortpop/.srn-badges`，双实例同规），
+  markup id 仅作寻址；`makeBadgeLayer` 增 `layerCls`/`disp` 参数。
+- harness：`harness-regression.cjs` 修活（playwright require 环境漂移兜底，tagfilter-gate
+  同款）+ 新增 ①b 段 **13 断言全绿**（solo 双钮/取用柜侧装配+袋侧即摘（闪钮竞态钉死）/
+  取用排序模型位+角标值/整理物资 A 双钮 B 仅排序/两侧独立排序+双侧角标/零控制台错）；
+  tagfilter-gate 15/15；mount 既有 8 条夹具漂移与本次无关（基线对比确认）。既有 ①③ 段
+  三条 FAIL（Cooking 文案/toast/网格）为夹具漂移（基线同败），② 段超时同前未动。
+- 材料架（MaterialRack，行组件无网格）按作者拍板**不做**。
+
 ## 待发版·四批（2026-11-03，排序/角标复用化重构——行为零变化）
 
 **背景：同一套「排序钮+弹层+应用+角标」在 railui.page.js 手搓了三份**（rail 工具行

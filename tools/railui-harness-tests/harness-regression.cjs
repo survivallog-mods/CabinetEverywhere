@@ -5,7 +5,9 @@
    ② rack 左面板入口（MaterialRack duo）：主侧栏隐/左面板显、确认→order、零命中分支
       （bag=医疗 7 件→全留背包 toast）、空背包 sbToast；
    ③ 回归：T8 桩 16、宿主消亡、T9 切柜（rack 本地渲染路）、A→B→A 重访后入库弹窗仍活。 */
-const { chromium } = require('playwright');
+let chromium;
+try { ({ chromium } = require('playwright')); }
+catch { ({ chromium } = require('C:/temp/baidu_up/node_modules/playwright-core')); } /* 环境漂移兜底（tagfilter-gate 同款）：全局 playwright 包不在时走 playwright-core */
 
 const BASE = 'http://127.0.0.1:8180';
 const results = [];
@@ -37,6 +39,7 @@ function check(name, ok, detail) {
   const showScene = async (key) => { await page.getByRole('button', { name: key, exact: true }).click(); await waitRail(key); };
 
   /* ---- ① Cooking：机器场景主侧栏入口 ---- */
+  /* （①b v1.8.6 NB 双侧断言插在本段尾部、② 之前——见下） */
   await waitRail('Cooking');
   await frameOf('Cooking').waitForFunction(() => (document.getElementById('srTitle') || {}).textContent === '背包', null, { timeout: 9000 });
   check('root:cook-sr-visible', !(await fhidden('Cooking', '#srStoreAll')), 'Cooking bag 页 srStoreAll 可见');
@@ -65,6 +68,108 @@ function check(name, ok, detail) {
     cells: document.querySelectorAll('#srGrid .sr-slot').length
   }));
   check('root:bag-grid-leftover', bagGrid.items === 2 && !bagGrid.emptyMsg && bagGrid.cells === 50, '背包剩 2 叠 + 空格补位（非「没有匹配的物品」） ' + JSON.stringify(bagGrid));
+
+  /* ---- ①b v1.8.6 NB 双侧（BackpackUI 原生页三形态 + 闪钮竞态回归钉） ----
+     solo=袋侧排序+入库；取用=柜侧仅排序（袋侧钮即摘——陈旧 ctx.bpBag=true 不再误装；
+     旧码在该形态会把袋侧按钮对装上柜面板=「左下角排序钮闪一下」根因）；整理物资=
+     A 袋侧双钮 + B 柜侧仅排序，两侧独立排序（DISP/DISP_CT）互不顶替。
+     驱动：__HZ_SHOW__ 真装配路（nbMount/nbPanels）+ __HZ_POST__ 直投官方 Info/Items
+     消息换形态（fixture=真 Vue 页，setupState.ownerId 判据真源生效）。 */
+  await page.evaluate(() => window.__HZ_SHOW__('BackpackUI'));
+  const bp = frameOf('BackpackUI');
+  await bp.waitForFunction(() => !!document.getElementById('srnSortBtn') && !!document.getElementById('srnStoreBtn'), null, { timeout: 9000 });
+  check('nb:solo-pair', await bp.evaluate(() => !document.getElementById('srnSortBtn2')), 'B键背包：袋侧排序+入库钮在位、无柜侧钮');
+  /* 自备契约：900101 柜行带 s1/days 数值（MOCK 的 900101 行无数值列）；ctx.bpBag=true
+     故意滞留（模拟上一包=背包态——旧判据的竞态原料） */
+  await page.evaluate(() => {
+    const j = JSON.parse(JSON.stringify(window.__HZ_MOCKSET__()));
+    j.ctx.bpBag = true; j.rev = 9001;
+    j.items['900101'] = [
+      [911, 1, 60, 86400, 0, 0, 1, 1, 0, 15, null, null, null, 360, null],
+      [912, 3, 5, 3600, 1, 0, 1, 1, 0, 2, 5, null, null, 25, 2.5],
+      [913, 2, 8, 7200, 2, 0, 1, 1, 0, 48, null, null, 6, 304, 0.5]
+    ];
+    window.__HZ_MOCKSET__(j);
+    window.__HZ_PUSH__('BackpackUI');
+    window.__CERAIL__.scan();
+  });
+  /* 取用形态：InfoAMsg 绑柜 ownerId（官方 ready 门已开，Vue 真源判据即时生效） */
+  const ctnItemsJson = await page.evaluate(() => JSON.stringify([
+    { id: 911, x: 0, y: 0, w: 1, h: 1, icon: window.__HZ_ICOV__(1), name: '生态香米', count: 60, quality: 3, cfgId: 1, vd: [], shelfLifeDays: null },
+    { id: 912, x: 1, y: 0, w: 1, h: 1, icon: window.__HZ_ICOV__(3), name: '咖啡', count: 5, quality: 3, cfgId: 3, vd: [], shelfLifeDays: 2.5 },
+    { id: 913, x: 2, y: 0, w: 1, h: 1, icon: window.__HZ_ICOV__(2), name: '烤肉', count: 8, quality: 3, cfgId: 2, vd: [], shelfLifeDays: 0.5 }
+  ]));
+  await page.evaluate((itemsJson) => {
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_InfoAMsg', data: { ownerId: 900101, backpackName: '食材柜', gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 200 } });
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_ItemsAMsg', data: { itemsJson: itemsJson } });
+    window.__CERAIL__.scan();
+  }, ctnItemsJson);
+  await bp.waitForFunction(() => !!document.getElementById('srnSortBtn2'), null, { timeout: 9000 });
+  const accessBtns = await bp.evaluate(() => ({
+    sort2: !!document.getElementById('srnSortBtn2'),
+    sortBag: !!document.getElementById('srnSortBtn'),
+    store: !!document.getElementById('srnStoreBtn'),
+    badges2: !!document.getElementById('srnBadges2')
+  }));
+  check('nb:access-ctn-sort', accessBtns.sort2, '取用：柜侧排序钮在位（srnSortBtn2）');
+  check('nb:access-no-store', !accessBtns.store && !accessBtns.sortBag, '取用：袋侧按钮对即摘（陈旧 bpBag=true 不误装——闪钮竞态根治）');
+  /* 取用排序：选饱腹 → DISP_CT 生效 + 柜格角标（s1 降序 48>15>2） */
+  await bp.locator('#srnSortBtn2').click();
+  await page.waitForTimeout(80);
+  await bp.locator('#srnSortPop2 [data-k="sat"]').click();
+  await page.waitForTimeout(400);
+  const ct1 = await page.evaluate(() => window.__CERAIL__.dispInfo());
+  const ct1Badges = await bp.evaluate(() => [...document.querySelectorAll('#srnBadges2 i')].map((i) => i.textContent));
+  /* 角标=DOM 序（Vue v-for 不重排 DOM，视觉位由 x/y 决定——下标直配不变量）；
+     排序本身由模型位断言证明（s1 降序 48>15>2 → 913@0,911@1,912@2） */
+  const ct1Model = await bp.evaluate(() => {
+    const app = document.getElementById('app');
+    const su = app && app._vnode && app._vnode.component && app._vnode.component.setupState;
+    return su && su.bagA ? su.bagA.items.map((it) => it.id + '@' + it.x) : [];
+  });
+  check('nb:access-sort-applied', !!(ct1.ct && ct1.ct.choice === 'sat' && String(ct1.ct.owner) === '900101' && ct1.nb && ct1.nb.ctn === 'sat' && ct1.nb.bag === 'official'),
+    'dispInfo ct=' + JSON.stringify(ct1.ct) + ' nb=' + JSON.stringify(ct1.nb));
+  check('nb:access-sort-model', ct1Model.join(',') === '911@1,912@2,913@0', '取用模型位（饱腹降序 48>15>2 → 位序 913@0,911@1,912@2；数组序不重排）=' + ct1Model.join(','));
+  check('nb:access-badges', ct1Badges.join(',') === '+15,+2,+48', '取用角标值（DOM 序，逐格对位）=' + ct1Badges.join(','));
+  /* 整理物资（dual）：A=背包双钮 + B=柜仅排序；两侧独立排序互不顶替 */
+  await page.evaluate((itemsJson) => {
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_InfoAMsg', data: { ownerId: 900001, backpackName: '背包', isDualBag: true, gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 100 } });
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_ItemsAMsg', data: { itemsJson: JSON.stringify([0, 1, 2, 3, 4, 5, 6, 7].map((x) => ({ id: 900 + x + 1, x: x, y: x % 2, w: 1, h: 1, icon: window.__HZ_ICOV__((x % 9) + 1), name: '物品' + (900 + x + 1), count: 3, quality: 3, cfgId: (x % 9) + 1, vd: [], shelfLifeDays: null }))) } });
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_InfoBMsg', data: { ownerId: 900101, backpackName: '食材柜', canTag: true, gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 200 } });
+    window.__HZ_POST__('BackpackUI', { type: 'WebUI_Backpack_ItemsBMsg', data: { itemsJson: itemsJson } });
+    window.__CERAIL__.scan();
+  }, ctnItemsJson);
+  await page.waitForTimeout(400);
+  const dual1 = await bp.evaluate(() => {
+    const a = document.querySelector('.bag-panel:not(.is-storage)');
+    const b = document.querySelector('.bag-panel.is-storage');
+    return {
+      aSort: !!(a && a.querySelector('#srnSortBtn')), aStore: !!(a && a.querySelector('#srnStoreBtn')),
+      bSort: !!(b && b.querySelector('#srnSortBtn2')), bStore: !!(b && b.querySelector('#srnStoreBtn')),
+      storeN: document.querySelectorAll('#srnStoreBtn').length
+    };
+  });
+  check('nb:dual-bag-pair', dual1.aSort && dual1.aStore, '整理物资 A 侧=排序+入库双钮 ' + JSON.stringify(dual1));
+  check('nb:dual-ctn-only-sort', dual1.bSort && dual1.storeN === 1 && !dual1.bStore, '整理物资 B 侧=仅排序（入库全页唯一挂 A 侧）');
+  /* 两侧独立：A=饱腹、B=保质期（B 侧取用态选的 sat 续排被覆写为 shelf——同页柜侧单态） */
+  await bp.locator('#srnSortBtn').click();
+  await page.waitForTimeout(80);
+  await bp.locator('#srnSortPop [data-k="sat"]').click();
+  await page.waitForTimeout(200);
+  await bp.locator('#srnSortBtn2').click();
+  await page.waitForTimeout(80);
+  await bp.locator('#srnSortPop2 [data-k="shelf"]').click();
+  await page.waitForTimeout(450);
+  const ct2 = await page.evaluate(() => window.__CERAIL__.dispInfo());
+  const dualBadges = await bp.evaluate(() => ({
+    bag: document.querySelectorAll('#srnBadges i').length,
+    ctn: document.querySelectorAll('#srnBadges2 i').length
+  }));
+  check('nb:dual-independent', !!(ct2.choice === 'sat' && String(ct2.owner) === '900001' && ct2.ct && ct2.ct.choice === 'shelf' && String(ct2.ct.owner) === '900101'),
+    'DISP=bag:' + ct2.choice + '@' + ct2.owner + ' / ct:' + ct2.ct.choice + '@' + ct2.ct.owner);
+  check('nb:dual-badges-both', dualBadges.bag >= 8 && dualBadges.ctn >= 3, '双侧角标层 bag=' + dualBadges.bag + ' ctn=' + dualBadges.ctn);
+  check('nb:console-clean-sofar', consoleErrors.length === 0 && pageErrors.length === 0,
+    'console errors=' + consoleErrors.length + ' pageErrors=' + pageErrors.length + (consoleErrors[0] ? ' | ' + consoleErrors[0] : '') + (pageErrors[0] ? ' | ' + pageErrors[0] : ''));
 
   /* ---- ② MaterialRack：左面板入口（bag 现存医疗 7 件 → 零命中分支） ---- */
   await showScene('MaterialRack');
