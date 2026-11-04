@@ -19,7 +19,8 @@ function check(name, ok, detail) {
   page.on('pageerror', (e) => errs.push(String(e).slice(0, 140)));
 
   const MACH = ['Cooking', 'BrewPanel', 'RatCage', 'Compressor', 'DyePanel', 'Shredder', 'ToolTable', 'Trade', 'DroneHub'];
-  const FOOD = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, DyePanel: 1 };
+  /* v1.8.10 十三批：排序钮集合 FOOD(食品五设施)→SORT（+Trade +DroneHub −DyePanel） */
+  const FOOD = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, Trade: 1, DroneHub: 1 };
   const FRAME_ID = { Trade: 'Trade' };
 
   const frameOf = (k) => page.frames().find((f) => decodeURIComponent(f.url()).indexOf('/' + (FRAME_ID[k] || k) + '.') >= 0);
@@ -164,9 +165,9 @@ function check(name, ok, detail) {
     if (FOOD[key]) check(key + ':sortbtn', s.sortBtn, '');
     else check(key + ':nosortbtn', !s.sortBtn, '');
     if (key === 'Trade') {
-      /* v1.8.9：买家条（srTrade）与默认价值排序均已随作者令退役——fsort 恒 official、
-         不再自动重排（官方真实排布）；价值角标保留 */
-      check('trade:fsort-official', await page.evaluate(() => window.__CERAIL__.state.fsort) === 'official', '默认不排序（v1.8.9 退役）');
+      /* v1.8.10 十三批：Trade 排序钮回归（SORT 集合）——默认仍官方序（v1.8.9 退役「自动
+         价值排序」的口径不变：不自动重排），选维是玩家显式动作；金色价值角标默认常显 */
+      check('trade:fsort-official', await page.evaluate(() => window.__CERAIL__.state.fsort) === 'official', '有排序钮、默认官方序（v1.8.9 自动排序不复活）');
       await page.waitForTimeout(2500);
       const tb = await frameOf('Trade').evaluate(() => [...document.querySelectorAll('#srBadgeLayer i')].slice(0, 5).map((i) => i.textContent));
       check('trade:badges', tb.length > 0, `[${tb}]`);

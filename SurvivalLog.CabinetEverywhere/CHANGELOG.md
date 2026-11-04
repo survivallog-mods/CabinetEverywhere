@@ -3,6 +3,49 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十三批（2026-11-04，排序钮扩交易/调度机队 + 网格寻址根修 + 颜料桶撤钮）
+
+**作者令：「将咱们的排序按钮与相关功能添加到烹饪、老鼠笼、酿酒桶、交易、调度机队、
+口粮压制机界面。以上部分界面已经有排序按钮了，但是功能不可用。」**（后续补充症状：
+数值不显示、有重新排序但无法确认对错；颜料桶「先去掉，我之后要想想怎么做」。）
+
+- **根因（实机 CDP 取证，一击定案）**：DISP 显示层排序的模型适配器（dispModel）假设
+  机器页网格全局名=`w.backpack`——实机各页变量名各不相同（官方源码逐页取证：
+  Cooking/RatCage/ToolTable=`backpack`、Brew/Dye=`bagBag`、Compressor=`cartBag`、
+  DroneHub=`bagGrid`；Trade 页无 webui-bag，tradeBagGrid 是纯 Vue v-for）。非
+  `backpack` 页 dispModel 恒 null → dispApply 早退 → **排序+数值角标全链静默死**
+  （显示层无失败路径、toast 恒报成功）——这就是「部分界面排序无效/数值不显示」。
+  本地 harness 从未暴露：fixtures 恰好全部沿用 `backpack` 变量名（夹具保真缺口）。
+- **修 ①（railui.page.js dispGridOf）**：grid 寻址改 **containerId 反向匹配**——
+  webui-bag 实例公开 API `getContainerId()` 即 DOM 容器 id，扫帧 window 自有属性找
+  `getContainerId()===SCENES.grid` 的实例（三重 API 校验防误命中），命中缓存
+  `w.__srGridBy`（iframe 重载=新 window=缓存天然失效；null 也缓存不再扫）；
+  `w.backpack` 降为 backpackGrid 页兜底。
+- **修 ②（Trade vue 分支）**：dispModel 加 `family==='trade'` 分支——读
+  `setupState.bag`（reactive，与 BackpackUI 原生页同路），items/cols/rows/ownerKey
+  （字符串制）直取；写 x/y 响应式自渲染，角标下标直配同源。
+- **扩容（SORT_KEYS，原 FOOD_KEYS 食品五设施）**：+Trade +DroneHub −DyePanel →
+  烹饪/酿酒桶/老鼠笼/口粮压制机/交易/调度机队 六页统一挂页脚排序钮（FSORTS 7 项）；
+  `isFoodScene()` 更名 `isSortScene()`（引用仅 badgeSpec/render 显隐门两处）。
+  **颜料桶撤钮**（作者令：显隐门移出即藏，FSORTS/DISP 链保留供重设计）。
+- **Trade 口径（与十批「去掉默认排序」令不冲突的收口）**：进页仍默认官方序（applyScene
+  通用路，**不复活自动价值排序**、整理性能零回退）；页脚钮选维才重排；badgeSpec Trade
+  分支改双态——官方序时金色交易价值角标**常显**（十批保留项不动），选维后改显所选维
+  数值。
+- **夹具保真修复（design-proto/railui-root-harness.html）**：Trade mock 行字段
+  `itemId`→`id`——TradeUI handler 零转换（bag.items=parse(bagItemsJson)）、官方模板
+  v-for/拖拽直用 it.id ⇒ 真实协议行字段=id；旧 mock 投 webui-bag 的 itemId 形状=
+  it.id 恒 undefined（CERAIL join 全 miss 的假阴性源）。
+- **回归**：`node --check` 过；本地测试床七页断言全绿——六页（Cooking/BrewPanel/
+  RatCage/Compressor/Trade/DroneHub）排序钮可见+选 sat 后模型重排+角标数值
+  （+15/+8）非递减、Trade 默认官方序+金色价值角标（360/99）常显+选 value 后 905
+  (99) 重排至第二格（模型 x:1+DOM 59px+角标 99@110px 三点对齐）；DyePanel 钮隐藏。
+  harness 套件与基线核对：switch-cabinet 27/27、tagfilter-gate 15/15 全过；mount
+  宽度断言与 regression/tidy/store-all 超时=**改动前基线同败（存量，十二批记录
+  13 个 width 断言基线同败同源）**，非本批引入。ingame-matrix 断言同步（FOOD 表→
+  新集合：Trade/DroneHub 翻转 sortbtn、DyePanel 翻转 nosortbtn、trade:fsort 文案
+  改「有排序钮、默认官方序」）。dotnet build 见发版记录。
+
 ## 待发版·十二批（2026-11-04，A/D 步进活动页签滚回可见区——官方零 scroll-into-view 的补链）
 
 **作者缺陷单：「页签栏按 AD 键移动柜子，移动到后面当前选择的柜子没有显示了……预期应该

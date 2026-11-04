@@ -114,7 +114,7 @@
   /* ================= v13.5-v13.8 机器界面简化+设施排序（作者 2026-10-31 执行令） =================
      9 个机器页（不含 BackpackUI 原生页/MaterialRack/温室 GreenhouseBuild）侧栏 plain：
      无头部/搜索/快捷标签/排序工具行/悬停条/「N 行」行；页脚=排序钮(可排序页)+格数+入库|整理。
-     【v1.8.10 十二批（作者 2026-11-04 令）】排序钮集合 FOOD_KEYS(食品五设施)→SORT_KEYS 扩容：
+     【v1.8.10 十三批（作者 2026-11-04 令）】排序钮集合 FOOD_KEYS(食品五设施)→SORT_KEYS 扩容：
      +Trade（手动选维，默认官方序——十批退役的「自动价值排序」不复活，只给手动入口）+
      DroneHub（调度机队=bag 族物品面板）；−DyePanel（作者令先撤钮，颜料桶排序待重设计）。
      Trade 默认价值排序已随 v1.8.9 退役（本次加的是手动钮，口径见 badgeSpec）。 */
@@ -1212,7 +1212,7 @@
      trade=TradeUI（纯 Vue 页，setupState.bag——ownerKey 字符串制）；grid=机器页当前容器
      （webui-bag 实例）。ownerId=页面自带权威（袋侧=背包实体 id、柜侧=柜 ownerId），
      dispOwnerOf 消费。
-     【v1.8.10 grid 寻址修正（十二批实机实锤）】旧实现假设全局名 w.backpack——实机各页
+     【v1.8.10 grid 寻址修正（十三批实机实锤）】旧实现假设全局名 w.backpack——实机各页
      变量名不同（Cooking/RatCage/ToolTable=backpack、Brew/Dye=bagBag、Compressor=cartBag、
      DroneHub=bagGrid），非 backpack 页 dispModel 恒 null → 排序+角标全链静默死（作者实机
      「排序无效/数值不显示」根因）。修正=按 containerId 反向寻址：webui-bag 实例自带
@@ -1540,7 +1540,7 @@
     if (cfg.after) cfg.after();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
-  /* 角标规格：可排序页=当前属性排序维；Trade 特例（十二批）——官方序时常显金色交易价值
+  /* 角标规格：可排序页=当前属性排序维；Trade 特例（十三批）——官方序时常显金色交易价值
      角标（v1.8.9 十批口径保留），选了维度后改显所选维数值（与食品页同口径） */
   function badgeSpec() {
     if (st.scene === 'Trade' && (!st.fsort || st.fsort === 'official')) return { k: 'value', color: FBCOLOR.tvalue };
@@ -1815,7 +1815,7 @@
     /* v1.8.9：Trade 默认价值排序退役（applyScene 注释）——不再重排物品；仅 prime 一次模型：
        choice=null 的 dispApply 只设 DISP.model（角标 join 依赖），走 restore 早退=零排序
        零 x/y 写入零 renderItems（官方格重建从「两遍」回到「一遍」）。
-       v1.8.10 十二批：Trade 排序钮回归（SORT_KEYS）——prime 分支不变（默认仍官方序），
+       v1.8.10 十三批：Trade 排序钮回归（SORT_KEYS）——prime 分支不变（默认仍官方序），
        选维后由下方重抹路接管（trade vue 分支模型，见 dispModel）。 */
     if (st.scene === 'Trade' && !DISP.model) dispApply(DISP);
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
@@ -3370,7 +3370,7 @@
        旧实现 localStorage 恢复标签不重排）。v1.8.9：Trade 默认价值排序**退役**（作者令
        「去掉」——一键整理后显示层重排把官方格全量重建放大成两遍=卡顿帮凶；退役后 Trade
        恒保持官方真实排布；金色价值角标保留，模型 prime 见 render 的 Trade 分支）。
-       v1.8.10 十二批：Trade 排序钮回归（SORT_KEYS）——**进页仍默认 official**（退役口径
+       v1.8.10 十三批：Trade 排序钮回归（SORT_KEYS）——**进页仍默认 official**（退役口径
        不变：不自动重排），选维是玩家显式动作（页脚钮），整理性能路径零回退。 */
     st.fsort = 'official';
     /* v1.8.5：显示层排序态随场景重置；换场景=换模型（vue/grid 适配器现取），旧模型 real
