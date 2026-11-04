@@ -32,6 +32,7 @@ internal static class TabInjector
     {
         public readonly HashSet<long> Injected = new(); // 本轮会话已注入的 ownerId（防重复/防刷屏）
         public bool WasActive;
+        public bool Pending; // 十三批：开界面后官方数组未建/未就绪 → FastPoll 每帧续查直到首注入
     }
 
     private static readonly Dictionary<string, UiSession> Sessions = new();
@@ -106,17 +107,62 @@ internal static class TabInjector
         }
     }
 
+    /// <summary>
+    /// v1.8.9 十三批：开界面瞬帧注入（作者缺陷单「刚打开界面页签只显示背包+冰箱，闪一下
+    /// 才加载柜子页签」）。根因：注入走 0.5s 轮询——开界面后最多白等 500ms，首推 BagMsg
+    /// 只带原生页签，下一次 Repush 才是全量=可见闪烁（2026-11-01「烹饪页签迟到」同源）。
+    /// 修（照 RailUi.FastPoll v1.8.9 Bug4 帧级快通道先例）：每帧只做翻转/未决判定
+    /// （SafeActive=layer 查询 ×4，廉价），命中（刚开的翻转帧，或官方数组未建的 Pending
+    /// 期）才跑该 UI 全量注入——在开界面那一帧就改完 BagTabs 并 Repush，抢在官方首推
+    /// 序列化之前落地（即便同帧竞态，两包间隔≤1 帧=不可感知）。稳态活跃（WasActive 且
+    /// 非 Pending）零额外动作，重活仍归 0.5s 轮询。
+    /// </summary>
+    internal static void FastPoll()
+    {
+        if (CabinetEverywherePlugin.Enabled != null && !CabinetEverywherePlugin.Enabled.Value)
+            return;
+        try
+        {
+            if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                return;
+            var rus = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance;
+            if (rus == null) return;
+
+            if (CabinetEverywherePlugin.EnableCooking.Value && JustOpened(rus, CookingType, "cooking"))
+                PollCooking(rus);
+            if (CabinetEverywherePlugin.EnableRatCage.Value && JustOpened(rus, RatCageType, "ratcage"))
+                PollRatCage(rus);
+            if (CabinetEverywherePlugin.EnableBrew.Value && JustOpened(rus, BrewType, "brew"))
+                PollBrew(rus);
+            if (CabinetEverywherePlugin.EnableDye.Value && JustOpened(rus, DyeType, "dye"))
+                PollDye(rus);
+        }
+        catch (Exception e)
+        {
+            WarnOnce("fastpoll", "页签瞬帧注入异常: " + e.Message);
+        }
+    }
+
+    /// <summary>翻转帧或 Pending 期（活跃且未入稳态）——本帧立即全量注入的判据。</summary>
+    private static bool JustOpened(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t, string key)
+    {
+        var s = Session(key);
+        if (s.WasActive && !s.Pending) return false; /* 稳态活跃：交给 0.5s 轮询（首注入/对账已完成） */
+        return SafeActive(rus, t); /* 从未开过（恒 false 自然空转）/刚开翻转帧/数组未建——命中 */
+    }
+
     // ---- 烹饪 ----
     private static void PollCooking(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
     {
         var s = Session("cooking");
         bool active = SafeActive(rus, CookingType);
-        if (!active) { s.WasActive = false; return; }
+        if (!active) { s.WasActive = false; s.Pending = false; return; }
 
         if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
         var st = rus.GetStateByUI(CookingType)?.TryCast<State_Web_Cooking>();
         var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) return;
+        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
+        s.Pending = false;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewCooking);
         var ctx = TabGate.TagCtx.Build();
@@ -142,12 +188,13 @@ internal static class TabInjector
     {
         var s = Session("ratcage");
         bool active = SafeActive(rus, RatCageType);
-        if (!active) { s.WasActive = false; return; }
+        if (!active) { s.WasActive = false; s.Pending = false; return; }
 
         if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
         var st = rus.GetStateByUI(RatCageType)?.TryCast<State_Web_RatCage>();
         var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) return;
+        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
+        s.Pending = false;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewRatCage);
         var ctx = TabGate.TagCtx.Build();
@@ -171,12 +218,13 @@ internal static class TabInjector
     {
         var s = Session("brew");
         bool active = SafeActive(rus, BrewType);
-        if (!active) { s.WasActive = false; return; }
+        if (!active) { s.WasActive = false; s.Pending = false; return; }
 
         if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
         var st = rus.GetStateByUI(BrewType)?.TryCast<State_Web_Brew>();
         var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) return;
+        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
+        s.Pending = false;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewBrewPanel);
         var ctx = TabGate.TagCtx.Build();
@@ -200,12 +248,13 @@ internal static class TabInjector
     {
         var s = Session("dye");
         bool active = SafeActive(rus, DyeType);
-        if (!active) { s.WasActive = false; return; }
+        if (!active) { s.WasActive = false; s.Pending = false; return; }
 
         if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
         var st = rus.GetStateByUI(DyeType)?.TryCast<State_Web_Dye>();
         var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) return;
+        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
+        s.Pending = false;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewDyePanel);
         var ctx = TabGate.TagCtx.Build();

@@ -223,6 +223,9 @@ internal sealed class AccessTicker : MonoBehaviour
             // v1.8.9 Bug4 帧级快通道：官方排序/搬运改叠数 ≤1 帧检出并重推（替代 0.5s 泵量化等待，
             // 「一键整理响应 2s+」排查修复；空闲≈零开销，重活仍在 0.5s Tick）
             RailUi.FastPoll();
+            // v1.8.9 十三批：开界面瞬帧注入柜子页签（0.5s 轮询量化是首开闪烁根源——首推只带
+            // 原生背包+冰箱；每帧只查翻转，开界面那帧抢在首推序列化前注入全量；稳态零动作）
+            TabInjector.FastPoll();
             Tick(Time.deltaTime);
         }
         catch { /* 单帧异常不终止轮询 */ }
