@@ -113,10 +113,13 @@
 
   /* ================= v13.5-v13.8 机器界面简化+设施排序（作者 2026-10-31 执行令） =================
      9 个机器页（不含 BackpackUI 原生页/MaterialRack/温室 GreenhouseBuild）侧栏 plain：
-     无头部/搜索/快捷标签/排序工具行/悬停条/「N 行」行；页脚=排序钮(食品五设施)+格数+入库|整理。
-     食品五设施页脚左下角排序钮（作者参考图样式 7 项）；Trade 默认价值排序已随 v1.8.9 退役。 */
+     无头部/搜索/快捷标签/排序工具行/悬停条/「N 行」行；页脚=排序钮(可排序页)+格数+入库|整理。
+     【v1.8.10 十二批（作者 2026-11-04 令）】排序钮集合 FOOD_KEYS(食品五设施)→SORT_KEYS 扩容：
+     +Trade（手动选维，默认官方序——十批退役的「自动价值排序」不复活，只给手动入口）+
+     DroneHub（调度机队=bag 族物品面板）；−DyePanel（作者令先撤钮，颜料桶排序待重设计）。
+     Trade 默认价值排序已随 v1.8.9 退役（本次加的是手动钮，口径见 badgeSpec）。 */
   var PLAIN_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Shredder: 1, Compressor: 1, DyePanel: 1, ToolTable: 1, Trade: 1, DroneHub: 1 };
-  var FOOD_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, DyePanel: 1 };
+  var SORT_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, Trade: 1, DroneHub: 1 };
   var FSORTS = [
     { k: 'official', label: '默认', ico: '⊞' },
     { k: 'sat', label: '饱腹', ico: '🍗' },
@@ -1164,7 +1167,7 @@
      重渲染官方格，动作保真红线零触碰）；角标=壳层 overlay（#srBadgeLayer 挂自家
      srGridHost 内，pointer-events:none，只读官方 .item 几何，零 addEventListener）。 */
   function isPlainScene() { return !!PLAIN_KEYS[st.scene]; }
-  function isFoodScene() { return !!FOOD_KEYS[st.scene]; }
+  function isSortScene() { return !!SORT_KEYS[st.scene]; } /* v1.8.10：isFoodScene 更名（集合已非纯食品页） */
   function fsortLabel(k) { for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
   /* renderFootSortPop 已收敛 makeSortMenu 实例（menuFoot，bind 创建） */
   /* ================= 显示层排序 v2（v1.8.5 缺陷单#1：ProjectCook page.js 机制移植——模型级） =================
@@ -1206,21 +1209,52 @@
     return null;
   }
   /* 模型适配器：vue=BackpackUI（袋侧=A；柜侧=dual?B:A——取用单柜也在 bagA 槽）；
-     grid=机器页当前容器（w.backpack）。ownerId=页面自带权威（袋侧=背包实体 id、柜侧=柜
-     ownerId），dispOwnerOf 消费 */
+     trade=TradeUI（纯 Vue 页，setupState.bag——ownerKey 字符串制）；grid=机器页当前容器
+     （webui-bag 实例）。ownerId=页面自带权威（袋侧=背包实体 id、柜侧=柜 ownerId），
+     dispOwnerOf 消费。
+     【v1.8.10 grid 寻址修正（十二批实机实锤）】旧实现假设全局名 w.backpack——实机各页
+     变量名不同（Cooking/RatCage/ToolTable=backpack、Brew/Dye=bagBag、Compressor=cartBag、
+     DroneHub=bagGrid），非 backpack 页 dispModel 恒 null → 排序+角标全链静默死（作者实机
+     「排序无效/数值不显示」根因）。修正=按 containerId 反向寻址：webui-bag 实例自带
+     getContainerId()（公开 API），扫帧 window 自有属性找 getContainerId()===SCENES.grid
+     的实例；命中缓存在 w.__srGridBy（iframe 重载=新 window=缓存天然失效），w.backpack
+     降为兜底（harness 旧夹具兼容）。Trade 页无 webui-bag（tradeBagGrid 是 Vue v-for），
+     走 trade 分支读 setupState.bag（reactive，写 x/y 响应式自渲染与 BackpackUI 同路）。 */
+  function dispGridOf(w, wantId) {
+    if (!w) return null;
+    try {
+      if (!w.__srGridBy) w.__srGridBy = {};
+      if (w.__srGridBy[wantId] !== undefined) return w.__srGridBy[wantId];
+      var hit = null;
+      for (var k in w) {
+        var v; try { v = w[k]; } catch (e) { continue; }
+        if (v && typeof v.getItems === 'function' && typeof v.getContainerId === 'function'
+          && typeof v.renderItems === 'function' && v.getContainerId() === wantId) { hit = v; break; }
+      }
+      if (!hit && wantId === 'backpackGrid' && w.backpack) hit = w.backpack; /* 兜底：非容器 id 制的旧夹具 */
+      w.__srGridBy[wantId] = hit; /* null 也缓存（查过=不再扫；实例在页面生命周期内恒定） */
+      return hit;
+    } catch (e) { return null; }
+  }
   function dispModel(D) {
     var f = dispFrame();
     if (!f) return null;
     try {
-      if (SCENES[f.key] && SCENES[f.key].native) {
+      var sc = SCENES[f.key] || {};
+      if (sc.native) {
         var doc = f.doc, su = nbVueSu(doc);
         if (!su || !su.bagA || !Array.isArray(su.bagA.items)) return null;
         var dual = !!refVal(su.isDualBag);
         var bag = (D === DISP_CT && dual && su.bagB && Array.isArray(su.bagB.items)) ? su.bagB : su.bagA;
         return { kind: 'vue', frame: f, items: bag.items, cols: bag.gridCols || 12, rows: bag.gridRows || 33, su: su, ownerId: bag.ownerId || 0 };
       }
+      if (sc.family === 'trade') {
+        var tSu = nbVueSu(f.doc), tBag = tSu && tSu.bag;
+        if (!tBag || !Array.isArray(tBag.items)) return null;
+        return { kind: 'vue', frame: f, items: tBag.items, cols: tBag.cols || 12, rows: tBag.rows || 33, su: tSu, ownerId: tBag.ownerKey != null ? tBag.ownerKey : store.bag };
+      }
       var w = f.el.contentWindow || f.doc.defaultView;
-      var grid = w && w.backpack;
+      var grid = dispGridOf(w, sc.grid);
       if (!grid || typeof grid.getItems !== 'function' || typeof grid.renderItems !== 'function') return null;
       var cfg = grid.getConfig();
       return { kind: 'grid', frame: f, items: grid.getItems(), cols: cfg.cols || 12, rows: cfg.rows || 33, grid: grid };
@@ -1506,10 +1540,11 @@
     if (cfg.after) cfg.after();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
-  /* 角标规格：Trade=交易价值（金）；食品设施=当前属性排序维 */
+  /* 角标规格：可排序页=当前属性排序维；Trade 特例（十二批）——官方序时常显金色交易价值
+     角标（v1.8.9 十批口径保留），选了维度后改显所选维数值（与食品页同口径） */
   function badgeSpec() {
-    if (st.scene === 'Trade') return { k: 'value', color: FBCOLOR.tvalue };
-    if (isFoodScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
+    if (st.scene === 'Trade' && (!st.fsort || st.fsort === 'official')) return { k: 'value', color: FBCOLOR.tvalue };
+    if (isSortScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
   }
   function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值）。
@@ -1773,13 +1808,15 @@
     if (plainSc) {
       st.mode = 'grid'; st.global = false; st.query = ''; st.tags = [];
     }
-    el.srFoodSort.hidden = !isFoodScene();
+    el.srFoodSort.hidden = !isSortScene();
     if (menuFoot) menuFoot.sync();
     if (menuFoot) menuFoot.refresh();
     ensureBadgeObserver();
     /* v1.8.9：Trade 默认价值排序退役（applyScene 注释）——不再重排物品；仅 prime 一次模型：
        choice=null 的 dispApply 只设 DISP.model（角标 join 依赖），走 restore 早退=零排序
-       零 x/y 写入零 renderItems（官方格重建从「两遍」回到「一遍」）。 */
+       零 x/y 写入零 renderItems（官方格重建从「两遍」回到「一遍」）。
+       v1.8.10 十二批：Trade 排序钮回归（SORT_KEYS）——prime 分支不变（默认仍官方序），
+       选维后由下方重抹路接管（trade vue 分支模型，见 dispModel）。 */
     if (st.scene === 'Trade' && !DISP.model) dispApply(DISP);
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
     if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(DISP, st.fsort, st.currentId);
@@ -2470,6 +2507,7 @@
     st.sel = null;
     saveSnap();
     if (el.rail) render();
+    scrollActiveTabIntoView(); /* 十二批：切柜回包落点即时回滚（官方重建路由入槽观察器 rAF 覆盖；函数声明提升可前调） */
   }
   /* ---- postMessage 包装链（tagfilter wrapRelay 同构，只读观察恒放行）----
      保留前一引用并在尾部调用=串联：__SLTF__ 先包装则 rail 挂其后、rail 先包装则
@@ -3154,17 +3192,76 @@
   /* v1.8.7：官方页签栏进槽兜底——mount 期页签栏未建（Vue 异步渲染/官方晚建）或被官方
      重建到文档别处时，把真件搬进 #srTabs 槽（槽内已有匹配件=幂等早退）。挂在
      ensureMountedFrame 的「在位」快速路径上：rail 装配不变量不动，只补页签件。 */
+  /* ---- v1.8.9 十二批：活动页签滚回可见区（作者 2026-11-04 缺陷单「A/D 移到后面当前
+     选择的柜子跑出页签栏之外」）----
+     根因：官方页签链零 scroll-into-view——renderBagTabs 每次都 innerHTML 整体重建滚动
+     容器内容（浏览器钳回 scrollLeft=0，手动滚过的位置一并丢），滚动唯一通道=手动
+     < / > 按钮 scrollBy ±step；原生场景页签=背包+冰箱一两个不溢出从未暴露，mod 注入
+     全柜后溢出常态化 → A/D 切到屏外页签无人回滚。修：①官方页签栏入槽即布
+     MutationObserver（childList 子树，iframe 自窗构造器——观察器不跨文档），官方重建
+     → rAF 合帧回滚一次（burst 突变只滚一次）；②followActive 渲染后即时回滚（直发路）。
+     回滚只写官方容器 scrollLeft/scrollTop（active 页签矩形差，已可见=零写入幂等
+     零抖动——§4.10 同款纪律），零官方监听触碰（§0 红线）。容器判定=slot 内向上走、
+     **实际溢出即修**（官方 .bag-tabs-scroll/.left-tabs-scroll 是 overflow-x:hidden
+     的程序滚动容器，按 auto/scroll 判会漏）；横向 bag/trade/cart 与纵向 tt 竖列同路。
+     钉住页签（背包位）在滚动容器外=走不到可滚祖先，天然空操作。 */
+  var TABSCROLL = { slot: null, obs: null, raf: 0 };
+  function tabScrollUnarm() {
+    try { if (TABSCROLL.obs) { TABSCROLL.obs.disconnect(); } } catch (e) { }
+    if (TABSCROLL.raf) { try { TABSCROLL.raf.win.cancelAnimationFrame(TABSCROLL.raf.id); } catch (e) { } }
+    TABSCROLL.obs = null; TABSCROLL.raf = 0; TABSCROLL.slot = null;
+  }
+  function scrollActiveTabIntoView(slot) {
+    try {
+      slot = slot || el.srTabs;
+      if (!slot) return;
+      var act = slot.querySelector('.bag-tab.active,.left-tab.active,.cabinet-tab.active');
+      if (!act) return;
+      var n = act.parentElement;
+      while (n && n !== slot) {
+        if (n.scrollWidth > n.clientWidth + 1) {
+          var cr = n.getBoundingClientRect(), tr = act.getBoundingClientRect();
+          if (tr.left < cr.left + 1) n.scrollLeft -= (cr.left - tr.left) + 4;
+          else if (tr.right > cr.right - 1) n.scrollLeft += (tr.right - cr.right) + 4;
+        }
+        if (n.scrollHeight > n.clientHeight + 1) {
+          var cv = n.getBoundingClientRect(), tv = act.getBoundingClientRect();
+          if (tv.top < cv.top + 1) n.scrollTop -= (cv.top - tv.top) + 4;
+          else if (tv.bottom > cv.bottom - 1) n.scrollTop += (tv.bottom - cv.bottom) + 4;
+        }
+        n = n.parentElement;
+      }
+    } catch (e) { }
+  }
+  function armTabScrollFollow(slot) {
+    try {
+      if (TABSCROLL.slot === slot && TABSCROLL.obs) { scrollActiveTabIntoView(slot); return; }
+      tabScrollUnarm();
+      TABSCROLL.slot = slot;
+      var V = slot.ownerDocument.defaultView;
+      TABSCROLL.obs = new V.MutationObserver(function () {
+        if (TABSCROLL.raf) return; /* rAF 单飞：官方整表 innerHTML=一串突变，合帧只滚一次 */
+        TABSCROLL.raf = { win: V, id: V.requestAnimationFrame(function () {
+          TABSCROLL.raf = 0;
+          scrollActiveTabIntoView(TABSCROLL.slot);
+        }) };
+      });
+      TABSCROLL.obs.observe(slot, { childList: true, subtree: true });
+      scrollActiveTabIntoView(slot);
+    } catch (e) { }
+  }
   function ensureTabsInSlot(f) {
     try {
       var sc = SCENES[f.key], doc = f.doc;
       if (!sc || !sc.tabs || !doc) return;
       var slot = doc.getElementById('srTabs');
       if (!slot) return;
+      armTabScrollFollow(slot); /* 十二批：官方重建→rAF 回滚活动页签（真件在槽的早退路同样要布防） */
       if (slot.querySelector(sc.tabs)) return; /* 真件已在槽内（#bagTabs/.left-tabs/.bag-tabs 均容器内可查） */
       var t = sc.tabs.charAt(0) === '#'
         ? doc.getElementById(sc.tabs.slice(1))
         : doc.querySelector(sc.tabs);
-      if (t && t !== slot) { slot.appendChild(t); bindTabDrag(t, f.key); }
+      if (t && t !== slot) { slot.appendChild(t); bindTabDrag(t, f.key); scrollActiveTabIntoView(slot); }
     } catch (e) { }
   }
   function ensureMountedFrame(f) {
@@ -3272,7 +3369,9 @@
     /* v13.5-v13.8：设施排序态随场景；缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；
        旧实现 localStorage 恢复标签不重排）。v1.8.9：Trade 默认价值排序**退役**（作者令
        「去掉」——一键整理后显示层重排把官方格全量重建放大成两遍=卡顿帮凶；退役后 Trade
-       恒保持官方真实排布；金色价值角标保留，模型 prime 见 render 的 Trade 分支） */
+       恒保持官方真实排布；金色价值角标保留，模型 prime 见 render 的 Trade 分支）。
+       v1.8.10 十二批：Trade 排序钮回归（SORT_KEYS）——**进页仍默认 official**（退役口径
+       不变：不自动重排），选维是玩家显式动作（页脚钮），整理性能路径零回退。 */
     st.fsort = 'official';
     /* v1.8.5：显示层排序态随场景重置；换场景=换模型（vue/grid 适配器现取），旧模型 real
        快照随数组身份自然失效 */

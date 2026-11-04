@@ -332,7 +332,12 @@ window.__HZ_READY__ = function () {
         GreenhouseBuild: ['WebUI_GreenhouseBuild_BagMsg', { cartOwnerId: 900001, cartCols: 10, cartRows: 6, cartItems: bagItems }],
         ToolTable: ['WebUI_ToolTable_BagMsg', { bagOwnerId: 900001, bagCols: 6, bagRows: 5, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
         DroneHub: ['WebUI_DroneHub_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
-        Trade: ['WebUI_Trade_BagMsg', { bagCols: 10, bagRows: 6, bagTabsJson: '[]', bagOwnerKey: '900001', bagItemsJson: JSON.stringify(bagItems) }],
+        /* v1.8.10 十二批：Trade 行字段修正 itemId→id——TradeUI handler 零转换（bag.items=parse(bagItemsJson)）、
+           官方模板 v-for/拖拽直用 it.id ⇒ 真实协议行字段=id（旧 mock 投 webui-bag 的 itemId 形状=
+           夹具失真：it.id 恒 undefined，CERAIL 显示层排序 join（byId）全 miss）。 */
+        Trade: ['WebUI_Trade_BagMsg', { bagCols: 10, bagRows: 6, bagTabsJson: '[]', bagOwnerKey: '900001', bagItemsJson: JSON.stringify(bagItems.map(function (b) {
+          return { id: b.itemId, x: b.x, y: b.y, w: 1, h: 1, cfgId: b.cfg || 0, icon: b.icon, name: b.name, count: b.count, quality: 3 };
+        })) }],
         /* v1.8.5：itemsJson 对齐真实页模型字段（cfgId/vd/shelfLifeDays/isExpired——显示层排序
            v2 直接消费页面模型，夹具缺字段=排序键全 null） */
         BackpackUI: [['WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '背包', gridCols: 10, gridRows: 6, currentWeight: 0, maxWeight: 100 }],

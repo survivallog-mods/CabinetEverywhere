@@ -3,6 +3,29 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十二批（2026-11-04，A/D 步进活动页签滚回可见区——官方零 scroll-into-view 的补链）
+
+**作者缺陷单：「页签栏按 AD 键移动柜子，移动到后面当前选择的柜子没有显示了……预期应该
+高亮并显示到页签上，而不是跑出页签栏之外。」**
+
+- **根因（官方链取证）**：官方页签滚动唯一通道=手动 `<`/`>` 按钮（`scrollBy ±step`），
+  `renderBagTabs` **零 scroll-into-view**——且每次 BagMsg 都 `innerHTML` 整体重建滚动
+  容器内容，浏览器把 `scrollLeft` 钳回 0（手动滚过的位置一并丢）。原生场景页签=背包+
+  冰箱一两个从不溢出，此洞从未暴露；mod 注入全柜后溢出常态化 → A/D 切到屏外页签
+  无人回滚=「选中柜子消失在页签栏外」。
+- **修（railui.page.js TABSCROLL 块，两个挂点）**：
+  ①官方页签栏入槽（ensureTabsInSlot）即布 **MutationObserver**（childList 子树，
+  iframe 自窗构造器——观察器不跨文档）→ 官方重建 → rAF 合帧回滚一次（burst 突变
+  只滚一次，官方整表 innerHTML=一串突变）；②followActive 渲染后即时回滚（直发路）。
+  回滚实现=slot 内自 active 页签向上走、**实际溢出即修**（官方滚动容器是
+  overflow-x:hidden 程序滚动，按 auto/scroll 判会漏），只写该容器
+  scrollLeft/scrollTop（矩形差+4px 边距，已可见=零写入幂等零抖动）；横向
+  bag/trade/cart 与纵向 tt 竖列同路；钉住页签（背包位）在滚动容器外=天然空操作。
+  零官方监听触碰（§0 红线）；scroll 写入不触发 childList 突变=观察器零自环。
+- **回归**：`node --check` 过；harness 与改动前基线逐条一致——mount 154/167（13 个
+  width 断言基线同败=存量）、switch-cabinet 27/27、tagfilter-gate 15/15，
+  console/pageerror 全程零报错（新观察器零噪声）。
+
 ## 待发版·十一批（2026-11-04，页签行 100% 官方化收官——▾ 全部容器按钮与容器设置弹窗整链退役）
 
 **作者令：「这个下拉菜单按钮有点大，且左边有一块空白，且跟页签栏其他按钮风格不一样……
