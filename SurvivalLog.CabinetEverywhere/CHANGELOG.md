@@ -3,6 +3,38 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十一批（2026-11-04，页签行 100% 官方化收官——▾ 全部容器按钮与容器设置弹窗整链退役）
+
+**作者令：「这个下拉菜单按钮有点大，且左边有一块空白，且跟页签栏其他按钮风格不一样……
+没有好的建议就删掉。」**（自绘 30×30 半透明暗钮挂官方页签栏行尾=三大观感问题根源：
+尺寸大于官方滚动钮/独立 flex 兄弟节点与官方栏右缘对不齐留空白/皮肤与官方件不一致。）
+
+- **删什么**：行尾 `▾` 全部容器按钮（srAllCtn）及其整条菜单链——①▾ 菜单弹层
+  （srCtnPop：按标签分组跳柜列表，单击切柜/双击开设置）；②容器设置弹窗（srCtnEdit：
+  改名 ≤8 字 + 官方 26 标签分组多选，openEdit/renderEditTags/saveEdit 写 NAMES/CTAGS
+  overlay + rename/setTags 命令）；③切柜统一出口 switchTo（▾ 菜单是最后调用者；
+  切柜路径只剩官方原生页签：点击/A/D，rail 经 followActive 被动跟随）。
+- **退役范围（整链五段，不留死代码）**：
+  ①JS：RAIL_HTML 按钮+两弹层节点、bind 引用表八个 id、srAllCtn/srCtnPopBody/
+  srEdit* 五路接线、closePops ctn/edit 两分支、document 豁免清单 srAllCtn 项、
+  renderCtnPop/ctnItemHtml/openEdit/editTag2Html/renderEditTags/saveEdit、孤儿
+  saveNames/saveCtnTags、st.editId/editTags 与 ST_KEYS 两键；
+  ②CSS：.sr-allctn(:hover)/.sr-popctn(含 plain 锚点变体)/.sr-popedit/.sr-edit-lbl/
+  .sr-edit-name(:focus)/.sr-edit-save(:hover)/.sr-ctnitem(.cur/.cin)；
+  ③随带迁移：「确认入库」按钮原复用 .sr-edit-save 类 → 改专属 .sr-storego 同款规则；
+  ④注释口径：文件头 T5 描述、bind 区、forgeSwitchTo 消费方等四处同步。
+- **保留（数据零丢失）**：存量自定义名/自定义词 overlay（srp_ctn_names/srp_ctn_tags，
+  loadNames/loadCtnTags 载入）只读生效——nm() 显示名、customTagsOf 标签视图/全库命中
+  照旧；rename/setTags 命令契约（RailCommands/OpRename/OpSetTags/白名单）原样保留但
+  UI 不可达；一键入库的标签路由（官方 SetRule 权威）不受影响。
+- **行为变化**：柜子无法再改名/打标签（作者知悉选定）；跳柜=页签滚动+A/D；页签行
+  成为纯官方页签栏 DOM（v1.8.7「页签区还原官方设计」收官，无 mod 元素残留）。
+- **回归**：`node --check` railui.page.js 过；grep 全库 srAllCtn/srCtnPop/srCtnEdit/
+  srEdit*/renderCtnPop/openEdit/switchTo 零活引用（余皆为退役说明注释）；dotnet build
+  0 错（3 警告均为存量）；harness 实跑与改动前基线逐条一致——mount 154/167（13 个
+  width 断言基线同败=旧版固定 720 宽口径过期）、switch-cabinet 27/27、tagfilter-gate
+  15/15 全绿；regression 3 败+store-all/tidy 超时均基线复现（fixtures 存量），零回归。
+
 ## 待发版·十批（2026-11-04，Trade 默认价值排序退役——一键整理不再二次重排官方格）
 
 **作者令：「把这个默认按交易价值排序的功能去掉，不要。」**（九批只删了展示条、保了排序；

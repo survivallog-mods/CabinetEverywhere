@@ -73,13 +73,12 @@
    ——官方 .bag-tabs/.left-tabs 自带 flex/滚动/active 样式与 width:0;min-width:100% 撑满
    技法，全部保留（勿覆写 width/min-width——harness 实测覆写 min-width:0 会把页签栏压成
    0 宽）；此处只做槽布局 + 抵消官方页签栏的竖直外边距（原位在官方面板顶部有
-   margin-bottom:6~10px，入槽后由行距接管，防行高抖动）。▾ 全部容器按钮同行尾置。 */
+   margin-bottom:6~10px，入槽后由行距接管，防行高抖动）。
+   v1.8.9：行尾 ▾ 全部容器按钮（.sr-allctn）随容器菜单链退役=页签行 100% 官方。 */
 #srp .sr-tabsrow{display:flex;align-items:center;gap:6px;margin-top:8px;min-width:0}
 #srp .sr-tabslot{flex:1 1 0;min-width:0;overflow:visible}
 #srp .sr-tabslot>.bag-tabs,#srp .sr-tabslot>.left-tabs{margin:0 !important}
-#srp .sr-allctn{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:13px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 /* v1.8.9：T4 Browser 下拉（.sr-fsel/.sr-fselpop/.sr-fselopt）样式随按钮整链退役 */
-#srp .sr-allctn:hover{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.10)}
 #srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
 #srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
 #srp .sr-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#ece5d8;font-size:12px}
@@ -157,19 +156,12 @@
 #srp .sr-foot-l{flex:1 1 0;min-width:0;display:flex;justify-content:space-between;gap:8px}
 #srp .sr-foot .fr{color:#f0b03c}
 
-/* 弹层：排序 / 标签管理共用通栏样式；容器菜单与容器设置是小号悬浮面板，锚在右上 */
+/* 弹层：排序 / 标签管理共用通栏样式（v1.8.9：容器菜单 .sr-popctn 与容器设置
+   .sr-popedit/.sr-edit-*/.sr-ctnitem 小号悬浮面板样式随链退役） */
 #srp .sr-pop{position:absolute;left:10px;right:10px;top:206px;z-index:30;max-height:520px;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#201d24;box-shadow:0 18px 44px rgba(0,0,0,.55);overflow:hidden}
 #srp .sr-pop[hidden]{display:none}
-#srp .sr-popctn{left:auto;right:10px;width:196px;top:86px;max-height:404px}
 /* 一键入库确认弹窗：锚在底部动作行上方（按钮在页脚，弹窗就近） */
 #srp .sr-popstore{left:auto;right:10px;width:248px;top:auto;bottom:44px;max-height:320px}
-#srp .sr-popctn .sr-popbody{padding:5px 6px}
-#srp .sr-popedit{left:auto;right:10px;width:248px;top:86px;max-height:470px}
-#srp .sr-edit-lbl{display:block;color:#7a7268;font-size:11px;letter-spacing:.06em;margin:2px 0 5px}
-#srp .sr-edit-name{width:100%;height:28px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.14);background:rgba(0,0,0,.3);outline:0;color:#ece5d8;font-size:12px;box-sizing:border-box}
-#srp .sr-edit-name:focus{border-color:rgba(240,176,60,.5)}
-#srp .sr-edit-save{height:26px;padding:0 12px;border-radius:6px;border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.15);color:#ffe1a0;font-size:12px;cursor:pointer;flex:0 0 auto}
-#srp .sr-edit-save:hover{background:rgba(240,176,60,.28)}
 #srp .sr-pophead{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.10);color:#a89f92;font-size:12px}
 #srp .sr-popbody{flex:1;min-height:0;overflow-y:auto;padding:8px 10px}
 #srp .sr-popbody::-webkit-scrollbar{width:7px}
@@ -178,10 +170,9 @@
 #srp .sr-popclear{height:26px;padding:0 10px;border-radius:6px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;cursor:pointer;flex:0 0 auto}
 #srp .sr-popclear:hover{color:#ece5d8}
 #srp .sr-grp{color:#7a7268;font-size:11px;letter-spacing:.06em;margin:8px 0 5px}
-#srp .sr-ctnitem{display:flex;align-items:center;gap:6px;width:100%;min-height:28px;padding:2px 6px;border-radius:6px;border:1px solid transparent;background:transparent;text-align:left;cursor:pointer}
-#srp .sr-ctnitem:hover{border-color:rgba(240,176,60,.35);background:rgba(240,176,60,.06)}
-#srp .sr-ctnitem.cur{border-color:rgba(255,225,160,.55);background:rgba(240,176,60,.08)}
-#srp .sr-ctnitem .cin{flex:1;min-width:0;font-size:12px;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 确认入库主按钮（原复用已退役编辑弹窗的 .sr-edit-save，v1.8.9 改专属类名同款规则） */
+#srp .sr-storego{height:26px;padding:0 12px;border-radius:6px;border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.15);color:#ffe1a0;font-size:12px;cursor:pointer;flex:0 0 auto}
+#srp .sr-storego:hover{background:rgba(240,176,60,.28)}
 #srp .sr-toast{position:absolute;left:50%;bottom:46px;transform:translateX(-50%) translateY(4px);z-index:50;max-width:396px;padding:7px 14px;border-radius:8px;border:1px solid rgba(240,176,60,.45);background:#2a2430;color:#ffe1a0;font-size:12px;text-align:center;box-shadow:0 10px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .22s,transform .22s;pointer-events:none}
 #srp .sr-toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 #srp .sr-tagwrap{display:flex;flex-wrap:wrap;gap:5px}
@@ -218,7 +209,6 @@
 #srp .sr-rail.plain .sr-tools,
 #srp .sr-rail.plain .sr-hover,
 #srp .sr-rail.plain .sr-foot .fr{display:none}
-#srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单贴 ▾ 钮下锚 */
 /* 2026-11-02 七轮（官方模板对照定案）：官方机器页=三面板 flex 等高。壳统一回归该契约：
    高度=plainSlotSync 行内 important 驱动 max(778, 兄弟面板最高)（本规则=兄弟≤778 时的
    基线 778；兄弟更高时行内覆盖跟随）；兄弟 ≤778 壳为驱动方：外框随壳 −38（整界面底边

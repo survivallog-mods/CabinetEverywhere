@@ -10,7 +10,7 @@
        由此复活两个官方原生功能（作者报告被打断的）：①A/D 切页签（C#
        ContainerTabHotKey→RA_SwitchTabByKey，宽度>0 守卫——真页签栏在位即过）；
        ②拖物品到页签转柜（webui-tabdrop 真件矩形命中）。页签点击/active/滚动/锁定
-       全官方；rail 只经 followActive 跟随同步自身状态（▾ 菜单跳柜仍走 forgeSwitchTo）。
+       全官方；rail 只经 followActive 跟随同步自身状态（v1.8.9：▾ 菜单退役，无主动切柜路）。
        场景视图可见性与拖拽排序后续任务移到 C# 状态层收口（数组=可见集，A/D 零拦截）。
    2026-11-01 作者缺陷单#1（排序不生效/数据不显示/显示错误）+#2（9 机器页页签柜子显示错/缺）：
        #1 数值口径整体换 C# RailSortMath（ProjectCook.dll 反编译移植：实例效果值+天赋管线/
@@ -61,7 +61,8 @@
        （过滤/汇总元数据 + 新增整柜批量动作的合法层）。
    T2=骨架（__CERAIL__ 契约壳 + SCENES 场景表）；T3=渲染层（契约 v4→store/渲染）；
    T4=视图态（搜索/标签/排序/分段/场景态/五键持久化）；
-   T5=▾容器菜单/✎编辑弹窗/页签拖拽 + 命令排队（无乐观刷新，等回包）。
+   T5=▾容器菜单/✎编辑弹窗/页签拖拽 + 命令排队（无乐观刷新，等回包）——前两者 v1.8.9
+       随 ▾ 全部容器按钮整链退役（页签行 100% 官方化），命令排队保留。
    T10（v1.8.2 重写）= 整理柜三段壳：mount rack 装配（官方件 reparent，见上）+
        renderMidChips（按标签色点随 st.currentId 联动）+ bindMid（mod 三按钮
        takeCat·putCat·putTag 命令化/分类下拉 catsOf/点外 Esc 收起）+ 快照差工具
@@ -181,9 +182,11 @@
     '<div class="sr-offtabs" id="srOffTabs" hidden></div>' + /* v1.8.2.2：BackpackUI aTabs 模式——官方柜签页签行原件搬入此槽（原生切换；v1.8.3 原生模式后休眠） */
     /* v1.8.7（作者 2026-11-03 令「页签区还原官方设计」）：自绘页签行（.sr-ctnbar/.sr-pinrow）
        退役——页签槽 #srTabs 装**官方页签栏 DOM 原件**（mount 时 reparent，SCENES.tabs 逐页
-       指路），A/D 步进/点击切换/拖物到页签（webui-tabdrop）全部官方原生；▾ 菜单保留在行尾。 */
-    '<div class="sr-tabsrow" id="srTabsRow"><div class="sr-tabslot" id="srTabs"></div>' +
-    '<button class="sr-allctn" id="srAllCtn" type="button" aria-label="全部容器" title="全部容器">▾</button></div>' +
+       指路），A/D 步进/点击切换/拖物到页签（webui-tabdrop）全部官方原生。
+       v1.8.9（作者 2026-11-04 令）：行尾 ▾ 全部容器按钮整链退役（srAllCtn/srCtnPop/
+       srCtnEdit——页签行 100% 官方化；容器设置唯一入口随链移除，rename/setTags 命令
+       契约保留但 UI 不可达；NAMES/CTAGS overlay 保留=存量改名/自定义词照常显示）。 */
+    '<div class="sr-tabsrow" id="srTabsRow"><div class="sr-tabslot" id="srTabs"></div></div>' +
     '<div class="sr-searchrow"><div class="sr-search">🔍 <input id="srSearch" type="text" placeholder="搜索物品" autocomplete="off"></div>' +
     '<button class="sr-scope" id="srScope" type="button" title="筛选范围：当前容器 / 全部容器">本柜</button></div>' +
     '<div class="sr-tagrow"><div class="sr-tags" id="srTagRow"></div>' +
@@ -201,16 +204,10 @@
     '<button class="sr-act" id="srTidy" type="button" title="同名叠合并，按分类归位"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>一键整理</button>' +
     '</div></div>' +
     '<div class="sr-toast" id="srToast" hidden></div>' +
-    '<div class="sr-pop sr-popctn" id="srCtnPop" hidden><div class="sr-popbody" id="srCtnPopBody"></div></div>' +
-    '<div class="sr-pop sr-popedit" id="srCtnEdit" hidden><div class="sr-pophead"><span>容器设置</span></div>' +
-    '<div class="sr-popbody"><label class="sr-edit-lbl">名称</label><input id="srEditName" class="sr-edit-name" type="text" maxlength="8">' +
-    '<label class="sr-edit-lbl">标签</label><div class="sr-tagwrap" id="srEditTags"></div></div>' +
-    '<div class="sr-popfoot"><button class="sr-popclear" id="srEditCancel" type="button">取消</button>' +
-    '<button class="sr-edit-save" id="srEditSave" type="button">保存</button></div></div>' +
     '<div class="sr-pop sr-popstore" id="srStoreConfirm" hidden><div class="sr-pophead"><span>一键入库</span></div>' +
     '<div class="sr-popbody" id="srStoreText"></div>' +
     '<div class="sr-popfoot"><button class="sr-popclear" id="srStoreCancel" type="button">取消</button>' +
-    '<button class="sr-edit-save" id="srStoreGo" type="button">确认入库</button></div></div>' +
+    '<button class="sr-storego" id="srStoreGo" type="button">确认入库</button></div></div>' +
     '<div class="sr-pop" id="srTagManage" hidden><div class="sr-pophead"><span>筛选标签（点击启用，再点停用）</span>' +
     '<button class="sr-popclear" id="srTagManageX" type="button">完成</button></div>' +
     '<div class="sr-popbody"><div class="sr-tagwrap" id="srTagManageBody"></div>' +
@@ -276,7 +273,7 @@
     scene: null, currentId: null, mode: 'grid', prevMode: 'grid', sort: 'value', dir: 1,
     query: '', global: false, tags: [], sel: null,
     cap: 0, rows: 0, items: [],
-    dragId: null, editId: null, editTags: []    /* T5：拖拽中页签/编辑弹窗容器与选中集（rail.js st 同形；v1.8.7 lastStepIdx 随 stepGuard 退役） */
+    dragId: null    /* T5：拖拽中页签（rail.js st 同形；v1.8.7 lastStepIdx 随 stepGuard 退役；v1.8.9 editId/editTags 随编辑弹窗链退役） */
   };
   var COMMON = [];     /* 快捷标签名字符串（默认=lib 前 5；持久化 srp_common_tags_<scene>） */
   var CUSTOM = [];     /* 自定义标签词表（全局 srp_custom_tags；管理弹层新增/移除维护） */
@@ -295,13 +292,13 @@
      跟着帧走、不把 A 场景的筛选态渲染进 B。全局单套活跃集 + 每帧快照 = 与「单场景活跃」
      装配语义（frameVisible 门控，T8）一致的多帧安全形态。 */
   var SNAPS = {}; /* sceneKey → { st, COMMON, sceneApplied, PIN_KEY, TM_KEY, LISTGRP } */
-  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'editId', 'editTags'];
+  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId'];
   function saveSnap() {
     if (!st.scene || !SCENES[st.scene]) return;
     var sn = { st: {}, COMMON: COMMON.slice(), sceneApplied: sceneApplied, PIN_KEY: PIN_KEY, TM_KEY: TM_KEY, LISTGRP: LISTGRP };
     for (var i = 0; i < ST_KEYS.length; i++) {
       var k = ST_KEYS[i], v = st[k];
-      sn.st[k] = Array.isArray(v) ? v.slice() : v; /* tags/editTags 数组隔离（快照不得被活跃集突变连坐） */
+      sn.st[k] = Array.isArray(v) ? v.slice() : v; /* tags 数组隔离（快照不得被活跃集突变连坐） */
     }
     SNAPS[st.scene] = sn;
   }
@@ -427,12 +424,12 @@
     }
     return out;
   }
-  /* 容器显示名：NAMES 覆盖（srp_ctn_names，T5 编辑弹窗写入；缺省=契约名。rail.js nm 同款） */
+  /* 容器显示名：NAMES 覆盖（srp_ctn_names，原 T5 编辑弹窗写入——v1.8.9 起只读存量；缺省=契约名。rail.js nm 同款） */
   function nm(c) { return NAMES[c.id] || c.n; }
   /* 容器自定义词 overlay（srp_ctn_tags {ownerId:[词...]}，T5 fix-2）：并入容器标签视图用 */
   function customTagsOf(id) { var v = CTAGS[id]; return Array.isArray(v) ? v : []; }
   /* 容器标签视图（名字口径，fix-2 合并函数）= 官方 tagId 经 lib 查名 ∪ 自定义词。
-     消费：头部副标 / ✎ 回显（编辑态另需 id 口径，见 openEdit）/ 全库命中路走 customTagsOf。 */
+     消费：头部副标 / 全库命中路走 customTagsOf。 */
   function tagNamesOf(c) { return c.tags.map(tagName).concat(customTagsOf(c.id)); }
   function tagName(id) { var t = LIB[id]; return t ? t.n : '#' + id; }
   /* lib dim → LIB_GROUPS 下标（min/max 区间匹配；未登记维度兜底最后一组，见 LIB_GROUPS 注释） */
@@ -544,14 +541,12 @@
   function saveCommon() { lsSet(commonKey(), COMMON); }
   function loadNames() {
     var v = lsGet('srp_ctn_names');
-    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : null;    /* T5 已接：启动载入 */
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : null;    /* 启动载入（v1.8.9 起只读：写入侧 saveEdit 已退役） */
   }
-  function saveNames(m) { lsSet('srp_ctn_names', m || {}); }                 /* T5 已接：saveEdit 写 */
   function loadCtnTags() {
     var v = lsGet('srp_ctn_tags');
-    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : null;    /* T5 已接：启动载入（自定义词 overlay） */
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : null;    /* 启动载入（自定义词 overlay；v1.8.9 起只读） */
   }
-  function saveCtnTags(m) { lsSet('srp_ctn_tags', m || {}); }                /* T5 已接：saveEdit 写（自定义词 overlay） */
   function loadCustom() { var v = lsGet('srp_custom_tags'); return Array.isArray(v) ? v.slice() : []; }
   function saveCustom() { lsSet('srp_custom_tags', CUSTOM); }
   /* 容量换列数+行数（cosmetic：页脚 N 行估算用；网格模式物品区=官方格，尺寸官方自带；
@@ -633,41 +628,14 @@
       (it.icon ? '<img src="' + esc(it.icon) + '" alt="" aria-hidden="true" draggable="false" style="width:20px;height:20px;object-fit:contain;pointer-events:none">' : '') +
       '<span class="s-cnt">' + it.count + '</span>' + ((it.flags & 4) ? '<span class="s-new"></span>' : '') + '</button>';
   }
-  function ctnItemHtml(c) {
-    return '<button type="button" class="sr-ctnitem' + (c.id === st.currentId ? ' cur' : '') + '" data-ctn="' + c.id + '" title="' + esc(nm(c)) + '（单击切换 · 双击设置）">' +
-      '<span class="cin">' + esc(nm(c)) + '</span></button>';
-  }
 
   /* ---- 页签栏：v1.8.7 起自绘页签行（renderCtnBar/sr-pin）整体退役——官方页签栏 DOM
      原件 reparent 进 #srTabs 槽（mount/ensureTabsInSlot），渲染/active/滚动/点击全部
-     官方原生；rail 只经 followActive 跟随 active 同步自身状态。▾ 菜单照旧（renderCtnPop）。 ---- */
-  /* ---- ▾ 容器菜单内容（Produces：renderCtnPop；开关/单击切换/双击开设置 = T5 bind）----
-     分组照 rail.js：按容器标签命中的 lib 分组（dimGroup 三组：食品类/材料类/功能类）
-     逐组列出，再「自定义标签」组（fix-2 双层：自定义词 overlay 挂到柜上的容器入此组，
-     组名与位置照 rail.js renderCtnPop 的 customC 段），最后未打标签组；一柜多组标签
-     可同现多组（rail.js some 语义同款）。 */
-  function renderCtnPop() {
-    var html = '', RC = railCtns();
-    for (var g = 0; g < LIB_GROUPS.length; g++) {
-      var list = RC.filter(function (c) {
-        return c.tags && c.tags.some(function (t) { var e = LIB[t]; return !!e && dimGroup(e.dim) === g; });
-      });
-      if (!list.length) continue;
-      html += '<div class="sr-grp">' + LIB_GROUPS[g].g + '</div>';
-      for (var i = 0; i < list.length; i++) html += ctnItemHtml(list[i]);
-    }
-    var customC = RC.filter(function (c) { return customTagsOf(c.id).length > 0; });
-    if (customC.length) {
-      html += '<div class="sr-grp">自定义标签</div>';
-      for (var k = 0; k < customC.length; k++) html += ctnItemHtml(customC[k]);
-    }
-    var untag = RC.filter(function (c) { return (!c.tags || c.tags.length === 0) && customTagsOf(c.id).length === 0; });
-    if (untag.length) {
-      html += '<div class="sr-grp">未打标签</div>';
-      for (var u = 0; u < untag.length; u++) html += ctnItemHtml(untag[u]);
-    }
-    el.srCtnPopBody.innerHTML = html || '<div class="sr-empty">没有容器</div>';
-  }
+     官方原生；rail 只经 followActive 跟随 active 同步自身状态。
+     v1.8.9：▾ 容器菜单（srAllCtn/renderCtnPop/ctnItemHtml/srCtnPop + ✎容器设置
+     srCtnEdit/openEdit 链）整链退役=页签行 100% 官方；存量改名/自定义词 overlay
+     （NAMES/CTAGS）保留照常显示，rename/setTags 命令契约保留但 UI 不可达。 ---- */
+  /* v1.8.9 退役：▾ 容器菜单内容（renderCtnPop/ctnItemHtml）——rail.js 移植件随链删。 */
   /* ---- 快捷标签行（Produces：renderTags；交互=T4：点=切换筛选、× =移出、＋=管理弹层）----
      chips = 全部 + COMMON（标签名查 lib 取名/组色；自定义名走自定义色）。 */
   function renderTags() {
@@ -760,13 +728,12 @@
     return true;
   }
 
-  /* ---- 弹层开合（rail.js closePops 原样；入库确认弹窗 srStoreConfirm 行为 = T11 已接）---- */
+  /* ---- 弹层开合（rail.js closePops 原样；入库确认弹窗 srStoreConfirm 行为 = T11 已接；
+     v1.8.9：ctn/edit 两路随 ▾ 容器菜单链退役）---- */
   function closePops(keep) {
-    if (keep !== 'ctn') el.srCtnPop.hidden = true;
     if (keep !== 'tag') el.srTagManage.hidden = true;
     if (keep !== 'sort') el.srSortPop.hidden = true;
     if (keep !== 'fsort') el.srFootSortPop.hidden = true;
-    if (keep !== 'edit') el.srCtnEdit.hidden = true;
     if (keep !== 'store') el.srStoreConfirm.hidden = true;
   }
   /* ---- 官方分类下拉收起（rail.js closeMidMenus 同款；T10 自 bind() 局部提升到模块级——
@@ -798,80 +765,10 @@
     }
   }
 
-  /* ---- ✎ 编辑弹窗（rail.js openEdit/renderEditTags/saveEdit 移植）----
-     保存 = 写 localStorage 覆盖（srp_ctn_names {ownerId:名}；srp_ctn_tags {ownerId:[自定义词...]}
-     JS 侧 overlay——fix-2 双层裁定：官方 tagId 走 cmd('setTags') 由 C# SetRule 权威持久化并随
-     契约回推；自定义词只落浏览器侧、并入标签视图，不参与 C# 入库路由）+ 全处同步重渲染
-     （标题/页签/菜单/全库过滤——rail.js saveEdit 同款；名字经 nm() 覆盖、词经
-     customTagsOf/tagNamesOf 合并）。 */
-  function openEdit(id) {
-    var c = ctnById(id);
-    if (!c || c.fixed) return; /* 背包=虚拟容器（契约 ctn 无背包行，rename/setTags 无处落库）不可编辑 */
-    st.editId = id;
-    /* data-tg 口径：官方=tagId 字符串、自定义=词原文（回显=官方 ∪ 自定义 overlay，fix-2） */
-    st.editTags = c.tags.map(String).concat(customTagsOf(id));
-    el.srEditName.value = nm(c);
-    renderEditTags();
-    el.srCtnEdit.hidden = false;
-    closePops('edit');
-    setTimeout(function () { try { el.srEditName.focus(); el.srEditName.select(); } catch (x) { } }, 0);
-  }
-  /* 编辑弹窗标签多选 = lib 全量按 LIB_GROUPS 三组（组内按 order 排，官方 26 标签全量口径）
-     + 自定义词表组（照 rail.js 追加在最后）；data-tg：lib 行=tagId 字符串、自定义词=原文
-     （saveEdit 按纯数字判定归属）。 */
-  function editTag2Html(key, label, color) {
-    return '<button type="button" class="sr-tag2' + (st.editTags.indexOf(key) >= 0 ? ' active' : '') + '" data-tg="' + esc(key) + '">' +
-      '<span class="t-dot" style="background:' + color + '"></span>' + esc(label) + '</button>';
-  }
-  function renderEditTags() {
-    var h = '';
-    for (var g = 0; g < LIB_GROUPS.length; g++) {
-      var list = store.lib.filter(function (t) { return dimGroup(t.dim) === g; });
-      list.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
-      if (!list.length) continue;
-      h += '<div class="sr-grp">' + LIB_GROUPS[g].g + '</div><div class="sr-tagwrap">';
-      for (var i = 0; i < list.length; i++) h += editTag2Html(String(list[i].id), list[i].n, LIB_GROUPS[g].color);
-      h += '</div>';
-    }
-    if (CUSTOM.length) {
-      h += '<div class="sr-grp">自定义</div><div class="sr-tagwrap">';
-      for (var c = 0; c < CUSTOM.length; c++) h += editTag2Html(CUSTOM[c], CUSTOM[c], '#C9915A');
-      h += '</div>';
-    }
-    el.srEditTags.innerHTML = h;
-  }
-  function saveEdit() {
-    var c = ctnById(st.editId);
-    if (!c) { el.srCtnEdit.hidden = true; return; }
-    var v = el.srEditName.value.trim();
-    /* 名字：基准=当前显示名 nm(c)（契约名 ∪ rename 覆盖）——rename 被 C# 持久化
-       （cerail_names.json，RailData.NameOf 优先）后回推的行名 c.n 已是覆盖名，不能再当
-       「原名」基准（否则清空想恢复官方名时 JS 误判未变、静默无效）。显示名有变化（含清空
-       =恢复官方名）→ 写/删 overlay 并**无条件**发 rename（空串由 C# OpRename 删覆盖）；
-       显示名未变→不发命令（T5「同名不重发」在新基准下自然达成）。 */
-    var nameChanged = v !== nm(c);
-    if (nameChanged && v) NAMES[c.id] = v; else delete NAMES[c.id];
-    /* 选中集按 data-tg 双层分流（fix-2）：纯数字=官方 tagId → cmd('setTags')（C# SetRule
-       权威、机器人跟随，回推后视图自然更新——无乐观刷新）；其余=自定义词 → srp_ctn_tags
-       overlay（JS 侧，不入命令，不参与 C# 入库路由 storeAll/putTag 只按官方标签）。 */
-    var ids = [], words = [];
-    for (var i = 0; i < st.editTags.length; i++) {
-      if (/^\d+$/.test(st.editTags[i])) ids.push(parseInt(st.editTags[i], 10));
-      else words.push(st.editTags[i]);
-    }
-    var sameIds = c.tags.length === ids.length && c.tags.every(function (t) { return ids.indexOf(t) >= 0; });
-    var oldW = customTagsOf(c.id);
-    var sameW = oldW.length === words.length && oldW.every(function (w) { return words.indexOf(w) >= 0; });
-    if (!sameW) {
-      if (words.length) CTAGS[c.id] = words.slice(); else delete CTAGS[c.id];
-      saveCtnTags(CTAGS); /* §4.9：srp_ctn_tags 落盘（仅自定义词） */
-    }
-    saveNames(NAMES);
-    if (nameChanged) cmdOut('rename', { owner: c.id, name: v }); /* v 允许空串=清空恢复官方名 */
-    if (!sameIds) cmdOut('setTags', { owner: c.id, tags: ids.slice() });
-    el.srCtnEdit.hidden = true;
-    render();
-  }
+  /* ---- ✎ 编辑弹窗：v1.8.9 随 ▾ 容器菜单整链退役（openEdit/editTag2Html/
+     renderEditTags/saveEdit 删除；唯一入口 srCtnPop 菜单行双击已不在）。
+     存量 overlay 仍生效：NAMES（srp_ctn_names）经 nm() 覆盖显示名、CTAGS
+     （srp_ctn_tags）经 customTagsOf 并入标签视图——只读保留，不再写入。 ---- */
 
   /* ---- 页签拖拽排序：v1.8.7 起随自绘页签行退役（bindPinDrag 删除）——T3 将在
      官方页签元素上重接 HTML5 dnd（身份按族取：data-owner/_ownerId/TABS 位序），
@@ -1989,19 +1886,17 @@
   /* ---- 元素引用收集 + 交互接线 ----
      T3 已接：页签单击/网格列表分段/悬停详情；T4 已接：搜索/范围/标签 chips/
      ＋管理弹层/自定义词表/排序下拉/方向/选中态 + document 级弹层关闭与 Esc；
-     T5 已接：▾容器菜单（单击切换不关/原地高亮/双击开设置）/✎编辑弹窗/页签拖拽/
-     右键取出（take 入队，背包条目 toast 拒绝）；T9 已接：切柜伪造（switchTo 统一出口，
-     forge 成功等回包确认渲染）；T10 已接：整理柜双面板——sb* 系列与五按钮 id 一并进引用表
+     T5 已接：页签拖拽/右键取出（take 入队，背包条目 toast 拒绝）——▾容器菜单/✎编辑弹窗
+     已随 v1.8.9 整链退役；T9 已接：切柜伪造（forgeSwitchTo，现存调用=BackpackUI
+     Bug3 重刷路）；T10 已接：整理柜双面板——sb* 系列与五按钮 id 一并进引用表
      （每帧重收，重绑路同样覆盖），监听器挂载在 bindBagPanel（bp.__srBound 门防双挂）；
      T11 已接：一键入库确认弹窗（srStoreAll/srStoreGo/srStoreCancel + 左面板 sbStoreAll/
      sbCancel/sbGo，见「T11 一键入库」区）；T12 已接：一键整理（srTidy→goTidy(st.currentId)
      / 左面板 sbTidy→goTidy(store.bag)，见「T12 一键整理」区）。 */
   function bind(doc, railEl) {
     var ids = ['srTitle', 'srCols', 'srCap', 'srTags', 'srTidy', 'srStoreAll', 'srStoreConfirm', 'srStoreText', 'srStoreCancel', 'srStoreGo',
-      'srTabs', 'srOffTabs', 'srAllCtn', 'srSearch', 'srScope',
+      'srTabs', 'srOffTabs', 'srSearch', 'srScope',
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGridHost', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
-      'srCtnPop', 'srCtnPopBody',
-      'srCtnEdit', 'srEditName', 'srEditTags', 'srEditSave', 'srEditCancel',
       'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody',
       'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody',
       /* T10 中段（仅 rack 场景存在，非 rack 收集为 null，消费侧守卫；官方两按钮
@@ -2041,38 +1936,10 @@
     if (railEl) railEl.__srBound = true;
 
     /* v1.8.7：页签单击切换=官方原生（官方页签元素上的官方监听），rail 不接线不拦截——
-       切柜统一出口 switchTo 仅保留给 ▾ 容器菜单（T5）与 rackOpen。 */
+       v1.8.9 起 ▾ 容器菜单链退役（含切柜统一出口 switchTo），切柜全走官方原生路径。 */
 
-    /* ---- T5：▾ 容器菜单（rail.js el.srAllCtn.onclick/srCtnPopBody.onclick 移植）----
-       ▾ 唯一入口；点空白处收起（document 级监听已在下方）。 */
-    el.srAllCtn.onclick = function () { closePops('ctn'); el.srCtnPop.hidden = !el.srCtnPop.hidden; renderCtnPop(); };
-    el.srCtnPopBody.onclick = function (e) {
-      var b = e.target.closest('[data-ctn]'); if (!b) return;
-      switchTo(parseInt(b.getAttribute('data-ctn'), 10)); /* T9：同页签路径（▾ 菜单切柜；渲染时机由 switchTo 裁定——forge 成功等回包） */
-      /* 单击只切换不关菜单（关了第二次点击就没处落，双击永远触发不了）；cur 高亮
-         原地翻、节点不替换（§4.10 原地更新纪律——菜单行 dblclick 依赖同一元素连击）。
-         不再本地 render：cur 翻色已就地可见，物品区等回包确认（forge 失败时 switchTo
-         自行兜底渲染）。 */
-      el.srCtnPopBody.querySelectorAll('[data-ctn]').forEach(function (x) {
-        x.classList.toggle('cur', x === b);
-      });
-    };
-    /* T5：双击菜单行 = 打开设置并关菜单（rail.js 同款） */
-    el.srCtnPopBody.addEventListener('dblclick', function (e) {
-      var b = e.target.closest('[data-ctn]');
-      if (b) { el.srCtnPop.hidden = true; openEdit(parseInt(b.getAttribute('data-ctn'), 10)); }
-    });
-
-    /* ---- T5：✎ 编辑弹窗接线（rail.js srEditTags/srEditSave/srEditCancel/srEditName）---- */
-    el.srEditTags.onclick = function (e) {
-      var b = e.target.closest('[data-tg]'); if (!b) return;
-      var t = b.getAttribute('data-tg'), i = st.editTags.indexOf(t);
-      if (i >= 0) st.editTags.splice(i, 1); else st.editTags.push(t);
-      b.classList.toggle('active', st.editTags.indexOf(t) >= 0); /* 原地翻色（内容重建无必要） */
-    };
-    el.srEditSave.onclick = saveEdit;
-    el.srEditCancel.onclick = function () { el.srCtnEdit.hidden = true; };
-    el.srEditName.onkeydown = function (e) { if (e.key === 'Enter') saveEdit(); };
+    /* v1.8.9 退役：T5 ▾ 容器菜单（srAllCtn/srCtnPopBody 开合·单击切柜·双击开设置）
+       与 ✎ 编辑弹窗接线（srEditTags/srEditSave/srEditCancel/srEditName）——随链删。 */
 
     /* ---- T11：一键入库确认弹窗（rail.js srStoreAll/srStoreGo/srStoreCancel 移植+命令化；
        按钮显隐已由 render() 的 hidden 规则管（背包页且非 rack 家族），rack 场景同款流程
@@ -2198,10 +2065,10 @@
     if (!d.__srDocBound) {
       d.__srDocBound = true;
       d.addEventListener('click', function (e) {
-        if (!el.srCtnPop) return;
+        if (!el.srTagManage) return;
         var t = e.target;
         if (t.closest && t.closest('.sr-pop')) return;
-        if (t.closest && (t.closest('#srAllCtn') || t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll') || t.closest('#srFoodSort'))) return;
+        if (t.closest && (t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll') || t.closest('#srFoodSort'))) return;
         closePops();
         /* 官方分类下拉：点下拉外任意处收起（wrapper 内豁免，防同次点击开合互搏；rack 装配后生效） */
         if (d.querySelector('.category-dropdown:not([hidden])') && t.closest && !t.closest('.category-dropdown-wrapper')) closeMidMenus();
@@ -2481,7 +2348,8 @@
      bag/bag、tt/tt、trade/trade、cart/cart、cart0/cart0、backpack·rack=无页签族），
      页签数组由回包消息缓存（extractTabs，tagfilter st.tabs 同语义）。
      v1.8.7：官方页签栏 DOM 原件已 reparent 进壳（SCENES.tabs 指路，不再是「替换即销毁」）
-     ——forgeSwitchTo 仅服务 ▾ 菜单跳柜（页签点击=官方原生，不经此路）。
+     ——forgeSwitchTo 仅服务 cmdOut 的 BackpackUI Bug3 重刷路（v1.8.9 起；原 ▾ 菜单跳柜
+     调用者已退役，页签点击=官方原生，不经此路）。
      各族签名照附录 A 照抄：bag=SWITCH_BAG{ownerId:数字}、trade=SWITCH_BAG{ownerId:字符串}
      （官方=String(tab.owner) attr 直读——rail 直知 ownerId 同型直给）、
      tt=TAB_SWITCH{tab:数组下标+2}（0=背包/1=抽屉在栏外；edge：背包首位→tab:0 显式分支）、
@@ -2540,8 +2408,8 @@
   }
   /* rail 切柜 → 伪造页面同款切换事件（Root 帧直发，sourcePageId=iframe 元素 id——
      Root resolveSourceId claimed 分支同款，tagfilter forgeSwitch 的发送侧）。
-     返回 true=已发（渲染交回包确认）；false=无官方链（backpack/rack 无页签族/缓存未到
-     bail），调用方本地兜底渲染。 */
+     v1.8.9 起唯一调用者=cmdOut 的 BackpackUI Bug3 重刷路（try/catch 忽略返回值）；
+     返回 true=已发（渲染交回包确认）；false=无官方链（backpack/rack 无页签族/缓存未到 bail）。 */
   function forgeSwitchTo(ownerId, key) {
     var k = key || st.scene;
     var f = frameByKey(k);
@@ -2550,30 +2418,9 @@
     if (!ev) return false;
     try { window.postMessage({ type: ev.type, data: ev.data, sourcePageId: f.el.id }, '*'); return true; } catch (e) { return false; }
   }
-  /* rail 切柜统一出口（页签/▾ 菜单等一切改 currentId 的路径）：
-     st.currentId 立即记下（防回环——回包 active===currentId 时由 RENDERED_ID 门幂等），
-     forge/rackOpen 成功不乐观渲染（等回包 active 确认后 followActive 统一 render，与无乐观
-     刷新纪律一致）；forge 不可达（无页签族/缓存未到）→ 本地数据仍为真，直接渲染。
-     **rack 场景（v1.8.2 v13）不走 forge**——页面无切柜事件，改发 rackOpen 命令：C# 重放
-     官方 Ac_MaterialRack_Open → State_Web_MaterialRack 整体重绑（RackOwnerId/rows/
-     furnitureName）→ 官方行组件原生重渲染 + ctx.rackOwner 回推 → activeOwnerOf(rack 族)
-     读 rackOwnerId → followActive 收敛（防抖：切换中重复点击由 C# 侧最后一条定胜负，
-     JS 侧幂等门兜底）。 */
-  function switchTo(id) {
-    id = parseInt(id, 10);
-    if (!ctnById(id) || id === st.currentId) return;
-    st.currentId = id;
-    st.sel = null;
-    saveSnap();
-    if (store.ctx && store.ctx.family === 'rack') {
-      cmdOut('rackOpen', { owner: id }); /* 官方动作重放（非 forge）；渲染等 state 重绑回包 */
-      return;
-    }
-    /* v1.8.2：forge 官方切换 → 官方格（在壳内）按新容器重渲染（原生通道）；forge 不可达
-       （无页签族/缓存未到）→ 本地数据仍为真，直接渲染。
-       v1.8.5：切柜续排改显示层（render 尾部 dispApply 重抹——旧数据层 sortBy 续排废弃） */
-    if (!forgeSwitchTo(id)) { if (el.rail) render(); }
-  }
+  /* v1.8.9 退役：切柜统一出口 switchTo（▾ 容器菜单是最后调用者，随链删）——切柜路径
+     只剩官方原生页签（点击/A/D），rail 经 followActive 被动跟随；forgeSwitchTo 保留
+     （唯一调用者=cmdOut 的 BackpackUI Bug3 重刷路）。 */
   /* ---- active 字段读取（附录 A 各族 active 语义，tagfilter readActive 移植 + rack 特例）----
      返回 owner 字符串或 null。索引族（tt/cart/cart0）经 TABS 缓存解下标（pin 占位语义与
      缓存一致——缓存由 extractTabs 从回包原生维护，先更新后读取同消息自洽）。
