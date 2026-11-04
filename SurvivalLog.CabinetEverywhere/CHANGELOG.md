@@ -3,6 +3,122 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十批（2026-11-04，Trade 默认价值排序退役——一键整理不再二次重排官方格）
+
+**作者令：「把这个默认按交易价值排序的功能去掉，不要。」**（九批只删了展示条、保了排序；
+本批把排序行为本身退役——八批排查实锤它是整理卡顿的帮凶：官方格每整理一次被重绘两遍。）
+
+- **改动（三锚点全拆，railui.page.js）**：
+  ①applyScene：`st.fsort` Trade 特例 'value' → 恒 'official'、`DISP.choice` Trade 特例
+  'value' → 恒 null、`st.tradeSorted` 标志删除（每次渲染重抹路 isPlainScene 行对 Trade
+  自然失效——fsort 恒 official 不触发）；
+  ②render()：原「首包一次性 dispReapply('value')」块 → 换成 `!DISP.model 时 dispApply`
+  一次性 prime（choice=null 路只设模型供角标 join，restore 早退=零排序零 x/y 写入零
+  renderItems——**官方格重建从两遍回到一遍**）；
+  ③注释与文件头口径同步（「Trade 默认价值排序 v1.8.9 退役」）。
+- **保留**：金色交易价值角标照旧（badgeSpec Trade 分支不动，角标只做 id join 不动摆位）；
+  食品五页页脚排序钮、NB 原生页排序钮是独立入口，不受影响。行为变化：交易页物品恒保持
+  官方真实排布，整理后也不再被重排成价值序。
+- **对整理延迟的意义**：八批四段拆解里的 ④「显示层重排+二次重绘」对 Trade 页归零；剩余 =
+  官方 SORT 处理+官方格单遍重建（官方本体）+ 回推一包（快通道 ≤1 帧检出）+ 角标重画（一遍
+  字符串拼接，便宜）。
+- **回归**：`node --check` 过；ingame-matrix `trade:fsort` 断言翻转（'value'→'official'，
+  文案「默认不排序（v1.8.9 退役）」）；harness mount/switch-cabinet/tagfilter-gate 与基线
+  对齐（Trade 排序无自动化断言，零波及）。
+
+## 待发版·九批（2026-11-04，交易页去两处冗余 UI——「全部柜子」下拉与「按交易价值排序」条退役）
+
+**作者令：「无人机交易界面有一个全部柜子按钮，有时能看到有时看不到，很奇怪，把这个按钮
+删了。没什么用。还有下面的按交易价值排序那一条也删了。」**
+
+- **删什么**：①页签行右侧「全部柜子 ▾」筛选下拉（srFSel：按标签筛选柜子页签，v1.8.7 T4）——
+  显隐随 Browser 视图/页签场景跳变=「有时能看到有时看不到」的观感玄学，切柜能力 ▾ 容器
+  菜单已全覆盖；②其下方「按交易价值排序」虚线金条（srTrade 买家条，仅 Trade 页）——
+  纯口径说明文案。**交易页默认按交易价值排序的行为与金色角标不变**（只删展示条，不删排序）。
+- **退役范围（整链五段，不留死代码）**：
+  ①JS：RAIL_HTML 按钮/弹层、bind 接线、renderFilterSel/pickFilterSel/filterOptions 等
+  T4 函数区、render() 两处调用、applyScene 开页 setFilter 上报、引用表五个 id；
+  ②CSS：.sr-fsel/.sr-fselpop/.sr-fselopt 与 .sr-tradeinfo/.ti-prefs/.ti-pref/.ti-mode；
+  ③RailCommands：setFilter 分支+OpSetFilter+Cmd.Sel 字段+ToCmd sel 解析；
+  ④TabGate：cerail_filter.json 持久化整块（FilterPath/LoadFilters/SaveFilter/SelValid）、
+  SelMatch/SelActive/JudgeInstSel，Judge/RemoveUndesired 去 sel 参（Browser=全显恒真快路径），
+  Trade 轮询收窄条件回归 `view != "Browser"`；
+  ⑤TabInjector：bag×4 注入集 LoadFilters 读取与 sel 透传（Injectable 去 sel 参）。
+  旧 `cerail_filter.json`（BepInEx 目录）与 `srp_filter_<scene>` localStorage 键无消费方，
+  自然失效=此前若选过非「全部」筛选也不会再收窄页签（防「按钮删了页签回不来」陷阱）。
+- **回归**：dotnet build 0 错（3 警告均为存量）；`node --check` railui.page.js 过；
+  ingame-matrix 断言同步（trade:strip 买家条断言删除，trade:fsort 默认价值排序保留）。
+
+## 待发版·八批（2026-11-04，一键整理响应提速——回推快通道 ≤1 帧检出 + 三段计时对账）
+
+**作者反馈：「无人机交易界面进行一键整理，响应有点慢，感觉需要 2 秒以上。」**
+
+- **排查结论（静态取证，链路分段）**：交易页（TradeUI）整理走**官方 SORT_BAG 事件**路
+  （v1.8.2.4 起），C# 全程不经手，感知延迟由四段叠加：
+  ①官方 SORT 处理+官方格重绘（官方本体，Bug3 时代已知「官方大网格重绘=卡顿主源」）；
+  ②**mod 泵 0.5s 轮询量化**——回推靠 `ItemsDirty()` 全量逐物品签名比对，只在 0.5s Tick 跑，
+  官方排序落地后最多白等 0.5s 才检出（交易页 SORT 走官方事件，C# 无从即时得知=本段必吃满）；
+  ③BuildJson 全量契约拼装+ExecuteJavaScript 大字符串 marshal；
+  ④JS 渲染段（交易页还有显示层价值排序重排+角标重画，官方格在一次整理里前后重绘两遍：
+  官方序一遍+显示层序一遍）。
+- **修复（快通道，治②）**：`RailData.StructureChangedFast()` 廉价结构签名——每 owner 只读
+  1 次 `Count`（interop 跨界每帧数十次，远低于全量签名的逐物品扫描），叠数/owner 集一变即真；
+  `RailUi.FastPoll()` 挂 `AccessTicker.Update` 每帧（`RefreshCoalescer.Flush` 同位），检出即走
+  与 Tick 同一套推送尾（抽出 `PushIfDue` 共用，门②/BuildJson/Verbose 日志口径不变）。官方
+  tidy 合并、搬运增删叠、拆分等「行数变化」类改动全部 **≤1 帧**检出重推，回推与差量 toast
+  从「最多迟到 0.5s+」压到「≤1 帧+推包成本」；行数不变的改动（纯挪位/拾取并入已有叠/用掉
+  部分）不触发，仍由 0.5s Tick 全量签名兜底=零回归。空闲成本：12 页 IsUIActive+每 owner
+  一次 Count，无变化即退。`>150ms` 常驻打一行 `[CERail] 快通道重推`（Bug3 对账口径）。
+- **诊断（防盲改，Bug3 分段计时同法）**：JS 侧 tidy 三段计时——`goTidy` 记 t0=点击、
+  srBadgeMO 回调首见记 tMO=官方格重绘、setData 过空契约守卫记 tSet=契约回推到达；
+  `settleXfer` tidy 分支出对账一行（console）：`[CERail] tidy 计时(JS)：点击→官方格重绘 Xms，
+  →数据回推 Yms，→渲染完成 Zms（合计 Nms）`。快通道落地后若实机仍 2s+，该行直接指认
+  剩余瓶颈在哪段（①=官方本体/④=渲染段），再对症。
+- **回归**：dotnet build 0 错；`node --check` ×2 过；推送门②与 Tick 路径行为不变（PushIfDue
+  为纯抽取）；JS harness 五套件与基线对齐仅毫秒噪声。
+
+## 待发版·七批（2026-11-04，物品区滚动条常驻——切柜不再闪烁）
+
+**作者令：「侧边滚动条改成固定显示，柜子高度不超上限时只是无法滚动，不要出现/消失闪烁。」**
+
+- **根因（两轮）**：①壳物品区 `.sr-body` 为 `overflow-y:auto`——容纳即无滚动条，切柜时
+  滚动条出现/消失 + `syncRailWidth` 的 sb 量测在 0↔滚动条宽间跳变（壳宽跟着跳）。
+  ②首轮改 `overflow-y:scroll` 后实机仍闪（染料桶看似「彻底隐藏」、高柜页依旧闪烁）——
+  **WebView2 Runtime 155+ 在 Win11 默认 fluent（悬浮式）滚动条：闲置自动隐藏、内容不溢出
+  时完全不绘制**；且 Chromium 121+ 起 `scrollbar-width` 非 auto 会让 `::-webkit-scrollbar`
+  自定义样式全部失效（railui.css 原有 8px 自定义滚动条自 WebView2 升级后一直没生效过）。
+- **修复（第三轮=环境级关 fluent）**：第二轮 CSS（自定义经典接管）实机仍「轨道常驻但
+  thumb 随切柜闪一下然后消失」=游戏 WebView2 的 fluent 渲染**无视页面 ::-webkit-scrollbar
+  样式**（页面级 CSS 已到头）。终案：进程环境变量 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+  注入 `--disable-features=msFluentScrollbars,…`（WebView2 loader 原生支持、只在游戏进程内
+  生效、零落盘；已有 disable 列表则追加不覆盖；BepInEx chainloader 先于首块 WebView 环境
+  创建，时序来得及）——fluent 关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、
+  永不自动隐藏、容纳时 thumb 顶格满长。cfg `[Rail] ClassicWebViewScrollbars`（默认开，
+  改后需重启游戏）。
+- **配套**：`.sr-body` 与 BackpackUI 原生页 `.grid-container` 去
+  `scrollbar-width/scrollbar-color` 让 `::-webkit-scrollbar` 生效（自定义启用时该元素退出
+  fluent：恒久绘制、槽宽恒 8px）+ `overflow-y:scroll`；轨道加浅色底（壳白 5%、原生页金
+  10%）。`scrollbar-gutter:stable` 与原生页 content-box+padding-right:12px「滚动槽在官方宽
+  之外」口径不变。EdgeCore 156 headful 实测 fit/溢出两态槽宽恒定恒绘。
+- **修复（第五轮=自绘恒显指示轨，终案）**：第四轮纯静态条被作者判「滚了没反应」（滚动条
+  不指示位置=需要滚动的柜子坏了）。终案：原生滚动条透明占位（槽宽恒 8px、滚轮滚动保留），
+  **JS 自绘指示轨**（sbMakeIndicator）——轨道/thumb 常驻常色不出现不消失（消灭闪烁的
+  「可见↔隐形」切换），thumb 长度/位置=滚动比例（找回位置反馈，容纳时满长同色可见）；
+  更新通路=scroll 即绘 + 网格 MO/尺寸变化 90ms 尾随防抖（官方 size-lock margin 瞬态寿命
+  1-2 帧≈16-33ms，90ms 后必已落定=瞬态不可见）+ ResizeObserver 兜底。壳侧 srSbTrack 绝对
+  定位锚 #srRail（同缩放上下文全程布局像素；left 显式右锚=offsetLeft+offsetWidth−9，
+  修「跑左边」——absolute 的 left:auto 走静态位置贴左缘）；BackpackUI 原生页 srnSbTrack
+  fixed 贴视口（thumb 白 32%=与壳侧同色，作者令「颜色统一」v1.8.3 金色调退役；不动官方
+  position）；官方 Vue 重建格节点=换 scroller 时自动解绑重绑；`.sr-body` 与原生页
+  `.grid-container` 加 `overscroll-behavior:contain`（修「不超也能滚」=滚轮链到页面把
+  整个面板推走）。harness 六套件失败名单与基线一致（存量 flaky），零新增失败。
+- **诊断（防盲改）**：RailUi.Tick 新增一次性量测——首个 rail 场景挂出后从 Root 逐 iframe 量
+  `.sr-body` 的 overflowY/滚动条占位 gap/是否溢出/style#srpRail 规则，回包记一行
+  `[CERail] 滚动条诊断：srBody …`（LogOutput.log；判读：trackRule=1 且 gap≥8=自定义生效；
+  trackRule=1 但 gap=0=fluent 仍接管；trackRule=0=CSS 未注入）。
+- **回归**：harness 五套件与改动前基线对齐（仅毫秒计时噪声）；mount 既有 size 断言失败为
+  存量问题与本次无关。syncRailWidth 的 sb 退化为常量（注释同步，MO 补量路径保留兜底）。
+
 ## 待发版·六批（2026-11-03，页签区还原官方设计——官方页签栏 DOM 原件 + 视图/排序状态层收口）
 
 **作者令：「页签区还原为官方的设计。在保留官方原有功能的基础上添加我们自己的设计：

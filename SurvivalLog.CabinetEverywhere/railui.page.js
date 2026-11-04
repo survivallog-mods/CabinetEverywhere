@@ -113,7 +113,7 @@
   /* ================= v13.5-v13.8 机器界面简化+设施排序（作者 2026-10-31 执行令） =================
      9 个机器页（不含 BackpackUI 原生页/MaterialRack/温室 GreenhouseBuild）侧栏 plain：
      无头部/搜索/快捷标签/排序工具行/悬停条/「N 行」行；页脚=排序钮(食品五设施)+格数+入库|整理。
-     食品五设施页脚左下角排序钮（作者参考图样式 7 项）；Trade 默认按交易价值排序。 */
+     食品五设施页脚左下角排序钮（作者参考图样式 7 项）；Trade 默认价值排序已随 v1.8.9 退役。 */
   var PLAIN_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Shredder: 1, Compressor: 1, DyePanel: 1, ToolTable: 1, Trade: 1, DroneHub: 1 };
   var FOOD_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, DyePanel: 1 };
   var FSORTS = [
@@ -183,9 +183,7 @@
        退役——页签槽 #srTabs 装**官方页签栏 DOM 原件**（mount 时 reparent，SCENES.tabs 逐页
        指路），A/D 步进/点击切换/拖物到页签（webui-tabdrop）全部官方原生；▾ 菜单保留在行尾。 */
     '<div class="sr-tabsrow" id="srTabsRow"><div class="sr-tabslot" id="srTabs"></div>' +
-    '<button class="sr-fsel" id="srFSel" type="button" hidden title="按标签筛选柜子页签（本页 Browser 视图）"><span id="srFSelLbl">全部柜子</span><span class="sb-caret" aria-hidden="true">▾</span></button>' +
     '<button class="sr-allctn" id="srAllCtn" type="button" aria-label="全部容器" title="全部容器">▾</button></div>' +
-    '<div class="sr-tradeinfo" id="srTrade" hidden></div>' +
     '<div class="sr-searchrow"><div class="sr-search">🔍 <input id="srSearch" type="text" placeholder="搜索物品" autocomplete="off"></div>' +
     '<button class="sr-scope" id="srScope" type="button" title="筛选范围：当前容器 / 全部容器">本柜</button></div>' +
     '<div class="sr-tagrow"><div class="sr-tags" id="srTagRow"></div>' +
@@ -220,8 +218,6 @@
     '<button class="sr-popclear" id="srTagNewBtn" type="button">添加</button></div></div></div>' +
     '<div class="sr-pop sr-popsort" id="srSortPop" hidden><div class="sr-pophead"><span>排序方式</span></div>' +
     '<div class="sr-popbody" id="srSortPopBody"></div></div>' +
-    '<div class="sr-pop sr-fselpop" id="srFSelPop" hidden><div class="sr-pophead"><span>筛选柜子页签</span></div>' +
-    '<div class="sr-popbody" id="srFSelBody"></div></div>' +
     '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-popbody" id="srFootSortBody"></div></div>';
 
   /* 整理柜中段 mod 增值三按钮（v1.8.2 v13 口径）：「放入材料/全部取出」两按钮=官方
@@ -769,7 +765,6 @@
     if (keep !== 'ctn') el.srCtnPop.hidden = true;
     if (keep !== 'tag') el.srTagManage.hidden = true;
     if (keep !== 'sort') el.srSortPop.hidden = true;
-    if (keep !== 'fsel') el.srFSelPop.hidden = true;
     if (keep !== 'fsort') el.srFootSortPop.hidden = true;
     if (keep !== 'edit') el.srCtnEdit.hidden = true;
     if (keep !== 'store') el.srStoreConfirm.hidden = true;
@@ -959,6 +954,18 @@
        sbTidy 入口亦然——rack 双面板两段同屏，proto 定稿如此）。 */
     if (x.kind === 'tidy') {
       if (!ctnById(x.owner)) return;
+      /* Bug4 三段对账（console 一行，实机一段定位）：点击→官方格重绘（C# 快通道已把回推段
+         压到 ≤1 帧+推包成本；若此段仍占大头=官方 SORT 处理/官方格重绘本体）→数据回推
+         （泵检出+BuildJson+marshal，快通道后应≈0）→渲染完成（setData 内 render+角标）。 */
+      try {
+        if (x.t0) {
+          var tNow = Date.now();
+          var a1 = x.tMO ? (x.tMO - x.t0) + 'ms' : '未观测(无格观察器)';
+          var a2 = x.tSet ? (x.tSet - (x.tMO || x.t0)) + 'ms' : '?';
+          console.warn('[CERail] tidy 计时(JS)：点击→官方格重绘 ' + a1 + '，→数据回推 ' + a2 +
+            '，→渲染完成 ' + (tNow - (x.tSet || x.t0)) + 'ms（合计 ' + (tNow - x.t0) + 'ms）');
+        }
+      } catch (e) { }
       if (store.ctx && store.ctx.lastTidyFail) {
         store.ctx.lastTidyFail = false; /* 一次性消费（见上） */
         toast('本界面暂不支持整理');
@@ -1090,11 +1097,11 @@
        无该事件的页（Brew/RatCage/Dye/Compressor/Shredder/GreenhouseBuild/MaterialRack）
        保留 C# 命令路（Sort+Merge+RefreshBag）。 */
     var ev = buildSortEvent(owner);
-    if (ev && forgePost(ev)) {
-      XFER = { kind: 'tidy', owner: owner, before: raw.length };
-      return;
-    }
-    XFER = { kind: 'tidy', owner: owner, before: raw.length }; /* 快照=该 owner 当前叠数 N */
+    /* Bug4（2026-11-04 作者实测：交易页一键整理响应 2s+）三段计时标记：t0=点击、
+       tMO=官方格重绘首见（srBadgeMO 回调盖戳≈官方排序完成）、tSet=契约回推到达（setData
+       盖戳）——settleXfer 出一行对账日志（console），实机一段定位瓶颈。 */
+    XFER = { kind: 'tidy', owner: owner, before: raw.length, t0: Date.now(), tMO: 0, tSet: 0 };
+    if (ev && forgePost(ev)) return;                           /* 官方 SORT 事件路（Trade/DroneHub 等 5 页） */
     cmdOut('tidy', { owner: owner });                          /* C# OpTidy：Sort+Merge 官方 API */
   }
   /* 官方 SORT 事件构造（findings §5 + BackpackUI.html @5844 实证负载）：
@@ -1591,8 +1598,8 @@
     return M;
   }
 
-  /* 显示层排序应用：非用户路径（Trade 首包默认值排序/机器页每次渲染重抹）走 dispReapply——
-     无菜单同步、无 toast（与 v1.8.5 行为一致） */
+  /* 显示层排序应用：非用户路径（机器页每次渲染重抹；Trade 默认路已随 v1.8.9 退役）走
+     dispReapply——无菜单同步、无 toast（与 v1.8.5 行为一致） */
   function dispReapply(D, key, ownerId) { D.choice = key; D.owner = ownerId; dispApply(D); }
   function applyDispSort(key, cfg) {
     var D = cfg.disp || DISP; /* v1.8.6：cfg.disp 指定实例（NB 柜侧传 DISP_CT；缺省 DISP=机器页/rail/袋侧现状） */
@@ -1601,20 +1608,6 @@
     if (cfg.menu) cfg.menu.sync();
     if (cfg.after) cfg.after();
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
-  }
-  /* 交易买家条：正式实现无演示切换控件；品类加成数据源（ctx.tradePrefs=[[分类名,加成]…]）
-     C# 侧校准后接入——在场则显示加成 chips，暂缺只显示排序口径 */
-  function renderTradeInfo() {
-    var t = el.srTrade; if (!t) return;
-    t.hidden = st.scene !== 'Trade';
-    if (t.hidden) return;
-    var prefs = (store.ctx && store.ctx.tradePrefs) || [];
-    var ps = '';
-    for (var i = 0; i < prefs.length; i++) {
-      ps += '<i class="ti-pref"><span class="t-dot" style="background:' + FBCOLOR.tvalue + '"></span>' + esc(String(prefs[i][0])) + ' +' + Math.round(Number(prefs[i][1]) * 100) + '%</i>';
-    }
-    t.innerHTML = (prefs.length ? '<span class="ti-prefs">' + ps + '</span>' : '') +
-      '<span class="ti-mode" title="交易价值 = 单价 × 数量 × (1 + 当前交易对象品类加成)">按交易价值排序</span>';
   }
   /* 角标规格：Trade=交易价值（金）；食品设施=当前属性排序维 */
   function badgeSpec() {
@@ -1701,7 +1694,11 @@
      v1.8.4c 缺陷（柜子滚动条）——官方 createGridSizeLock 的 margin 填充跟清（unlockGridSize） */
   function ensureBadgeObserver() {
     watchGrid(el.srGridHost, '__srBadgeMO', { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] },
-      function () { unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth(); });
+      function () {
+        /* Bug4 三段计时：整理后官方格首改=官方排序落地（首见盖戳，50ms 防抖粒度） */
+        if (XFER && XFER.kind === 'tidy' && XFER.t0 && !XFER.tMO) XFER.tMO = Date.now();
+        unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth();
+      });
   }
   /* v1.8.4c 作者缺陷「柜子滚动条」：官方 createGridSizeLock（webui-bag.js@1211）的
      seenRows/seenCols 只增不减（hint=State.bagMaxRows=页签柜最高行，作者括号直觉逐字命中）
@@ -1712,7 +1709,7 @@
      位移天然计入，webui-bag.js@387/406/446），清零不影响落点；锁内部 baseW/baseH 只读
      offsetWidth/offsetHeight（margin 是锁的输出不是输入），清零不污染锁状态；横向居中由
      .sr-gridhost flex 居中接管（缺陷#5 第三轮同款）。清零后滚动=当前柜真实行数：
-     容纳即无滚动条（overflow:auto 原生语义），滚动极限=当前柜底。 */
+     容纳即不可滚（v1.8.8 overflow-y:scroll 轨道常驻——作者令切柜不闪烁），滚动极限=当前柜底。 */
   function unlockGridSize() {
     var host = el.srGridHost;
     var g = host && host.firstElementChild;
@@ -1754,8 +1751,9 @@
     /* 滚动条计入壳宽（症状②根因）：sr-body overflow-x:hidden 下格区横向溢出恒为
        壳内衬（rail padding20+border2+body border2=24）+滚动条宽。不加 sb 时 WebView2
        经典滚动条(≈8px)溢出 12px>格区自带右内边距 9px → 末列右缘被啃进滚动条底下；
-       +sb 后溢出恒 4px≤9px，末列与滚动条粗细无关地安全。sb 量当前态（vscroll 未现=0，
-       行数增长当帧 MO 回调补量收敛）。 */
+       +sb 后溢出恒 4px≤9px，末列与滚动条粗细无关地安全。v1.8.8 起 sr-body
+       overflow-y:scroll 轨道常驻 → sb 恒=滚动条宽（切柜不再 0↔8px 跳变，本量测
+       退化为常量确认；MO 补量路径保留作兜底）。 */
     var sb = 0;
     try { var body = el.rail.querySelector('.sr-body'); if (body) sb = Math.max(0, body.offsetWidth - body.clientWidth); } catch (e) { }
     if (el.srGridHost.style.width) el.srGridHost.style.width = ''; /* 历史冻宽残留清除（幂等） */
@@ -1770,6 +1768,95 @@
         el.rail.style.setProperty('max-width', rw2, 'important');
       } catch (e) { }
     }
+    if (SB_IND) SB_IND.repaint(); /* v1.8.8：壳宽/格重排后指示轨几何跟随 */
+  }
+
+  /* ---- v1.8.8 恒显滚动指示轨（终案）----
+     证据链：fluent 已环境级关闭+自定义滚动条接管（诊断实锤 gap=10/trackRule=1）后，剩余
+     「闪」=原生 thumb 外观随滚动状态切换——溢出=可见短 thumb、容纳=满长 18% 白近隐形，
+     切柜瞬态（官方 size-lock margin 先撑后清 1-2 帧）在两态间跳动=「闪一下然后消失」；
+     纯静态条（第四轮）无位置反馈=作者判「滚了没反应」。终案=自绘指示轨：轨道/thumb 常驻
+     常色不出现不消失（外观只有长度/位置变化），thumb 长度/位置=滚动比例（容纳时满长同色
+     可见）；原生滚动条保持透明占位（槽宽恒定）。更新通路：scroll=即绘（滚动手感）；网格
+     MO/尺寸变化=90ms 尾随防抖绘（瞬态寿命 1-2 帧≈16-33ms，90ms 后必已落定=瞬态不可见）；
+     ResizeObserver 兜底几何。mode='fixed'：贴 iframe 视口（原生页宿主层级不可控时用，
+     append 到 doc.body）；默认 host 相对定位（壳=rail，已 position:relative）。 */
+  var SB_IND = null; /* 壳侧指示轨实例（bind 每次重挂重建） */
+  function sbMakeIndicator(doc, host, scroller, thumbCss, trackId, fixed) {
+    try {
+      var t = doc.getElementById(trackId);
+      if (!t) {
+        t = doc.createElement('div');
+        t.id = trackId;
+        t.style.cssText = (fixed ? 'position:fixed;' : 'position:absolute;') +
+          'width:6px;border-radius:3px;background:rgba(255,255,255,.07);pointer-events:none;z-index:20';
+        var th0 = doc.createElement('div');
+        th0.style.cssText = 'position:absolute;left:0;top:0;width:100%;border-radius:3px;' + thumbCss;
+        t.appendChild(th0);
+        host.appendChild(t);
+      } else if (!t.isConnected) {
+        host.appendChild(t);
+      }
+      if (t.__srScroller === scroller) { /* 同一滚动元素：只补一次几何（幂等快路径） */
+        if (t.__srPaint) t.__srPaint();
+        return { repaint: t.__srDeb };
+      }
+      if (t.__srUnbind) t.__srUnbind(); /* 官方重建格节点=换 scroller：解绑旧观察再重绑 */
+      var thumb = t.firstChild;
+      var paint = function () {
+        try {
+          var sr = scroller.getBoundingClientRect();
+          if (!sr.height || !scroller.clientHeight) { t.style.display = 'none'; return; }
+          t.style.display = 'block';
+          /* 坐标系：absolute 模式（壳）track 与 scroller 同在 rail 缩放上下文=全程布局像素
+             （offsetTop/clientHeight 不受 transform 影响）；fixed 模式（原生页 body 上下文
+             无缩放）贴视口=全程视觉像素（rect）。thumb 比例 ch/sh 无量纲，两模式都自洽。 */
+          if (fixed) {
+            t.style.top = Math.round(sr.top) + 'px';
+            t.style.left = Math.round(sr.right - 8) + 'px';
+            t.style.height = Math.round(sr.height) + 'px';
+          } else {
+            /* left 必须显式设：absolute 元素 left:auto 走静态位置=贴容器左缘（作者实机
+               「滚动条跑左边」实锤）。布局像素右锚=offsetLeft+offsetWidth−（右边框1+留白2+
+               轨宽6）；offsetParent 非 host（异常层级）时退回 rect 差（视觉 px 兜底）。 */
+            t.style.top = (scroller.offsetTop + (scroller.clientTop || 0)) + 'px';
+            if (scroller.offsetParent === host) {
+              t.style.left = (scroller.offsetLeft + scroller.offsetWidth - 9) + 'px';
+            } else {
+              var hr = host.getBoundingClientRect();
+              t.style.left = Math.round(sr.right - hr.right + 1) + 'px';
+            }
+            t.style.height = scroller.clientHeight + 'px';
+          }
+          var sh = scroller.scrollHeight, ch = scroller.clientHeight, thh = t.clientHeight;
+          if (sh <= ch + 2) { thumb.style.height = thh + 'px'; thumb.style.transform = 'translateY(0)'; return; }
+          var h = Math.max(28, Math.round(ch / sh * thh));
+          var y = Math.round(scroller.scrollTop / (sh - ch) * (thh - h));
+          thumb.style.height = h + 'px';
+          thumb.style.transform = 'translateY(' + y + 'px)';
+        } catch (e) { }
+      };
+      var dTimer = 0;
+      var debounced = function () { clearTimeout(dTimer); dTimer = setTimeout(paint, 90); };
+      scroller.addEventListener('scroll', paint, { passive: true });
+      var ro = null, mo = null;
+      var w = scroller.ownerDocument && scroller.ownerDocument.defaultView;
+      if (w) {
+        try { if (w.ResizeObserver) { ro = new w.ResizeObserver(debounced); ro.observe(scroller); } } catch (e) { }
+        try { if (w.MutationObserver) { mo = new w.MutationObserver(debounced); mo.observe(scroller, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] }); } } catch (e) { }
+      }
+      t.__srUnbind = function () {
+        clearTimeout(dTimer);
+        try { scroller.removeEventListener('scroll', paint); } catch (e) { }
+        try { if (ro) ro.disconnect(); } catch (e) { }
+        try { if (mo) mo.disconnect(); } catch (e) { }
+      };
+      t.__srScroller = scroller;
+      t.__srPaint = paint;
+      t.__srDeb = debounced;
+      paint();
+      return { repaint: debounced };
+    } catch (e) { return null; }
   }
 
   /* ---- 主渲染（Produces：render）——setData 到达/视图态变化后全量刷新 ---- */
@@ -1783,7 +1870,7 @@
     }
     /* v13.5-v13.8 机器页 plain（9 页，不含 BackpackUI 原生/MaterialRack/温室）：固定网格+
        本柜+清筛选；头部/搜索/标签/工具/悬停/N行 由 .plain CSS 隐藏。设施排序钮=食品五页；
-       Trade 默认交易价值排序（首包到达后一次性下发 sortBy，之后跟手动）。 */
+       Trade 默认价值排序 v1.8.9 退役（恒官方真实排布，价值角标保留）。 */
     var plainSc = isPlainScene();
     el.rail.classList.toggle('plain', plainSc);
     if (plainSc) {
@@ -1791,14 +1878,12 @@
     }
     el.srFoodSort.hidden = !isFoodScene();
     if (menuFoot) menuFoot.sync();
-    renderTradeInfo();
     if (menuFoot) menuFoot.refresh();
     ensureBadgeObserver();
-    if (st.scene === 'Trade' && !st.tradeSorted && store.items && bagArr().length > 1) {
-      st.tradeSorted = true; /* 每次进页一次性（applyScene 复位）；「默认按交易价值排序」
-         v1.8.5：显示层（旧数据层 sortBy 废弃——Trade 页同属 Vue 格，重绑链不可靠且毁真实布局） */
-      dispReapply(DISP, 'value', st.currentId);
-    }
+    /* v1.8.9：Trade 默认价值排序退役（applyScene 注释）——不再重排物品；仅 prime 一次模型：
+       choice=null 的 dispApply 只设 DISP.model（角标 join 依赖），走 restore 早退=零排序
+       零 x/y 写入零 renderItems（官方格重建从「两遍」回到「一遍」）。 */
+    if (st.scene === 'Trade' && !DISP.model) dispApply(DISP);
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
     if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(DISP, st.fsort, st.currentId);
     var c = ctnById(st.currentId) || railCtns()[0] || null;
@@ -1835,7 +1920,6 @@
     var seg = el.srSeg.querySelectorAll('[data-mode]');
     for (var s = 0; s < seg.length; s++) seg[s].classList.toggle('active', seg[s].getAttribute('data-mode') === st.mode);
     renderTags(); /* 页签行=官方 DOM 原件（v1.8.7），官方渲染；rail 无页签渲染职责 */
-    renderFilterSel(); /* T4 Browser 下拉（非 browser 视图/无页签场景自动隐藏） */
     if (menuSort) menuSort.refresh();
 
     if (st.mode === 'grid' && !st.global) {
@@ -1914,12 +1998,12 @@
      / 左面板 sbTidy→goTidy(store.bag)，见「T12 一键整理」区）。 */
   function bind(doc, railEl) {
     var ids = ['srTitle', 'srCols', 'srCap', 'srTags', 'srTidy', 'srStoreAll', 'srStoreConfirm', 'srStoreText', 'srStoreCancel', 'srStoreGo',
-      'srTabs', 'srOffTabs', 'srAllCtn', 'srFSel', 'srFSelLbl', 'srFSelPop', 'srFSelBody', 'srSearch', 'srScope',
+      'srTabs', 'srOffTabs', 'srAllCtn', 'srSearch', 'srScope',
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGridHost', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
       'srCtnPop', 'srCtnPopBody',
       'srCtnEdit', 'srEditName', 'srEditTags', 'srEditSave', 'srEditCancel',
       'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody',
-      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody', 'srTrade',
+      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody',
       /* T10 中段（仅 rack 场景存在，非 rack 收集为 null，消费侧守卫；官方两按钮
          btnPutAll/btnTakeAll 零接线——官方监听随 reparent 存活，不入引用表） */
       'srMid', 'srTakeCat', 'srTakeCatMenu', 'srPutCat', 'srPutCatMenu', 'srTagPutIn', 'srTagChips'];
@@ -1958,13 +2042,6 @@
 
     /* v1.8.7：页签单击切换=官方原生（官方页签元素上的官方监听），rail 不接线不拦截——
        切柜统一出口 switchTo 仅保留给 ▾ 容器菜单（T5）与 rackOpen。 */
-
-    /* ---- T4：Browser 下拉（fsel 触发钮开合 + 选项委托选完即关）---- */
-    if (el.srFSel) el.srFSel.onclick = function () { closePops('fsel'); el.srFSelPop.hidden = !el.srFSelPop.hidden; renderFilterSel(); };
-    if (el.srFSelBody) el.srFSelBody.onclick = function (e) {
-      var b = e.target.closest('[data-sel]'); if (!b) return;
-      pickFilterSel(b.getAttribute('data-sel'));
-    };
 
     /* ---- T5：▾ 容器菜单（rail.js el.srAllCtn.onclick/srCtnPopBody.onclick 移植）----
        ▾ 唯一入口；点空白处收起（document 级监听已在下方）。 */
@@ -2014,6 +2091,8 @@
        零拦截——官方监听在官方节点上原样跑。srBody 级 preventDefault 只吞浏览器默认菜单
        （官方 handler 在更深节点先跑，不受影响）。列表=纯汇总只读（行零事件，§0 红线）。 */
     el.srBody.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    /* v1.8.8 恒显滚动指示轨（bind 每次重挂重建实例；工厂按 trackId 幂等） */
+    SB_IND = sbMakeIndicator(el.srBody.ownerDocument, el.rail, el.srBody, 'background:rgba(255,255,255,.32)', 'srSbTrack', false);
     /* T3：② 网格/列表分段（rail.js 原样；全库模式锁定列表视图） */
     el.srSeg.onclick = function (e) {
       if (st.global) return; /* 全库模式锁定列表视图 */
@@ -2655,55 +2734,11 @@
      （ContainerTabHotKey→RA_SwitchTabByKey→官方渲染），可见性/顺序在 C# 状态层收口
      （数组=可见集、pinOrder 重排=显示序），步进落点天然=页签行邻居，无需任何拦截。 ---- */
 
-  /* ================= v1.8.7 T4 Browser 视图下拉（标签筛选柜子页签，状态层收口版） =================
-     v1.7.0 tagfilter 下拉的服务对象换轨：选中不再走 JS DOM 隐藏，而是 cmd setFilter →
-     C# cerail_filter.json 落库 → TabGate 下轮把官方数组收窄到选中集（数组=可见集，
-     A/D/tabdrop 原生）。选项语义照旧：全部柜子(0)/其他(other=未打标签容器)/逐标签
-     （官方 Config_FurnitureTag 库经契约 lib 透传；材料架自动匹配"材料"标签=C# SelMatch
-     伪标签同语义）。选中按场景记忆（srp_filter_<scene> 浏览器侧回显 + C# 文件权威），
-     场景开启即上报存档值（C# 文件与浏览器侧自愈对齐，pinOrder 旧上报同模式）。 */
-  function filterSelKey() { return 'srp_filter_' + st.scene; }
-  function loadFilterSel() {
-    try { var v = localStorage.getItem(filterSelKey()); return (v == null || v === '') ? '0' : String(v); } catch (e) { return '0'; }
-  }
-  function saveFilterSel(sel) {
-    try { if (sel === '0' || sel == null) localStorage.removeItem(filterSelKey()); else localStorage.setItem(filterSelKey(), String(sel)); } catch (e) { }
-  }
-  function filterOptions() {
-    var opts = [{ sel: '0', label: '全部柜子' }, { sel: 'other', label: '其他（未打标签）' }];
-    var lib = store.lib.slice();
-    lib.sort(function (a, b) { return (a.order || 0) - (b.order || 0); });
-    for (var i = 0; i < lib.length; i++) opts.push({ sel: String(lib[i].id), label: lib[i].n });
-    return opts;
-  }
-  function filterLabel(sel) {
-    var opts = filterOptions();
-    for (var i = 0; i < opts.length; i++) if (opts[i].sel === String(sel)) return opts[i].label;
-    return '全部柜子';
-  }
-  function renderFilterSel() {
-    if (!el.srFSel || !el.srFSelLbl) return;
-    /* 仅 Browser 视图的 tab 场景显示（固定视图页=视图即筛选，无下拉） */
-    var view = (store.ctx && store.ctx.view) || 'browser';
-    var sc = SCENES[st.scene];
-    el.srFSel.hidden = !(view === 'browser' && sc && sc.tabs);
-    var sel = loadFilterSel();
-    var lb = filterLabel(sel);
-    if (el.srFSelLbl.textContent !== lb) el.srFSelLbl.textContent = lb;
-    if (el.srFSelBody) {
-      el.srFSelBody.innerHTML = filterOptions().map(function (o) {
-        return '<button type="button" class="sr-fselopt' + (o.sel === sel ? ' active' : '') + '" data-sel="' + esc(o.sel) + '">' + esc(o.label) + '</button>';
-      }).join('');
-    }
-  }
-  function pickFilterSel(sel) {
-    sel = String(sel);
-    saveFilterSel(sel);
-    try { cmdOut('setFilter', { key: st.scene, sel: sel }); } catch (e) { }
-    renderFilterSel();
-    el.srFSelPop.hidden = true;
-    toast(sel === '0' ? '已显示全部柜子页签' : '页签已收窄到「' + filterLabel(sel) + '」（≤0.5 秒生效）');
-  }
+  /* ================= v1.8.9 Browser 视图下拉退役（作者令：「全部柜子按钮有时能看到有时
+     看不到，很奇怪……没什么用，删了」） =================
+     v1.8.7 T4 的标签筛选下拉（srFSel/srFSelPop、setFilter→cerail_filter.json→C# 收窄）整链
+     下线：显隐随 Browser 视图/页签场景跳变=观感玄学，切柜能力 ▾ 容器菜单已全覆盖。
+     旧 srp_filter_<scene> localStorage 键与 C# cerail_filter.json 同批退役（无消费方）。 */
 
   /* ================= v1.8.7 T3 官方页签拖拽排序（HTML5 dnd 挂官方页签元素） =================
      官方页签栏还原后的「我们的设计」之一：拖页签改序 → cmd pinOrder → C# 重排官方数组
@@ -2927,10 +2962,13 @@
      ③ 列数=官方数据原生。12 列统一需柜宽数据层改写（真实尺寸/存档坐标变更），仍待作者
         拍板（CabinetSize 重启用 / 内建 SizeEngine），本版不动数据。 */
   var NATIVE_BP_CSS = ''
-    + '.grid-container{max-height:560px;overflow-y:auto;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(255,193,7,.5) transparent}'
+    /* v1.8.8 第五轮（与壳同案=自绘恒显指示轨）：原生滚动条透明占位（槽宽恒 8px + gutter
+       stable + content-box+padding-right:12px「滚动槽在官方宽之外」口径不变），指示轨几何/
+       颜色由 sbMakeIndicator 在 nbMount 里自绘（srnSbTrack，thumb 与壳侧同色=白 32%） */
+    + '.grid-container{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:12px;overscroll-behavior:contain}'
     + '.grid-container::-webkit-scrollbar{width:8px}'
-    + '.grid-container::-webkit-scrollbar-thumb{background:rgba(255,193,7,.45);border-radius:4px}'
-    + '.grid-container{box-sizing:content-box;padding-right:12px}'
+    + '.grid-container::-webkit-scrollbar-track{background:transparent}'
+    + '.grid-container::-webkit-scrollbar-thumb{background:transparent}'
     + '.bag-panel.is-storage .weight-section{display:none !important}';
   function ensureNativeBp(f) {
     var doc = f.doc;
@@ -3164,6 +3202,11 @@
       NB.doc = doc; NB2.doc = doc;
       nbSide(doc, pp.bag, true);   /* 袋侧：排序+入库（取用形态不在场即摘） */
       nbSide(doc, pp.ctn, false);  /* 柜侧：仅排序（v1.8.6） */
+      /* v1.8.8 原生页恒显滚动指示轨：官方格（唯一 .grid-container）右缘；fixed 贴视口
+         （官方宿主层级不可控，不动官方 position）；工厂按 trackId 幂等，每周期重挂补位。
+         thumb 白 32%=与壳侧 srSbTrack 同色（作者令「颜色统一」——v1.8.3 金色调退役） */
+      var nbGrid = doc.querySelector('.grid-container');
+      if (nbGrid) sbMakeIndicator(doc, doc.body, nbGrid, 'background:rgba(255,255,255,.32)', 'srnSbTrack', true);
       /* 缺陷单#1：切场景重置为默认（§4.11 定版）——**只在进页/换页沿重置**（nbMount 每周期
          重跑，无条件重置会把玩家刚选的排序当场打回；旧实现靠 localStorage 每周期回灌掩盖） */
       var scKey = (store.ctx && store.ctx.page) || '';
@@ -3379,14 +3422,14 @@
     st.scene = key;
     loadScenePrefs();
     st.currentId = entryDefault();
-    /* v13.5-v13.8：设施排序态随场景（Trade=交易价值默认；其余=官方默认）；
-       缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；旧实现 localStorage 恢复标签不重排）；
-       tradeSorted=每次进 Trade 页重置（首包后一次性下发默认排序） */
-    st.fsort = (key === 'Trade') ? 'value' : 'official';
-    st.tradeSorted = false;
-    /* v1.8.5：显示层排序态随场景重置（Trade=交易价值默认；其余=官方真实顺序）；
-       换场景=换模型（vue/grid 适配器现取），旧模型 real 快照随数组身份自然失效 */
-    DISP.choice = (key === 'Trade') ? 'value' : null;
+    /* v13.5-v13.8：设施排序态随场景；缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；
+       旧实现 localStorage 恢复标签不重排）。v1.8.9：Trade 默认价值排序**退役**（作者令
+       「去掉」——一键整理后显示层重排把官方格全量重建放大成两遍=卡顿帮凶；退役后 Trade
+       恒保持官方真实排布；金色价值角标保留，模型 prime 见 render 的 Trade 分支） */
+    st.fsort = 'official';
+    /* v1.8.5：显示层排序态随场景重置；换场景=换模型（vue/grid 适配器现取），旧模型 real
+       快照随数组身份自然失效 */
+    DISP.choice = null;
     DISP.owner = 0; DISP.model = null;
     DISP_CT.choice = null; DISP_CT.owner = 0; DISP_CT.model = null; /* v1.8.6 柜侧同沿重置（换模型实例，快照随数组身份失效） */
     /* B 键单独背包 = 纯背包页：进入时全库收紧（rail.js setScene：global 复位回 prevMode） */
@@ -3394,11 +3437,8 @@
     st.sel = null;
     /* v1.8.7：场景开启上报本页显示序退役——顺序唯一权威=C# cerail_pinorder.json，
        各页轮询（TabInjector/TabGate/Pruner 的 ApplyOrder）每 0.5s 对账自愈，
-       无需 JS 浏览器侧回灌（旧 srp_pin_order_<scene> localStorage 读写路整体下线）。 */
-    /* T4：Browser 选中上报（浏览器记忆 → C# 文件；选中收窄在 C# 状态层，此处只对齐两份存档） */
-    try {
-      if (SCENES[key] && SCENES[key].tabs) cmdOut('setFilter', { key: key, sel: loadFilterSel() });
-    } catch (e) { }
+       无需 JS 浏览器侧回灌（旧 srp_pin_order_<scene> localStorage 读写路整体下线）。
+       v1.8.9：T4 Browser 选中上报同批退役（下拉按钮已删，C# 端 setFilter/cerail_filter.json 一并拆）。 */
     PIN_KEY = ''; /* 场景换了/全新侧栏 DOM：页签结构必重建（原地更新纪律，§4.10） */
     RENDERED_ID = null; /* 场景态重置=渲染目标未知，回包门回到「未渲染」 */
     saveSnap(); /* T9：入口态即刻入快照（数据未到时重绑重访也有完整场景态可换回） */
@@ -3426,6 +3466,8 @@
       && !(json.icfg && json.icfg.length)
       && !(json.items && Object.keys(json.items).length)) return;
     store.rev = json.rev || 0;
+    /* Bug4 三段计时：契约回推到达（空契约守卫之后=真数据才记） */
+    if (XFER && XFER.kind === 'tidy' && XFER.t0 && !XFER.tSet) XFER.tSet = Date.now();
     store.ctx = json.ctx || {};
     store.bag = json.bag || 0;
     store.ctn = normRows(json.ctn, normCtn);

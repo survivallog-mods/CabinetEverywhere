@@ -17,7 +17,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// 视图谓词（JS viewAllows / ToolTablePruner.Allows 同语义合一，补 Kind 规则）：
 /// - Food：冰箱（kind 'f'）全显 + 任一标签落食物域（dim1-4）的柜子；
 /// - Material：材料/工具标签柜 + 材料架显；冰箱藏；未打标签柜藏；
-/// - Browser：全显（下拉筛选 T4 接入后按选中标签收窄）。
+/// - Browser：全显（v1.8.9：T4 下拉筛选随「全部柜子」按钮整链退役）。
 ///
 /// 覆盖页与写者纪律（单写者原则——同一数组禁止两个组件对账）：
 /// - Cooking/RatCage/Brew/Dye（bag×4 注入页）：TabInjector 内联（注入集按视图过滤 +
@@ -86,13 +86,6 @@ internal static class TabGate
         public bool IsFood(int tagId) => _food != null && _food.Contains(tagId);
     }
 
-    /// <summary>容器实例判定（带 Browser 选中；TabInjector 注入集过滤用）。</summary>
-    internal static Verdict JudgeInstSel(CabinetCatalog.ContainerInst inst, string view, string sel, TagCtx ctx)
-    {
-        if (view == "Browser") return SelMatch(inst, sel, ctx) ? Verdict.Keep : Verdict.Remove;
-        return JudgeInst(inst, view, ctx);
-    }
-
     /// <summary>容器实例判定（JS viewAllows 同语义；Food=冰箱全显+食物域柜、Material=材料/工具柜+架/冰箱藏、Browser 全显）。</summary>
     internal static Verdict JudgeInst(CabinetCatalog.ContainerInst inst, string view, TagCtx ctx)
     {
@@ -116,25 +109,12 @@ internal static class TabGate
     }
 
     /// <summary>ownerId 判定：不在容器表（背包/pin/未知）→ Keep（宁可不剪也不错剪——pruner 同款纪律）。
-    /// v1.8.7 T4：Browser 视图带下拉选中（sel）时按选中标签收窄（"0"/空=全部、"other"=未打标签、
-    /// 数字=tagId——tagfilter sltf_sel_v3 同语义，材料架补"材料"伪标签）。</summary>
-    internal static Verdict Judge(long ownerId, string view, TagCtx ctx, string sel = null)
+    /// v1.8.9：T4 Browser 下拉选中（sel）随「全部柜子」按钮退役——Browser 恒全显。</summary>
+    internal static Verdict Judge(long ownerId, string view, TagCtx ctx)
     {
         var inst = FindContainer(ownerId);
         if (inst == null) return Verdict.Keep;
-        if (view == "Browser") return SelMatch(inst, sel, ctx) ? Verdict.Keep : Verdict.Remove;
         return JudgeInst(inst, view, ctx);
-    }
-
-    /// <summary>Browser 下拉选中匹配（v1.8.7 T4；语义照 v1.7.0 tagfilter 下拉）。</summary>
-    private static bool SelMatch(CabinetCatalog.ContainerInst inst, string sel, TagCtx ctx)
-    {
-        if (string.IsNullOrEmpty(sel) || sel == "0") return true; // 全部柜子
-        if (sel == "other") return (inst.TagIds == null || inst.TagIds.Length == 0) && !inst.IsMaterialRack;
-        if (int.TryParse(sel, out var tagId))
-            return Array.IndexOf(inst.TagIds ?? Array.Empty<int>(), tagId) >= 0
-                || (inst.IsMaterialRack && tagId == ctx.MatTagId); // 材料架补"材料"伪标签
-        return true; // 未知值放行（宁可不剪也不错剪）
     }
 
     private static CabinetCatalog.ContainerInst FindContainer(long ownerId)
@@ -148,92 +128,8 @@ internal static class TabGate
         return null;
     }
 
-    // ---- Browser 下拉选中持久化（BepInEx/cerail_filter.json，v1.8.7 T4；names/pinorder 同款纪律） ----
-
-    private static string FilterPath => System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "cerail_filter.json");
-    private static Dictionary<string, string> _filters = new();
-    private static DateTime _filtersMtime;
-    private static bool _filtersTried;
-
-    /// <summary>每页下拉选中（pageKey→"0"|"other"|tagId 字符串）；mtime 失效重载。</summary>
-    internal static Dictionary<string, string> LoadFilters()
-    {
-        try
-        {
-            DateTime mtime = System.IO.File.Exists(FilterPath) ? System.IO.File.GetLastWriteTimeUtc(FilterPath) : DateTime.MinValue;
-            if (_filtersTried && mtime == _filtersMtime) return _filters;
-            _filtersMtime = mtime;
-            _filtersTried = true;
-            var d = new Dictionary<string, string>();
-            if (System.IO.File.Exists(FilterPath))
-            {
-                try
-                {
-                    if (RailJson.Parse(System.IO.File.ReadAllText(FilterPath)) is Dictionary<string, object> root)
-                        foreach (var kv in root)
-                            if (kv.Value is string s) d[kv.Key] = s;
-                }
-                catch (Exception e)
-                {
-                    WarnOnce("filters:corrupt", "cerail_filter.json 损坏，弃用重建: " + e.Message);
-                }
-            }
-            _filters = d;
-        }
-        catch (Exception e)
-        {
-            WarnOnce("filters:load", "cerail_filter.json 读取失败: " + e.Message);
-        }
-        return _filters;
-    }
-
-    /// <summary>JS setFilter 命令落库（RailCommands.OpSetFilter 调）：sel 已过白名单校验。</summary>
-    internal static void SaveFilter(string pageKey, string sel)
-    {
-        var all = LoadFilters();
-        if (sel == null || sel == "0") all.Remove(pageKey); // 全部=缺省，不落库
-        else all[pageKey] = sel;
-        try
-        {
-            var sb = new System.Text.StringBuilder(128);
-            sb.Append('{');
-            bool first = true;
-            foreach (var kv in all)
-            {
-                if (!first) sb.Append(',');
-                first = false;
-                sb.Append('"').Append(kv.Key).Append("\":\"").Append(kv.Value).Append('"');
-            }
-            sb.Append('}');
-            string path = FilterPath, tmp = path + ".tmp";
-            System.IO.File.WriteAllText(tmp, sb.ToString());
-            System.IO.File.Move(tmp, path, true);
-            _filtersMtime = System.IO.File.GetLastWriteTimeUtc(path);
-            CabinetEverywherePlugin.Log.LogInfo($"[CabinetEverywhere] Browser 筛选选中：{pageKey} → {sel}（下轮对账收窄可见集）");
-        }
-        catch (Exception e)
-        {
-            WarnOnce("filters:save", "cerail_filter.json 写入失败: " + e.Message);
-        }
-    }
-
-    /// <summary>sel 白名单校验（OpSetFilter 用）："0"/"other" 或官方标签表内 tagId。</summary>
-    internal static bool SelValid(string sel, out string normalized)
-    {
-        normalized = null;
-        if (sel == null) return false;
-        if (sel == "0" || sel == "other") { normalized = sel; return true; }
-        if (int.TryParse(sel, out var tagId))
-        {
-            try
-            {
-                var dict = SurvivalLog.ModShared.BagTable.Cm()?._Config_FurnitureTag_Dict;
-                if (dict != null && dict.ContainsKey(tagId)) { normalized = tagId.ToString(); return true; }
-            }
-            catch { }
-        }
-        return false;
-    }
+    // ---- v1.8.9：Browser 下拉选中持久化（cerail_filter.json：FilterPath/LoadFilters/SaveFilter/
+    //      SelValid 整块）随「全部柜子」按钮退役——下拉是唯一写者，文件残留无消费方自然失效 ----
 
     internal static string ViewOf(ConfigEntry<ScenarioView> e)
     {
@@ -259,31 +155,27 @@ internal static class TabGate
 
     /// <summary>
     /// 移出视图不匹配条目（ownerId 制数组通用：bag×4 注入页与 DroneHub 共用）。
-    /// v1.8.7 T4：Browser 带选中（sel）时按选中收窄；"0"/空=全部=零动作快路径。
+    /// v1.8.9：T4 Browser 下拉选中（sel）退役——Browser=全显零动作快路径。
     /// 活动页签跳过；未知 owner 跳过；removedOwners 非空时收集被移 owner（TabInjector
     /// 用以解除会话防重标记——视图切回后 AddMissing 能重新补挂）。返回移出数（&gt;0 才 Repush）。
     /// </summary>
     internal static int RemoveUndesired<T>(ObservableCollections.ObservableList<T> tabs,
-        Func<T, long> ownerOf, long activeOwner, string view, string sel, TagCtx ctx, HashSet<long> removedOwners = null)
+        Func<T, long> ownerOf, long activeOwner, string view, TagCtx ctx, HashSet<long> removedOwners = null)
     {
-        if (view == "Browser" && (string.IsNullOrEmpty(sel) || sel == "0")) return 0;
+        if (view == "Browser") return 0;
         int removed = 0;
         for (int i = tabs.Count - 1; i >= 0; i--)
         {
             long o = 0;
             try { o = ownerOf(tabs[i]); } catch { }
             if (o == 0 || o == activeOwner) continue;
-            if (Judge(o, view, ctx, sel) == Verdict.Remove)
+            if (Judge(o, view, ctx) == Verdict.Remove)
             {
                 try { tabs.RemoveAt(i); removed++; removedOwners?.Add(o); } catch { }
             }
         }
         return removed;
     }
-
-    /// <summary>Browser 选中是否处于收窄态（调用方快路径用）。</summary>
-    internal static bool SelActive(string view, string sel)
-        => view == "Browser" && !string.IsNullOrEmpty(sel) && sel != "0";
 
     // ================= 轮询（Plugin 快通道 0.5s） =================
 
@@ -344,8 +236,7 @@ internal static class TabGate
             long active = 0;
             try { active = st.BagOwnerId?.Value ?? 0; } catch { }
             string view = ViewOf(CabinetEverywherePlugin.ViewDroneHub);
-            LoadFilters().TryGetValue("dronehub", out var sel); /* T4 Browser 下拉选中 */
-            int removed = RemoveUndesired(tabs, t => t?.OwnerId?.Value ?? 0, active, view, sel, TagCtx.Build());
+            int removed = RemoveUndesired(tabs, t => t?.OwnerId?.Value ?? 0, active, view, TagCtx.Build());
             bool reordered = TabInjector.ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "dronehub"); /* T3 拖拽序 */
             if (removed > 0 || reordered)
             {
@@ -373,8 +264,7 @@ internal static class TabGate
         {
             try { activeOwner = ownerOf(tabs[active]); } catch { }
         }
-        LoadFilters().TryGetValue(pageKey, out var sel); /* T4 Browser 下拉选中 */
-        int removed = RemoveUndesired(tabs, ownerOf, activeOwner, view, sel, TagCtx.Build());
+        int removed = RemoveUndesired(tabs, ownerOf, activeOwner, view, TagCtx.Build());
         bool reordered = TabInjector.ApplyOrder(tabs, ownerOf, pageKey); /* T3 拖拽序 */
         if (removed == 0 && !reordered) return;
 
@@ -469,9 +359,8 @@ internal static class TabGate
             long active = 0;
             try { active = st.OwnerId; } catch { }
             string view = ViewOf(CabinetEverywherePlugin.ViewTrade);
-            LoadFilters().TryGetValue("trade", out var sel); /* T4 Browser 下拉选中 */
             int removed = 0;
-            if (view != "Browser" || SelActive(view, sel))
+            if (view != "Browser") /* v1.8.9：T4 Browser 下拉退役，Browser=全显零动作 */
             {
                 var ctx = TagCtx.Build();
                 for (int i = tabs.Count - 1; i >= 0; i--)
@@ -487,7 +376,7 @@ internal static class TabGate
                     }
                     catch { continue; }
                     if (keepMarked || o == 0 || o == active) continue;
-                    if (Judge(o, view, ctx, sel) == Verdict.Remove)
+                    if (Judge(o, view, ctx) == Verdict.Remove)
                     {
                         try { tabs.RemoveAt(i); removed++; } catch { }
                     }

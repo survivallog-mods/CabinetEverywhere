@@ -61,6 +61,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     internal static ConfigEntry<int> UniformBagWidth; // v13.8 柜宽统一（0=off；作者拍板默认 12）
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
+    internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
     internal static ConfigEntry<ScenarioView> ViewCooking, ViewRatCage, ViewBrewPanel, ViewDyePanel, ViewCompressor,
@@ -83,6 +84,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         RailEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
         AllowDebugUiShow = Config.Bind("Rail", "AllowDebugUiShow", false,
             "调试：允许 uiShow 命令远程显示官方界面（实机验收驱动用；发布/日常保持 false）。");
+        ClassicWebViewScrollbars = Config.Bind("Rail", "ClassicWebViewScrollbars", true,
+            "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
+        ApplyWebViewScrollbarEnv();
         UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
             "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。");
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
@@ -161,6 +165,44 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 袋刷新帧尾合并（一次做一次算）：默认行为
         RefreshCoalescer.Install();
     }
+
+    /// <summary>
+    /// v1.8.8 fluent 滚动条关闭（作者实测：轨道常驻但 thumb 随切柜「闪一下然后消失」=fluent
+    /// 渲染无视页面 ::-webkit-scrollbar 样式；overflow-y:scroll 与自定义样式两轮 CSS 都治不了）。
+    /// WebView2 loader 原生支持进程级 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS（
+    /// CreateCoreWebView2Environment 时与 options 参数合并），注入 --disable-features 关 fluent
+    /// 系 feature——此后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏、槽宽恒定。
+    /// 只在游戏进程内生效、零落盘；已有 --disable-features 时把 feature 名追加进列表（不覆盖）。
+    /// 链路时序：BepInEx chainloader（本方法）先于游戏首块 WebView 环境创建，变量来得及。
+    /// </summary>
+    private static void ApplyWebViewScrollbarEnv()
+    {
+        if (!Enabled.Value || ClassicWebViewScrollbars == null || !ClassicWebViewScrollbars.Value) return;
+        const string varName = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+        const string feats = "msFluentScrollbars,msFluentScrollbar,msOverlayScrollbar,OverlayScrollbar,FluentScrollbar";
+        try
+        {
+            var cur = Environment.GetEnvironmentVariable(varName);
+            if (!string.IsNullOrEmpty(cur) && cur.IndexOf("msFluentScrollbars", StringComparison.Ordinal) >= 0)
+            {
+                Log.LogInfo("[CERail] WEBVIEW2 滚动条：环境变量已含 fluent 禁用，跳过");
+                return;
+            }
+            string next;
+            if (string.IsNullOrEmpty(cur))
+                next = "--disable-features=" + feats;
+            else if (cur.IndexOf("--disable-features=", StringComparison.Ordinal) >= 0)
+                next = cur + "," + feats;
+            else
+                next = cur + " --disable-features=" + feats;
+            Environment.SetEnvironmentVariable(varName, next);
+            Log.LogInfo("[CERail] WEBVIEW2 滚动条：注入 --disable-features=" + feats + "（原值=" + (cur ?? "<空>") + "）");
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning("[CERail] WEBVIEW2 滚动条环境变量注入失败（fluent 可能仍生效）: " + e.Message);
+        }
+    }
 }
 
 internal sealed class AccessTicker : MonoBehaviour
@@ -178,6 +220,9 @@ internal sealed class AccessTicker : MonoBehaviour
         {
             // 帧尾合并补派：必须每帧最先跑（在 0.5s/5s 门闩之前）
             RefreshCoalescer.Flush();
+            // v1.8.9 Bug4 帧级快通道：官方排序/搬运改叠数 ≤1 帧检出并重推（替代 0.5s 泵量化等待，
+            // 「一键整理响应 2s+」排查修复；空闲≈零开销，重活仍在 0.5s Tick）
+            RailUi.FastPoll();
             Tick(Time.deltaTime);
         }
         catch { /* 单帧异常不终止轮询 */ }

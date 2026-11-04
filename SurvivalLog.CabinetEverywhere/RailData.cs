@@ -250,6 +250,48 @@ internal static class RailData
         return ComputeSig() != _lastSig || _forcePending || _tidyFailPending;
     }
 
+    /* ================= 快通道签名（2026-11-04 Bug4「无人机交易一键整理响应 2s+」排查） =================
+       原回推链=官方排序落地后等 0.5s 泵轮询才发现变化（ItemsDirty 全量逐物品扫描只在
+       Tick 跑），叠加官方格重绘与推包/渲染，感知延迟轻松上 2s。本快检把「检出」提前到
+       ≤1 帧：每 owner 只读 1 次 Count（interop 跨界≈每帧几十次，远低于 ComputeSig 的
+       逐物品 InstanceId/ItemCount 扫描），叠数/owner 集一变即真——官方 tidy 合并、搬运
+       增删叠、拆分全部落此（tidy 的可感知反馈恰好只依赖叠数差量）。
+       捕不到的（行数不变的改动：纯挪位/Σcount 变如拾取并入已有叠/用掉部分）仍由 0.5s
+       Tick 的 ItemsDirty 全量兜底，与原行为一致=零回归。 */
+    private static long _lastFastSig = long.MinValue;
+
+    /// <summary>帧级快检（RailUi.FastPoll 每帧调）：返回 true=行数/owner 集/bagOwner 相对上次有变（检出即消费）。</summary>
+    internal static bool StructureChangedFast()
+    {
+        long sig = 17;
+        var ctn = _ctn;
+        sig = sig * 31 + ctn.Count;
+        for (int i = 0; i < ctn.Count; i++)
+            sig = sig * 31 + ctn[i].OwnerId * 7;
+        sig = sig * 31 + _bagOwner;
+        var world = LogicWorld();
+        var oc = world?._ItemManager?.OwnerCache;
+        if (oc != null)
+        {
+            sig = sig * 31 + InnerCountFast(oc, _bagOwner);
+            for (int i = 0; i < ctn.Count; i++)
+                sig = sig * 31 + InnerCountFast(oc, ctn[i].OwnerId);
+        }
+        if (sig == _lastFastSig) return false;
+        _lastFastSig = sig;
+        return true;
+    }
+
+    /// <summary>单 owner 行数（2 次 interop 读）；owner 不可得/异常=0（与 SigOwner 空容器同口径）。</summary>
+    private static long InnerCountFast(
+        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
+        long owner)
+    {
+        if (owner <= 0) return 0;
+        try { return oc.TryGetValue(owner, out var inner) && inner != null ? inner.Count : 0; }
+        catch { return 0; }
+    }
+
     /* ================= 世界重绑（2026-11-01 第十二轮：作者「退主菜单重读档后排序彻底失效」
        日志实锤：rev3 之后全程静默——重读档后页沿不翻/签名不变 → 泵门②永拦 → JS 契约冻结在
        旧世界物品 id → 新模型 id 全 miss=排序键全 null+角标全空。换档=LogicWorld 引用变，

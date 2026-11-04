@@ -45,7 +45,6 @@ function check(name, ok, detail) {
         items: host ? host.querySelectorAll('.item').length : -1,
         gridW: host && host.firstElementChild ? Math.round(host.firstElementChild.getBoundingClientRect().width) : 0,
         badges: document.querySelectorAll('#srBadgeLayer i').length,
-        trade: !document.getElementById('srTrade').hidden,
         bodyH: (document.getElementById('srBody') || {}).offsetHeight || 0
       };
     });
@@ -165,8 +164,9 @@ function check(name, ok, detail) {
     if (FOOD[key]) check(key + ':sortbtn', s.sortBtn, '');
     else check(key + ':nosortbtn', !s.sortBtn, '');
     if (key === 'Trade') {
-      check('trade:strip', s.trade, '买家条在场');
-      check('trade:fsort', await page.evaluate(() => window.__CERAIL__.state.fsort) === 'value', '默认交易价值');
+      /* v1.8.9：买家条（srTrade）与默认价值排序均已随作者令退役——fsort 恒 official、
+         不再自动重排（官方真实排布）；价值角标保留 */
+      check('trade:fsort-official', await page.evaluate(() => window.__CERAIL__.state.fsort) === 'official', '默认不排序（v1.8.9 退役）');
       await page.waitForTimeout(2500);
       const tb = await frameOf('Trade').evaluate(() => [...document.querySelectorAll('#srBadgeLayer i')].slice(0, 5).map((i) => i.textContent));
       check('trade:badges', tb.length > 0, `[${tb}]`);

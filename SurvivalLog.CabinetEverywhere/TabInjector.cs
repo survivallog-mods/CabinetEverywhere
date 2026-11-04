@@ -66,13 +66,14 @@ internal static class TabInjector
     /// 注入集（四轮① + v1.8.7 T2 视图过滤）：柜子子集 HomeInstances + 全容器里的冰箱（f），
     /// 按 TabGate.JudgeInst 过滤到当前视图（Browser=不过滤=四轮原语义）。冰箱多已在官方原生
     /// tabs（CollectFridges 收录的）——have 集去重，实际补进的是漏收的（大容量冰柜类）。
+    /// v1.8.9：T4 Browser 下拉选中（sel）随「全部柜子」按钮退役，注入集只按视图过滤。
     /// </summary>
-    private static IEnumerable<CabinetCatalog.ContainerInst> Injectable(string view, string sel, TabGate.TagCtx ctx)
+    private static IEnumerable<CabinetCatalog.ContainerInst> Injectable(string view, TabGate.TagCtx ctx)
     {
         foreach (var c in CabinetCatalog.HomeInstances)
-            if (TabGate.JudgeInstSel(c, view, sel, ctx) == TabGate.Verdict.Keep) yield return c;
+            if (TabGate.JudgeInst(c, view, ctx) == TabGate.Verdict.Keep) yield return c;
         foreach (var c in CabinetCatalog.AllContainers)
-            if (c.Kind == 'f' && TabGate.JudgeInstSel(c, view, sel, ctx) == TabGate.Verdict.Keep)
+            if (c.Kind == 'f' && TabGate.JudgeInst(c, view, ctx) == TabGate.Verdict.Keep)
                 yield return c;
     }
 
@@ -118,10 +119,9 @@ internal static class TabInjector
         if (tabs == null || tabs.Count == 0) return;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewCooking);
-        TabGate.LoadFilters().TryGetValue("cooking", out var sel); /* T4 Browser 下拉选中 */
         var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("烹饪", s, have, tabs.Count, Injectable(view, sel, ctx),
+        var added = AddMissing("烹饪", s, have, tabs.Count, Injectable(view, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Cooking_BagTab();
@@ -133,7 +133,7 @@ internal static class TabInjector
                 tab.IsNew = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "cooking")) Repush(rus, CookingType);
     }
 
@@ -150,10 +150,9 @@ internal static class TabInjector
         if (tabs == null || tabs.Count == 0) return;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewRatCage);
-        TabGate.LoadFilters().TryGetValue("ratcage", out var sel); /* T4 Browser 下拉选中 */
         var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("老鼠笼", s, have, tabs.Count, Injectable(view, sel, ctx),
+        var added = AddMissing("老鼠笼", s, have, tabs.Count, Injectable(view, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_RatCage_BagTab();
@@ -163,7 +162,7 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "ratcage")) Repush(rus, RatCageType);
     }
 
@@ -180,10 +179,9 @@ internal static class TabInjector
         if (tabs == null || tabs.Count == 0) return;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewBrewPanel);
-        TabGate.LoadFilters().TryGetValue("brew", out var sel); /* T4 Browser 下拉选中 */
         var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("酿酒", s, have, tabs.Count, Injectable(view, sel, ctx),
+        var added = AddMissing("酿酒", s, have, tabs.Count, Injectable(view, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Brew_BagTab();
@@ -193,7 +191,7 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "brew")) Repush(rus, BrewType);
     }
 
@@ -210,10 +208,9 @@ internal static class TabInjector
         if (tabs == null || tabs.Count == 0) return;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewDyePanel);
-        TabGate.LoadFilters().TryGetValue("dye", out var sel); /* T4 Browser 下拉选中 */
         var ctx = TabGate.TagCtx.Build();
         var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("颜料桶", s, have, tabs.Count, Injectable(view, sel, ctx),
+        var added = AddMissing("颜料桶", s, have, tabs.Count, Injectable(view, ctx),
             (ownerId, name, index) =>
             {
                 var tab = new Data_Web_Dye_BagTab();
@@ -223,7 +220,7 @@ internal static class TabInjector
                 tab.Locked = new R3.ReactiveProperty<bool>(false);
                 tabs.Add(tab);
             });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, sel, ctx);
+        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "dye")) Repush(rus, DyeType);
     }
 
@@ -246,10 +243,10 @@ internal static class TabInjector
     /// AddMissing 能重新补挂。返回移出数（并入调用方 Repush 条件）。
     /// </summary>
     private static int RemoveUndesired<T>(UiSession s, ObservableCollections.ObservableList<T> tabs,
-        Func<T, long> ownerOf, long activeOwner, string view, string sel, TabGate.TagCtx ctx)
+        Func<T, long> ownerOf, long activeOwner, string view, TabGate.TagCtx ctx)
     {
         var removedOwners = new HashSet<long>();
-        int removed = TabGate.RemoveUndesired(tabs, ownerOf, activeOwner, view, sel, ctx, removedOwners);
+        int removed = TabGate.RemoveUndesired(tabs, ownerOf, activeOwner, view, ctx, removedOwners);
         if (removedOwners.Count > 0)
         {
             foreach (var o in removedOwners) s.Injected.Remove(o);

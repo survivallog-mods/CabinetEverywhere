@@ -85,8 +85,7 @@ internal static class RailCommands
         public bool All;
         public long From, To, Owner, Cat;
         public string Name;
-        public string Key; // uiShow/uiClose/pinOrder/setFilter 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP）
-        public string Sel; // setFilter：Browser 下拉选中（"0"|"other"|tagId 字符串，v1.8.7 T4）
+        public string Key; // uiShow/uiClose/pinOrder 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP；v1.8.9：setFilter 同批退役）
         public List<long> Ids = new();
         public List<long> Tags = new();
         public List<long> Order = new();
@@ -143,7 +142,6 @@ internal static class RailCommands
         c.Cat = Lng(o, "cat");
         if (o.TryGetValue("name", out var nm) && nm is string s) c.Name = s;
         if (o.TryGetValue("key", out var ky) && ky is string ks) c.Key = ks;
-        if (o.TryGetValue("sel", out var sv) && sv is string ss) c.Sel = ss;
         c.Ids = Lngs(o, "ids");
         c.Tags = Lngs(o, "tags");
         c.Order = Lngs(o, "order");
@@ -226,7 +224,6 @@ internal static class RailCommands
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
-            case "setFilter": OpSetFilter(c); break; // v1.8.7 T4：Browser 下拉选中落库（TabGate 下轮按选中收窄可见集）
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }
@@ -669,22 +666,6 @@ internal static class RailCommands
         if (ids.Count == 0) return;
         TabInjector.SavePinOrder(pageKey, ids);
         VLog(c.Op, $"page={pageKey} ids={ids.Count} dropped={dropped}（0.5s 轮询重排官方数组序）");
-    }
-
-    /// <summary>v1.8.7 T4：Browser 视图下拉选中（{"0"=全部柜子/"other"=未打标签/tagId}）落
-    /// cerail_filter.json；sel 过 TabGate.SelValid 白名单（官方标签表），非法整条丢弃。</summary>
-    private static void OpSetFilter(Cmd c)
-    {
-        string pageKey = TabInjector.PageKeyOfScene(c.Key);
-        if (pageKey == null) { WarnOnce("setFilter:page", "setFilter 丢弃：未知页 key=" + c.Key); return; }
-        var sel = c.Sel ?? "0";
-        if (!TabGate.SelValid(sel, out var normalized))
-        {
-            WarnOnce("setFilter:sel", $"setFilter 丢弃：sel={sel} 非白名单（0/other/官方 tagId）");
-            return;
-        }
-        TabGate.SaveFilter(pageKey, normalized);
-        VLog(c.Op, $"page={pageKey} sel={normalized}（下轮对账收窄 Browser 可见集）");
     }
 
     /// <summary>rename{owner,name}：mod 侧持久化 cerail_names.json（≤8 字截断；空名=删除覆盖回契约名）。</summary>

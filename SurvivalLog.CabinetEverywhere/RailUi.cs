@@ -56,6 +56,11 @@ internal static class RailUi
     private static int _probeState;                      // 0=等待探针回包/未知 1=最近一探明确 absent（许可注入一剂）
     private static Il2CppSystem.Action<string> _probeCb; // 探活回调（仅主帧创建一次）
 
+    // ---- v1.8.8 滚动条诊断（一次性：首个 rail 场景开到后量测并记一行日志，防盲改） ----
+    private static bool _diagDone;
+    private static int _diagTries;
+    private static Il2CppSystem.Action<string> _diagCb;
+
     /// <summary>cfg [Rail] Enable（T8 裁定 4）：false=不注入/不推数/drain（含 Pump）全停。</summary>
     internal static bool Enabled =>
         CabinetEverywherePlugin.RailEnable == null || CabinetEverywherePlugin.RailEnable.Value;
@@ -212,24 +217,69 @@ internal static class RailUi
             }
 
             // 门控②：rev（数据签名）未变且场景未切换 → 不推
-            string page = RailData.ActivePage();
-            bool pageChanged = !string.Equals(page, _lastPage, StringComparison.Ordinal);
-            if (!pageChanged && !RailData.ItemsDirty()) return;
-
-            var (json, rev) = RailData.BuildJson();
-            if (json == null) return; // 背包 owner 不可得（findings §4 兜底③），等下一周期
-
-            web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")");
-            _lastPage = page;
-
-            // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
-            if (CabinetEverywherePlugin.Verbose?.Value == true)
-                CabinetEverywherePlugin.Log?.LogInfo(
-                    $"[CERail] 推送 rev={rev} page={page ?? ""}：容器 {RailData.LastCtnRows}，物品行 {RailData.LastItemRows}，icfg {RailData.LastIcfgRows}\n  head: {RailData.LastJsonHead}");
+            RunScrollbarDiag(web);
+            PushIfDue(web);
         }
         catch (Exception e)
         {
             WarnOnce("tick", "rail 数据推送失败: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// 推送尾（Tick 与 FastPoll 共用）：门②全量签名判定 → BuildJson → setData 下发。
+    /// 返回 payload 字节数；-1=本轮无推送（签名未变或 owner 窗口期）。
+    /// </summary>
+    private static int PushIfDue(Vuplex.WebView.IWebView web)
+    {
+        string page = RailData.ActivePage();
+        bool pageChanged = !string.Equals(page, _lastPage, StringComparison.Ordinal);
+        if (!pageChanged && !RailData.ItemsDirty()) return -1;
+
+        var (json, rev) = RailData.BuildJson();
+        if (json == null) return -1; // 背包 owner 不可得（findings §4 兜底③），等下一周期
+
+        web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")");
+        _lastPage = page;
+
+        // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
+        if (CabinetEverywherePlugin.Verbose?.Value == true)
+            CabinetEverywherePlugin.Log?.LogInfo(
+                $"[CERail] 推送 rev={rev} page={page ?? ""}：容器 {RailData.LastCtnRows}，物品行 {RailData.LastItemRows}，icfg {RailData.LastIcfgRows}\n  head: {RailData.LastJsonHead}");
+        return json.Length;
+    }
+
+    /// <summary>
+    /// v1.8.9 Bug4（作者实测：无人机交易一键整理响应 2s+，排查结论见 CHANGELOG 八批）：
+    /// 帧级快通道——官方排序/搬运落地（ItemManager 叠数变化）≤1 帧即检出并全量重推，
+    /// 替代原「0.5s 泵轮询量化等待」这一段固定延迟。tidy（SORT 事件页走官方事件，C# 不经手，
+    /// 原本只能等轮询）与全部搬运类命令的回推/差量 toast 同步提速。
+    /// 成本：每帧 12 页 IsUIActive + 每 owner 1 次 Count（interop 读数十次/帧，空闲≈零变化
+    /// 即退）；重活（探针/drain/诊断）仍在 0.5s Tick。行数不变的改动（纯挪位/Σcount 微变）
+    /// 不走此路，由 Tick 全量签名兜底（与原行为一致）。
+    /// AccessTicker.Update 每帧最先段调用（RefreshCoalescer.Flush 同位）。
+    /// </summary>
+    internal static void FastPoll()
+    {
+        if (!Enabled) return;
+        try
+        {
+            if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                return;
+            if (!RailData.AnyRailSceneActive()) return;
+            if (!RailData.StructureChangedFast()) return;
+            var web = GetWebView();
+            if (web == null) return;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int len = PushIfDue(web);
+            long t = sw.ElapsedMilliseconds;
+            // Bug3 对账口径（>150ms 常驻打印）：快通道检出→BuildJson→下发一段的成本留痕
+            if (len >= 0 && (CabinetEverywherePlugin.Verbose?.Value == true || t > 150))
+                CabinetEverywherePlugin.Log?.LogInfo($"[CERail] 快通道重推（结构变化≤1帧检出）：检出+BuildJson+下发 {t}ms，payload {len / 1024}KB");
+        }
+        catch (Exception e)
+        {
+            WarnOnce("fastpoll", "快通道推送失败: " + e.Message);
         }
     }
 
@@ -281,6 +331,53 @@ internal static class RailUi
             WarnOnce("bootstrap", "bootstrap 注入失败: " + e.Message);
         }
     }
+
+    /// <summary>
+    /// v1.8.8 滚动条诊断（一次性）：首个 rail 场景挂出后从 Root 逐 iframe 找 #srRail，量 .sr-body
+    /// 的 overflowY / 滚动条占位 gap / 是否溢出 / style#srpRail 是否带自定义轨道规则，回包记一行
+    /// 日志。判读：trackRule=1 且 gap≥8（或 !overflowed 且 gap≥8）=自定义经典滚动条生效（fluent
+    /// 已关，恒显不闪）；trackRule=1 但 gap=0=fluent 仍接管（环境变量没赶上/feature 名失效）；
+    /// trackRule=0=CSS 未注入（bootstrap 陈旧）。最多试 20 个周期，rail 一直没挂就放弃。
+    /// </summary>
+    private static void RunScrollbarDiag(Vuplex.WebView.IWebView web)
+    {
+        if (_diagDone || _diagTries >= 20) return;
+        _diagTries++;
+        try
+        {
+            if (_diagCb == null)
+                _diagCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(r =>
+                    {
+                        if (!string.IsNullOrEmpty(r) && r.Contains("srBody"))
+                        {
+                            _diagDone = true;
+                            CabinetEverywherePlugin.Log?.LogInfo("[CERail] 滚动条诊断：" + r);
+                        }
+                    }));
+            web.ExecuteJavaScript(DiagJs, _diagCb);
+        }
+        catch (Exception e)
+        {
+            WarnOnce("diag", "滚动条诊断通道不可用: " + e.Message);
+            _diagDone = true;
+        }
+    }
+
+    private const string DiagJs =
+        "(function(){try{" +
+        "var ws=[window];for(var i=0;i<window.frames.length;i++){try{ws.push(window.frames[i])}catch(e){}}" +
+        "for(var i=0;i<ws.length;i++){var d;try{d=ws[i].document}catch(e){continue}" +
+        " if(!d||!d.getElementById||!d.getElementById('srRail'))continue;" +
+        " var b=d.getElementById('srBody');if(!b)continue;" +
+        " var st=(d.defaultView||ws[i]).getComputedStyle(b);" +
+        " var css='';var sEl=d.getElementById('srpRail');if(sEl)css=sEl.textContent;" +
+        " return 'srBody overflowY='+st.overflowY+' gap='+(b.offsetWidth-b.clientWidth)+" +
+        " '+ov='+(b.scrollHeight>b.clientHeight+2?1:0)+" +
+        " ' trackRule='+(css.indexOf('-webkit-scrollbar-track')>=0?1:0)+" +
+        " ' sbwRule='+(css.indexOf('scrollbar-width')>=0?1:0);" +
+        "}" +
+        "return 'noRail';}catch(e){return 'diagErr '+e.message}})()";
 
     /// <summary>
     /// bootstrap 全文（静态缓存）：`window.__CERAIL__||(function(){ railui.page.js 全文;

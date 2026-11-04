@@ -589,10 +589,11 @@ ctx.lastTidyFail 一次性标志（推出即清）让 JS toast 降级文案。
   （页键全十页）→ 各页轮询 ApplyOrder 重排+Repush → 官方按新序重建，**A/D=数组邻居天然
   跟随新序（零拦截）**。`srp_pin_order_<scene>` localStorage 读写路退役（C# 文件唯一权威；
   storeAll 路由序改读 TABS 官方数组序）。
-- **T4 Browser 下拉（状态层版）**：rail 页签行 ▾ 左侧新增筛选钮（仅 Browser 视图 tab 场景
-  显示）——选项 全部柜子(0)/其他(未打标签)/官方标签库逐项（lib 透传）→ `cmd setFilter`
-  → `cerail_filter.json` → TabGate `SelMatch` 下轮收窄（材料架自动匹配「材料」伪标签）；
-  选中按场景记忆（`srp_filter_<scene>` 浏览器回显+C# 文件权威，场景开启上报对齐）。
+- **T4 Browser 下拉（状态层版）→ v1.8.9 整链退役**：v1.8.7 曾在页签行 ▾ 左侧加筛选钮
+  （全部柜子(0)/其他(未打标签)/逐标签 → `cmd setFilter` → `cerail_filter.json` → TabGate
+  `SelMatch` 收窄）。作者令「全部柜子按钮有时能看到有时看不到，很奇怪……没什么用，删了」
+  ——按钮/弹层/命令/持久化/收窄五段全拆（TabGate `Judge`/`RemoveUndesired` 去参、
+  `cerail_filter.json` 与 `srp_filter_<scene>` 键残留无消费方自然失效）。
 - **取证**（gamekb dump.cs 2026-10-23）：DroneHub `BagTabs@0xF8`+`BagOwnerId@0xE8`；cart
   三页 `CartTabs`/`ActiveTab`/`CartOwnerId`；Trade `BagTabs@0x100`（公有字段
   owner/name/fridge/player/cols/rows/rack/rackCfg/pin，无 Index）+`OwnerId@0x28`（active）。

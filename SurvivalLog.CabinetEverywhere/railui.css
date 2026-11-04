@@ -78,19 +78,7 @@
 #srp .sr-tabslot{flex:1 1 0;min-width:0;overflow:visible}
 #srp .sr-tabslot>.bag-tabs,#srp .sr-tabslot>.left-tabs{margin:0 !important}
 #srp .sr-allctn{flex:0 0 auto;width:30px;height:30px;padding:0;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:13px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
-/* v1.8.7 T4 Browser 下拉（标签筛选柜子页签）：触发钮贴 ▾ 左侧，选中=亮金 */
-#srp .sr-fsel{flex:0 0 auto;height:30px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.03);color:#a89f92;font-size:12px;display:none;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
-#srp .sr-fsel[hidden]{display:none !important}
-#srp .sr-tabsrow .sr-fsel:not([hidden]){display:inline-flex}
-#srp .sr-fsel:hover{color:#ece5d8;border-color:rgba(255,255,255,.22)}
-#srp .sr-fsel.on{color:#ffe1a0;border-color:rgba(240,176,60,.5);background:rgba(240,176,60,.12)}
-#srp .sr-fsel .sb-caret{font-size:10px;color:#7a7268}
-#srp .sr-fselpop{left:auto;right:10px;width:172px;top:86px;max-height:360px}
-#srp .sr-rail.plain .sr-fselpop{top:48px}
-#srp .sr-fselpop .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:4px}
-#srp .sr-fselopt{display:flex;align-items:center;width:100%;min-height:27px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#c8cde0;font-size:12px;text-align:left;cursor:pointer;font-family:inherit}
-#srp .sr-fselopt:hover{background:rgba(255,255,255,.06);color:#fff}
-#srp .sr-fselopt.active{color:#f0b03c}
+/* v1.8.9：T4 Browser 下拉（.sr-fsel/.sr-fselpop/.sr-fselopt）样式随按钮整链退役 */
 #srp .sr-allctn:hover{color:#ffe1a0;border-color:rgba(240,176,60,.45);background:rgba(240,176,60,.10)}
 #srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
 #srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
@@ -120,9 +108,15 @@
 #srp .sr-seg.lock{opacity:.45;pointer-events:none}
 #srp .sr-seg button{height:26px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#a89f92;font-size:12px;cursor:pointer}
 #srp .sr-seg button.active{background:rgba(255,255,255,.10);color:#ece5d8}
-#srp .sr-body{flex:1;min-height:0;margin-top:8px;border:1px solid rgba(255,255,255,.10);border-radius:9px;background:rgba(0,0,0,.18);overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.20) transparent}
+/* v1.8.8 滚动指示轨（作者令，第五轮=自绘恒显指示轨，终案）：第四轮纯静态条无位置反馈被
+   作者判「滚了没反应」；原生 thumb 的「可见↔隐形」随滚动状态切换=闪烁根因。终案=原生
+   滚动条透明占位（槽宽恒 8px、滚轮滚动保留）+ JS 自绘指示轨（sbMakeIndicator：轨道/thumb
+   常驻常色，thumb 长度/位置=滚动比例，容纳时满长同色可见；MO/尺寸变化 90ms 防抖吞官方
+   size-lock margin 瞬态）。样式只管占位与隐藏原生外观，几何/颜色在 JS。 */
+#srp .sr-body{flex:1;min-height:0;margin-top:8px;border:1px solid rgba(255,255,255,.10);border-radius:9px;background:rgba(0,0,0,.18);overflow-y:scroll;overflow-x:hidden;overscroll-behavior:contain}
 #srp .sr-body::-webkit-scrollbar{width:8px}
-#srp .sr-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:4px}
+#srp .sr-body::-webkit-scrollbar-track{background:transparent}
+#srp .sr-body::-webkit-scrollbar-thumb{background:transparent}
 #srp .sr-grid[hidden],#srp .sr-list[hidden]{display:none}
 /* v1.8.2 官方格宿主：壳内物品区容器——官方格容器整体搬入（id/监听/渲染通道保留）。
    relative 供官方绝对定位 .item 锚定；尺寸随官方格自然撑开（壳宽 max-content 跟随）。
@@ -253,12 +247,4 @@
 #srp #srBadgeLayer i{position:absolute;transform:translate(-100%,0);min-width:10px;padding:0 2px;border-radius:2px;
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;
   font-style:normal;white-space:nowrap;pointer-events:none}
-/* 交易买家条（品类加成 chips 接入后显示；先显示排序口径） */
-#srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
-  border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
-  color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden}
-#srp .sr-tradeinfo[hidden]{display:none}
-#srp .ti-prefs{display:inline-flex;gap:6px;min-width:0;overflow:hidden}
-#srp .ti-pref{font-style:normal;display:inline-flex;align-items:center;gap:3px;color:#cfc8bc}
-#srp .ti-pref .t-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
-#srp .ti-mode{margin-left:auto;flex:0 0 auto;color:#7a7268}
+/* v1.8.9：交易买家条（.sr-tradeinfo/.ti-prefs/.ti-pref/.ti-mode）随「按交易价值排序」条退役 */
