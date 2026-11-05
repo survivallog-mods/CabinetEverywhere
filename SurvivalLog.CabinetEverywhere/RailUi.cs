@@ -55,6 +55,8 @@ internal static class RailUi
     private static bool _bootstrapLive;                  // 已探测到 __CERAIL__ 存活（本次 WebView 生命周期内）
     private static int _probeState;                      // 0=等待探针回包/未知 1=最近一探明确 absent（许可注入一剂）
     private static Il2CppSystem.Action<string> _probeCb; // 探活回调（仅主帧创建一次）
+    private static Il2CppSystem.Action<string> _pushAckCb; // v1.8.10 十三批六追：推送空回调（单参 ExecuteJavaScript 在本机 Vuplex 组合下静默丢弃，见 PushIfDue 注释）
+    private static void PushAck(string _) { } // 空回调体（命名方法=与 drainCb 同款 ConvertDelegate 模式；回调内零动作，红线1）
 
     // ---- v1.8.8 滚动条诊断（一次性：首个 rail 场景开到后量测并记一行日志，防盲改） ----
     private static bool _diagDone;
@@ -229,6 +231,12 @@ internal static class RailUi
     /// <summary>
     /// 推送尾（Tick 与 FastPoll 共用）：门②全量签名判定 → BuildJson → setData 下发。
     /// 返回 payload 字节数；-1=本轮无推送（签名未变或 owner 窗口期）。
+    /// 【v1.8.10 十三批六追（实机铁证定案）：推送必须走带回调重载】
+    /// 旧实现用单参无回调 ExecuteJavaScript(script)——与 drain/探针/滚动条诊断（均带回调）
+    /// 对照实机取证：带回调三通道全达（drain 2/s 稳定），单参推送零达（JS setData 钩 0 次、
+    /// store 恒空=「全界面排序钮不见/柜区布局残留」断流根因）；JS 接收端健康（CDP 直注假包
+    /// 当场生效）。= 本机 Vuplex/Il2Cpp 组合下**单参重载静默丢弃**（bootstrap 早期窗口偶达
+    /// =会话时好时坏的假象来源）。修=统一带回调（回调体空转，红线1 不碰数据）。
     /// </summary>
     private static int PushIfDue(Vuplex.WebView.IWebView web)
     {
@@ -239,7 +247,10 @@ internal static class RailUi
         var (json, rev) = RailData.BuildJson();
         if (json == null) return -1; // 背包 owner 不可得（findings §4 兜底③），等下一周期
 
-        web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")");
+        if (_pushAckCb == null)
+            _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                new Action<string>(PushAck)); // 命名方法（与 _drainCb 同款模式；空回调只走「带回调」可达通道）
+        web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")", _pushAckCb);
         _lastPage = page;
 
         // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
@@ -324,7 +335,12 @@ internal static class RailUi
             if (_bootstrapLive) return;  // 已确认存活：本 tick 只做探针维护，零注入
             if (_probeState != 1) return; // 探针回包未到/未明确 absent：不盲目重注（等回包驱动态转移）
             _probeState = 0;
-            web.ExecuteJavaScript(BootstrapJs);
+            /* v1.8.10 十三批六追：注入同改带回调通道（单参重载静默丢弃——见 PushIfDue 注释；
+               早期窗口偶达造成的「有时能注入」假象与本轮实机铁证一致） */
+            if (_pushAckCb == null)
+                _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(PushAck));
+            web.ExecuteJavaScript(BootstrapJs, _pushAckCb);
         }
         catch (Exception e)
         {

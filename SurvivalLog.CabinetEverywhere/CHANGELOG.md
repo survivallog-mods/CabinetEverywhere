@@ -144,6 +144,16 @@
   ping→Pump→ForceRepublish→BuildJson 链静态全通；ResolveBagOwner 对 Trade 走 PlayerId
   兜底亦通）——ping 自愈在真断流态的实效**未经实机证实**，待下次复现时保持界面开着
   CDP 现场抓 Pump/BuildJson 环节。调试 cfg（Verbose/AllowDebugUiShow）排查后已还原。
+- **六追修（同日作者复现「按钮不可见/柜区不完整」保留现场——真凶落网）**：现场 CDP
+  铁证三角：①drain（带回调 ExecuteJavaScript）2/s 稳定到达；②推送 setData（**单参无
+  回调重载**）JS 钩 0 次零到达；③CDP 直注假包 JS 接收端当场生效——**根因=本机
+  Vuplex/Il2Cpp 组合下 ExecuteJavaScript 单参重载静默丢弃**（bootstrap 早期窗口偶达=
+  会话时好时坏假象）。修=推送与 bootstrap 注入统一改**带回调重载**（RailUi PushIfDue/
+  探活注入两处；空回调命名方法 PushAck=与 _drainCb 同款 ConvertDelegate 模式）。
+  **实机实证**：修复版重启→读档→开背包→**推送到达（JS 钩 1 次、currentId=背包实体、
+  scene 正确）**——四追的 ping 自愈与六追的通道修复为双保险（通道修好后 ping 通常
+  闲置）。附记：反复重启排查中游戏数次异常退出（非本 mod 代码路径：日志无异常栈、
+  崩在读档初始化段；直启 exe 与 Steam 协议启动均出现过）——如作者日常游玩复现请知悉。
 - **回归**：`node --check` 过；本地测试床七页断言全绿——六页（Cooking/BrewPanel/
   RatCage/Compressor/Trade/DroneHub）排序钮可见+选 sat 后模型重排+角标数值
   （+15/+8）非递减、Trade 默认官方序+金色价值角标（360/99）常显+选 value 后 905
