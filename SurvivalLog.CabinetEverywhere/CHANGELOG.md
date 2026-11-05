@@ -3,6 +3,41 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十五批（2026-11-05，开机器页滚动指示轨「柜中间闪」根修——双层：CSS right 锚定 + 骨架期 ready 门）
+
+**作者缺陷单：「打开工作台、烹饪、交易等界面时，柜子的滚动条会在柜子中间闪一下，
+然后才会回到柜子右侧。」**（首修后作者复验：「还是中间闪一下再回位，只是闪的快了
+一点，问题没那么明显了」——指向双层根因，第二层为本批补修。）
+
+- **根因①（首层，已修）**：壳侧指示轨（sbMakeIndicator absolute 模式）水平定位原为
+  paint() 写死 JS 像素 `left=offsetLeft+offsetWidth−9`，而 mount 流程里首绘必然早于
+  冻宽——`bind()`（→paint 同步首绘，sr-body 空壳、rail 宽=CSS min-width 428）→ 官方格
+  进壳 → `render()`→`syncRailWidth()` 把壳宽改写为格宽+24+sb（12 列≈704）。left 不随
+  布局跟随、重绘又走 90ms 尾随防抖（v1.8.8 为吞官方 size-lock 瞬态设计）→ 变宽帧起
+  轨在旧位 ~400px 停留 ≥90ms=**正好落在 704 宽柜子的正中间**，防抖到期才回右缘。
+- **根因②（第二层，作者复验实锤）**：right 锚定只消掉「滞留 90ms」，但骨架期（格未
+  进壳）rail 恒 428 窄壳、轨道站在 428 右缘≈**冻宽后 704 宽柜的正中间**——位置合法
+  却错，冻宽帧同帧跳到新右缘=「跳的位移」（≈276px）本身可见=「闪得快了但还闪」。
+- **修①（right 锚定）**：absolute（壳）水平定位改 CSS `right:15px` 锚定（创建 cssText
+  常带；15=border1+padding10+留白4，与旧公式满宽布局下逐像素等价）——rail 变宽变窄
+  浏览器同帧贴右；paint 删两路 left 写入（含不可达的 rect 差兜底）。当年「滚动条跑
+  左边」实锤=left/right 双 auto 走静态位置，right 锚定（left:auto+right:N 公式定位）
+  不受该坑。fixed 模式（srnSbTrack 原生页）不动：视口锚定必须量 rect。
+- **修②（ready 门）**：sbMakeIndicator 增可选谓词 readyFn，paint 首行假=track 整体
+  display:none；壳侧谓词=「srGridHost 内存在**非 mod 自建层**的子元素」（mod 层全带
+  sr 前缀 id；#srBadgeLayer 也挂 srGridHost 内，Trade 的 Vue 格建得晚、badge 层可能
+  先入壳，firstElementChild 判定会被骗过=门失效，夹具实测抓出）。骨架期轨道隐藏，
+  格进壳（childList MO→90ms 防抖）后直接在正确位置现身——恒显轨语义=滚动位置反馈，
+  格未进壳=无滚动可言，隐藏优于错位现身。格与宿主同批建（Trade v-if=ready 同款），
+  mount 必然带格→门只在窗口期关闭，无「永不出现」回归。
+- **验证（tools/railui-harness-tests/sbtrack-flash.cjs，修复 10/10 PASS；旧版 HEAD 同测
+  5 FAIL）**：① 同帧跟随——rail 宽突变 +280px 后不重绘立即量 gap=rail右−track右 恒
+  ≈15px，旧版 Trade 偏 172px/ToolTable 偏 52px=柜中间量级实锤；② 全程无闪帧——真实
+  装配流 rAF 逐帧采样 1.5s 任意可见帧 gap 恒 15±1；③ ready 门——官方格移出壳（mod
+  层留在壳内）250ms 后轨道必 display:none，格回壳 250ms 后现身且 gap≈15。回归：
+  harness-mount 154/167 与 HEAD 基线逐条一致（13 个 size FAIL=宽度归一旧口径既有
+  断言漂移，与本修无关）。
+
 ## 待发版·十四批（2026-11-05，首开页签闪烁根治——TabInjector.FastPoll 开界面瞬帧注入抢在官方首推之前）
 
 **作者缺陷单：「刚打开界面时页签栏显示不完整，只显示一部分，会闪烁一下才显示完整。
@@ -56,6 +91,59 @@
   `itemId`→`id`——TradeUI handler 零转换（bag.items=parse(bagItemsJson)）、官方模板
   v-for/拖拽直用 it.id ⇒ 真实协议行字段=id；旧 mock 投 webui-bag 的 itemId 形状=
   it.id 恒 undefined（CERAIL join 全 miss 的假阴性源）。
+- **追修（2026-11-05 作者实机复测「数值仍不显示」）——角标层被官方格整层盖住**：
+  `#srBadgeLayer` z-index **5→50**（railui.css）。实机 CDP 实锤：DOM 46 个角标全部
+  就位（+12 绿字、渲染几何正确、颜色/背景正常），但官方 webui-bag/Vue 格 `.item`
+  自带 `z-index:10`——5 被物品格整层盖住=**画了看不见**；热注入 50 当场复现可见
+  （裁剪格区截图 +12 肉眼可辨）后落源码，本地裁剪截图同步确认（+15 绿字黑底）。
+  与 v1.8.5 十三轮 NB 侧 `#srnBadges` 5→50 同款终案（当年只修 NB 侧，机器页侧漏带）。
+  教训入档：十三批首轮本地「七页全绿」只断言了 DOM 文本（layer.children/textContent），
+  **视觉层叠从未断言**——elementFromPoint 也测不出（角标 pointer-events:none 被其
+  跳过）；视觉回归=裁剪角标区截图判读（本轮已补双端各一张）。
+- **再追修（同日作者复测「下拉列表不对，下面一大块」）——CSS 注释内「星号斜杠」
+  序列吞规则**：railui.css 弹区注释写着「.sr-edit-*/」（十一批删容器菜单样式时的
+  通配写法）——**注释正文里的 `*/` 提前闭合 CSS 注释**，尾段成裸文本把下一条规则
+  `#srp .sr-pop{position:absolute...}` 整条吞掉（浏览器丢弃零报错）：弹层失
+  absolute=掉进内容流（「下拉列表下面一大块」），`.sr-pop[hidden]` 起后续规则正常
+  （CSS 错误恢复只吞一条）。**本地从未暴露**：fixtures 页面另有完整 `<link>` 双保险；
+  实机纯靠注入（__CERAIL_CSS__ 单 style）=裸奔。修=注释改写不出现该序列（全文扫雷
+  仅此一处；本追修注释初稿自己也踩了一次同雷——已改述为「星号斜杠」）。验证：
+  CSSStyleSheet 独立解析 153→154 条（.sr-pop 回归）+ 本地注入式 CSSOM 含 .sr-pop、
+  弹层 position:absolute、底距 rail 45px、悬于页脚钮上方。教训入档：**CSS 注释内
+  禁现「星号斜杠」序列**（含通配收尾的类名列举）；注入式 CSS 的回归必须断言
+  「注入 style 节点的 CSSOM 含关键 selector」——link 兜底会掩盖注入侧缺失。
+- **三追修（同日作者复测「Trade 默认排序仍显数值 + 空柜子还有 - 显示」）——两条**：
+  ①**Trade 官方序价值角标常显取消**（badgeSpec 删 Trade official 特例分支）：十批
+  「金色价值角标保留」的语境是默认价值排序在排、角标显排序依据；排序退役后 official
+  态常显价值=作者观感「残留的默认按价值排序还在生效」。收口=Trade 与其余六页完全
+  统一——官方序无角标，选维才显示该维数值；render 的 Trade 模型 prime 分支随之失去
+  消费者一并删除（官方序零模型开销）。②**选维态切空柜角标残留根修**（makeBadgeLayer
+  零格早退路）：旧防御「瞬时零格不清角标」（防重渲染窗口闪空）把**真·空容器**也当
+  窗口——切到 0 件柜时上一页签角标整层残留（作者实机「空柜子还有数值 - 显示」）。
+  判据补位=模型同 0 件（dispApply 已随切柜重取模型）→ 清层；模型未就位或 >0（真窗口）
+  仍保留上一次。回归（本地测试床）：Trade 官方序无角标层、选 value 角标 360/99 正常、
+  bag.items 清空后（模拟空柜）cells=0 且层清空不残留。
+- **四追修（同日作者重启后「排序按钮全不见+柜区展示不全+列数不对」——全局断流根因）**：
+  实机 CDP 实锤链：JS 侧装配/bind/弹层全活（onclick 可用、弹层可开合），但 **store.ctx
+  恒空**（currentId=0/标题空/render 全局早退于首门）→ C# 侧 Tick 活（drain 2/s 在取）但
+  **setData 零调用**；日志只有读档时「快通道重推 61KB 下发」一包，之后门②（page 未变
+  且签名未变）静默。**根因=推送 fire-and-forget（ExecuteJavaScript 无回执）**：读档时序
+  窗口内首包被 WebView 静默丢弃，之后永不重试——所有 rail 页 render 早退、按钮保持初始
+  hidden、unlockGridSize/syncRailWidth 不跑（size-lock margin 560px 残留=「柜区展示
+  不全/列数观感不对」的下游）。**修=最小自愈**：C# 加零副作用 `ping` 命令（RailCommands
+  Execute case，Pump 执行过即 ForceRepublish=rev 门控强制下周期重推）+ JS 心跳（装配
+  在位而 store.ctx 空的窗口期每 5s 发 ping，数据到达即停）。断流为偶发（上会话 56KB 包
+  正常、本会话 61KB 丢失——时序竞态非长度内容），自愈重推即愈；若后续复现「ping 后仍
+  不达」再查 Vuplex 长包通道。
+  【排查续记（同夜三轮实机重启）】①同一 dll 首次重启读档后**完全正常**（首包到达、
+  currentId=背包实体）——断流非 dll 确定性回归；②复现一次「读档后零数据」但归因为
+  **零界面死锁**（正常）：推送门①=AnyRailSceneActive（12 页全关=读档后未开任何界面）
+  连 drain 都停 → JS 队列里的 uiShow/ping 积压无人取——**uiShow 只能在「已有界面活跃」
+  时换界面，不能从零开界面**（ingame-matrix 先点 HUD 背包激活门的用意）；③作者报障
+  会话「Trade 开着却 ctx 空+手动 ping 零回推」**机理仍无定论**（当时 drain 活/门①过/
+  ping→Pump→ForceRepublish→BuildJson 链静态全通；ResolveBagOwner 对 Trade 走 PlayerId
+  兜底亦通）——ping 自愈在真断流态的实效**未经实机证实**，待下次复现时保持界面开着
+  CDP 现场抓 Pump/BuildJson 环节。调试 cfg（Verbose/AllowDebugUiShow）排查后已还原。
 - **回归**：`node --check` 过；本地测试床七页断言全绿——六页（Cooking/BrewPanel/
   RatCage/Compressor/Trade/DroneHub）排序钮可见+选 sat 后模型重排+角标数值
   （+15/+8）非递减、Trade 默认官方序+金色价值角标（360/99）常显+选 value 后 905

@@ -1541,9 +1541,12 @@
     toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
   /* 角标规格：可排序页=当前属性排序维；Trade 特例（十三批）——官方序时常显金色交易价值
-     角标（v1.8.9 十批口径保留），选了维度后改显所选维数值（与食品页同口径） */
+     角标（v1.8.9 十批口径保留），选了维度后改显所选维数值（与食品页同口径）。
+     【v1.8.10 十三批三追（作者实机）】Trade 官方序**不再常显**价值角标——十批「金色
+     价值角标保留」的语境是默认价值排序在排、角标显排序依据；十批退役排序后 official
+     态常显价值=作者观感「残留的默认按价值排序还在生效」。收口=Trade 与其余六页完全
+     统一：官方序无角标，选维才显示该维数值。 */
   function badgeSpec() {
-    if (st.scene === 'Trade' && (!st.fsort || st.fsort === 'official')) return { k: 'value', color: FBCOLOR.tvalue };
     if (isSortScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
     return null;
   }
@@ -1578,7 +1581,15 @@
           return;
         }
         var its = host.querySelectorAll('.item');
-        if (!its.length) { return; } /* 瞬时零格（弹层/重渲染窗口）不清角标——只在没有排序时清（上方 spec 分支） */
+        if (!its.length) {
+          /* 瞬时零格（弹层/重渲染窗口）不清角标——只在没有排序时清（上方 spec 分支）。
+             【v1.8.10 十三批三追（作者实机「空柜子还有数值 - 显示」）】真·空容器（模型同
+             0 件）≠ 瞬时窗口：切到空柜页签时旧页签角标整层残留（its=0 早退保上一次）。
+             判据=模型也 0 件（dispApply 已随切柜重取模型）→ 清层；模型未就位或 >0（真窗口）保留。 */
+          var m0 = (cfg.disp || DISP).model;
+          if (m0 && m0.items && !m0.items.length && layer) layer.innerHTML = '';
+          return;
+        }
         if (!layer) {
           layer = doc.createElement('div');
           layer.id = cfg.layerId;
@@ -1711,16 +1722,29 @@
      常色不出现不消失（外观只有长度/位置变化），thumb 长度/位置=滚动比例（容纳时满长同色
      可见）；原生滚动条保持透明占位（槽宽恒定）。更新通路：scroll=即绘（滚动手感）；网格
      MO/尺寸变化=90ms 尾随防抖绘（瞬态寿命 1-2 帧≈16-33ms，90ms 后必已落定=瞬态不可见）；
-     ResizeObserver 兜底几何。mode='fixed'：贴 iframe 视口（原生页宿主层级不可控时用，
+     ResizeObserver 兜底几何。水平定位：absolute（壳）=CSS right 锚定（随 rail 冻宽同帧贴右，
+     2026-11-05 追修「开机器页轨在柜中间闪」——JS left 滞留旧位 90ms）；fixed 量视口 rect。
+     mode='fixed'：贴 iframe 视口（原生页宿主层级不可控时用，
      append 到 doc.body）；默认 host 相对定位（壳=rail，已 position:relative）。 */
   var SB_IND = null; /* 壳侧指示轨实例（bind 每次重挂重建） */
-  function sbMakeIndicator(doc, host, scroller, thumbCss, trackId, fixed) {
+  /* readyFn（可选谓词，壳侧传入）：false=骨架期（官方格未进 sr-gridhost），track 整体
+     display:none 不出现。第二层根因（2026-11-05 作者复验「还是中间闪，只是快了」）：
+     right 锚定只消掉「变宽帧滞留 90ms」，但骨架期 rail=428 窄壳、轨站在 428 右缘≈
+     冻宽后 704 宽柜的正中间——位置本身合法却错，格进壳冻宽那帧同帧跳到新右缘=跳的
+     位移仍可见。恒显轨的语义是滚动位置反馈，格未进壳=无滚动可言，隐藏→格进壳
+     （childList MO→90ms 防抖 repaint）→直接在正确位置现身，零中间帧。 */
+  function sbMakeIndicator(doc, host, scroller, thumbCss, trackId, fixed, readyFn) {
     try {
       var t = doc.getElementById(trackId);
       if (!t) {
         t = doc.createElement('div');
         t.id = trackId;
-        t.style.cssText = (fixed ? 'position:fixed;' : 'position:absolute;') +
+        /* absolute（壳）水平定位=CSS right 锚定（常带）：rail 宽由 syncRailWidth 动态冻宽
+           （首挂骨架 428→格进壳冻到格宽+24+sb），JS 像素 left 不随布局跟随、重绘又走 90ms
+           防抖=变宽帧轨停在旧位（作者实机「开机器页滚动条在柜子中间闪一下再回右侧」根因，
+           v1.8.10 十四批后追修）；right 锚定随 rail 宽同帧贴右零窗口。15=border1+padding10+
+           留白4（与旧 left 公式 offsetLeft+offsetWidth−9 在满宽布局下逐像素等价）。 */
+        t.style.cssText = (fixed ? 'position:fixed;' : 'position:absolute;right:15px;') +
           'width:6px;border-radius:3px;background:rgba(255,255,255,.07);pointer-events:none;z-index:20';
         var th0 = doc.createElement('div');
         th0.style.cssText = 'position:absolute;left:0;top:0;width:100%;border-radius:3px;' + thumbCss;
@@ -1738,6 +1762,7 @@
       var paint = function () {
         try {
           var sr = scroller.getBoundingClientRect();
+          if (readyFn && !readyFn()) { t.style.display = 'none'; return; } /* 骨架期隐藏（见工厂注释）：几何合法≠位置正确 */
           if (!sr.height || !scroller.clientHeight) { t.style.display = 'none'; return; }
           t.style.display = 'block';
           /* 坐标系：absolute 模式（壳）track 与 scroller 同在 rail 缩放上下文=全程布局像素
@@ -1748,16 +1773,11 @@
             t.style.left = Math.round(sr.right - 8) + 'px';
             t.style.height = Math.round(sr.height) + 'px';
           } else {
-            /* left 必须显式设：absolute 元素 left:auto 走静态位置=贴容器左缘（作者实机
-               「滚动条跑左边」实锤）。布局像素右锚=offsetLeft+offsetWidth−（右边框1+留白2+
-               轨宽6）；offsetParent 非 host（异常层级）时退回 rect 差（视觉 px 兜底）。 */
+            /* 水平定位退役（JS left→CSS right 锚定，创建 cssText 常带）：当年「滚动条跑左边」
+               实锤根因=left/right 双 auto 走静态位置贴容器左缘，right 锚定不受该坑（left:auto+
+               right:N 是公式定位非静态位置）。JS 只管垂直几何：top/height 布局像素（sr-body
+               为 rail 直接子元素，offsetParent 恒=host，旧 rect 差兜底分支不可达随删）。 */
             t.style.top = (scroller.offsetTop + (scroller.clientTop || 0)) + 'px';
-            if (scroller.offsetParent === host) {
-              t.style.left = (scroller.offsetLeft + scroller.offsetWidth - 9) + 'px';
-            } else {
-              var hr = host.getBoundingClientRect();
-              t.style.left = Math.round(sr.right - hr.right + 1) + 'px';
-            }
             t.style.height = scroller.clientHeight + 'px';
           }
           var sh = scroller.scrollHeight, ch = scroller.clientHeight, thh = t.clientHeight;
@@ -1812,12 +1832,10 @@
     if (menuFoot) menuFoot.sync();
     if (menuFoot) menuFoot.refresh();
     ensureBadgeObserver();
-    /* v1.8.9：Trade 默认价值排序退役（applyScene 注释）——不再重排物品；仅 prime 一次模型：
-       choice=null 的 dispApply 只设 DISP.model（角标 join 依赖），走 restore 早退=零排序
-       零 x/y 写入零 renderItems（官方格重建从「两遍」回到「一遍」）。
-       v1.8.10 十三批：Trade 排序钮回归（SORT_KEYS）——prime 分支不变（默认仍官方序），
-       选维后由下方重抹路接管（trade vue 分支模型，见 dispModel）。 */
-    if (st.scene === 'Trade' && !DISP.model) dispApply(DISP);
+    /* v1.8.9：Trade 默认价值排序退役——不再重排物品；曾在此 prime 一次模型（official 态
+       常显价值角标的 join 依赖）。v1.8.10 十三批三追：official 态常显价值角标随作者令
+       取消（badgeSpec 收口，Trade 与其余六页统一=默认无角标），prime 失去消费者——删除
+       （选维后由下方重抹路接管，trade vue 分支模型见 dispModel；官方序零模型开销）。 */
     /* v1.8.5：机器页排序态在每次渲染后重抹（切柜/回包后新格=真实态→重 join 重排，角标随后） */
     if (isPlainScene() && st.fsort && st.fsort !== 'official') dispReapply(DISP, st.fsort, st.currentId);
     var c = ctnById(st.currentId) || railCtns()[0] || null;
@@ -1995,8 +2013,17 @@
        零拦截——官方监听在官方节点上原样跑。srBody 级 preventDefault 只吞浏览器默认菜单
        （官方 handler 在更深节点先跑，不受影响）。列表=纯汇总只读（行零事件，§0 红线）。 */
     el.srBody.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    /* v1.8.8 恒显滚动指示轨（bind 每次重挂重建实例；工厂按 trackId 幂等） */
-    SB_IND = sbMakeIndicator(el.srBody.ownerDocument, el.rail, el.srBody, 'background:rgba(255,255,255,.32)', 'srSbTrack', false);
+    /* v1.8.8 恒显滚动指示轨（bind 每次重挂重建实例；工厂按 trackId 幂等）。ready 门=
+       官方格在壳：骨架期（格未进壳，mount bind 先于格 appendChild）轨道隐藏，杜绝
+       「站在 428 窄壳右缘=冻宽后柜子中间」的可见错位帧。判定=非 mod 自建层（mod 层全带
+       sr 前缀 id，如 #srBadgeLayer 也挂 srGridHost 内——Trade 的 Vue 格建得晚，badge 层
+       可能先入壳，firstElementChild 判定会被它骗过=门失效，夹具实测抓出）。 */
+    SB_IND = sbMakeIndicator(el.srBody.ownerDocument, el.rail, el.srBody, 'background:rgba(255,255,255,.32)', 'srSbTrack', false,
+      function () {
+        var c = el.srGridHost && el.srGridHost.firstElementChild;
+        while (c) { if (!/^sr/i.test(c.id || '')) return true; c = c.nextElementSibling; }
+        return false;
+      });
     /* T3：② 网格/列表分段（rail.js 原样；全库模式锁定列表视图） */
     el.srSeg.onclick = function (e) {
       if (st.global) return; /* 全库模式锁定列表视图 */
@@ -3330,6 +3357,24 @@
   }
   try { setInterval(scanFrames, 500); } catch (e) { }        /* 兜底轮询（裁定 2：观察器+interval 双保险） */
   try { setTimeout(scanFrames, 0); } catch (e) { }           /* 首扫错开一拍：bootstrap 在本 IIFE 返回后才写 __CERAIL_CSS__ */
+  /* ---- v1.8.10 十三批四追：首包丢失自愈心跳 ----
+     实机实锤（2026-11-05 作者重启后全界面 rail 裸骨架：排序钮全隐/格区布局残留）：
+     推送是 fire-and-forget（ExecuteJavaScript 无回执），读档时序窗口内首包可被 WebView
+     静默丢弃；此后 C# 门②（page 未变且签名未变）永不重试 → JS store.ctx 恒空 →
+     render 全局早退。自愈=装配在位而数据未到的窗口期每 5s 发一条零副作用 ping
+     （C# Pump 执行过即 ForceRepublish=rev 门控强制下周期重推），数据到达即停。 */
+  var pingAt = 0;
+  try {
+    setInterval(function () {
+      try {
+        if (!el.rail || store.ctx) return;
+        var now = Date.now();
+        if (now - pingAt < 5000) return;
+        pingAt = now;
+        cmdOut('ping');
+      } catch (e) { }
+    }, 2000);
+  } catch (e) { }
   try { /* Root 级观察器：iframe 增删/display 切换即时触发（Root 自身变更稀疏，零降噪需求）。
            MutationObserver 不跨 iframe 文档——iframe 内部重建由上面的文档级观察器分管 */
     new MutationObserver(function () { scanFrames(); })

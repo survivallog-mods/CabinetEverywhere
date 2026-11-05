@@ -157,7 +157,12 @@
 #srp .sr-foot .fr{color:#f0b03c}
 
 /* 弹层：排序 / 标签管理共用通栏样式（v1.8.9：容器菜单 .sr-popctn 与容器设置
-   .sr-popedit/.sr-edit-*/.sr-ctnitem 小号悬浮面板样式随链退役） */
+   .sr-popedit 与 .sr-edit 系 及 .sr-ctnitem 小号悬浮面板样式随链退役）。
+   【v1.8.10 十三批追修】旧注释把 .sr-edit 系写成「星号斜杠」通配收尾——该两字符
+   序列会提前闭合 CSS 注释，尾段成裸文本吞掉下一条规则 #srp .sr-pop（弹层失
+   position:absolute=掉进内容流、「下拉列表下面一大块」实锤病灶；浏览器丢弃该条
+   零报错，实机注入无 link 兜底裸奔，本地 fixtures 恰有完整 link 双保险=从未暴露）。
+   注释内禁现「星号斜杠」序列。 */
 #srp .sr-pop{position:absolute;left:10px;right:10px;top:206px;z-index:30;max-height:520px;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:#201d24;box-shadow:0 18px 44px rgba(0,0,0,.55);overflow:hidden}
 #srp .sr-pop[hidden]{display:none}
 /* 一键入库确认弹窗：锚在底部动作行上方（按钮在页脚，弹窗就近） */
@@ -232,8 +237,11 @@
 #srp .sr-fsopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
 #srp .sr-fsopt.active{color:#f0b03c}
 #srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
-/* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale） */
-#srp #srBadgeLayer{position:absolute;left:0;top:0;right:auto;bottom:auto;width:0;height:0;overflow:visible;pointer-events:none;z-index:5}
+/* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale）。
+   v1.8.10 十三批：z-index 5→50——官方 webui-bag/Vue 格 .item 自带 z-index:10，5 被物品格
+   整层盖住=「角标画了看不见」（作者实机实锤：DOM 46 个角标全在、视觉零显示；热注入 50
+   当场复现可见）。与 v1.8.5 十三轮 NB 侧 #srnBadges 5→50 同款终案（当年漏带机器页）。 */
+#srp #srBadgeLayer{position:absolute;left:0;top:0;right:auto;bottom:auto;width:0;height:0;overflow:visible;pointer-events:none;z-index:50}
 #srp #srBadgeLayer i{position:absolute;transform:translate(-100%,0);min-width:10px;padding:0 2px;border-radius:2px;
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;
   font-style:normal;white-space:nowrap;pointer-events:none}

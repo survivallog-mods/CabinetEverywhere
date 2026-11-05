@@ -224,6 +224,7 @@ internal static class RailCommands
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
+            case "ping": break; // v1.8.10 十三批四追：零副作用心跳——JS 侧「装配后无首包」自愈用（Pump 执行过即 ForceRepublish=rev 门控强制下周期回推，治推送 fire-and-forget 偶发丢失后门②静默永不重试的断流）
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }

@@ -112,7 +112,20 @@ function check(name, ok, detail) {
     const nums = r.bd.filter((t) => t !== '—' && t !== '').map((t) => parseInt(t, 10));
     const nonDec = nums.length >= 2 && nums.every((v, i) => i === 0 || nums[i - 1] >= v || v === 0);
     check('cook:sort-' + k, r.ids.join() !== before.join() || k === 'sat', `重排=${r.ids.join() !== before.join() ? 'Y' : 'N'} 角标[${r.bd.slice(0, 6)}] 非递减=${nonDec}`);
-    if (k === 'sat') { await page.screenshot({ path: path.join(OUT, 'm-cooking-sort-sat.png') }); /* 官方详情对照 */ }
+    if (k === 'sat') {
+      await page.screenshot({ path: path.join(OUT, 'm-cooking-sort-sat.png') }); /* 官方详情对照 */
+      /* v1.8.10 十三批追修视觉证据：角标层 z-index 5→50（官方 .item z=10 曾整层盖住=
+         「画了看不见」）——裁首格角标区特写，DOM 断言测不出层叠，此图供人工判读 */
+      try {
+        const clip = await f.evaluate(() => {
+          const i0 = document.querySelector('#srBadgeLayer i');
+          if (!i0) return null;
+          const r = i0.getBoundingClientRect(), fr = window.frameElement.getBoundingClientRect();
+          return { x: fr.left + r.left - 8, y: fr.top + r.top - 8, width: r.width + 16, height: r.height + 16 };
+        });
+        if (clip) await page.screenshot({ path: path.join(OUT, 'm-cooking-badge-clip.png'), clip });
+      } catch (e) { }
+    }
   }
   /* 数值对照：官方详情弹层（排序=饱腹时末次态）→ 弹层文本中找角标数值 */
   try {
