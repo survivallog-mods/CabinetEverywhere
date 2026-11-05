@@ -79,6 +79,12 @@ internal static class RailUi
     //     黑名单挡住的 通信设备(1062 独占包 8×6)/SUV·购物车(2003) 即本次「有的宽有的窄」
     //     直接根因（Config_Furniture 实查：1062 仅通信设备一家使用；2003=SUV/购物车/纸箱子/
     //     材料堆/自行车共用，家中无排除件即可安全改宽，场景侧共用件随之变宽=配置级宽度固有）。
+    //   ④ 白名单 cfg [Rail] SizeIncludeBagIds（2026-11-05 作者复测「无人机中控台宽度不是 12」
+    //     拍板）：②的 ExcludeBagIds 挡的是页签/筛选语义（中控台页签常显=不注入不筛选，
+    //     2026-10-15 卡死闪烁防线），宽度不该搭车被挡——白名单内的包**包含优先于排除**直接进
+    //     目标集（含 AllContainers 之外的功能包，配置级直写：家中未摆放不生效于 UI，与 2003
+    //     场景侧共包同口径）。默认 1009 中控台（家具 9080 独占包）；厨房电器/机器槽/门窗床等
+    //     槽位语义包不进白名单（改宽即变形）。
     // 直写 size[0]=目标宽——**勿回 RewriteSize 的 mult 路**：want=原值×(目标/当前宽)，重跑时
     // 当前宽=已改值 → 想要值被弹回原宽（12↔16 振荡）；v1.8.3 靠「每会话一次」掩盖了这一点。
     // 幂等：已是目标宽零写零日志；5s 周期重扫（RefreshMeta 慢通道）——新放柜子/换档重读 ≤5s
@@ -121,13 +127,20 @@ internal static class RailUi
                 }
             }
 
+            // ③ 柜宽白名单（cfg SizeIncludeBagIds）：包含优先于排除共包——白名单包即使在
+            //    ② 的 skip 里也直进目标；不在 AllContainers（Access 双名单挡在扫描门槛外）
+            //    的功能包（如 1009 中控台）由这里补进，页签/筛选语义不受影响
+            var include = BagTable.ParseIds(CabinetEverywherePlugin.SizeIncludeBagIds.Value);
+
             var targets = new List<int>();
             var skipped = new List<string>();
             foreach (var bagId in ids)
             {
-                if (skip.Contains(bagId)) { skipped.Add(bagId + "(排除共包)"); continue; }
+                if (skip.Contains(bagId) && !include.Contains(bagId)) { skipped.Add(bagId + "(排除共包)"); continue; }
                 targets.Add(bagId);
             }
+            foreach (var bagId in include)
+                if (!ids.Contains(bagId)) targets.Add(bagId); // 白名单独有（AllContainers 外的功能包）
             targets.Sort();
             skipped.Sort(string.CompareOrdinal);
             var sig = w + "|" + string.Join(",", targets) + "|" + string.Join(",", skipped);
@@ -158,7 +171,7 @@ internal static class RailUi
                     ? $"[CERail] SizeEngine：柜宽统一 {w} 列——改写 {changed} 包：" + string.Join("、", detail)
                     : $"[CERail] SizeEngine：目标 {targets.Count} 包均已 {w} 列")
                 + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                + "（目标=家中柜子+冰箱，材料架不动；排除=ExcludeBagIds+家中排除家具共包；Config_Bag 内存直写，5s 幂等重扫）");
+                + "（目标=家中柜子+冰箱+SizeIncludeBagIds 白名单，材料架不动；排除=ExcludeBagIds+家中排除家具共包（白名单优先）；Config_Bag 内存直写，5s 幂等重扫）");
         }
         catch (Exception e)
         {

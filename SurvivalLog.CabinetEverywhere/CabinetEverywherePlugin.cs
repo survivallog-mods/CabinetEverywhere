@@ -60,6 +60,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> FilterEnable;
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     internal static ConfigEntry<int> UniformBagWidth; // v13.8 柜宽统一（0=off；作者拍板默认 12）
+    // v1.8.11 柜宽白名单：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
+    // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 UniformBagWidth 统一（默认 1009 中控台）。
+    internal static ConfigEntry<string> SizeIncludeBagIds;
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
     internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
 
@@ -89,6 +92,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ApplyWebViewScrollbarEnv();
         UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
             "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。");
+        SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
+            "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随 UniformBagWidth 统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
             "白名单注入：工作台/无人机交易/无人机站/粉碎机/温室 的柜子页签与自动取料。");
         EnableCooking = Config.Bind("Access", "EnableCooking", true, "烹饪界面注入柜子页签。");

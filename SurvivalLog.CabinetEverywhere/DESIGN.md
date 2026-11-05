@@ -99,7 +99,10 @@
 - 非储物功能包双保险排除（cfg ExcludeBagIds + 代码内 NonStorageBagIds 常量）：功能容器页签
   （如无人机**中控台 BagId 1009**，家具 9080——2026-10-17 作者实测发现 1008 无人机货舱在名单
   而 1009 漏网，被注入烹饪/酿酒等界面，已补；两包同在名单）误收进筛选名单会被当柜子藏掉，
-  A/D 切过去即被弹回＝卡死闪一下（2026-10-15 五轮实测，附录 C）。
+  A/D 切过去即被弹回＝卡死闪一下（2026-10-15 五轮实测，附录 C）。该双名单**只挡页签/筛选
+  （AllContainers 收录），不挡柜宽**——柜宽白名单 `[Rail] SizeIncludeBagIds`（十六批，默认
+  1009 中控台）包含优先于排除，其格宽照 UniformBagWidth 统一（2026-11-05 作者复测「宽度
+  不是 12」拍板）。
 - 性能顺序：TryCast → 配置查包/名单（廉价，滤掉 ~90% 家具）→ 主图严格相等短路 → 仅非主图
   走 IsHomeMap（家地图组判定，重）→ 通过者才读类别/标签（组件字典/电器属性最贵，放最后）。
 - Redux 包镜像补全：新摆放家具的包要重读档才进 `State_Data_Item.BagCache`（GetBagData 直接
@@ -243,7 +246,9 @@ max 65ms；每件完成 TryCreateItem 230~263ms。级联构成（G4/G14）：单
 | Access.EnableCooking / EnableRatCage / EnableBrew / EnableDye | true | 烹饪/老鼠笼/酿酒桶/颜料桶 页签注入 |
 | Access.IncludeFurnitureIds | 空 | 追加家具 ConfigId（强制加入） |
 | Access.ExcludeFurnitureIds | 313,80033,80164,1024-1028,42033,66196,330/384/389/9126 | 排除家具（自制工具台+载具系+染料桶+材料堆：后两者=功能容器/角色专属，与纸箱共用包只能按家具排除） |
-| Access.ExcludeBagIds | 电器/机器槽/围栏/吊篮/门窗/床/垃圾桶等 23 项（含无人机货舱 1008/中控台 1009） | 排除整包系（非储物功能包） |
+| Access.ExcludeBagIds | 电器/机器槽/围栏/吊篮/门窗/床/垃圾桶等 23 项（含无人机货舱 1008/中控台 1009） | 排除整包系（非储物功能包）；只挡页签/筛选，不挡柜宽（见 Rail.SizeIncludeBagIds） |
+| Rail.UniformBagWidth | 12 | 柜宽统一（0=off，v1.8.4b SizeEngine）：家中柜子+冰箱的 Config_Bag.Size 宽内存直写为该值（高不变，容量=宽×高随之变；5s 幂等重扫；材料架不动；政策全文=RailUi.cs SizeEngine 头注） |
+| Rail.SizeIncludeBagIds | 1009 | 柜宽白名单（十六批）：Access 双名单挡的是页签/筛选语义，不挡宽度——白名单**包含优先于排除**，直进 SizeEngine 目标集（AllContainers 之外的功能包也收，配置级直写；默认=无人机中控台 1009；厨房电器/机器槽等槽位语义包勿加，改宽即变形） |
 | Filter.Enable | true | 标签筛选总开关：关闭后不注入筛选（场景视图一并失效，页签全部显示） |
 | Scenario.View_Cooking / View_RatCage / View_BrewPanel / View_DyePanel / View_Compressor | Food | 烹饪/老鼠笼/酿酒桶/颜料桶/口粮压制机 视图 |
 | Scenario.View_ToolTable / View_Shredder / View_GreenhouseBuild | Material | 工作台/粉碎机/温室工程台 视图 |
