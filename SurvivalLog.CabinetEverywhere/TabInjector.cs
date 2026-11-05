@@ -345,7 +345,12 @@ internal static class TabInjector
         var names = new List<string>();
         foreach (var c in cabinets)
         {
-            if (have.Contains(c.OwnerId) || s.Injected.Contains(c.OwnerId)) continue;
+            /* v1.8.10 八追：去掉 s.Injected 防重门——官方刷新（RefreshBag/界面重推）重建
+               BagTabs 后注入条目消失，但会话防重集仍记着「已注入」→ 本函数全部跳过 →
+               页签栏永不补挂（直到关开界面）=「顶部柜子页签栏不见了」。have=活数组实时判定
+               即可防重（数组在=不加，数组不在=补，官方重建窗口 0.5s 轮询自然收敛）；
+               s.Injected 仅剩 RemoveUndesired 的对账语义（视图移出解标），不再挡补挂。 */
+            if (have.Contains(c.OwnerId)) continue;
             try
             {
                 create(c.OwnerId, c.Name, index++);

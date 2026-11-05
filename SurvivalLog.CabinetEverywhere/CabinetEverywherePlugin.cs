@@ -64,6 +64,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 UniformBagWidth 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
+    internal static ConfigEntry<int> RemoteDebugPort; // v1.8.10 八追：>0=WebView2 附加 --remote-debugging-port（断流现场 CDP 取证，默认关）
     internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
@@ -87,9 +88,12 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         RailEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
         AllowDebugUiShow = Config.Bind("Rail", "AllowDebugUiShow", false,
             "调试：允许 uiShow 命令远程显示官方界面（实机验收驱动用；发布/日常保持 false）。");
+        RemoteDebugPort = Config.Bind("Rail", "RemoteDebugPort", 0,
+            "断流/白屏现场取证：>0 时向 WebView2 附加 --remote-debugging-port=该值（浏览器打开 http://127.0.0.1:端口/json 可连 CDP 调试协议，仅本机可连；平时保持 0；需重启游戏生效）。");
         ClassicWebViewScrollbars = Config.Bind("Rail", "ClassicWebViewScrollbars", true,
             "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
         ApplyWebViewScrollbarEnv();
+        ApplyRemoteDebugEnv();
         UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
             "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。");
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
@@ -111,7 +115,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ListOnReady = Config.Bind("Debug", "ListOnReady", true,
             "配置表就绪时在日志列出发现的全部柜子家具名单（首次核对用，可关）。");
         DumpFurniture = Config.Bind("Debug", "DumpFurniture", false,
-            "置 true 后（游戏运行中改 cfg 约 5 秒内生效）在日志列出家中全部带包家具明细：owner/配置/名称/锁定态/是否入选。排查'新柜子不生效'用，平时关。");
+            "置 true 后在日志列出家中全部带包家具明细：owner/配置/名称/锁定态/是否入选。排查'新柜子不生效'用，平时关。注意：cfg 改动需重启游戏生效（BepInEx 不监听 cfg 文件外部修改——2026-11-05 八追实测游戏内改 cfg 不生效，旧注「5 秒内生效」有误）。");
         FilterEnable = Config.Bind("Filter", "Enable", true,
             "标签筛选总开关：关闭后不注入筛选（场景视图也一并失效，容器页签全部显示）。");
         FilterEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
@@ -206,6 +210,33 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         catch (Exception e)
         {
             Log.LogWarning("[CERail] WEBVIEW2 滚动条环境变量注入失败（fluent 可能仍生效）: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// v1.8.10 八追：WebView2 远程调试端口（cfg [Rail] RemoteDebugPort，默认 0=关）。>0 时向
+    /// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 附加 --remote-debugging-port——断流/白屏/JS 假尸
+    /// 现场可直接连 CDP（浏览器开 http://127.0.0.1:端口/json）读 __CERAIL__ 活态（store.rev/
+    /// _ppCount/srFoodSort.hidden/FRAMES），四~七追轮番盲修的教训=没有 JS 侧现场只能猜。
+    /// 仅本机回环可连；平时保持 0；需重启游戏生效（环境变量在 WebView 环境创建时读取）。
+    /// 独立于滚动条开关（ClassicWebViewScrollbars=false 也可单独开调试口）。
+    /// </summary>
+    private static void ApplyRemoteDebugEnv()
+    {
+        try
+        {
+            int port = RemoteDebugPort?.Value ?? 0;
+            if (port <= 0 || port > 65535) return;
+            const string varName = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+            var cur = Environment.GetEnvironmentVariable(varName);
+            if (cur != null && cur.IndexOf("--remote-debugging-port=", StringComparison.Ordinal) >= 0) return;
+            cur = string.IsNullOrEmpty(cur) ? "--remote-debugging-port=" + port : cur + " --remote-debugging-port=" + port;
+            Environment.SetEnvironmentVariable(varName, cur);
+            Log.LogInfo("[CERail] WebView2 远程调试端口已附加 --remote-debugging-port=" + port + "（取证：http://127.0.0.1:" + port + "/json）");
+        }
+        catch (Exception e)
+        {
+            Log.LogWarning("[CERail] 远程调试端口注入失败: " + e.Message);
         }
     }
 }

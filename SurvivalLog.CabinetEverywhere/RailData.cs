@@ -877,19 +877,23 @@ internal static class RailData
                     catch { continue; }
                     if (!first) sb.Append(',');
                     first = false;
+                    /* 2026-11-06 八追终案修复：旧行尾多余 "\",\"" 之后的 ","（行尾逗号）与
+                       行首分隔逗号叠加 → 行间 ",,"（实机 CDP 抓包 "#E8A33D"],,[1002,…" 铁证）。
+                       旧直推路径按 JS 字面量求值：",,"=数组空洞（合法，normRows 兜底滤掉）——
+                       故历史一直"能用"；分片路径 JSON.parse 严格拒绝 → 全包报废。改为纯行首
+                       分隔（ctn/icfg/items 同款），尾部 Length-- 补丁随行尾逗号一并退役。 */
                     sb.Append('[').Append(id)
                       .Append(",\"").Append(EscapeJs(name)).Append('"')
                       .Append(',').Append(dim)
                       .Append(',').Append(order)
                       .Append(",\"").Append(EscapeJs(icon)).Append('"')
-                      .Append(",\"").Append(EscapeJs(color)).Append("\"],");
+                      .Append(",\"").Append(EscapeJs(color)).Append("\"]");
                 }
         }
         catch (Exception e)
         {
             WarnOnce("lib", "标签库读取失败: " + e.Message);
         }
-        if (!first) sb.Length--; // 去尾逗号
         sb.Append(']');
     }
 

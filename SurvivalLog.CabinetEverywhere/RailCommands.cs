@@ -470,7 +470,9 @@ internal static class RailCommands
 
     /// <summary>ping：零副作用心跳（Pump 执行过即 ForceRepublish）。六追升级：附带微包回执
     /// `window.__CERAIL__._pp(n)`（~40B，与 drain 同量级）——微包达而大包（62KB setData）不达
-    /// = ExecuteJavaScript 长度丢弃实锤（修向=大包改 PostMessage 通道）；双双不达=通道级问题。</summary>
+    /// = ExecuteJavaScript 长度丢弃实锤（修向=大包改分片通道，八追已落）；双双不达=通道级问题。
+    /// 八追：限频日志——JS 饥饿（ctx 空）或陈旧（>60s 无新包）态在跑（持续出现=推送丢弃态）。</summary>
+    private static long _pingLastLog;
     private static void OpPing(Cmd c)
     {
         try
@@ -478,6 +480,13 @@ internal static class RailCommands
             var web = RailUi.ActiveWebView;
             if (web == null) return;
             web.ExecuteJavaScript("(window.__CERAIL__&&__CERAIL__.state)?__CERAIL__._pp(1):0", RailUi.PushAckCallback);
+            long now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond;
+            if (now - _pingLastLog >= 30)
+            {
+                _pingLastLog = now;
+                CabinetEverywherePlugin.Log?.LogInfo(
+                    "[CERail] 心跳 ping 执行（JS 侧数据饥饿或陈旧>60s——Pump 批尾将 ForceRepublish 重推；持续出现=推送通道丢弃态，对照回执看门狗告警）");
+            }
         }
         catch (Exception) { }
     }

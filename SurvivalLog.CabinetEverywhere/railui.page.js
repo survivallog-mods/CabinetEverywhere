@@ -3357,18 +3357,26 @@
   }
   try { setInterval(scanFrames, 500); } catch (e) { }        /* 兜底轮询（裁定 2：观察器+interval 双保险） */
   try { setTimeout(scanFrames, 0); } catch (e) { }           /* 首扫错开一拍：bootstrap 在本 IIFE 返回后才写 __CERAIL_CSS__ */
-  /* ---- v1.8.10 十三批四追：首包丢失自愈心跳 ----
+  /* ---- v1.8.10 十三批四追：首包丢失自愈心跳（八追扩陈旧态） ----
      实机实锤（2026-11-05 作者重启后全界面 rail 裸骨架：排序钮全隐/格区布局残留）：
      推送是 fire-and-forget（ExecuteJavaScript 无回执），读档时序窗口内首包可被 WebView
      静默丢弃；此后 C# 门②（page 未变且签名未变）永不重试 → JS store.ctx 恒空 →
-     render 全局早退。自愈=装配在位而数据未到的窗口期每 5s 发一条零副作用 ping
-     （C# Pump 执行过即 ForceRepublish=rev 门控强制下周期重推），数据到达即停。 */
+     render 全局早退。自愈=数据饥饿期每 5s 发一条零副作用 ping
+     （C# Pump 执行过即 ForceRepublish=rev 门控强制下周期重推），数据到达即停。
+     v1.8.10 八追（同日复发会话实锤「Trade 开着 20 分钟断流不自愈、重启才好」）：
+     旧判据 `store.ctx 空才 ping` 漏掉**陈旧态**——首包到过（ctx 非空、按钮亮=render 跑过
+     一遍）、之后所有包被丢（数据是旧的、功能全死、命令对着旧 owner 打），心跳被 ctx 非空
+     静音 → 永不自愈。新判据补位：rail 在位且 >60s 无新包到达（lastSetAt，setData 落地即
+     记——包到达本身即通道活性证明）也发 ping；空闲期代价=每 ~65s 一包重推（兼作保活探针）。 */
   var pingAt = 0;
+  var lastSetAt = 0; /* 八追：最近一包到达时刻（setData 入口即记，空契约早退也计） */
   try {
     setInterval(function () {
       try {
-        if (!el.rail || store.ctx) return;
+        if (!el.rail) return;
         var now = Date.now();
+        var hungry = !store.ctx || (lastSetAt > 0 && now - lastSetAt > 60000);
+        if (!hungry) return;
         if (now - pingAt < 5000) return;
         pingAt = now;
         cmdOut('ping');
@@ -3449,6 +3457,7 @@
   /* ---- 数据入口：C# rev 门控直推契约 v4 JSON → 归一化入 store → render ---- */
   function setData(json) {
     if (!json || typeof json !== 'object') return;
+    lastSetAt = Date.now(); /* 八追：到达即证通道活（后续空契约早退也算到达——心跳据此免 ping） */
     /* v1.8.5⑫ 三零空契约不落地（实机 rev4 实锤：弹窗/切页瞬间 C# OwnerCache 空窗——
        落地即摘角标层+进页沿复位把排序打回=「点详情数值消失」终修；icfg=0 必为构建空窗，
        配置表恒非空）。保留上一包，等下一笔真数据。 */
@@ -3505,6 +3514,32 @@
     dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0, ct: { choice: DISP_CT.choice, owner: DISP_CT.owner, items: DISP_CT.model ? DISP_CT.model.items.length : 0 }, nb: { bag: NB.fsort, ctn: NB2.fsort } }; },
     _ppCount: 0,
     _pp: function () { this._ppCount++; }, /* v1.8.10 十三批六追：微包回执钩（OpPing 发 ~40B 微型 ExecuteJavaScript——达=通道活、长度丢弃实锤；不达=通道级死） */
+    /* v1.8.10 八追分片落包（同日九点修订：乱序免疫）：大契约（>7.5KB）C# 侧拆片下发（大包
+       ExecuteJavaScript 概率性丢弃而微包恒达——六追 CDP 实证 + 2026-11-05 复发会话 20 分钟
+       断流），JS 侧按**推送实例 pid** 缓冲重组——初版按「seq=0 重开缓冲」管理生命周期，实机
+       CDP 活捉（分片重组失败每 6s 一次、join 出洞+串包）证明 **WebView2 ExecuteScript 异步
+       无序执行**：seq=0 迟到会清掉已收后续片、跨包迟到片写进新包槽位 → 重组必炸 → setData
+       永不落地=断流假象。修订=pid 单调递增寻址（旧 pid 片直接弃）+ 计数齐片才 commit
+       （有洞永不 commit，30s 超时弃——丢片由心跳重推新 pid 自愈），对任意乱序/重复/迟到
+       均幂等安全。 */
+    _pcBuf: null, _pcPid: -1, _pcFill: 0, _pcAt: 0,
+    pushChunk: function (pid, seq, total, s) {
+      var now = Date.now();
+      if (pid < this._pcPid) return;                 /* 旧包迟到片：弃（乱序安全核心；_pcPid=单调
+                                                        高水位，commit/超时只清缓冲不回退——旧包
+                                                        迟到齐片也不得复活覆盖新数据） */
+      if (pid > this._pcPid) { this._pcPid = pid; this._pcBuf = []; this._pcFill = 0; this._pcAt = now; }
+      if (this._pcBuf && this._pcAt && now - this._pcAt > 30000) { this._pcBuf = null; return; } /* 陈片弃（_pcAt>0 门=防冷启动误判） */
+      if (!this._pcBuf) return;                      /* 本 pid 无活动缓冲（已 commit/超时弃）：重复片/迟到片弃 */
+      this._pcAt = now;
+      if (this._pcBuf[seq] === undefined) this._pcFill++;
+      this._pcBuf[seq] = s;
+      if (this._pcFill < total) return;              /* 有洞不 commit：等齐（丢片由新 pid 重推） */
+      var joined = this._pcBuf.join('');
+      this._pcBuf = null;
+      try { setData(JSON.parse(joined)); }
+      catch (e) { try { console.warn('[CERail] 分片重组失败（齐片仍解析失败——契约非严格 JSON？）', e && (e.message || e)); } catch (e2) { } }
+    },
     ver: 1,
     /* C# rev 门控直推数据契约 v4 JSON（存入 store 并触发渲染） */
     setData: setData,

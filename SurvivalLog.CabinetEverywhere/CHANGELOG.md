@@ -189,6 +189,31 @@
   基建，后续断流可一键分辨「未发出/延迟/真丢失」）；②RailUi 暴露 ActiveWebView/
   PushAckCallback 供命令层复用。**断流终态判定：时好时坏的直接原因=推送到达延迟
   波动叠加门②签名静默（期间无重发）**——六追双通道+四追 ping 心跳重发已覆盖该窗口。
+- **八追（同日复发会话现场诊断+断流终案修复：分片推送/陈旧心跳/回执看门狗/控制台转发/CDP 门/页签补挂根修）**：
+  作者报障「排序按钮又丢了，概率性复现」，现场（游戏保持运行）逐步取证定案——
+  ①**复发形态**：除背包（官方原生自足）外所有 rail 界面失效；按钮在但功能死；重开界面无效、重启游戏才好；期间纯 C# 子系统（TabInjector/TabGate/SizeEngine）全程正常；
+  ②**日志盲区实锤**：OpPing 无日志、推送到达无回执、JS 侧异常只 warn 进 WebView 控制台（BepInEx 日志不可见）、「cfg 运行中改 5 秒生效」注释有误（BepInEx 不监听 cfg 外部修改，DumpFurniture/Verbose 双探针实测零触发）——四~七追轮番盲修的根因；
+  ③**断流机理定案**：微包（探针 ~40B/心跳/drain）全通、大包（63KB setData）长时间丢弃、终有一片落地=「时好时坏+概率性」全解释；且旧心跳只覆盖「ctx 空」——首包到过之后断流（陈旧态：按钮亮=render 跑过、数据旧、命令打旧 owner 全废）心跳被静音 → 永不自愈 =「重开无效、重启才好」。
+  修复六件（三条通道修复+三条可见化）：
+  - **分片推送**（RailUi.PushIfDue + railui.page.js pushChunk）：大契约（>7.5KB）拆片下发，每片独立微包（原文子串 EscapeJs 装箱、JS 字面量解析即还原原文），JS 侧按**推送实例 pid（单调高水位）**寻址缓冲、计数齐片才重组 JSON.parse 进 setData；对任意乱序/重复/跨包迟到片幂等安全（node 模拟 400 轮：乱序/逆序/重复/丢片/交错全绿）。注：初判「ExecuteScript 乱序实锤」未获最终观测支持（部署版失败 100% 源于下述内容损坏），pid 高水位作为防御性设计保留。
+    **【部署版当晚即暴露真凶——分片把静默失败变显式失败】**部署版开 Trade 后 CDP 45s 活捉：`分片重组失败 Unexpected token ','` 每 6s 一次 100% 复现——pid 修订后依旧 → 深挖字节（CDP 抓失败原文 65010B）→ **真凶=BuildJson 两处非法 JSON（非通道、非丢包）**：
+    ①**tradePrefs**（RailSortMath.AppendTradePrefs）：Escape 是「带引号包装」的 JSON 引用器（返回 "名"），旧码在包装结果外再手拼 \" → `""食物""` 双重引号；且需求条目缺席（当日无热需分类）时 HalfValue 条目前导逗号悬空 → `[,`。产出 `"tradePrefs":[,[""食物"",-0.5]]`。**旧直推路径=整段 setData 脚本 JS 语法错误被 WebView 静默丢弃——四~八追「断流/大包丢弃/时好时坏」悬案的真正根因**；触发条件=当日交易带 prefs（交易需求按日轮换=「概率性复现」「重启才好」的全部来源；BuildJson 全页面无条件携带=「除背包（官方原生自足）外全界面失效」）。
+    ②**lib**（RailData.AppendLib）：行尾逗号与行首分隔逗号叠加 → 行间 `,,`。旧直推路径按 JS 字面量求值=**合法数组空洞**（一直"能用"，JS normRows 兜底滤掉）——历史从未暴露；分片 commit 的 JSON.parse 严格拒绝 → 部署版全包报废=「按钮仍丢+一键整理提示背包是空的」（store 恒空走空数据分支）。
+    修三件：AppendTradePrefs 改条目集 string.Join（引号包装语义只出自 Escape 一处，四分支形状 node 断言全 VALID）；AppendLib 改纯行首分隔（ctn/icfg/items 同款，尾部 Length-- 补丁随行尾逗号退役）；PushIfDue 加告警护栏（结构位 `,,`/`[,` 限频告警带现场片段——**告警不拦发**：字符串值内可合法含，严格校验归 JS 侧 JSON.parse；未来拼装 bug 从静默死变一行日志）。
+    **历史定性修正（诚实记录）**：六追「单参重载静默丢弃」、七追「到达延迟波动」均为本内容 bug 的衍生观测——trade 状态好=包合法=通，坏=语法错误=零到达；40B 微包（探针/drain）恒为合法脚本故恒达；「时好时坏」=坏包好包随交易轮换交替的观测假象。当晚会话现场 JS 线程后段无响应，热补丁验证未走完即转入源码修复——实机验证待本版部署。
+  - **心跳覆盖陈旧态**（railui.page.js）：判据从「ctx 空」扩为「ctx 空 **或** rail 在位且 >60s 无新包」（lastSetAt 于 setData 入口即记——包到达本身即通道活性证明）；空闲期代价 ≈65s 一包重推，兼作保活探针。
+  - **页签补挂根修**（TabInjector.AddMissing）：去掉 s.Injected 防重门（官方 RefreshBag 重建 BagTabs 后注入条目消失、防重集残留 → 永不补挂=「顶部柜子页签栏不见了」；have=活数组实时判定即可防重，0.5s 轮询自然收敛）。
+  - **推送回执看门狗**（RailUi.PushWatchdog）：已发未回执缺口 ≥6 且距最近回执 >10s（七追实证到达有数秒延迟波动，双条件防误报）→ 限频 10s 告警+ForceRepublish 维持重发压力（JS 假尸态心跳停摆时的 C# 侧独立保底）；缺口归零记恢复行（断流窗口时长可从日志读出）。86KB bootstrap 注入同入账本。
+  - **WebView 控制台转发**（RailUi.HookConsole）：ConsoleMessageLogged 挂载（本机 Vuplex 版 API=ConsoleMessageEventArgs/Level/Source/Line，事件以 add_ 方法形态暴露），JS warn/error → BepInEx 日志 `[CERail][JS:lvl]`（级别+前缀去重防官方噪声）——v1.8.1「渲染异常半途抛出全页失联」类问题从不可见变一行日志。首版 ConvertDelegate(EventHandler<T>) 实机报「Parameter type at 0 has mismatched native type pointers」（泛型委托 object 参托管/Il2Cpp 身份不匹配）——改 Action<Il2CppSystem.Object, T> 签名转换（下会话启动日志验证挂载行；CDP 口是更强取证通道，本件为常开兜底）。
+  - **CDP 取证门**（cfg [Rail] RemoteDebugPort 默认 0）：>0 时向 WebView2 附加 --remote-debugging-port（复用滚动条同款进程环境变量通道，独立于 ClassicWebViewScrollbars 开关）；下次复现浏览器开 http://127.0.0.1:端口/json 直连现场读 `__CERAIL__` 活态（store.rev/_ppCount/srFoodSort.hidden/FRAMES）。
+  附带修正：DumpFurniture cfg 注释的「运行中改 cfg 约 5 秒生效」删除（实测不生效，需重启）。
+  **排查过程与证据边界完整落档：`docs-cerail-outage-playbook.md`（断流排查手册）**——含
+  因果链结论、已实证/未定案清单（大包丢弃的底层机理未定案=绕过而非修复）、复现现场
+  操作步骤（保持现场连 CDP，勿重启）、判读表与验证标准（重启后没复现≠修好；结构性
+  消除+自愈上界 ≤65s+可观测三条件结案）。下次复现先读该手册 §4。
+  - **八追回归**：`node --check` 过；分片往返（EscapeJs 装箱→字面量解析→join→JSON.parse）
+    在 node 以多语种/引号/反斜杠/代理对合成载荷 500 轮全通过；dotnet build 0 错。
+
 - **回归**：`node --check` 过；本地测试床七页断言全绿——六页（Cooking/BrewPanel/
   RatCage/Compressor/Trade/DroneHub）排序钮可见+选 sat 后模型重排+角标数值
   （+15/+8）非递减、Trade 默认官方序+金色价值角标（360/99）常显+选 value 后 905

@@ -342,17 +342,27 @@ internal static class RailSortMath
         return v;
     }
 
-    /// <summary>买家喜好条 chips（JS ctx.tradePrefs=[[分类名,加成]…] 消费位 v1.8.3 已就绪）。</summary>
+    /// <summary>买家喜好条 chips（JS ctx.tradePrefs=[[分类名,加成]…] 消费位 v1.8.3 已就绪）。
+    /// 【2026-11-06 八追终案修复】旧实现双 bug 产出非法 JSON（实机 CDP 抓包铁证：
+    /// "tradePrefs":[,[""食物"",-0.5]]）：①Escape 是「带引号包装」的 JSON 引用器（返回
+    /// "名" 形态），旧码在包装结果外再手拼 \" → 双重引号；②需求条目缺席（DemandCategory<=0，
+    /// 本日交易无热需分类）时 HalfValue 条目的无条件前导逗号悬空 → "[,"。BuildJson 对
+    /// **所有页面**无条件携带本字段 → 交易状态带 prefs 的存档里每一包推送都是非法 JSON：
+    /// 旧直推路径=整段 setData 脚本语法错误被 WebView 静默丢弃=四~八追「大包丢失/时好时坏」
+    /// 悬案真凶（交易需求按日轮换 ⇒ 好坏随日期/存档变化=「概率性」的全部来源）。
+    /// 修=条目集 string.Join 拼装，引号包装语义只出自 Escape 一处。</summary>
     internal static void AppendTradePrefs(StringBuilder sb)
     {
         var t = TradeNow();
-        sb.Append(",\"tradePrefs\":[");
+        var entries = new List<string>();
         if (t.Valid)
         {
-            if (t.DemandCategory > 0) sb.Append("[\"").Append(Escape(RailData.CategoryName(t.DemandCategory))).Append("\",").Append(F(t.Boost)).Append(']');
-            if (t.HalfValueCategory > 0) sb.Append(",[\"").Append(Escape(RailData.CategoryName(t.HalfValueCategory))).Append("\",-0.5]");
+            if (t.DemandCategory > 0)
+                entries.Add("[" + Escape(RailData.CategoryName(t.DemandCategory)) + "," + F(t.Boost) + "]");
+            if (t.HalfValueCategory > 0)
+                entries.Add("[" + Escape(RailData.CategoryName(t.HalfValueCategory)) + ",-0.5]");
         }
-        sb.Append(']');
+        sb.Append(",\"tradePrefs\":[").Append(string.Join(",", entries)).Append(']');
     }
 
     // ================= 保质期（SortLogic.DaysLeftOf 状态机移植） =================

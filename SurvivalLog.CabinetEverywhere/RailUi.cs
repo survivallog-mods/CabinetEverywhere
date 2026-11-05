@@ -56,7 +56,18 @@ internal static class RailUi
     private static int _probeState;                      // 0=等待探针回包/未知 1=最近一探明确 absent（许可注入一剂）
     private static Il2CppSystem.Action<string> _probeCb; // 探活回调（仅主帧创建一次）
     private static Il2CppSystem.Action<string> _pushAckCb; // v1.8.10 十三批六追：推送空回调（单参 ExecuteJavaScript 在本机 Vuplex 组合下静默丢弃，见 PushIfDue 注释）
-    private static void PushAck(string _) { } // 空回调体（命名方法=与 drainCb 同款 ConvertDelegate 模式；回调内零动作，红线1）
+    // ---- v1.8.10 八追：推送回执账本（断流可见化）----
+    // 回调达=该条 ExecuteJavaScript 已在页面执行（微包与大包共用同一回调对象，故账本按
+    // 「条」计不按「包」计）；Vuplex 回调线程不确定 → Interlocked。缺口=已发未回执。
+    private static long _pushSent, _pushAcked;
+    private static long _pushPid; // 八追九点修订：分片推送实例号（单调递增，JS 按 pid 弃旧包迟到片）
+    private static long _lastAckAt, _lastWatchdogLog; // 秒制（UtcNow.Ticks/1e7）
+    private static bool _watchdogTripped;
+    private static void PushAck(string _)
+    { /* 回调体零动作红线不动，仅计数（命名方法=与 drainCb 同款 ConvertDelegate 模式） */
+        System.Threading.Interlocked.Increment(ref _pushAcked);
+        System.Threading.Interlocked.Exchange(ref _lastAckAt, DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond);
+    }
 
     // ---- v1.8.8 滚动条诊断（一次性：首个 rail 场景开到后量测并记一行日志，防盲改） ----
     private static bool _diagDone;
@@ -200,6 +211,9 @@ internal static class RailUi
             var web = GetWebView();
             if (web == null) return;
 
+            // 八追：WebView 控制台转发（一次挂载；JS 异常/分片重组失败 warn → BepInEx 日志）
+            HookConsole(web);
+
             // bootstrap 注入（T8）：幂等，每周期执行（WebView 重建自动重挂）；探活确认见下
             InjectBootstrap(web);
 
@@ -234,6 +248,7 @@ internal static class RailUi
             // 门控②：rev（数据签名）未变且场景未切换 → 不推
             RunScrollbarDiag(web);
             PushIfDue(web);
+            PushWatchdog(); // 八追：回执缺口看门狗（丢弃态可见化+维持重发压力）
         }
         catch (Exception e)
         {
@@ -260,10 +275,47 @@ internal static class RailUi
         var (json, rev) = RailData.BuildJson();
         if (json == null) return -1; // 背包 owner 不可得（findings §4 兜底③），等下一周期
 
+        /* 八追终案护栏（告警不拦发——字符串值内可合法含 ",,"（如柜子改名"a,,b"），盲拦会误伤；
+           严格校验由 JS 侧 commit 的 JSON.parse 把关）：合法 JSON 结构位严禁 ",,"（空值/双分隔）
+           与 "[,"（前导逗号）——tradePrefs（双重引号+悬空前导逗号）与 lib（行尾+行首双分隔）
+           两案的教训：坏包直推=整段脚本语法错误被 WebView 静默丢弃=「断流/概率性丢包」假象
+           （四~八追悬案的真正根因）。命中即带现场片段限频告警——拼装 bug 从静默死变一行日志。 */
+        int bad = json.IndexOf(",,", StringComparison.Ordinal);
+        if (bad < 0) bad = json.IndexOf("[,", StringComparison.Ordinal);
+        if (bad >= 0)
+        {
+            string spot = json.Substring(Math.Max(0, bad - 40), Math.Min(100, json.Length - Math.Max(0, bad - 40)));
+            WarnOnce("payload", "推送载荷疑似非法 JSON（,,/[, @" + bad + "，若为字符串值内出现则无害）——拼装 bug 现场核查：…" + spot + "…");
+        }
+
         if (_pushAckCb == null)
             _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
                 new Action<string>(PushAck)); // 命名方法（与 _drainCb 同款模式；空回调只走「带回调」可达通道）
-        web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")", _pushAckCb);
+
+        /* v1.8.10 八追分片（九点修订：pid 寻址乱序免疫）：大契约（>7.5KB）拆片走
+           __CERAIL__.pushChunk 微包通道——大包 ExecuteJavaScript 概率性丢弃而微包恒达
+           （六追 CDP 实证 + 2026-11-05 复发会话 20 分钟断流）。每片独立小表达式（原文子串
+           经 EscapeJs 装箱，JS 解析字面量即还原原文）；**每包分配单调递增 pid**——实机 CDP
+           活捉证明 WebView2 ExecuteScript 异步无序执行（心跳重压下 seq=0 迟到/跨包串片，
+           初版按序假设的重组必炸=八追部署版断流假象的根因），JS 按 pid 丢弃旧包迟到片、
+           计数齐片才 commit，任意乱序/重复/迟到幂等安全。小包维持直推零开销。 */
+        const int Chunk = 7500;
+        System.Threading.Interlocked.Increment(ref _pushSent);
+        if (json.Length <= Chunk)
+        {
+            web.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.setData(" + json + ")", _pushAckCb);
+        }
+        else
+        {
+            long pid = System.Threading.Interlocked.Increment(ref _pushPid);
+            int total = (json.Length + Chunk - 1) / Chunk;
+            for (int i = 0; i < total; i++)
+            {
+                int take = Math.Min(Chunk, json.Length - i * Chunk);
+                web.ExecuteJavaScript("window.__CERAIL__&&__CERAIL__.pushChunk(" + pid + "," + i + "," + total + ",\"" +
+                    EscapeJs(json.Substring(i * Chunk, take)) + "\")", _pushAckCb);
+            }
+        }
         _lastPage = page;
 
         // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
@@ -305,6 +357,86 @@ internal static class RailUi
         {
             WarnOnce("fastpoll", "快通道推送失败: " + e.Message);
         }
+    }
+
+    /// <summary>
+    /// v1.8.10 八追：推送回执看门狗。判据=「已发未回执缺口 ≥6」且「距最近一次回执 >10s」
+    /// （七追实证到达存在数秒级延迟波动——瞬时缺口是常态，双条件防误报）且 rail 场景活跃。
+    /// 命中=通道丢弃态（分片后单片 7.5KB，健康流缺口≈0~1）：限频 10s 告警一行 + ForceRepublish
+    /// 维持重发压力（JS 心跳 ping 的重推环在「JS 假尸」态会停摆——看门狗是 C# 侧独立保底）。
+    /// 缺口归零时记一行恢复（断流窗口长度由此可从日志读出）。
+    /// </summary>
+    private static void PushWatchdog()
+    {
+        long gap = System.Threading.Interlocked.Read(ref _pushSent) - System.Threading.Interlocked.Read(ref _pushAcked);
+        long now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond;
+        if (gap <= 0)
+        {
+            if (_watchdogTripped)
+            {
+                _watchdogTripped = false;
+                CabinetEverywherePlugin.Log?.LogInfo("[CERail] 推送回执恢复（缺口归零——通道自愈）");
+            }
+            return;
+        }
+        long lastAck = System.Threading.Interlocked.Read(ref _lastAckAt);
+        if (gap < 6 || lastAck <= 0 || now - lastAck <= 10) return;
+        _watchdogTripped = true;
+        if (now - _lastWatchdogLog < 10) return;
+        _lastWatchdogLog = now;
+        CabinetEverywherePlugin.Log?.LogWarning(
+            $"[CERail] 推送回执缺口 {gap}（已发 {_pushSent}/回执 {_pushAcked}，距最近回执 {now - lastAck}s）——通道丢弃态疑似，ForceRepublish 维持重发");
+        RailData.ForceRepublish();
+    }
+
+    /// <summary>
+    /// v1.8.10 八追：WebView 控制台转发。动机——v1.8.1 先例：JS 渲染异常曾让 setData 半途
+    /// 抛出（页签空白+全部交互失联），而所有 JS 侧兜底 warn 只进 WebView 控制台= BepInEx 日志
+    /// 盲区；断流排查曾因此无法分辨「包未达」vs「包达但渲染炸」。挂 ConsoleMessageLogged，
+    /// warn/error 转发进 BepInEx 日志（按级别+消息前缀去重，防 Vue 官方噪声刷屏）。
+    /// </summary>
+    private static bool _consoleHooked;
+    private static readonly HashSet<string> _consoleSeen = new();
+    private static void HookConsole(Vuplex.WebView.IWebView web)
+    {
+        if (_consoleHooked || web == null) return;
+        try
+        {
+            // Il2CppInterop 不生成 C# 事件，事件以 add_Xxx 方法形态暴露（探针实锤：
+            // IWebView.add_ConsoleMessageLogged(EventHandler<ConsoleMessageEventArgs>)）。
+            // 首版 ConvertDelegate(EventHandler<T>) 实机报「Parameter type at 0 has
+            // mismatched native type pointers; System.Object != System.Object」（泛型委托的
+            // object 参托管/Il2Cpp 身份不匹配）——改 Action<Il2CppSystem.Object, T> 签名转换。
+            var handler = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<
+                Il2CppSystem.EventHandler<Vuplex.WebView.ConsoleMessageEventArgs>>(
+                new Action<Il2CppSystem.Object, Vuplex.WebView.ConsoleMessageEventArgs>(
+                    (s, e) => OnConsoleMessage(null, e)));
+            web.add_ConsoleMessageLogged(handler);
+            _consoleHooked = true;
+            CabinetEverywherePlugin.Log?.LogInfo("[CERail] WebView 控制台转发已挂（JS warn/error → BepInEx 日志）");
+        }
+        catch (Exception e)
+        {
+            _consoleHooked = true; /* 挂不上不重试（每 tick 重试只刷异常） */
+            WarnOnce("consoleHook", "WebView 控制台转发挂载失败（JS 异常仍不可见）: " + e.Message);
+        }
+    }
+    private static void OnConsoleMessage(object sender, Vuplex.WebView.ConsoleMessageEventArgs e)
+    {
+        try
+        {
+            string msg = e?.Message;
+            if (string.IsNullOrEmpty(msg)) return;
+            string lvl;
+            try { lvl = e.Level.ToString(); } catch { lvl = "?"; }
+            string src = "";
+            try { src = "（" + e.Source + ":" + e.Line + "）"; } catch { }
+            string key = lvl + "|" + (msg.Length > 120 ? msg.Substring(0, 120) : msg);
+            if (_consoleSeen.Count > 400) _consoleSeen.Clear(); /* 去重集合上限（防无限涨） */
+            if (!_consoleSeen.Add(key)) return;
+            CabinetEverywherePlugin.Log?.LogWarning($"[CERail][JS:{lvl}] {msg} {src}");
+        }
+        catch { }
     }
 
     /// <summary>
@@ -353,6 +485,7 @@ internal static class RailUi
             if (_pushAckCb == null)
                 _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
                     new Action<string>(PushAck));
+            System.Threading.Interlocked.Increment(ref _pushSent); /* 八追：86KB 最大单包也入账本（看门狗覆盖注入丢弃） */
             web.ExecuteJavaScript(BootstrapJs, _pushAckCb);
         }
         catch (Exception e)
