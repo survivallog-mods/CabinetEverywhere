@@ -436,6 +436,17 @@ internal static class RailUi
         }
         catch { return null; }
     }
+    internal static Vuplex.WebView.IWebView ActiveWebView => GetWebView(); // v1.8.10 十三批六追：OpPing 通道对照实验用（微包回执）
+    internal static Il2CppSystem.Action<string> PushAckCallback
+    { // 惰性建（与 PushIfDue 内同款；命名方法 PushAck）
+        get
+        {
+            if (_pushAckCb == null)
+                _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(PushAck));
+            return _pushAckCb;
+        }
+    }
 
     /// <summary>JS 字符串字面量转义（TagFilter.EscapeJs 同款，railui.css 文本进 bootstrap 用）。</summary>
     private static string EscapeJs(string s)

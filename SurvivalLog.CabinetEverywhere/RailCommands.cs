@@ -224,7 +224,7 @@ internal static class RailCommands
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
-            case "ping": break; // v1.8.10 十三批四追：零副作用心跳——JS 侧「装配后无首包」自愈用（Pump 执行过即 ForceRepublish=rev 门控强制下周期回推，治推送 fire-and-forget 偶发丢失后门②静默永不重试的断流）
+            case "ping": OpPing(c); break; // v1.8.10 十三批四追：心跳自愈；六追后升级为通道对照实验（微包回执）：ExecuteJavaScript 大包（62KB 契约）实测零达而 drain（33B）恒达——长度丢弃假说验证
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }
@@ -468,6 +468,19 @@ internal static class RailCommands
         }
     }
 
+    /// <summary>ping：零副作用心跳（Pump 执行过即 ForceRepublish）。六追升级：附带微包回执
+    /// `window.__CERAIL__._pp(n)`（~40B，与 drain 同量级）——微包达而大包（62KB setData）不达
+    /// = ExecuteJavaScript 长度丢弃实锤（修向=大包改 PostMessage 通道）；双双不达=通道级问题。</summary>
+    private static void OpPing(Cmd c)
+    {
+        try
+        {
+            var web = RailUi.ActiveWebView;
+            if (web == null) return;
+            web.ExecuteJavaScript("(window.__CERAIL__&&__CERAIL__.state)?__CERAIL__._pp(1):0", RailUi.PushAckCallback);
+        }
+        catch (Exception) { }
+    }
     private static void OpTidy(Cmd c)
     {
         if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] tidy 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
