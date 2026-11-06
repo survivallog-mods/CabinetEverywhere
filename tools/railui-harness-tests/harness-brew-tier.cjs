@@ -143,6 +143,48 @@ function check(name, ok, detail) {
   check('S3-cook-pure-sat', JSON.stringify(ord) === JSON.stringify([902, 901, 903, 905, 904, 906, 907, 908]), JSON.stringify(ord));
   await pickSort('Cooking', 'official');
 
+  /* ---- §4 双层角标（Task 5）：数值+品质色角标；仅可酿物品；重推重建；默认序清层；Cooking 无品质 ---- */
+  const badges = async (key) => frameEl(key).evaluate(() => {
+    const layer = document.getElementById('srBadgeLayer');
+    const out = { total: 0, tiers: {}, byItem: {} };
+    if (!layer) return out;
+    const its = [...document.querySelectorAll('.sr-gridhost .item')];
+    const bis = [...layer.querySelectorAll('i')];
+    bis.forEach((bi) => {
+      const bl = parseFloat(bi.style.left), bt = parseFloat(bi.style.top);
+      const m = its.find((it) => Math.abs((it.offsetLeft + it.offsetWidth) - bl) < 3 && Math.abs(it.offsetTop - bt) < 3);
+      const sp = bi.querySelector('.sr-tier');
+      const entry = { text: bi.textContent, tier: sp ? sp.textContent : null, color: sp ? getComputedStyle(sp).color : null };
+      if (m) out.byItem[m.id] = entry;
+      if (sp) out.tiers[sp.textContent] = (out.tiers[sp.textContent] || 0) + 1;
+    });
+    out.total = bis.length;
+    return out;
+  });
+  await showScene('BrewPanel');
+  await pickSort('BrewPanel', 'sat');
+  let bd = await badges('BrewPanel');
+  const TIER_RGB = { '烈': 'rgb(224, 137, 155)', '普': 'rgb(232, 176, 75)', '劣': 'rgb(157, 196, 127)' };
+  check('S4-brew-tier-counts', bd.tiers['烈'] === 1 && bd.tiers['普'] === 2 && bd.tiers['劣'] === 1, JSON.stringify(bd.tiers));
+  check('S4-brew-901-strong', bd.byItem['901'] && bd.byItem['901'].tier === '烈' && bd.byItem['901'].color === TIER_RGB['烈'] && bd.byItem['901'].text.indexOf('+10') === 0, JSON.stringify(bd.byItem['901']));
+  check('S4-brew-902-normal', bd.byItem['902'] && bd.byItem['902'].tier === '普' && bd.byItem['902'].color === TIER_RGB['普'], JSON.stringify(bd.byItem['902']));
+  check('S4-brew-903-low', bd.byItem['903'] && bd.byItem['903'].tier === '劣' && bd.byItem['903'].color === TIER_RGB['劣'], JSON.stringify(bd.byItem['903']));
+  check('S4-brew-904-notier', bd.byItem['904'] && bd.byItem['904'].tier === null, JSON.stringify(bd.byItem['904']));
+  check('S4-brew-907-notier', bd.byItem['907'] && bd.byItem['907'].tier === null, JSON.stringify(bd.byItem['907']));
+  const bd0 = JSON.stringify(bd);
+  await pushCtx('BrewPanel'); /* 官方重渲染+MO 重画（50ms 防抖） */
+  await page.waitForTimeout(400);
+  bd = await badges('BrewPanel');
+  check('S4-brew-repush-rebuild', JSON.stringify(bd) === bd0, 'before=' + bd0.slice(0, 80) + ' after=' + JSON.stringify(bd).slice(0, 80));
+  await pickSort('BrewPanel', 'official');
+  bd = await badges('BrewPanel');
+  check('S4-brew-official-clear', bd.total === 0, 'total=' + bd.total);
+  await showScene('Cooking');
+  await pickSort('Cooking', 'sat');
+  bd = await badges('Cooking');
+  check('S4-cook-no-tier', bd.total > 0 && !Object.keys(bd.tiers).length, 'total=' + bd.total + ' tiers=' + JSON.stringify(bd.tiers));
+  await pickSort('Cooking', 'official');
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));

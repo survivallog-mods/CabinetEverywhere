@@ -250,6 +250,10 @@
 #srp #srBadgeLayer i{position:absolute;transform:translate(-100%,0);min-width:10px;padding:0 2px;border-radius:2px;
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;
   font-style:normal;white-space:nowrap;pointer-events:none}
+/* v14 酿酒桶品质角标（brew spec §5.3）：垫在饱腹数值正下方（底衬继承父 <i>，右对齐随父
+   translate(-100%)）；仅 BrewPanel 页+饱腹排序+可酿物品（railui.page.js 绘制行门控）。
+   色=游戏 BrewPanel TIER_COLOR 同源（劣绿/普黄/烈粉），inline 写入此处只管排版 */
+#srp #srBadgeLayer i .sr-tier{display:block;font-size:9px;line-height:12px;font-family:inherit;font-style:normal}
 /* v1.8.9：交易买家条（.sr-tradeinfo/.ti-prefs/.ti-pref/.ti-mode）随「按交易价值排序」条退役 */
 
 /* ================= 燃油发电机 bagtabs（srfg-*，spec 2026-11-06-fuelgen-cabinet-tabs） =================

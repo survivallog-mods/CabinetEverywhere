@@ -1665,7 +1665,11 @@
           if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
           var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
           var x = p[0] + elx.offsetWidth + (cfg.dx || 0), y = p[1] + (cfg.dy || 0);
-          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
+          /* v14 酿酒桶+饱腹序：可酿物品在数值正下方垫品质色角标（brew spec §5.3——与数值同一条
+             dispRows 下标直配链（it），不另起 join；劣绿/普黄/烈粉=游戏 BrewPanel TIER_COLOR 同源） */
+          var t5 = (spec.k === 'sat' && st.scene === 'BrewPanel') ? brewTierOf(it) : -1;
+          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) +
+            (t5 >= 0 ? '<span class="sr-tier" style="color:' + TIER_COLOR[t5] + '">' + TIER_TXT[t5] + '</span>' : '') + '</i>';
         }
         if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
         if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
