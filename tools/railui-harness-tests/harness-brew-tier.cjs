@@ -117,6 +117,32 @@ function check(name, ok, detail) {
   });
   check('S2-nb-menu-7items', nbItems && nbItems.length === 7 && nbItems[1] === 'sat', JSON.stringify(nbItems));
 
+  /* ---- §3 排序比较器（Task 4）：品质主键 烈→普→劣→不可酿垫底，同品质饱腹降序 ---- */
+  const gridOrder = async (key, containerSel) => frameEl(key).evaluate((sel) => {
+    const its = [...document.querySelectorAll(sel + ' .item')];
+    return its.map((el) => ({
+      id: parseInt(el.id, 10),
+      x: parseFloat(el.style.left), y: parseFloat(el.style.top)
+    })).sort((a, b) => (a.y - b.y) || (a.x - b.x)).map((o) => o.id);
+  }, containerSel);
+  const pickSort = async (key, k) => frameEl(key).evaluate((kk) => {
+    document.getElementById('srFoodSort').click();
+    const b = document.querySelector('[data-fsort="' + kk + '"]'); if (b) b.click();
+  }, k);
+  await showScene('BrewPanel');
+  await pickSort('BrewPanel', 'sat');
+  /* 烈(901 2.5) → 普 s1 降序(902 s1=20 → 905 s1=5) → 劣(903) → 不可酿(904 s1=null、906 s1=null，稳定序) */
+  let ord = await gridOrder('BrewPanel', '#bagGrid');
+  check('S3-brew-tier-primary', JSON.stringify(ord) === JSON.stringify([901, 902, 905, 903, 904, 906, 907, 908]), JSON.stringify(ord));
+  await pickSort('BrewPanel', 'official');
+  await showScene('Cooking');
+  await pickSort('Cooking', 'sat');
+  /* 回归：Cooking 纯 s1 降序，tier 不参与——902(20)→901(10)→903(10，稳定)→905(5)→null 垫底
+     （907/908=nudge 喂官方模型的通用物品，无契约行 join→null，按稳定序垫底） */
+  ord = await gridOrder('Cooking', '#backpackGrid');
+  check('S3-cook-pure-sat', JSON.stringify(ord) === JSON.stringify([902, 901, 903, 905, 904, 906, 907, 908]), JSON.stringify(ord));
+  await pickSort('Cooking', 'official');
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));

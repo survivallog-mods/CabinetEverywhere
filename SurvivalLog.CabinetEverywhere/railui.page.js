@@ -1391,7 +1391,15 @@
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
     var key = D.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
+    /* v14 酿酒桶+饱腹序（brew spec §3）：品质主键 烈(2)→普(1)→劣(0)→不可酿(-1) 垫底，
+       同品质内才走 s1 降序（下落原单键路径，null 沉底/稳定序照旧）。仅 BrewPanel 场景生效——
+       其他页比较器逐字节不变。 */
+    var brewSat = (key === 'sat' && st.scene === 'BrewPanel');
     pairs.sort(function (a, b) {
+      if (brewSat) {
+        var ta = brewTierOf(a.row), tb = brewTierOf(b.row);
+        if (ta !== tb) return tb - ta; /* 机器页 dir 恒 1（无方向钮，setScene 固定），高在前 */
+      }
       var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
       if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
       var d = (ka - kb) * sign; /* PC 原式 (a.k-b.k)*sign：desc=-1 高在前；shelf=+1 小在前 */
