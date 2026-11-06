@@ -7,6 +7,28 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十二批（2026-11-07，燃油发电机界面柜子页签——bagtabs 装配模式）
+
+**新功能**：燃油发电机界面左侧背包面板页签化（背包 + 带「燃料」官方标签[1013]的柜子），点柜中燃料
+**整组直送**发电机燃料队列（与官方从背包加油完全同口径：非燃料→「只能添加燃料」、满员→「燃油槽已满」）。
+作者底线：右侧发电机面板零改动；官方左面板 DOM 只隐藏不 detach；家中无燃料标签柜时界面与原版一致。
+
+- 装配=bagtabs 新模式（SCENES.host=null 不替换宿主/无侧栏壳）：#srfgTabs（背包 pinned+‹› 滚动+
+  A/D 双绑去重）/ #srfgBody（mod 柜格复用官方格类，12 列定宽、格区限高滚动）/ #srfgWarn（官方
+  warning-box 同款观感）/ #srfgFoot（仅一键整理，所有页签都有；无一键入库）。面板宽锁死官方
+  12 列格宽、高=右面板自然高。
+- 数据/命令全复用 CERail：FuelGenerator 进场景表（icfg 本页尾列 [burnable,burnValue]，其他 12 页
+  契约形状不变）；新命令 feed{owner,item} 两跳=柜→背包→官方 FUEL_ADD（含叠并重解析：背包已有
+  同 cfg 叠时按 ItemConfigId 重找目标叠）；拒绝四路 notfuel/full/bagfull/noitem 经 ctx.feedFail
+  一次性回执。v1 只走两跳（S1 直达=官方动作认柜中物品，待实证后独立优化）。
+- cfg：[Access] EnableFuelGen（默认 true）+ [Scenario] View_FuelGenerator（默认 Fuel）。
+- 夹具/harness：fixtures/FuelGenerator.html（官方页静态保真）+ railui-root-harness 13 iframe +
+  harness-fuelgen.cjs 28 断言（含无燃料柜=原版、宽锁、键不泄漏、feedFail 四路）。
+- 教训：bagtabs 观察器纪律三条（签名守卫/拆除重建门/同值守卫）——innerHTML 串比较与 active 类
+  修正永不相等=自激环 59 万写/秒渲染器暴毙（harness 挂死根因，双根修）。
+- 已知（非本批引入，HEAD 基线即红）：harness-regression/harness-tidy 两套 TimeoutError（本批前后
+  失败集合 diff=零差异）；native-width 8/8、width-floor 13/13、fuelgen 28/28 绿。
+
 ### 待发版·二十一批（2026-11-06，材料架页签机器页黑块根修——官方 rack 行视图宿主入壳）
 
 **作者实报：材料架在工作台/无人机交易/调度机队（实测连粉碎机）页签选中后内容区整片黑，

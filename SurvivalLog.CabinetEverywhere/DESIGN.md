@@ -18,8 +18,8 @@
 - **标签筛选**：标签用游戏官方的"柜子标签规则"（背包界面给柜子设置的同一套，机器人按
   标签归置共用）；A/D 步进切页签自动跳过被藏柜子（十七+轮防闪烁/防卡死工程，附录 C）。
 
-不改存档、不改游戏文件，删 dll 即还原。**发电机加油界面原生没有容器页签系统（只有背包），
-不在本 mod 范围**（要支持等于新造 UI 功能，另立项）。
+不改存档、不改游戏文件，删 dll 即还原。~~发电机加油界面原生没有容器页签系统（只有背包），
+不在本 mod 范围~~（2026-11-07 起已覆盖——bagtabs 装配模式，见 §11）。
 
 ### 场景视图表（cfg [Scenario]，默认值按 2026-10-17 spec）
 
@@ -936,3 +936,16 @@ hasActive 清单=轻量消息漏扣=闪；事件签名不符=伪造失效/错位
 - 2026-10-17（合并系列）：CabinetTagFilter 并回 CabinetEverywhere（双 Ticker 合一、容器扫描
   合一）；JS 迁内嵌资源 tagfilter.page.js（verbatim 引号坑根治）；数据契约 v3 + 场景视图 +
   自绘下拉 + 颜料桶 PollDye + 按界面记忆（正文 §2、§6）。
+
+
+## 11. 燃油发电机柜子页签（bagtabs 装配模式，2026-11-07）
+
+spec=docs/superpowers/specs/2026-11-06-fuelgen-cabinet-tabs-design.md（视觉基准=原型 v6）；计划=docs/superpowers/plans/2026-11-07-fuelgen-cabinet-tabs.md。
+
+- **为什么不用白名单/页签注入**：`Ac_FuelGenerator_Open` 只带 BagList（粉碎机的 `CabinetBags/CabinetConfigIds` 消费方不存在），State 无 BagTabs、页面无页签区——官方机制到不了此页（spec §3 实证）。
+- **做法**：FuelGenerator 进 RailData 场景表（family 'fg'）复用 CERail 数据推送+drain 命令通道；railui.page.js 新增 bagtabs 装配（SCENES.host=null 不替换宿主/无侧栏壳）：官方左背包面板内装 #srfgTabs（背包 pinned+燃料标签[1013]柜+‹›滚动+A/D 双绑去重）、#srfgBody（mod 柜格复用官方 .grid-container/.item/.is-fuel 类）、#srfgWarn（官方 warning-box 同款观感）、#srfgFoot（仅一键整理）。面板宽锁死官方 12 列格宽、高=右 .gen-panel 自然高，格区内部滚动。
+- **作者底线**：右侧发电机面板零改动；官方左面板 DOM 只隐藏不 detach（#backpackGrid 柜页签 display:none、title/info-bar/hint 由 .srfg-on 类隐藏）；无燃料柜时 mod DOM 全拆=原版。
+- **feed 命令（两跳）**：`{op:"feed",owner,item}` → C# 权威校验（物品级 Config_Item.Burnable/FuelItems 容量）→ 柜→背包（TryQuickMoveItems）→ 按 ItemConfigId 重解析叠并目标 → `Ac_FuelGenerator_FuelAdd.SendAction` 官方动作重放 → RefreshBag+ForceRepublish。拒绝四路 notfuel/full/bagfull/noitem 经 ctx.feedFail 一次性回执，JS 弹 mod 警示条。
+- **icfg 本页尾列**：ctx.page=="FuelGenerator" 时 icfg 行尾加 [burnable,burnValue]（其他 12 页形状不变；禁止按 Category 推导）。
+- **cfg**：[Access] EnableFuelGen（默认 true，对称拆装）+ [Scenario] View_FuelGenerator（默认 Fuel）。
+- **教训（bagtabs 装配纪律）**：①观察器写循环必须用"签名守卫"（innerHTML 串比较与 active 类修正永不相等=59 万写/秒自激环、渲染器暴毙）；②拆除态重建门（无燃料柜时 ensureBagtabs 不得再建，否则拆建乒乓）；③同值写守卫（className/style/hidden 写前比对）。
