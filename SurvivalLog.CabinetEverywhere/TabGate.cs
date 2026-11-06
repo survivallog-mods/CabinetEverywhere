@@ -193,6 +193,47 @@ internal static class TabGate
     }
     private static void Log(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.TabGate] " + msg);
 
+    // ================= FastPoll（二十批：开界面短窗每帧抢跑修剪——治「先全量闪一下再收窄」） =================
+    // 十四批 TabInjector.FastPoll 同族问题：官方开页按白名单**全量**建页签并渲染在先，场景视图
+    // 修剪挂 0.5s 轮询=量化延迟闪一帧（作者实机复报：粉碎机开页先显全部柜子再收窄）。修=翻转帧
+    // 起 ~20 帧短窗内每帧跑同一条 Poll（幂等零动作），官方页签数组建成那一帧即修剪+Repush=首推
+    // 渲染前落地；窗口过后交还 0.5s 轮询（稳态新增开销=每页一次 bool 读）。Poll 方法零改动复用。
+    private sealed class FlipWin { public bool WasActive; public int Frames; }
+    private static readonly Dictionary<string, FlipWin> FlipWins = new();
+
+    private static void FastOne(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t,
+        string key, Action<GameCore.HotUpdate.ReduxUI.ReduxUISystem> poll)
+    {
+        if (!FlipWins.TryGetValue(key, out var f)) { f = new FlipWin(); FlipWins[key] = f; }
+        bool active = SafeActive(rus, t);
+        if (!active) { f.WasActive = false; f.Frames = 0; return; }
+        if (!f.WasActive) { f.WasActive = true; f.Frames = 20; } /* 开界面翻转帧起算短窗 */
+        if (f.Frames > 0) { f.Frames--; poll(rus); }
+    }
+
+    internal static void FastPoll()
+    {
+        // 视图语义总门（PollAll 同源；Browser 视图页 poll 自身零动作）
+        if (CabinetEverywherePlugin.FilterEnable == null || !CabinetEverywherePlugin.FilterEnable.Value)
+            return;
+        try
+        {
+            if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                return;
+            var rus = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance;
+            if (rus == null) return;
+            FastOne(rus, DroneHubType, "dronehub", PollDroneHub);
+            FastOne(rus, ShredderType, "shredder", PollShredder);
+            FastOne(rus, CompressorType, "compressor", PollCompressor);
+            FastOne(rus, GreenhouseType, "greenhouse", PollGreenhouse);
+            FastOne(rus, TradeType, "trade", PollTrade);
+        }
+        catch (Exception e)
+        {
+            WarnOnce("fastpoll", "视图瞬帧对账异常: " + e.Message);
+        }
+    }
+
     internal static void PollAll()
     {
         // 视图语义总门=[Filter] Enable（关=全显，与 tagfilter/Pruner 同源语义）；General.Enabled 由调用方守。

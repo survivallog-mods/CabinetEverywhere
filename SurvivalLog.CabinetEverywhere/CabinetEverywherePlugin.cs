@@ -262,6 +262,9 @@ internal sealed class AccessTicker : MonoBehaviour
             // v1.8.9 十三批：开界面瞬帧注入柜子页签（0.5s 轮询量化是首开闪烁根源——首推只带
             // 原生背包+冰箱；每帧只查翻转，开界面那帧抢在首推序列化前注入全量；稳态零动作）
             TabInjector.FastPoll();
+            // 二十批：开界面短窗每帧抢跑——视图修剪+抽屉页签随官方数组建成那帧落地（治开页闪全量）
+            TabGate.FastPoll();
+            DrawerTabs.FastPoll();
             Tick(Time.deltaTime);
         }
         catch { /* 单帧异常不终止轮询 */ }

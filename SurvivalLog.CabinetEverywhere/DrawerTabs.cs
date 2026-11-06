@@ -43,6 +43,60 @@ internal static class DrawerTabs
 
     private const string DrawerName = "工作台抽屉";
 
+    // ---- FastPoll（二十批：开界面短窗每帧抢跑——抽屉页签随官方数组建成那帧落地，TabGate.FastPoll 同款纪律） ----
+    private sealed class FlipWin { public bool WasActive; public int Frames; }
+    private static readonly Dictionary<string, FlipWin> FlipWins = new();
+
+    private static void FastOne(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t,
+        string key, Action<GameCore.HotUpdate.ReduxUI.ReduxUISystem> act)
+    {
+        if (!FlipWins.TryGetValue(key, out var f)) { f = new FlipWin(); FlipWins[key] = f; }
+        bool active = SafeActive(rus, t);
+        if (!active) { f.WasActive = false; f.Frames = 0; return; }
+        if (!f.WasActive) { f.WasActive = true; f.Frames = 20; }
+        if (f.Frames > 0) { f.Frames--; act(rus); }
+    }
+
+    /// <summary>每帧（AccessTicker，TabGate.FastPoll 旁）：三页翻转短窗内每帧抢跑（幂等）；稳态零动作。</summary>
+    internal static void FastPoll()
+    {
+        if (CabinetEverywherePlugin.Enabled != null && !CabinetEverywherePlugin.Enabled.Value) return;
+        if (CabinetEverywherePlugin.EnableCraftSource == null || !CabinetEverywherePlugin.EnableCraftSource.Value) return;
+        try
+        {
+            if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                return;
+            var rus = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance;
+            if (rus == null) return;
+            FastOne(rus, TradeType, "trade", ActTrade);
+            FastOne(rus, ShredderType, "shredder", ActShredder);
+            FastOne(rus, DroneHubType, "dronehub", ActDroneHub);
+        }
+        catch (Exception e)
+        {
+            WarnOnce("fastpoll", "抽屉页签瞬帧注入异常: " + e.Message);
+        }
+    }
+
+    private static void ActTrade(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
+    {
+        var owner = FindDrawerOwner(rus);
+        if (owner != 0) EnsureTrade(rus, owner);
+        FixStaleTradeSizes(rus);
+    }
+
+    private static void ActShredder(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
+    {
+        var owner = FindDrawerOwner(rus);
+        if (owner != 0) EnsureShredder(rus, owner);
+    }
+
+    private static void ActDroneHub(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
+    {
+        var owner = FindDrawerOwner(rus);
+        if (owner != 0) EnsureDroneHub(rus, owner);
+    }
+
     /// <summary>0.5s 轮询（AccessTicker 快通道，TabInjector.PollAll 之后）。门：General + EnableCraftSource（两页属白名单族）。
     /// 冷启动注册纪律（教训=读档窗口期做重活曾致原生闪退）：两页 UI 均未打开时直接返回，
     /// owner 发现与冷启动装配只在 SafeActive(Trade/Shredder) 之后才触达。</summary>
