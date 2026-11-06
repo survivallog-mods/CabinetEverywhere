@@ -208,11 +208,15 @@ window.__HZ_READY__ = function () {
     Compressor: { family: 'cart0' }, Shredder: { family: 'cart' }, GreenhouseBuild: { family: 'cart' },
     ToolTable: { family: 'tt' }, Trade: { family: 'trade' }, DroneHub: { family: 'bag' }
   };
+  /* ctx.uniformWidth 测试旋钮（harness-width-floor 用）：C# [Rail] UniformBagWidth 直出的
+     契约字段在夹具侧的建模——默认 12，测试改 window.__HZ_UNIW__ 后 __HZ_PUSH__ 重推生效 */
+  window.__HZ_UNIW__ = 12;
   function ctxFor(key) {
     var f = FAMILY[key] || { family: 'bag' };
     return {
       page: key, family: f.family, bagOnly: !!f.bagOnly,
-      rackOwner: f.rackOwner || 0, bagCap: 42
+      rackOwner: f.rackOwner || 0, bagCap: 42,
+      uniformWidth: window.__HZ_UNIW__
     };
   }
   var MOCK = {

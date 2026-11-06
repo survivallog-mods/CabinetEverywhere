@@ -251,6 +251,7 @@
 
   /* ---- 数据仓（行归一化为对象；冻结形状见计划 Task 3 Interfaces）---- */
   var store = { rev: -1, ctx: null, bag: 0, ctn: [], lib: [], icfg: [], items: {} };
+  var UNI_W = 12; /* 契约 ctx.uniformWidth 落点（C# [Rail] UniformBagWidth 直出；0=地板停用信号也落地，缺省 12 不回退——bagCap 同款读取先行） */
   var ICFG = {}; /* cfgId → 归一化 icfg（渲染高频查表） */
   var LIB = {};  /* tagId → 归一化 lib */
   var LIBN = {}; /* 标签名 → 归一化 lib（chips 色/组按名取；自定义名不在表内走自定义色） */
@@ -276,7 +277,9 @@
     scene: null, currentId: null, mode: 'grid', prevMode: 'grid', sort: 'value', dir: 1,
     query: '', global: false, tags: [], sel: null,
     cap: 0, rows: 0, items: [],
-    dragId: null    /* T5：拖拽中页签（rail.js st 同形；v1.8.7 lastStepIdx 随 stepGuard 退役；v1.8.9 editId/editTags 随编辑弹窗链退役） */
+    dragId: null,   /* T5：拖拽中页签（rail.js st 同形；v1.8.7 lastStepIdx 随 stepGuard 退役；v1.8.9 editId/editTags 随编辑弹窗链退役） */
+    w12Floor: 0,    /* 壳宽地板（Task4）：本页首见 UNI_W 列容器标定的壳宽，0=未标定 */
+    w12Src: 0       /* 标定所用 UNI_W 值（cfg 改值/场景切换失效判据） */
   };
   var COMMON = [];     /* 快捷标签名字符串（默认=lib 前 5；持久化 srp_common_tags_<scene>） */
   var CUSTOM = [];     /* 自定义标签词表（全局 srp_custom_tags；管理弹层新增/移除维护） */
@@ -295,7 +298,7 @@
      跟着帧走、不把 A 场景的筛选态渲染进 B。全局单套活跃集 + 每帧快照 = 与「单场景活跃」
      装配语义（frameVisible 门控，T8）一致的多帧安全形态。 */
   var SNAPS = {}; /* sceneKey → { st, COMMON, sceneApplied, PIN_KEY, TM_KEY, LISTGRP } */
-  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId'];
+  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'w12Floor', 'w12Src']; /* v1.8.11：壳宽地板随页快照（重访免重标定；UNI_W 值变仍由 setData 全局清） */
   function saveSnap() {
     if (!st.scene || !SCENES[st.scene]) return;
     var sn = { st: {}, COMMON: COMMON.slice(), sceneApplied: sceneApplied, PIN_KEY: PIN_KEY, TM_KEY: TM_KEY, LISTGRP: LISTGRP };
@@ -1703,7 +1706,32 @@
     /* 壳宽=外沿+24+sb：24=rail 内衬 20+两重边框 4（补齐后格区横向溢出恒 0——第三轮实测
        ToolTable 官方格无内边距，+20 信用下末列右缘被结构性啃 3px；Brew 类 9px 内边距页
        此前把它藏着）。sb=滚动条（同上）。 */
-    var rw2 = (nat + 24 + sb) + 'px';
+    /* v1.8.11 壳宽地板（spec §5.2，作者令「窄柜两侧留白不缩放」）：地板宽=本页首见 UNI_W 列
+       容器时标定的跟随宽（自动吸收各页 slot/内边距差异，零魔法常数）；此后壳宽=max(跟随宽,地板)
+       ——窄柜居中留白（.sr-gridhost flex 居中已在位、官方锁 margin 已清），>UNI_W 仍可长胖永不
+       裁格。UNI_W=0（cfg off）整段跳过=回纯跟随；UNI_W 值变（setData 清标定）与场景切换
+       （applyScene 清标定）失效重标定。cols 信号=dispModel(DISP)（机器页 webui-bag
+       getConfig().cols / Vue 页 setupState；rack 页 grid:null 恒 null=不参与地板）。 */
+    var rwNum = nat + 24 + sb;
+    if (UNI_W > 0) {
+      var colsNow = 0;
+      try { var dm = dispModel(DISP); colsNow = dm ? (dm.cols | 0) : 0; } catch (e) { }
+      if (!(colsNow > 0) && childG) {
+        /* 计列兜底（计划 §6-1）：ToolTable 类页面实例是全局 const 绑定（非 window 属性，
+           dispGridOf 的 for-in 扫描不可见——同因 v1.8.10 排序在其上静默死的家族病）——
+           从官方格 computed gridTemplateColumns 轨道数计列（rack 分行视图 grid display:none
+           → 'none' → 0=不参与，天然排除） */
+        try {
+          var gtc = (childG.ownerDocument.defaultView.getComputedStyle(childG).gridTemplateColumns || '').trim();
+          if (gtc && gtc !== 'none') { var tn = gtc.split(/\s+/).length; if (tn > 0 && tn < 100) colsNow = tn; }
+        } catch (e) { }
+      }
+      if (colsNow === UNI_W) { st.w12Floor = rwNum; st.w12Src = UNI_W; }
+      else if (st.w12Src !== UNI_W) { st.w12Floor = 0; } /* cfg 改值后旧标定失效（setData 亦清，双保险） */
+      var wfl = st.w12Floor | 0;
+      if (wfl > 0 && rwNum < wfl) rwNum = wfl;
+    }
+    var rw2 = rwNum + 'px';
     if (el.rail.style.width !== rw2) {
       try {
         el.rail.style.setProperty('width', rw2, 'important');
@@ -2884,11 +2912,26 @@
     + '.bag-panel.is-storage .weight-section{display:none !important}';
   function ensureNativeBp(f) {
     var doc = f.doc;
-    if (!doc || !doc.head || doc.getElementById('srNativeBp')) return;
+    if (!doc || !doc.head) return;
+    /* v1.8.12 native 地板退役（作者实报「背包/柜子界面右侧多一块黑色空白、交易/烹饪页没有」）：
+       官方 .grid-container inline 宽=cols*56 整（BackpackUI fixture gridContainerStyle 实证：
+       CELL=56、容器零内边距）——v1.8.11 的「+18=内边距 9×2」是 rail 机器页几何（webui-bag
+       cfg.padding 9）误植到 native 页；min-width=UNI_W*56+18 对 12 列恒超宽 18px、窄袋（背包/
+       后备箱页签/材料架等未直写容器）更多 → 格床右侧露出 --grid-frame-bg 暗底=黑块。且 native
+       页各面板独占一袋、无 rail 切页签缩放场景（A 侧多页签官方自有 aSlotStyle 按 maxCols 垫宽），
+       地板在此零收益=整段撤除，回 v1.8.10 纯官方宽（rail 页地板为自标定实测宽、无此病，不动）。
+       data-uw 对账保留：旧版已注入 '690' 的活页一次重写清除（幂等零写）。 */
+    var want = NATIVE_BP_CSS;
+    var cur = doc.getElementById('srNativeBp');
+    if (cur) {
+      if ((cur.getAttribute('data-uw') || '') !== '0') { cur.setAttribute('data-uw', '0'); cur.textContent = want; }
+      return;
+    }
     var st = doc.createElement('style');
     st.id = 'srNativeBp';
     st.setAttribute('data-cer-native', '1');
-    st.textContent = NATIVE_BP_CSS;
+    st.setAttribute('data-uw', '0');
+    st.textContent = want;
     doc.head.appendChild(st);
   }
 
@@ -3417,6 +3460,7 @@
   }
   function applyScene(key) {
     st.scene = key;
+    st.w12Floor = 0; st.w12Src = 0; /* v1.8.11 壳宽地板：跨页标定失效（各页 slot/内边距几何不同，本页首见 UNI_W 列重标定） */
     loadScenePrefs();
     st.currentId = entryDefault();
     /* v13.5-v13.8：设施排序态随场景；缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；
@@ -3487,6 +3531,12 @@
     /* 契约增补字段（T3 评审随行项②）：ctx.bagCap（int>0）覆盖背包容量常量——
        读取逻辑先行就位，T6 冻结契约后由 C# 推送；缺省保持现值不回退 */
     if (store.ctx && typeof store.ctx.bagCap === 'number' && store.ctx.bagCap > 0) BAG_CAP = store.ctx.bagCap;
+    /* ctx.uniformWidth（int>=0，0=off 也落地——地板停用信号）：值变 → 壳宽地板标定失效
+       （Review Focus 2 的 JS 半边；标定逻辑在 syncRailWidth，Task4） */
+    if (store.ctx && typeof store.ctx.uniformWidth === 'number' && store.ctx.uniformWidth !== UNI_W) {
+      UNI_W = store.ctx.uniformWidth;
+      st.w12Floor = 0; st.w12Src = 0;
+    }
     /* 场景态（T4）：ctx.page 换了 → 应用新场景（偏好重载/入口默认/bagonly 收紧）；
        同页首包（mount 先行、数据后到）也补应用一次（sceneApplied 门——mount 时 ctx
        未到，入口默认容器可能落旧值）；同场景回推（rev 变）→ 不动，保住玩家当前页签。
