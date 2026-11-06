@@ -338,6 +338,25 @@ internal static class RailData
         _tidyFailPending = true;
     }
 
+    /// <summary>feed 失败码（notfuel/full/bagfull/noitem——RailCommands.OpFeed 权威校验拒绝时置位；
+    /// BuildJson ctx.feedFail 带出即清，一次性，lastTidyFail 同款）。JS 映射文案弹 mod 警告条（spec §5.2）。</summary>
+    internal static void MarkFeedFail(string code)
+    {
+        _feedFailPending = string.IsNullOrEmpty(code) ? null : code;
+    }
+
+    /// <summary>燃油发电机 Redux 状态（OpFeed 容量校验用；GetStateByUI 同 ResolveBagOwner 路径）。不可得=null。</summary>
+    internal static GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator FuelGenState()
+    {
+        try
+        {
+            var rus = ReduxUi();
+            return rus?.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)))
+                ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>();
+        }
+        catch { return null; }
+    }
+
     /// <summary>
     /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
     /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
@@ -419,6 +438,8 @@ internal static class RailData
         // sortBy 回执（一次性标志：[key,ok,moved,skip]；JS settle toast——治「排序不生效静默」）
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
+        // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
+        sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
 
@@ -479,6 +500,7 @@ internal static class RailData
 
         _forcePending = false;
         _tidyFailPending = false; // 推出即清（一次性标志）
+        _feedFailPending = null;  // 同上（feed 失败码随本包带出即清）
         _rev++;
         _lastSig = ComputeSig();
         /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
@@ -1115,6 +1137,7 @@ internal static class RailData
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）
+    private static volatile string _feedFailPending; // feed 失败码一次性标志（MarkFeedFail 置位，同上点位清）
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存，14 列）
     private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
 
