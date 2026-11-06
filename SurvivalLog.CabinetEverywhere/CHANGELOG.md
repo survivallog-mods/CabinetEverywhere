@@ -21,6 +21,10 @@
 - **教训入档**：跨页家族复用几何常数前先对页取证——「同款」两个字把机器页的 padding 带进了
   零 padding 的 Vue 原生页；rail 侧同功能零魔数自标定（v1.8.11 主实现）之所以稳，正因它不依赖
   任何页几何假设。
+- harness：新增 `harness-native-width.cjs` **8/8**（BackpackUI 夹具 gridCols=10 窄袋最大化暴露：
+  注入体无 min-width 行/computed min-width=auto/offsetWidth=572 未垫 690/旧 '690' 注入体活迁移
+  重写清除）；回归 width-floor 13/13、switch-cabinet 27/27、sbtrack ALL PASS、mount 154/167
+  （13 FAIL 为 HEAD 既有 size 期望漂移，stash 复跑逐条一致实锤，非本轮引入）。
 
 ## 待发版·十八批（2026-11-06，抽屉终案——误判返工+备料格退场+抽屉进交易/粉碎机页签）
 
