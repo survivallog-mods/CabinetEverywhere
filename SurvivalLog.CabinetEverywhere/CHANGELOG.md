@@ -3,6 +3,109 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## 待发版·十九批（2026-11-06，native 页壳宽地板撤除——背包/柜子界面右侧黑块修复）
+
+**作者实报：背包与柜子界面右侧都多一块黑色空白区域，交易/烹饪等 rail 页没有。**
+
+- **根因**：十七批给 native 背包页（BackpackUI）NATIVE_BP_CSS 追加的
+  `.grid-container{min-width:UNI_W*56+18}` 用了**错页几何**——「+18=内边距 9×2」是 rail 机器页
+  （webui-bag cfg.padding 9）的量测，native BackpackUI 页官方 `.grid-container` inline 宽=
+  `cols*56` 整、**容器零内边距**（fixture `gridContainerStyle` 实证：CELL=56）。后果：min-width
+  690px 对 12 列格（官方 672px）恒超宽 18px，窄袋（背包本体/后备箱页签/材料架等未直写容器）
+  超宽更多——格床右侧露出 `.grid-container` 自身 `--grid-frame-bg` 暗底=黑色空白块；rail 页地板
+  是**首见实测宽自标定**（零魔数）故无此病，与症状分布（交易/烹饪页正常）一一对应。
+- **修复**：`ensureNativeBp` 整段撤除 min-width 注入，回 v1.8.10 纯官方宽（native 模式本旨=
+  官方页整页原生）。native 页各面板独占一袋、无 rail 切页签缩放场景（A 侧背包/后备箱多页签
+  官方自有 `aSlotStyle` 按 maxCols 垫宽），地板在此零收益；rail 页地板（自标定）不动。
+  data-uw 对账保留：旧版已注入 '690' 的活页一次重写清除（幂等零写）。
+- **教训入档**：跨页家族复用几何常数前先对页取证——「同款」两个字把机器页的 padding 带进了
+  零 padding 的 Vue 原生页；rail 侧同功能零魔数自标定（v1.8.11 主实现）之所以稳，正因它不依赖
+  任何页几何假设。
+
+## 待发版·十八批（2026-11-06，抽屉终案——误判返工+备料格退场+抽屉进交易/粉碎机页签）
+
+**作者对齐终案（三轮实测对话定谳）：「工作台抽屉」=全局包 5010[8×5]/5012[8×6]/5013[8×7] 三档
+升级链、不挂任何家具（Config_Furniture 零引用实锤）、全工作台共享互通（作者实测「四台抽屉通」
++鸡蛋实验）。十七批把「工具台/自制工具台家具的 1010 包」当抽屉=误判——1010 家具包实为**制作
+备料区**（每件独立、页签可见=直达功能误收，v1.8.4 热修「工作台材料容器」措辞即指它）。**
+
+- **返工**：DrawerWidthEngine 整链退役（克隆包/换绑/Harmony 前缀/每帧门/清扫/黑名单条目）；
+  被换绑的工具台备料包随配置表换档重建自然回原宽。
+- **抽屉宽度（终案实现=三行直写）**：三档包入 SizeEngine 目标集（RailUi.DrawerBagIds——抽屉
+  非家具不走 AllContainers，显式补入；无共包/零家具引用/不在任何黑名单，宽随 [Rail]
+  UniformBagWidth、高/档位不动；换档重读 5s 幂等收敛）。
+- **备料格退场**：工作台族 9 配置（工具台 405/80158+自制工具台 313/80033/80164+工具桌
+  322/323/414/436/444/445/448）入 ExcludeFurnitureIds 默认值+活 cfg 同步——备料区是内部机制
+  非储物柜，从**全部**机器页签/筛选/白名单退出（纸箱 307-309 同 1010 包但真储物，保留）。
+- **抽屉页签注入（DrawerTabs.cs 新文件）**：抽屉补进 **无人机交易+粉碎机+调度机队** 三页签
+  （作者令，无人机交易全手动=页签即够）——Trade BagTabs（POCO 平字段，cols/rows 取当前档位）
+  +Shredder CartTabs +DroneHub BagTabs（R3.ReactiveProperty 族，TabInjector bag×4 构造同款）
+  尾插+Repush；0.5s 轮询幂等。
+- **抽屉冷启动注册（终案机制）**：owner=WorkbenchDrawerConfig.DrawerOwnerId 常量直读；BagCache/
+  OwnerCache 懒登记（游戏仅在工作台首开时经 ItemManager.SyncWorkbenchDrawerToRedux() 转发装配）
+  → mod 在三页 UI 打开后**直调同一公开函数**（游戏自家装配：天赋推档+物品行一次到位，零手搓；
+  WishManager 有非工作台调用先例；读档窗口期零重活=触发纪律，3 次尝试上限）——不开工作台直达。
+  （返工史在案：agent 扫描镜像方案已证伪弃用——抽屉无实体，物品在读档期即入 ItemManager。）
+  owner 发现=扫 BagCache 取 value∈三档（档位无关，缓存逐轮复核跨换档自愈；发现不了=页签
+  缺席零崩溃）。免剪豁免：TabGate「未知 owner 永不剪」纪律天然放行；cart 族 Index 重排自动
+  维护位次。纯视图层：零配置写/零存档写/卸载重开即消。
+- harness 回归：width-floor 13/13 维持（JS 零改动）。
+- 教训入档（十七批三条实机修正保留在案）：①「三路全覆盖」假设必须以实挂计数为准；②兜底层
+  不因「理论上已被覆盖」而退役；③**身份取证优先于机制取证**——本轮翻车根因=把备料格认成抽屉，
+  机制全对、对象全错。
+
+## 待发版·十七批（2026-11-06，工作台抽屉换绑 12 列克隆包 + 壳宽 uniformWidth 地板——切页签零缩放终局）
+
+**作者缺陷链：抽屉 6 列=工作台页 背包(12)/抽屉(6)/柜子(12) 切换缩放变形；1010 共包（染料桶原料槽/
+纸箱/工具台桌）直改即染料桶变形（11-01 已否）；拍板=自制工具台(313/80033/80164)换绑专用克隆包
+99001010（[w×1010原高]，1010 一字不动），零过渡帧（不接受 5s 自愈窗口）+ 追加壳宽地板保险层
+（漏网窄柜两侧留白不缩放）。设计定稿 docs/superpowers/specs/2026-11-05-drawer-12col-rebind-design.md
+（builder-check 四问闭环：Rail 总门/宽度跟进入早退门/地板 cfg 联动/克隆包入 ModShared 黑名单）。**
+
+- **DrawerWidthEngine（RailUi.cs，SizeEngine 并列）**：克隆包入 `_Config_Bag_Dict`（**新 List 实例**
+  防 1010 连坐红线；碰撞检查=占用且形状不符即停用告警）+ 家具 BagId 换绑（FridgeChill 改 ColdRate
+  同款内存直写）+ 宽度入早退门（cfg 改值含收缩 ≤帧级重同步，与 SizeEngine 活改柜宽同语义）。
+  取证（build 26454866 反汇编，spec C1-C9）：三条家具生成路**现场读** furnConfig.BagId→OnInit→
+  AddCache 注册 BagCache；GetBagData/CanPlaceItemForMove 视图与拖放校验同源 BagCache→Config_Bag.Size；
+  RA_SetBag add-if-missing（重指不被覆盖）；AgentSave 无包 id 字段（存档中立，卸载回原生——x≥6 物品
+  在原版 6 列视图不可见=SizeEngine 同类已拍板代价）；官方换袋先例=ApplyCargoBag。
+- **三层驱动（零闪烁）**：①每帧门（AccessTicker，抢在存档家具生成波前，稳态一次 bool 读）
+  ②**Harmony 前缀挂 Furniture.Initialize 全重载**（反射枚举按名解析不写 RVA；前缀体在 body 读
+  配置前幂等换绑——同帧竞态也零窗口；恒 return true 只前置不吞调用；RefreshCoalescer 先例）
+  ③5s 兜底清扫（RefreshMeta 尾 SizeEngine 同位=继承 Rail 门；在场实例 SetBagConfigId+BagCache
+  重指，含次序护栏防指空包；无地图过滤场景侧同收敛）。总门=[Rail] Enable（与 SizeEngine 同停，
+  防止「柜子原生宽+抽屉 12」的错位复现）。
+- **契约 v4 增补 ctx.uniformWidth**（bagCap 同款：JS 读取先行缺省 12，C# BuildJson 直推；**0=off
+  也落地**=地板停用信号）：壳宽地板=railui.page.js syncRailWidth 首见 uniformWidth 列**自标定**
+  本页 W12（自动吸收各页 slot 几何，零魔法常数）→ 壳宽=max(跟随宽, 地板)：窄柜居中留白
+  （.sr-gridhost flex 居中在位+锁 margin 已清）、>目标宽仍可长胖永不裁格；值变/场景切换失效重标
+  （入 ST_KEYS 场景快照，重访免重标定）。cols 信号=dispModel 优先+**DOM 计列兜底**
+  （computed gridTemplateColumns——ToolTable 类页面 webui-bag 实例是全局 const 绑定，for-in window
+  扫描不可见；顺带实锤 v1.8.10 排序在同因下 ToolTable 页疑似静默死，既有缺陷待另修）。native 背包页
+  NATIVE_BP_CSS 同款 `.grid-container{min-width:UNI_W*56+18}`（值随契约，0=不注入）。
+- **ModShared 黑名单 +99001010**（DefaultResizeExcludeIds：兄弟扩容 mod 勿改克隆包宽=防打架）。
+- harness：新增 `harness-width-floor.cjs` **13/13**（RED 先行 7 红：标定/窄柜不缩/居中对称/末列不裁/
+  14 重标定/hold/off 回纯跟随/跨页自标定——Review Focus 1-4 逐条钉死）；回归 mount=13 既知基线
+  无新增、sbtrack ALL PASS、switch-cabinet 27/27；**harness-regression 3 FAIL+1 超时为 HEAD 既有**
+  （stash 复跑实锤，mock 数据/夹具漂移待作者自理）。
+- **实机修正（2026-11-06 作者复测「抽屉仍 6 列」+「页面固定宽度已生效」）**：前缀实挂 ×1
+  （Furniture 实有**七个** Initialize 重载——dump 实证含存档加载路 `Initialize(GameSaveData,GameMode)`
+  与 protected 路；代理单层 DeclaredOnly 只见 1，存档家具生成走漏网路=实例链仍 1010）+ 清扫
+  「前缀已挂即跳过」早退赌注不成立。修两件：①前缀枚举沿基类链逐层收集去重（×N 全重载，单重载
+  Patch 失败不拦其余）②清扫撤早退**常开幂等**（在场实例最终一致层——SetBagConfigId+BagCache
+  重指幂等零日志，当前存档 ≤5s 自愈；补 General 热关门）。教训入档：三路全覆盖的假设必须以
+  实挂计数为准，兜底层不因「理论上已被覆盖」而退役。
+- **实机修正二轮（同日，作者复测「还是 6 列」+截图）**：前缀 ×3/3、配置换绑成功、但在场清扫
+  **零命中**（无「组件重绑」行）+ 家中 26 柜实拍清单只有**工具台**×1 无自制工具台——换绑目标
+  换错了家具：作者实际使用的工作台=**工具台 405/80158**（同为 1010 共包），首发只收了
+  自制工具台 313/80033/80164。修=WorkbenchFurnitureIds 扩为五变体（405/80158/313/80033/80164）。
+  副作用（口径内）：工具台是入选柜子（进页签），换绑后其柜签视图随包 12×6（柜宽统一语义，
+  容量 36→72）；染料桶/纸箱/工具桌仍 1010 零触碰。另实锤：读档重开会重建配置表（二行换绑
+  日志=世界重绑后克隆包重建），佐证终审 B 的复位前提。
+
+- 实机验收=spec §7 十一条（重点：读档立即开工作台首帧 12 列零闪烁/染料桶原料槽 6×6 原样/
+  cfg 改 14 跟进/[Rail] Enable=false 会话零换绑/卸载回 6 列）。
+
 ## 待发版·十六批（2026-11-05，柜宽统一漏无人机中控台——宽度与 Access 排除解耦，白名单直进目标集）
 
 **作者缺陷单：「无人机中控台柜子的宽度不是 12。」**

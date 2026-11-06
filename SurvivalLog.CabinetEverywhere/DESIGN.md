@@ -105,6 +105,24 @@
   不是 12」拍板）。
 - 性能顺序：TryCast → 配置查包/名单（廉价，滤掉 ~90% 家具）→ 主图严格相等短路 → 仅非主图
   走 IsHomeMap（家地图组判定，重）→ 通过者才读类别/标签（组件字典/电器属性最贵，放最后）。
+- **工作台抽屉（十八批终案，2026-11-06）**：抽屉=全局包 5010/5012/5013 三档（不挂家具、全工作台
+  互通），宽度入 SizeEngine 目标集直写（RailUi.DrawerBagIds）；备料格（1010 家具包）9 配置退场
+  页签；抽屉另补进 交易/粉碎机 页签（DrawerTabs.cs 视图层注入）。**十七批的换绑方案已整体退役**
+  （误判：把工具台家具的备料包当抽屉——详见 CHANGELOG 十八批）。
+- ~~**工作台抽屉换绑（十七批，2026-11-06，已退役）**~~：抽屉与柜子宽度不齐=切页签缩放变形；抽屉的包 1010
+  与染料桶原料槽(66196)/纸箱(307-309)/工具台桌共包，直改即染料桶变形——DrawerWidthEngine
+  （RailUi.cs，与 SizeEngine 并列、同 [Rail] Enable 门、同 cfg UniformBagWidth）给自制工具台
+  (313/80033/80164)换绑**专用克隆包 99001010**（[w×1010 原高]，1010 一字不动）。三层驱动：
+  每帧门（抢在生成波前）+ **Harmony 前缀挂 Furniture.Initialize 全重载**（body 现场读 BagId 前
+  幂等换绑=零过渡帧的构造性保证）+ 5s 在场清扫（SetBagConfigId+BagCache 重指，add-if-missing
+  不被覆盖）。存档中立（AgentSave 无包 id 字段；x≥6 物品卸载后原版视图不可见=SizeEngine 同类
+  已拍板代价）；克隆包入 ModShared 改宽黑名单防兄弟 mod 打架。取证链 spec C1-C9（十六批同源
+  反汇编）。**壳宽 uniformWidth 地板**（railui.page.js）：契约 v4 增补 ctx.uniformWidth（bagCap
+  同款直推，0=off 停用信号），syncRailWidth 首见 uniformWidth 列自标定本页地板宽 → 壳宽=
+  max(跟随宽, 地板)——漏网窄柜两侧留白不缩放、整页零重排；cols=dispModel+DOM 计列兜底
+  （gridTemplateColumns——const 实例页 for-in 不可见）。native 页 .grid-container min-width
+  同款已随十九批撤除（「+18 内边距」系 rail 机器页几何误植——官方 inline 宽=cols*56 零内边距，
+  恒超宽露黑块；native 页各面板独占一袋无切页签缩放场景，地板零收益）。
 - Redux 包镜像补全：新摆放家具的包要重读档才进 `State_Data_Item.BagCache`（GetBagData 直接
   索引，缺失即抛→页签点切换静默失败）；每轮为缺失柜子补 `BagCache[owner]=bagConfigId + 空
   OwnerCache`，与读档后状态一致（附录 B §B4 根因 3）。
@@ -247,7 +265,7 @@ max 65ms；每件完成 TryCreateItem 230~263ms。级联构成（G4/G14）：单
 | Access.IncludeFurnitureIds | 空 | 追加家具 ConfigId（强制加入） |
 | Access.ExcludeFurnitureIds | 313,80033,80164,1024-1028,42033,66196,330/384/389/9126 | 排除家具（自制工具台+载具系+染料桶+材料堆：后两者=功能容器/角色专属，与纸箱共用包只能按家具排除） |
 | Access.ExcludeBagIds | 电器/机器槽/围栏/吊篮/门窗/床/垃圾桶等 23 项（含无人机货舱 1008/中控台 1009） | 排除整包系（非储物功能包）；只挡页签/筛选，不挡柜宽（见 Rail.SizeIncludeBagIds） |
-| Rail.UniformBagWidth | 12 | 柜宽统一（0=off，v1.8.4b SizeEngine）：家中柜子+冰箱的 Config_Bag.Size 宽内存直写为该值（高不变，容量=宽×高随之变；5s 幂等重扫；材料架不动；政策全文=RailUi.cs SizeEngine 头注） |
+| Rail.UniformBagWidth | 12 | 柜宽统一（0=off，v1.8.4b SizeEngine）：家中柜子+冰箱的 Config_Bag.Size 宽内存直写为该值（高不变，容量=宽×高随之变；5s 幂等重扫；材料架不动；政策全文=RailUi.cs SizeEngine 头注）。**含工作台抽屉**（十七批 DrawerWidthEngine 换绑克隆包 99001010 跟随本值，1010 共包零触碰）**与壳宽地板**（窄柜两侧留白不缩放；=0 时两者整体停用） |
 | Rail.SizeIncludeBagIds | 1009 | 柜宽白名单（十六批）：Access 双名单挡的是页签/筛选语义，不挡宽度——白名单**包含优先于排除**，直进 SizeEngine 目标集（AllContainers 之外的功能包也收，配置级直写；默认=无人机中控台 1009；厨房电器/机器槽等槽位语义包勿加，改宽即变形） |
 | Filter.Enable | true | 标签筛选总开关：关闭后不注入筛选（场景视图一并失效，页签全部显示） |
 | Scenario.View_Cooking / View_RatCage / View_BrewPanel / View_DyePanel / View_Compressor | Food | 烹饪/老鼠笼/酿酒桶/颜料桶/口粮压制机 视图 |
