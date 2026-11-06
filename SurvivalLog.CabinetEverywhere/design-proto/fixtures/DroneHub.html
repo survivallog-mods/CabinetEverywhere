@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   无人机中控台：左 = 储物（玩家背包 / 主家冰箱与工具柜页签）· 中 = 中控台货舱取出按钮 ·
+   右 = 屏幕（主页 / 单机页 / 派遣记录）+ 底部中控台货舱。
+   交易 / 回应求助 / 投送 / 救助派送不在面板里：是中控台家具上的按钮，点了自动挑一台空闲的无人机开交易面板。
+   配色：夜蓝外框 + 琥珀强调色；屏幕是比外框略亮的纯渐变面。
+   格子尺寸 40/6/10 与 webui-bag.js createGridBag 默认 {slotSize:40, gap:6, padding:10} 严格对应。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --gold-rgb:240,179,84; --acc-rgb:240,179,84;
+  --warm-gold:rgb(var(--gold-rgb)); --accent:rgb(var(--acc-rgb)); --accent-glow:rgba(var(--acc-rgb),.28);
+  --amber:#f0b354; --amber-deep:#8a5f22;
+  --bio-green:#a4b546; --danger-red:#e05555;
+  --text-main:#fcfcfc; --text-dark:#c0c0c0; --text-faint:#8a8077;
+  --txt:#e6f1f6; --txt-dim:#8fa5b0; --txt-dark:#5d7079;
+  --hair:rgba(255,255,255,.055);
+  --border-light:rgba(255,255,255,0.18); --border-color:rgba(255,255,255,0.12); --panel-border:rgba(255,255,255,.15);
+  --grid-bg:#08080a; --slot-border:rgba(255,255,255,.13);
+  --slot-bg:linear-gradient(180deg,#131316 0%,#1d1d20 100%);
+  --slot-frozen-bg:linear-gradient(180deg,#0e1c2c 0%,#1d3854 100%);
+  --item-underlay:var(--slot-bg);
+  --weight-bar-bg:rgba(8,8,10,.92);
+  --weight-bar-fill:linear-gradient(90deg, rgba(var(--acc-rgb),.55) 0%, rgb(var(--acc-rgb)) 100%);
+  --weight-bar-overload:linear-gradient(90deg,#b04030 0%,#FF5252 100%);
+  --th-pane:linear-gradient(168deg, rgba(24,36,48,.97) 0%, rgba(11,18,25,.985) 100%);
+  --th-panel:linear-gradient(180deg, rgba(30,44,56,.85), rgba(14,22,30,.95));
+  --th-btn:linear-gradient(180deg, rgba(44,62,78,.6), rgba(20,30,40,.6));
+  --th-scr:linear-gradient(180deg, rgba(17,32,45,.96) 0%, rgba(8,15,22,.97) 100%);
+  --th-scr-glow:radial-gradient(120% 80% at 50% 0%, rgba(70,110,140,.22) 0%, transparent 65%);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; padding:20px; background-color:transparent; color:var(--txt);
+  font-family:'Segoe UI',"Microsoft YaHei",sans-serif; font-size:13px;
+  user-select:none; overflow:hidden; text-shadow:0 1px 2px rgba(0,0,0,.6);
+  display:flex; justify-content:center; align-items:center; min-height:100vh;
+}
+body::before{ content:''; position:absolute; inset:0; background-color:rgba(4,10,16,.55); z-index:-1; pointer-events:none;}
+button{font-family:inherit;}
+
+/* 中控台竖向骨架：标题栏高 / 屏幕上边距 / 屏幕高 / 屏幕与货舱的间距。各处都只从这里取值，别在别处另写 px。
+   屏幕各页同高（主页 / 单机页 / 记录页切换时面板不跳）；记录页内容多时在屏幕里滚动。 */
+.hub-root{position:relative;display:flex;align-items:flex-start;gap:14px;
+  --hub-tb-h:45px; --scr-gap:10px; --scr-h:250px; --cargo-gap:10px;
+  /* 中间取出按钮组的顶边距：约落在左栏（8 列背包）竖直中部，不跟右栏走——整块在视口居中，跟右栏货舱对齐会显得偏低 */
+  --take-top:170px;}
+/* 拖放拒收飘字：绝对定位，不进文档流（插一行文档流文字会把整块顶高，连带 viewportFit 重算缩放）。
+   pointer-events:none 是必须的——它压在货舱上方，可点会吃掉拖放松手。 */
+.warnfloat{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;pointer-events:none;
+  max-width:60%;padding:7px 18px;border-radius:6px;text-align:center;line-height:1.45;
+  font-size:12.5px;font-weight:bold;color:#ffd9c4;text-shadow:0 1px 2px rgba(0,0,0,.7);
+  background:linear-gradient(180deg,rgba(74,35,26,.97),rgba(45,20,15,.97));
+  border:1px solid rgba(255,138,101,.55);box-shadow:0 6px 18px rgba(0,0,0,.6);
+  opacity:0;transition:opacity .16s linear;}
+.warnfloat.on{opacity:1;}
+.pane{background:var(--th-pane);border:1px solid var(--border-light);border-radius:12px;
+  box-shadow:0 25px 60px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.15);}
+.pane.mine{padding-bottom:13px;width:fit-content;}
+/* 右栏宽度跟着货舱走（货舱行列由配表 Bag 1009 下发），min-width 保证单机页一行放得下机体 + 信息 */
+.pane.hub{width:fit-content;min-width:480px;padding:0 10px 12px;position:relative;display:flex;flex-direction:column;}
+
+/* 标题栏 */
+.tb{height:41px;display:flex;align-items:center;padding:0 13px;position:relative;border-bottom:1px solid var(--border-color);}
+.tb .t{display:flex;align-items:center;font-size:13.5px;font-weight:600;letter-spacing:1px;color:var(--warm-gold);white-space:nowrap;
+  text-shadow:0 0 10px rgba(var(--gold-rgb),.4);}
+.tb .t::before{content:'';width:4px;height:16px;background:var(--warm-gold);margin-right:8px;border-radius:2px;box-shadow:0 0 8px rgba(var(--gold-rgb),.8);}
+.tb.big{height:var(--hub-tb-h);margin:0 -10px;}
+.tb.big .t{font-size:15px;}
+.tb .crumb{font-size:12px;color:var(--text-dark);letter-spacing:.5px;margin-left:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.tb .crumb b{color:var(--text-main);font-weight:600;}
+.tb .bk{height:24px;padding:0 9px 0 7px;margin-right:10px;border-radius:6px;border:1px solid var(--border-color);background:var(--th-btn);
+  color:var(--text-main);font-size:12px;cursor:pointer;display:flex;align-items:center;gap:3px;flex-shrink:0;}
+.tb .bk:hover{border-color:rgba(var(--acc-rgb),.45);filter:brightness(1.2);}
+.tb .x{margin-left:auto;width:22px;height:22px;padding:0;border-radius:4px;border:1px solid var(--hair);background:transparent;
+  color:var(--txt-dark);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;flex-shrink:0;}
+.tb .x:hover{color:var(--warm-gold);border-color:rgba(var(--acc-rgb),.45);background:rgba(var(--gold-rgb),.08);}
+.tb .sortb{margin-left:auto;}
+
+/* ── 左栏页签（<=1 项整条隐藏、玩家页签钉左不滚动、active 不挂 click） ── */
+.bag-tabs{ display:none; flex-wrap:nowrap; align-items:stretch; gap:4px; padding:11px 12px 0;
+  width:0; min-width:100%; margin-bottom:-1px; flex-shrink:0; position:relative; z-index:2;}
+.bag-tab{ padding:5px 11px; font-size:12.5px; color:var(--txt-dark); cursor:pointer; user-select:none;
+  background:rgba(14,11,8,.6); border:1px solid var(--hair); border-radius:6px 6px 0 0; white-space:nowrap; flex-shrink:0;}
+.bag-tab:hover{ background:rgba(240,179,84,.12); color:var(--txt); border-color:rgba(240,179,84,.45);}
+.bag-tab.active{ background:linear-gradient(180deg,rgba(240,179,84,.24) 0%,rgba(240,179,84,.09) 100%);
+  color:var(--amber); border-color:rgba(240,179,84,.75); cursor:default; box-shadow:inset 0 0 8px rgba(240,179,84,.3);}
+.bag-tab.locked{ color:rgba(255,255,255,.28); background:rgba(14,11,8,.85); border-color:rgba(255,255,255,.06); cursor:not-allowed;}
+.bag-tab.locked:hover{ background:rgba(14,11,8,.85); color:rgba(255,255,255,.28); border-color:rgba(255,255,255,.06);}
+.tab-lock-badge{ display:inline-block; width:10px; height:10px; position:relative; margin-left:5px; vertical-align:-1px; opacity:.7; pointer-events:none;}
+.tab-lock-badge::before{ content:''; position:absolute; top:0; left:2px; width:6px; height:5px; border:1.5px solid rgba(255,255,255,.45); border-bottom:none; border-radius:4px 4px 0 0;}
+.tab-lock-badge::after{ content:''; position:absolute; bottom:0; left:0; width:10px; height:5px; background:rgba(255,255,255,.45); border-radius:2px;}
+.bag-tab-pinned-slot{ flex-shrink:0; display:flex; gap:4px; position:relative; margin-right:11px;}
+.bag-tab-pinned-slot::after{ content:''; position:absolute; right:-6px; top:22%; bottom:22%; width:1px; background:var(--border-light); pointer-events:none;}
+.bag-tabs-scroll{ flex:1 1 0; min-width:0; overflow-x:hidden; overflow-y:visible; display:flex; gap:4px; scroll-behavior:smooth;}
+.bag-tabs-scroll::-webkit-scrollbar{ display:none;}
+.tab-scroll-btn{ flex-shrink:0; width:22px; padding:0; line-height:1; background:rgba(14,11,8,.6); color:var(--txt-dark);
+  border:1px solid var(--hair); border-radius:6px 6px 0 0; cursor:pointer; font-size:16px; font-weight:bold;
+  display:none; align-items:center; justify-content:center; user-select:none;}
+.tab-scroll-btn.is-visible{ display:flex;}
+.tab-scroll-btn:hover:not(:disabled){ background:rgba(240,179,84,.12); color:var(--amber); border-color:rgba(240,179,84,.5);}
+.tab-scroll-btn:disabled{ opacity:.3; cursor:not-allowed;}
+.bag-tabs .sortb{flex-shrink:0;align-self:center;margin:0 0 5px 8px;}
+
+/* 负重条(左栏) */
+.cap{display:flex;align-items:center;gap:10px;padding:11px 14px 0;}
+.cap .lb{font-size:11px;color:var(--txt-dark);letter-spacing:.5px;flex-shrink:0;}
+.cap .bar{flex:1;height:5px;background:rgba(0,0,0,.5);border-radius:3px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.7);}
+.cap .bar i{display:block;width:100%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--amber-deep),var(--amber));transform-origin:left;}
+.cap .num{font-family:Consolas,monospace;font-size:11.5px;color:var(--txt-dim);flex-shrink:0;letter-spacing:.3px;}
+.cap.over .bar i{background:linear-gradient(90deg,#a83a3a,var(--danger-red));}
+.cap.over .num{color:var(--danger-red);}
+.sidehint{padding:11px 14px 0;font-size:10.5px;color:var(--txt-dark);line-height:1.65;text-align:center;letter-spacing:.2px;max-width:410px;margin:0 auto;
+  text-wrap:balance;}
+
+/* ── 材料架页签：不画格子，改画分行视图 ── */
+.rackwrap{padding:12px 14px 0;display:none;}
+.rackwrap.on{display:block;}
+.rack-rows{overflow-y:auto;overflow-x:hidden;padding-right:4px;box-sizing:border-box;}
+.rack-rows::-webkit-scrollbar{width:4px;}
+.rack-rows::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:2px;}
+.rack-rows::-webkit-scrollbar-track{background:transparent;}
+
+/* ── 格子（每个用 createGridBag 的页面必须自带这段，webui-bag.js 不提供任何样式） ── */
+.gridwrap{padding:12px 14px 0;}
+.gridwrap.flat{padding:0;}
+.grid-container{ background:var(--grid-bg); padding:10px; border-radius:8px; display:grid; gap:6px; border:1px solid rgba(0,0,0,.5);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.65), inset 0 2px 8px rgba(0,0,0,.55); width:fit-content; position:relative;}
+.slot{ width:40px;height:40px; background:var(--slot-bg); border:1px solid var(--slot-border); border-radius:3px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.5), inset 0 -1px 0 rgba(170,200,240,.06);
+  position:relative; box-sizing:border-box; transition:background .15s, border-color .15s, box-shadow .15s;}
+.slot.valid-hover{ background:rgba(164,181,70,0.22); border-color:var(--bio-green); box-shadow:inset 0 0 15px rgba(164,181,70,0.4);}
+.slot.invalid-hover{ background:rgba(224,85,85,0.2); border-color:var(--danger-red); box-shadow:inset 0 0 15px rgba(224,85,85,0.4);}
+.item{ position:absolute; z-index:10; cursor:grab; display:flex; justify-content:center; align-items:center;
+  background:linear-gradient(rgba(170,170,170,.1), rgba(170,170,170,.1)), var(--item-underlay);
+  border:1.5px solid rgba(200,200,200,.5);
+  border-radius:4px; transition:transform .1s, box-shadow .2s, border-color .2s;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);}
+.item::before{ content:''; position:absolute; inset:0; pointer-events:none; border-radius:4px;
+  background:linear-gradient(160deg, rgba(255,255,255,.10) 0%, transparent 60%);}
+.item::after{ content:''; position:absolute; bottom:0; left:0; right:0; height:40%; pointer-events:none;
+  border-radius:0 0 4px 4px; background:linear-gradient(0deg, rgba(0,0,0,.35) 0%, transparent 100%);}
+.item:hover{ filter:brightness(1.25); z-index:150; border-color:var(--warm-gold); box-shadow:0 0 15px rgba(var(--gold-rgb),0.5); transform:scale(1.05);}
+.item:active{ cursor:grabbing; transform:scale(1); z-index:9999;}
+.item img{ max-width:86%; max-height:86%; object-fit:contain; pointer-events:none; position:relative; z-index:2; filter:drop-shadow(0 2px 3px rgba(0,0,0,0.5));}
+.item-count{ position:absolute; bottom:1px; right:3px; font-size:12px; font-weight:bold; color:#fff; text-shadow:0 1px 2px #000,0 0 3px rgba(0,0,0,0.9); pointer-events:none; z-index:6; line-height:1;}
+.item.q-perfect{border-color:#FFC107;box-shadow:0 0 14px 1px rgba(255,193,7,0.45), inset 0 0 8px rgba(255,193,7,0.12), 0 4px 10px rgba(0,0,0,0.6);}
+.item.q-good{border-color:#B988E6;box-shadow:0 0 10px rgba(185,136,230,0.35), inset 0 0 6px rgba(185,136,230,0.10), 0 4px 10px rgba(0,0,0,0.6);}
+.item.q-normal{border-color:rgba(255,255,255,0.55);}
+.item.q-fail{border-color:#707070;box-shadow:inset 0 0 14px rgba(0,0,0,0.55), 0 0 4px rgba(0,0,0,0.3);filter:saturate(0.5) brightness(0.85);}
+.item.q-fail img{filter:grayscale(0.55);}
+.item.expired{border-color:rgba(178,72,55,0.75) !important;}
+.expired-mask{position:absolute;inset:0;border-radius:3px;pointer-events:none;z-index:0;
+  background:linear-gradient(to top, rgba(146,52,38,0.7) 0%, rgba(146,52,38,0.45) 35%, rgba(146,52,38,0.15) 75%, rgba(146,52,38,0) 100%);}
+.near-expiry-mask{position:absolute;inset:0;border-radius:3px;pointer-events:none;z-index:5;
+  background:linear-gradient(to top,rgba(255,210,60,.42) 0px,rgba(255,210,60,.18) 5px,rgba(255,210,60,0) 12px)}
+.polluted-ring{position:absolute;inset:0;border:2px solid rgba(140,220,110,0.9);border-radius:6px;
+  box-shadow:inset 0 0 12px rgba(110,190,90,0.55);pointer-events:none;z-index:4;animation:polluted-breathe 2s ease-in-out infinite;}
+@keyframes polluted-breathe{0%,100%{opacity:0.55;}50%{opacity:1;}}
+.item.in-action{border-color:rgba(38,198,218,0.85);}
+.action-glow{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;opacity:0.85;
+  box-shadow:inset 0 0 8px rgba(38,198,218,0.35), inset 0 0 2px rgba(38,198,218,0.55);}
+.item.in-action.using .action-glow{animation:action-mark-breathe 1.6s ease-in-out infinite;}
+@keyframes action-mark-breathe{0%,100%{opacity:0.45;}50%{opacity:1;}}
+.unread-dot{position:absolute;top:-3px;right:-3px;width:8px;height:8px;border-radius:50%;background:#ff4d4d;border:1px solid rgba(0,0,0,.6);pointer-events:none;z-index:7;}
+.grid-container.is-frozen .slot{ background:var(--slot-frozen-bg); border-color:rgba(130,180,240,.45);}
+.grid-container.is-frozen .slot.valid-hover{ background:rgba(164,181,70,0.22); border-color:var(--bio-green);}
+.grid-container.is-frozen .slot.invalid-hover{ background:rgba(224,85,85,0.2); border-color:var(--danger-red);}
+.grid-container.is-frozen .item{ --item-underlay:var(--slot-frozen-bg); border-color:rgba(130,180,240,.5);}
+.item-frost{ position:absolute; inset:0; pointer-events:none; border-radius:3px;
+  background-image:url('../BackpackUI/Refrigerator_ICE.png'); background-size:100% auto; background-repeat:no-repeat; background-position:top center; z-index:3;}
+.grid-container.full-warn{border-color:rgba(224,85,85,.55);}
+
+/* ── 屏幕 ── */
+.hub-top{height:var(--scr-h);flex-shrink:0;display:flex;margin-top:var(--scr-gap);}
+.scr{position:relative;flex:1;min-width:0;height:100%;display:flex;flex-direction:column;overflow:hidden;
+  color:var(--text-main);border-radius:8px;padding:10px 12px;background:var(--th-scr-glow), var(--th-scr);
+  border:1px solid var(--border-color);box-shadow:inset 0 5px 20px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.06);}
+.sh{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:bold;letter-spacing:.5px;color:var(--text-dark);
+  padding-bottom:8px;margin-bottom:4px;border-bottom:1px solid var(--border-color);flex-shrink:0;}
+.sh .led{width:4px;height:14px;border-radius:2px;background:var(--warm-gold);box-shadow:0 0 8px rgba(var(--gold-rgb),.8);flex-shrink:0;}
+.sh .clk{margin-left:auto;color:var(--warm-gold);font-weight:normal;font-family:Consolas,"Microsoft YaHei",monospace;font-size:12px;white-space:nowrap;}
+.sh .shb{height:26px;padding:0 11px;margin-left:auto;border-radius:6px;border:1px solid var(--border-light);color:var(--text-main);
+  background:rgba(255,255,255,.04);font-size:12px;font-weight:normal;cursor:pointer;display:flex;align-items:center;gap:5px;}
+.sh .shb:hover{border-color:rgba(var(--acc-rgb),.45);background:rgba(var(--gold-rgb),.08);}
+.sh .shb svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;}
+.sh .shb + .clk{margin-left:12px;}
+.sf{flex-shrink:0;margin-top:6px;padding-top:6px;border-top:1px solid var(--border-color);color:var(--text-faint);letter-spacing:.5px;font-size:11px;}
+.scr-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-right:4px;margin-right:-5px;}
+.scr-body::-webkit-scrollbar{width:4px;}
+.scr-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.21);}
+.scr-body.fill{overflow:hidden;display:flex;flex-direction:column;}
+.scr-body.center{display:flex;flex-direction:column;}
+.ssec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:bold;letter-spacing:.5px;color:var(--text-dark);
+  padding:7px 0 5px;margin-top:5px;border-top:1px solid rgba(255,255,255,.08);}
+.ssec .r{margin-left:auto;color:var(--text-faint);font-weight:normal;letter-spacing:.5px;}
+.ssec .sw{margin-left:auto;}
+.ssec.gap{margin-top:16px;padding-top:9px;}
+.salert{margin:6px 0 0;padding:6px 10px;font-size:11.5px;line-height:1.6;display:flex;gap:8px;align-items:flex-start;flex-shrink:0;
+  border-radius:6px;color:#ff8a80;background:rgba(255,82,82,.08);border:1px solid rgba(255,82,82,.4);}
+.salert .ex{font-family:Consolas,monospace;font-weight:700;color:#FF5252;flex-shrink:0;}
+.salert .amain{flex:1;min-width:0;}
+.salert .aline + .aline{margin-top:2px;}
+.salert.inl .amain{display:flex;align-items:center;gap:10px;}
+.minis{display:flex;flex-wrap:wrap;gap:4px;}
+.mini{width:30px;height:30px;position:relative;border-radius:4px;background:var(--slot-bg);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.mini img{width:24px;height:24px;object-fit:contain;}
+.mini .item-count{font-size:10px;bottom:0;right:2px;}
+
+/* 机队停机位 */
+.fleet-c{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+.bays{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;}
+.bay{width:128px;padding:8px 4px;border-radius:8px;text-align:center;cursor:pointer;position:relative;
+  background:rgba(0,0,0,.22);border:1px solid var(--border-color);transition:background .15s, border-color .15s;}
+.bay:hover{background:rgba(var(--gold-rgb),.06);border-color:rgba(var(--acc-rgb),.45);}
+.fleet-empty{font-size:12px;color:var(--text-dark);}
+.pad{position:relative;margin:0 auto;border-radius:50%;
+  background:radial-gradient(circle, rgba(var(--gold-rgb),.16) 0%, rgba(var(--gold-rgb),.05) 48%, transparent 70%);}
+.pad.m{width:72px;height:72px;}
+.pad.xl{width:80px;height:80px;flex-shrink:0;}
+.pad img.dr{position:absolute;left:50%;top:50%;width:78%;transform:translate(-50%,-50%);filter:brightness(1.3) drop-shadow(0 3px 4px rgba(0,0,0,.6));}
+.pad svg.ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}
+.pad svg.ring .trk{fill:none;stroke:rgba(255,255,255,.1);stroke-width:2.2;}
+.pad svg.ring .val{fill:none;stroke:var(--accent);stroke-width:2.2;stroke-linecap:round;filter:drop-shadow(0 0 3px var(--accent-glow));}
+.pad .badge{position:absolute;right:2px;top:2px;min-width:18px;height:18px;padding:0 4px;border-radius:3px;font-size:11px;font-weight:700;line-height:18px;
+  color:#1a1a1a;background:var(--accent);box-shadow:0 0 8px var(--accent-glow);}
+.st-out .pad, .st-aid .pad{background:none;}
+.st-out .pad::before, .st-aid .pad::before{content:'';position:absolute;inset:14%;border-radius:50%;border:1px dashed rgba(255,255,255,.25);}
+.st-out .pad img.dr, .st-aid .pad img.dr{opacity:.16;filter:grayscale(1) brightness(1.4);}
+.st-aid .pad::before{border-color:rgba(255,138,128,.45);}
+.st-aid .pad svg.ring .val{stroke:#ff8a80;filter:none;}
+.st-hold .pad{background:radial-gradient(circle, rgba(var(--gold-rgb),.32) 0%, rgba(var(--gold-rgb),.08) 50%, transparent 70%);}
+.st-done .pad{background:radial-gradient(circle, rgba(255,255,255,.06) 0%, transparent 62%);}
+.st-done .pad img.dr{filter:brightness(1.15) drop-shadow(0 3px 4px rgba(0,0,0,.6));}
+.bn{margin-top:4px;font-weight:600;font-size:12.5px;font-family:Consolas,monospace;letter-spacing:1px;color:var(--text-main);}
+.bs{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;margin-top:2px;color:var(--bio-green);}
+.bs i{width:5px;height:5px;border-radius:50%;background:var(--bio-green);flex-shrink:0;box-shadow:0 0 5px rgba(164,181,70,.7);}
+.bx{font-size:10.5px;color:var(--text-dark);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.st-out .bs{color:#f6e6cd;} .st-out .bs i{background:#f6e6cd;box-shadow:none;animation:blink 1.6s ease-in-out infinite;}
+.st-hold .bs{color:var(--warm-gold);} .st-hold .bs i{background:var(--warm-gold);box-shadow:none;}
+.st-aid .bs{color:#ff8a80;} .st-aid .bs i{background:#ff8a80;box-shadow:none;}
+.st-done .bs{color:var(--text-faint);} .st-done .bs i{background:var(--text-faint);box-shadow:none;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 单机页 */
+.dtop{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:6px 4px 4px;}
+.dhero{min-width:0;display:flex;align-items:center;gap:22px;}
+.dinfo{flex:1;min-width:0;}
+.dn{display:flex;align-items:baseline;gap:10px;font-size:20px;font-weight:600;font-family:Consolas,monospace;letter-spacing:2px;color:var(--text-main);}
+.dn small{font-size:11px;font-weight:normal;letter-spacing:1px;color:var(--text-faint);font-family:Consolas,"Microsoft YaHei",monospace;}
+.dinfo .bs{font-size:13px;margin-top:5px;}
+.dinfo .dt{color:var(--text-dark);margin-left:6px;}
+.dtrip{margin-top:8px;font-size:11.5px;color:var(--text-dark);line-height:1.65;}
+.dtrip b{color:var(--text-main);font-weight:600;}
+.dq{margin-top:8px;font-size:11.5px;letter-spacing:.5px;color:var(--text-dark);}
+.dq b{font-family:Consolas,monospace;font-weight:600;color:var(--text-main);}
+.dq b.used{color:var(--text-faint);}
+.dq .sep{margin:0 8px;opacity:.6;}
+.r2{margin-top:7px;display:flex;align-items:center;gap:9px;}
+.r2 .txt{font-size:11px;color:var(--text-dark);flex-shrink:0;}
+.trip{flex:1;height:6px;border-radius:3px;background:var(--weight-bar-bg);box-shadow:inset 0 1px 2px rgba(0,0,0,.6);overflow:hidden;}
+.trip i{display:block;width:100%;height:100%;border-radius:3px;background:var(--weight-bar-fill);transform-origin:left;}
+.st-aid .trip i, .lrow.k-aid .trip i{background:linear-gradient(90deg,#b04030 0%,#FF5252 100%);}
+/* 自动拾荒：开关与四个时段同一行（屏幕只有 --scr-h 高，分两行时「待卸货」警告条会被挤出屏幕） */
+.dfor{display:flex;align-items:center;gap:12px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08);}
+.dfor .ssec{margin:0;padding:0;border-top:none;flex-shrink:0;}
+.dfor .segs4{flex:1;min-width:0;margin-top:0;}
+.segs4{display:grid;grid-template-columns:repeat(4,1fr);margin-top:8px;border:1px solid var(--border-light);border-radius:6px;overflow:hidden;}
+.segs4 b{font-weight:normal;padding:5px 0;text-align:center;cursor:pointer;color:var(--text-dark);line-height:1.4;}
+.segs4 b + b{box-shadow:inset 1px 0 0 var(--border-color);}
+.segs4 b span{display:block;font-size:12px;}
+.segs4 b em{display:block;font-style:normal;font-size:10.5px;font-family:Consolas,monospace;opacity:.8;}
+.segs4 b:hover{background:rgba(var(--gold-rgb),.1);color:var(--text-main);}
+.segs4 b.on{background:var(--accent);color:#1a1a1a;font-weight:600;cursor:default;}
+.segs4.off{opacity:.35;pointer-events:none;}
+.sw{width:38px;height:20px;border-radius:10px;position:relative;cursor:pointer;flex-shrink:0;border:1px solid var(--border-light);background:rgba(0,0,0,.3);}
+.sw i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#6a6a6a;}
+.sw.on{background:rgba(var(--acc-rgb),.2);border-color:rgba(var(--acc-rgb),.6);}
+.sw.on i{left:20px;background:var(--accent);box-shadow:0 0 8px var(--accent-glow);}
+/* 派遣记录 */
+.lfils{padding:4px 0 6px;border-bottom:1px solid var(--border-color);flex-shrink:0;}
+.lfil{display:flex;align-items:center;gap:8px;padding:3px 0;}
+.lfil .lb{flex-shrink:0;font-size:11px;color:var(--text-dark);}
+.segs{display:flex;border:1px solid var(--border-light);border-radius:6px;overflow:hidden;}
+.segs b{font-weight:normal;padding:3px 7px;font-size:11px;color:var(--text-dark);cursor:pointer;}
+.segs b + b{border-left:1px solid var(--border-color);}
+.segs b:hover{background:rgba(var(--gold-rgb),.1);color:var(--text-main);}
+.segs b.on{background:var(--accent);color:#1a1a1a;font-weight:600;cursor:default;}
+.lday{display:flex;align-items:center;gap:8px;padding:9px 0 5px;font-size:11px;letter-spacing:.5px;color:var(--text-dark);font-weight:bold;}
+.lday::after{content:'';flex:1;border-top:1px solid rgba(255,255,255,.08);}
+.lday .r{order:2;color:var(--text-faint);font-weight:normal;}
+.lrow{display:flex;gap:10px;padding:8px 9px;border-radius:8px;background:rgba(0,0,0,.22);border:1px solid var(--border-color);}
+.lrow + .lrow{margin-top:5px;}
+.lk{width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-radius:8px;border:1px solid var(--border-color);background:rgba(255,255,255,.03);}
+.lk svg{width:16px;height:16px;fill:none;stroke:var(--warm-gold);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.lrow.k-aid .lk svg{stroke:#ff8a80;}
+.lrow.k-task .lk svg{stroke:#ffcf8a;}
+.lm{flex:1;min-width:0;}
+.lt{display:flex;align-items:baseline;gap:7px;font-size:12.5px;color:var(--text-main);}
+.lt .ln{flex-shrink:0;font-family:Consolas,monospace;font-weight:600;letter-spacing:1px;color:var(--text-main);}
+.lt .lkind{flex-shrink:0;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:3px;color:var(--warm-gold);border:1px solid rgba(var(--acc-rgb),.45);}
+.lt .ld{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lt .ltime{flex-shrink:0;font-family:Consolas,monospace;font-size:11px;color:var(--text-faint);}
+.lgoods{display:flex;flex-wrap:wrap;align-items:center;gap:5px 12px;margin-top:6px;}
+.lg{display:flex;align-items:center;gap:3px;}
+.lg .gl{font-size:10.5px;color:var(--text-faint);margin-right:3px;}
+.lg .mini{width:28px;height:28px;}
+.lg .mini img{width:22px;height:22px;}
+.lres{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--text-dark);}
+.lres i{width:5px;height:5px;border-radius:50%;background:var(--bio-green);flex-shrink:0;}
+.lres .lsub{color:var(--text-faint);}
+.lres.out{color:#f6e6cd;} .lres.out i{background:#f6e6cd;animation:blink 1.6s ease-in-out infinite;}
+.lres.hold{color:var(--warm-gold);} .lres.hold i{background:var(--warm-gold);}
+.lres.aid{color:#ff8a80;} .lres.aid i{background:#ff8a80;}
+.lres.none i{background:var(--text-faint);}
+.lres.meet{color:#c5d77a;} .lres.meet i{background:#c5d77a;}
+.lres.fight{color:#ffcf8a;} .lres.fight i{background:#ffcf8a;}
+.lrow .trip{margin-top:6px;height:4px;flex:none;}
+.lempty{padding:26px 10px;text-align:center;font-size:12px;color:var(--text-faint);}
+/* 派遣记录整页不参与面板宽度的内容尺寸计算（width:0 + min-width:100%）：面板宽度由主页/货舱决定，
+   切到记录页时货物图标行、筛选条只在现有宽度内折行/省略，不把 fit-content 的 .pane.hub 撑宽。 */
+.logwrap{flex:1;min-height:0;display:flex;flex-direction:column;width:0;min-width:100%;}
+
+/* ── 实体部件：货舱 ── */
+.cargo{margin-top:var(--cargo-gap);border-radius:8px;padding:10px 10px 11px;flex-shrink:0;
+  background:var(--th-panel);border:1px solid rgba(255,255,255,.15);box-shadow:inset 0 2px 10px rgba(0,0,0,.4), 0 4px 15px rgba(0,0,0,.2);}
+.ptitle{display:flex;align-items:center;height:26px;font-size:14px;font-weight:bold;letter-spacing:1px;color:var(--warm-gold);
+  text-shadow:0 0 10px rgba(var(--gold-rgb),.4);margin-bottom:9px;}
+.ptitle::before{content:'';width:4px;height:15px;background:var(--warm-gold);margin-right:8px;border-radius:2px;box-shadow:0 0 8px rgba(var(--gold-rgb),.8);}
+.ptitle .num{margin-left:auto;font-family:Consolas,monospace;font-size:12px;font-weight:normal;color:var(--text-dark);letter-spacing:.3px;}
+.ptitle .num b{color:var(--text-main);font-weight:600;}
+.ptitle.over .num,.ptitle.over .num b{color:var(--danger-red);}
+.ptitle .sortb{margin-left:auto;}
+.ptitle .sortb + .num{margin-left:12px;}
+
+/* 按钮（货舱侧） */
+.gbtn{display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;border-radius:6px;white-space:nowrap;
+  font-size:12.5px;font-weight:bold;color:#e8ecd0;cursor:pointer;user-select:none;
+  background:linear-gradient(to bottom, rgba(58,66,42,.92), rgba(33,38,24,.92));
+  border:1px solid rgba(164,181,70,.5);box-shadow:inset 0 2px 6px rgba(0,0,0,.55);text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.gbtn:hover:not(:disabled){border-color:var(--bio-green);background:linear-gradient(to bottom, rgba(70,80,50,.95), rgba(40,46,29,.95));}
+.gbtn .ar{width:0;height:0;border-right:8px solid var(--bio-green);border-top:5px solid transparent;border-bottom:5px solid transparent;}
+.gbtn .caret{font-size:8px;color:var(--bio-green);}
+.gbtn:disabled{opacity:.42;filter:grayscale(.7);cursor:default;}
+.gbtn:disabled .ar{border-right-color:#8a8a8a;}
+.gbtn.sm{padding:4px 12px;font-size:12px;letter-spacing:.5px;}
+.catwrap{position:relative;}
+.catwrap.open .caret{display:inline-block;transform:rotate(180deg);}
+.catmenu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:40;min-width:128px;padding:4px;border-radius:6px;
+  background:linear-gradient(180deg, rgba(60,52,47,.98), rgba(38,31,27,.98));border:1px solid rgba(var(--gold-rgb),.35);box-shadow:0 10px 24px rgba(0,0,0,.8);}
+.catwrap.open .catmenu{display:block;}
+.catopt{padding:5px 10px;font-size:11.5px;color:#d8d3c4;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:8px;white-space:nowrap;}
+.catopt:hover{background:rgba(var(--gold-rgb),.14);color:var(--text-main);}
+.catopt .qty{margin-left:auto;font-family:Consolas,monospace;font-size:10.5px;color:#8a8a8a;}
+.catopt.empty{color:#8a8a8a;cursor:default;}
+.catopt.empty:hover{background:transparent;color:#8a8a8a;}
+
+/* ── 两列中间：中控台货舱 → 储物 的取出按钮（顶边距取 .hub-root 的 --take-top） ── */
+.midcol{align-self:stretch;flex-shrink:0;width:112px;position:relative;z-index:3;display:flex;flex-direction:column;justify-content:flex-start;
+  padding-top:var(--take-top);}
+.mc-take{flex-shrink:0;display:flex;flex-direction:column;gap:10px;}
+.mc-take .mc-l{font-size:11.5px;letter-spacing:1px;color:var(--text-dark);text-align:center;}
+.mc-take .gbtn{width:100%;padding:8px 10px;}
+
+/* 同类预览高亮（2026-09-23）：按住高亮键悬停某件时本栏同类一起描边。
+   class 由 webui-bag.js 的 setKinHint 打在容器和格子上。
+   transition:none 是必须的——.item 多半带 box-shadow/border-color 过渡，不覆盖会渐显 200ms，
+   比整条推送链路还慢（背包面板跑测第一反馈就是「反应慢」）。配色与背包面板同一支亮黄。 */
+.grid-container.kin-active .item.kin-hint{
+  transition:none;
+  border-color:rgba(255,233,74,1) !important;
+  box-shadow:0 0 14px rgba(255,233,74,0.6), inset 0 0 8px rgba(255,233,74,0.3) !important;
+}
+/* 按住高亮键时 tooltip 就地变成批量转移提示：同一个元素换内容换配色，天生不会和详情重叠 */
+#itemTooltip.kin-mode{
+  border-color:rgba(255,233,74,0.55);
+  color:rgba(255,233,74,1);
+  white-space:nowrap;
+}
+#itemTooltip{ position:fixed; background:rgba(30,24,22,0.95); border:1px solid rgba(var(--gold-rgb),0.5); color:var(--text-main); padding:8px 10px; border-radius:6px;
+  font-size:12px; pointer-events:none; z-index:2000; display:none; line-height:1.5; box-shadow:0 8px 24px rgba(0,0,0,0.8); white-space:pre-line;}
+
+/* 画质分级：Low 档静态化长驻 infinite 动画 */
+html.quality-low .st-out .bs i, html.quality-low .lres.out i{animation:none;opacity:.7;}
+html.quality-low .polluted-ring{animation:none;opacity:0.8;}
+html.quality-low .item.in-action.using .action-glow{animation:none;opacity:0.85;}
+</style>
+<script src="../../vue.global.prod.js"></script>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
+<!-- 「脚边」横排：界面下方那一排身边地面物品（与其他物品界面共用） -->
+<script src="../../webui-grounddock.js"></script>
+<script src="../../webui-tabdrop.js"></script>
+<script src="../../webui-rackrows.js"></script>
+<script src="../../webui-flyitems.js"></script>
+</head>
+<body>
+<div id="itemTooltip" data-no-sync></div>
+<div class="hub-root" id="hubRoot">
+
+  <!-- 左栏：储物（玩家背包 / 页签容器） -->
+  <section class="pane mine" id="paneMine">
+    <div class="tb" id="bagTitleBar"><span class="t" id="bagTitleText"></span><button class="gbtn sm sortb" id="sortBagBtn1" type="button"></button></div>
+    <div class="bag-tabs" id="bagTabs">
+      <div class="bag-tab-pinned-slot" id="bagTabPinned"></div>
+      <button class="tab-scroll-btn" id="tabScrollLeft" type="button">&lsaquo;</button>
+      <div class="bag-tabs-scroll" id="bagTabsScroll"></div>
+      <button class="tab-scroll-btn" id="tabScrollRight" type="button">&rsaquo;</button>
+      <button class="gbtn sm sortb" id="sortBagBtn2" type="button"></button>
+    </div>
+    <div class="gridwrap" id="bagGridWrap"><div class="grid-container" id="bagGrid"></div></div>
+    <div class="rackwrap" id="bagRackWrap"><div class="rack-rows" id="bagRack"></div></div>
+    <div class="cap" id="bagCap"><span class="lb" id="bagWeightLb"></span><div class="bar"><i id="bagWeightBar"></i></div><span class="num" id="bagWeightNum"></span></div>
+    <div class="sidehint" id="shiftHint"></div>
+  </section>
+
+  <!-- 两列中间：中控台货舱 → 储物 的取出按钮 -->
+  <div class="midcol" id="midCol">
+    <div class="mc-take" id="midTake">
+      <div class="mc-l" id="midLabel"></div>
+      <button class="gbtn" id="takeAllBtn" type="button" disabled><span class="ar"></span><span id="takeAllText"></span></button>
+      <div class="catwrap" id="catWrap">
+        <button class="gbtn" id="takeCatBtn" type="button" disabled><span class="ar"></span><span id="takeCatText"></span><span class="caret">▼</span></button>
+        <div class="catmenu" id="catMenu"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右栏：屏幕 + 底部中控台货舱 -->
+  <section class="pane hub" id="paneHub">
+    <div class="tb big" id="hubTitle">
+      <button class="bk" v-if="page !== 'main'" type="button" @click="back">‹ {{ t('back') }}</button>
+      <span class="t">{{ t('pageTitle') }}</span>
+      <span class="crumb" v-if="crumbs.length">›
+        <template v-for="(c, i) in crumbs" :key="'c' + i"><template v-if="i"> › </template><b v-if="i === crumbs.length - 1">{{ c }}</b><template v-else>{{ c }}</template></template>
+      </span>
+      <button class="x" type="button" aria-label="Close" @click="close">✕</button>
+    </div>
+
+    <div class="hub-top"><div class="scr" id="screenApp">
+      <!-- 主页：机队 -->
+      <template v-if="page === 'main'">
+        <div class="sh"><span class="led"></span>{{ fmt(t('fleetCount'), fleet.length) }}
+          <button class="shb" type="button" @click="nav('log', 0)"><svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>{{ t('logBtn') }}</button>
+          <span class="clk">{{ clock }}</span></div>
+        <div class="scr-body center">
+          <div class="fleet-c">
+            <div class="bays" v-if="fleet.length">
+              <div class="bay" v-for="d in fleet" :key="'b' + d.id" :class="stCls(d)" @click="nav('drone', d.id)">
+                <div class="pad m"><img class="dr" :src="droneIcon" draggable="false">
+                  <svg v-if="hasRing(d)" class="ring" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="46"/><circle class="val" cx="50" cy="50" r="46" :stroke-dasharray="RING_C" :stroke-dashoffset="ringOffset(d)"/></svg>
+                  <span class="badge" v-if="d.st === 'hold'">{{ t('holdBadge') }}</span>
+                </div>
+                <div class="bn">{{ d.name }}</div>
+                <div class="bs"><i></i>{{ stLabel(d) }}</div>
+                <div class="bx">{{ stSub(d) }}</div>
+              </div>
+            </div>
+            <div class="fleet-empty" v-else>{{ t('emptyFleet') }}</div>
+          </div>
+          <div class="salert" v-if="alerts.length"><span class="ex">!</span><div class="amain"><div class="aline" v-for="(a, i) in alerts" :key="'al' + i">{{ a }}</div></div></div>
+        </div>
+      </template>
+
+      <!-- 单机页 -->
+      <template v-else-if="page === 'drone' && cur">
+        <div class="sh"><span class="led"></span>{{ fmt(t('droneTitle'), cur.name) }}<span class="clk">{{ clock }}</span></div>
+        <div class="scr-body">
+          <div class="dtop">
+            <div class="dhero" :class="stCls(cur)">
+              <div class="pad xl"><img class="dr" :src="droneIcon" draggable="false">
+                <svg v-if="hasRing(cur)" class="ring" viewBox="0 0 100 100"><circle class="trk" cx="50" cy="50" r="46"/><circle class="val" cx="50" cy="50" r="46" :stroke-dasharray="RING_C" :stroke-dashoffset="ringOffset(cur)"/></svg>
+                <span class="badge" v-if="cur.st === 'hold'">{{ t('holdBadge') }}</span>
+              </div>
+              <div class="dinfo">
+                <div class="dn">{{ cur.name }}<small>{{ fmt(t('padNo'), cur.pad) }}</small></div>
+                <div class="bs"><i></i>{{ stLabel(cur) }}<span class="dt" v-if="(cur.st === 'idle' || cur.st === 'hold') && stSub(cur)">{{ stSub(cur) }}</span></div>
+                <template v-if="hasRing(cur)">
+                  <div class="r2"><div class="trip"><i :style="{ transform: 'scaleX(' + ringFrac(cur) + ')' }"></i></div><span class="txt">{{ fmt(t('remainShort'), durText(cur.remain)) }}</span></div>
+                  <div class="dtrip">{{ t('thisTrip') }} <b>{{ cur.kindName }}<template v-if="cur.dest"> · {{ cur.dest }}</template></b><br>{{ fmt(t('tripTimes'), cur.depText, cur.retText) }}</div>
+                </template>
+                <div class="dq">{{ t('quotaTrade') }} <b :class="{ used: cur.tu >= cur.tm }">{{ cur.tu }}/{{ cur.tm }}</b><span class="sep">·</span>{{ t('quotaForage') }} <b :class="{ used: cur.fu >= cur.fm }">{{ cur.fu }}/{{ cur.fm }}</b></div>
+              </div>
+            </div>
+            <div class="dfor">
+              <div class="ssec">{{ t('autoForage') }}<div class="sw" :class="{ on: cur.auto }" @click="toggleAuto(cur)"><i></i></div></div>
+              <div class="segs4" :class="{ off: !cur.auto }">
+                <b v-for="(sg, i) in SEGS" :key="'sg' + i" :class="{ on: segIndex(cur.hour) === i }" @click="pickSeg(cur, i)"><span>{{ t(sg.key) }}</span><em>{{ sg.range }}</em></b>
+              </div>
+            </div>
+          </div>
+          <div class="salert inl" v-if="cur.st === 'hold'"><span class="ex">!</span><div class="amain"><div class="aline">{{ t('holdAlert') }}</div>
+            <div class="minis"><div class="mini" v-for="(g, gi) in cur.hold" :key="'h' + gi" :title="g.n"><img :src="g.icon" draggable="false"><span class="item-count" v-if="g.c > 1">{{ g.c }}</span></div></div></div></div>
+        </div>
+      </template>
+
+      <!-- 派遣记录 -->
+      <template v-else-if="page === 'log'"><div class="logwrap">
+        <div class="sh"><span class="led"></span>{{ t('logTitle') }}<span class="clk">{{ fmt(t('logCount'), log.total) }}</span></div>
+        <div class="lfils"><div class="lfil"><span class="lb">{{ t('logKind') }}</span><div class="segs">
+          <b v-for="k in LOG_KINDS" :key="'lk' + k" :class="{ on: log.filter === k }" @click="setLogFilter(k)">{{ t('logKind_' + k) }}</b></div></div></div>
+        <div class="scr-body">
+          <div class="lempty" v-if="!log.days.length">{{ t('logEmpty') }}</div>
+          <template v-for="g in log.days" :key="'ld' + g.day">
+            <div class="lday">{{ fmt(t(g.today ? 'logDayToday' : 'logDay'), g.day) }}<span class="r">{{ fmt(t('logTrips'), g.rows.length) }}</span></div>
+            <div class="lrow" v-for="r in g.rows" :key="'lr' + r.id" :class="'k-' + r.kind">
+              <div class="lk" v-html="SVG[r.kind] || SVG.trade"></div>
+              <div class="lm">
+                <div class="lt"><span class="ln">{{ r.drone }}</span><span class="lkind">{{ t('logKind_' + r.kind) }}</span><span class="ld">{{ r.dest }}</span><span class="ltime">{{ r.time }}</span></div>
+                <div class="lgoods" v-if="(r.sent && r.sent.length) || (r.back && r.back.length)">
+                  <div class="lg" v-if="r.sent && r.sent.length"><span class="gl">{{ t('logSent') }}</span><div class="mini" v-for="(g2, i) in r.sent" :key="'s' + i" :title="g2.n"><img :src="g2.icon" draggable="false"><span class="item-count" v-if="g2.c > 1">{{ g2.c }}</span></div></div>
+                  <div class="lg" v-if="r.back && r.back.length"><span class="gl">{{ t(r.backKey) }}</span><div class="mini" v-for="(g2, i) in r.back" :key="'k' + i" :title="g2.n"><img :src="g2.icon" draggable="false"><span class="item-count" v-if="g2.c > 1">{{ g2.c }}</span></div></div>
+                </div>
+                <div class="trip" v-if="r.live"><i :style="{ transform: 'scaleX(' + r.pct + ')' }"></i></div>
+                <div class="lres" :class="r.resCls"><i></i><span>{{ r.res }}</span><span class="lsub" v-if="r.resSub">&nbsp;· {{ r.resSub }}</span></div>
+                <div class="lres meet" v-if="r.meet"><i></i><span>{{ fmt(t('logMeet'), r.meet) }}</span></div>
+                <div class="lres fight" v-if="r.fight"><i></i><span>{{ fmt(t('logFight'), r.fight) }}</span></div>
+              </div>
+            </div>
+          </template>
+        </div>
+        <div class="sf">{{ t('logFoot') }}</div>
+      </div></template>
+    </div></div>
+
+    <!-- 底部 · 中控台货舱 -->
+    <div class="cargo" id="storeCargo">
+      <div class="ptitle" id="storeTitle"><span id="storeLabel"></span>
+        <button class="gbtn sm sortb" id="sortStoreBtn" type="button" disabled></button>
+        <span class="num"><b id="storeUsed">0</b>/<span id="storeTotal">0</span> <span id="cellUnit"></span></span></div>
+      <div class="gridwrap flat"><div class="grid-container" id="storeGrid"></div></div>
+    </div>
+  </section>
+  <!-- 拖放拒收飘字。必须是不占布局的浮层：插一行文档流文字会把整块顶高，连带 viewportFit 按 .hub-root 重算缩放。 -->
+  <div class="warnfloat" id="warnBox"></div>
+</div>
+
+<script>
+var core = createWebUICore('DroneHub');
+var $ = function(id){ return document.getElementById(id); };
+
+/* ── 文案：固定键 + 一份按键下发的字典（textsJson）。前端不带中文兜底，词条缺失时屏幕上是 key 字面量 ── */
+var I18N_KEYS = [
+  'pageTitle','storeLabel','storeFullTip','cellUnit','minuteUnit','seg0','seg1','seg2','seg3','dayLabel',
+  'bagTitle','weightLabel','shelfLifeLabel','moldyLabel','takeAllLabel','takeCategoryLabel','emptyTransferText','shiftHint',
+  'kinTransferHint'
+];
+var i18nText = Vue.reactive({});
+function t(key){ return i18nText[key] || ''; }
+function fmt(tpl){
+  var args = arguments;
+  return String(tpl || '').replace(/\{(\d+)\}/g, function(m, i){ var v = args[+i + 1]; return v === undefined ? m : v; });
+}
+function stripArrow(s){ return String(s || '').replace(/^[\s←<→>]+/, '').replace(/[\s←<→>]+$/, ''); }
+function parseJson(s, fb){ if (!s) return fb; try { var v = JSON.parse(s); return v == null ? fb : v; } catch(e){ return fb; } }
+
+var State = {
+  bagOwnerId:0, storeOwnerId:0,
+  bagCols:8, bagRows:7, bagMaxCols:8, bagMaxRows:7, storeCols:12, storeRows:7,
+  bagItems:[], storeItems:[], bagTabs:[],
+  bagIsFreezing:false, bagIsPowered:false, bagFrozen:false,
+  bagWeight:0, bagMaxWeight:0,
+  storeUsed:0, storeTotal:0, storeFull:false,
+  bagIsRack:false, rackRows:[],
+  /* 高亮键按住态（C# 广播 Ac_HighlightKeyHeld → HighlightHeldMsg）：开着时悬停 = 同类预览、点击 = 整批转移 */
+  highlightHeld:false
+};
+var panelClosed = false;
+
+var viewportFit = createViewportFit({ measureSelector:'.hub-root', margin:48, bodyHeightProp:'minHeight' });
+var flyer = createItemFlyer({ host:$('hubRoot'), getZoom:function(){ return viewportFit.getZoom() || 1; } });
+
+/* ── 屏幕 / 标题：同一份响应式数据 ── */
+var ui = Vue.reactive({
+  page:'main', droneId:0,
+  fleet:[], day:0, hour:0, minute:0, storeFull:false,
+  log:{ filter:'all', total:0, days:[] }
+});
+function curDrone(){ for (var i = 0; i < ui.fleet.length; i++) if (ui.fleet[i].id === ui.droneId) return ui.fleet[i]; return null; }
+
+/* ── 两个格子 + 拖拽协调器。货舱初始行列与 Bag 1009 的配表一致，开面板后以 BagMsg 下发为准 ── */
+var bagGrid   = createGridBag('bagGrid',   { cols:8,  rows:7, onItemRendered:paintBagItem });
+var storeGrid = createGridBag('storeGrid', { cols:12, rows:7, onItemRendered:paintStoreItem });
+
+/* 左栏尺寸锁：页签容器行列数不一，按 C# 下发的 bagMaxCols/bagMaxRows 包络补 margin。负重条高度每次可见时重测 */
+var bagLock = createGridSizeLock('bagGrid');
+var _bagCapH = 0, _lockExtraTop = 0;
+function applyBagLock(){
+  var cap = $('bagCap');
+  var hidden = cap.style.display === 'none';
+  if (!hidden) _bagCapH = cap.offsetHeight + (parseFloat(window.getComputedStyle(cap).marginBottom) || 0);
+  _lockExtraTop = hidden ? _bagCapH : 0;
+  bagLock.apply({ cols: State.bagCols, rows: State.bagRows, maxCols: State.bagMaxCols, maxRows: State.bagMaxRows, extraTop: hidden ? _bagCapH : 0 });
+}
+
+/* ── 材料架页签的分行视图：点一行 = 这种材料 1 件进中控台货舱 ── */
+var rackRows = null, _rackTrackW = 0;
+function rackBox(){
+  var w = bagLock.width(), h = bagLock.height();
+  if (!(w > 0) || !(h > 0)){ w = 382; h = 336; }
+  else h = h - _lockExtraTop + _bagCapH;
+  return { w: w, h: h };
+}
+function ensureRackRows(box){
+  var NAME_W = 64, SCROLL_GUTTER = 8;
+  var trackW = Math.max(120, Math.floor(box.w - NAME_W - 10 - SCROLL_GUTTER));
+  if (rackRows && trackW === _rackTrackW) return rackRows;
+  _rackTrackW = trackW;
+  rackRows = createRackRows($('bagRack'), {
+    trackWidth: trackW, unit: 36, rowHeight: 44, gap: 4, plateWidth: NAME_W, compact: true,
+    onCardClick: function(row){
+      if (panelClosed) return;
+      var cards = rackRows ? rackRows.getCards(rackRows.keyOf(row)) : [];
+      flyer.pend({ configId:row.configId,
+                   fromRects: cards.length ? [cards[cards.length - 1].getBoundingClientRect()] : [],
+                   before: flyer.snapshot(State.storeItems) });
+      core.UnitySendEvent('RACK_TO_STORE', { configId: row.configId, itemId: row.lastId || 0 });
+    },
+    onCardHover: function(row, isEnter){ if (isEnter) showItemTip({ name: row.name }); else hideItemTip(); }
+  });
+  return rackRows;
+}
+function applyLeftView(ownerChanged){
+  var isRack = !!State.bagIsRack;
+  $('bagGridWrap').style.display = isRack ? 'none' : '';
+  $('bagRackWrap').classList.toggle('on', isRack);
+  if (!isRack){ applyBagLock(); return; }
+  var box = rackBox();
+  var host = $('bagRack');
+  host.style.width = box.w + 'px';
+  host.style.height = box.h + 'px';
+  var rr = ensureRackRows(box);
+  if (ownerChanged) rr.resetCounts();
+  rr.render(State.rackRows || []);
+}
+
+function paintCommonMarks(el, r){
+  if (r.isExpired){
+    el.classList.add('expired');
+    var mask = document.createElement('div'); mask.className='expired-mask'; el.appendChild(mask);
+  } else if (r.nearExpiry){
+    var nearMask = document.createElement('div'); nearMask.className='near-expiry-mask'; el.appendChild(nearMask);
+  }
+  if (r.polluted){ var ring = document.createElement('div'); ring.className='polluted-ring'; el.appendChild(ring); }
+  if (r.actionMark > 0){
+    el.classList.add('in-action');
+    if (r.actionMark === 2) el.classList.add('using');
+    var glow = document.createElement('div'); glow.className='action-glow'; el.appendChild(glow);
+  }
+  if (r.isNewUnread){ var dot = document.createElement('div'); dot.className='unread-dot'; el.appendChild(dot); }
+}
+function paintBagItem(el, item){
+  var r = item._raw || {};
+  paintCommonMarks(el, r);
+  if (State.bagFrozen){ var frost = document.createElement('div'); frost.className='item-frost'; el.appendChild(frost); }
+}
+function paintStoreItem(el, item){
+  paintCommonMarks(el, item._raw || {});
+  flyer.applyArriving(el, (item._raw || {}).itemId);
+}
+
+function findItem(list, itemId){ for (var i=0;i<list.length;i++){ if (list[i].itemId == itemId) return list[i]; } return null; }
+/* ── 同类预览高亮（2026-09-23）────────────────────────────────────────────
+   按住高亮键（HotKeyAction.HighlightAll，默认左 Alt，态由 C# 广播）悬停某件时，
+   把**本栏**与它同类的格子一起描边，此时点击 = 整批转移而不是转一件。
+   同类判据 (categoryId, subCategoryId) **成对**相等，必须与 C# 侧 IsSameItemKind 保持一致——
+   小类编号跨大类复用，只比小类会把零食和消毒喷雾混成一类。
+   作用于背包 / 货舱两栏。 */
+var _hoverItemId = 0;
+
+function kinListOf(grid){
+  if (grid === 'bag') return State.bagItems;
+  if (grid === 'store') return State.storeItems;
+  return null;
+}
+
+function applyKinHint(itemId){
+  if (!State.highlightHeld || !itemId){ clearKinHint(); return; }
+  var grid = gridOfItem(itemId);
+  var list = kinListOf(grid);
+  if (!list){ clearKinHint(); return; }
+  var anchor = findItem(list, itemId);
+  if (!anchor){ clearKinHint(); return; }
+
+  var set = new Set();
+  for (var i = 0; i < list.length; i++){
+    var it = list[i];
+    if (it.categoryId === anchor.categoryId && it.subCategoryId === anchor.subCategoryId){
+      set.add(String(it.itemId));
+    }
+  }
+  /* 只亮悬停那一栏，另一栏传 null 熄掉 */
+  bagGrid.setKinHint(grid === 'bag' ? set : null);
+  storeGrid.setKinHint(grid === 'store' ? set : null);
+}
+
+function clearKinHint(){
+  bagGrid.setKinHint(null);
+  storeGrid.setKinHint(null);
+}
+
+/* 高亮键按下 / 松开时就地重放当前悬停：不这么做玩家得把鼠标移开再移回来才看到变化 */
+function refreshKinHint(){
+  if (!_hoverItemId){ clearKinHint(); return; }
+  applyKinHint(_hoverItemId);
+  var it = findItem(State.bagItems, _hoverItemId) || findItem(State.storeItems, _hoverItemId);
+  if (it) showItemTip(it); else hideItemTip();
+}
+
+function gridOfItem(itemId){
+  if (findItem(State.storeItems, itemId)) return 'store';
+  if (findItem(State.bagItems, itemId)) return 'bag';
+  return '';
+}
+
+/* 拖放拒收飘字。showWarn._t 兼作「刚飘过具体原因」的标志：onItemPutback 的兜底句靠它让位，
+   不然具体原因会被笼统的「这里放不下」当场盖掉。 */
+function showWarn(msg){
+  if (!msg) return;
+  var w = $('warnBox');
+  w.textContent = msg;
+  w.classList.add('on');   /* 🚨 必须加 .on：框子默认 opacity:0，只写 textContent 是看不见的 */
+  clearTimeout(showWarn._t);
+  showWarn._t = setTimeout(function(){ showWarn._t = 0; $('warnBox').classList.remove('on'); }, 2400);
+}
+/* 落点合法但由拦截器自行处理（材料架分行区），onItemPutback 不该再飘「放不下」。每次拿起时重置。 */
+var dropHandledByRack = false;
+/* 同上，落在左栏另一颗页签上松手（整叠放进那个容器）。放不进由 Unity 飘具体原因，这里也不再兜底 */
+var dropHandledByTab = false;
+
+/* 拖到左栏另一颗页签上 = 整叠放进那个容器（自动找位，不切页签）。只给非当前页签；上锁的标红、松手回弹 */
+var tabDrop = createTabDrop({
+  getTabs: function(){
+    var out = [], els = document.querySelectorAll('#bagTabs .bag-tab');
+    for (var i = 0; i < els.length; i++){
+      var el = els[i];
+      if (el.classList.contains('active')) continue;
+      out.push({ el: el, key: el.dataset.owner, blocked: el.classList.contains('locked') });
+    }
+    return out;
+  },
+  onDrop: function(ownerKey, itemData, blocked){
+    if (blocked || panelClosed || !itemData) return;
+    var src = itemData.containerId === 'storeGrid' ? storeGrid : bagGrid;
+    core.UnitySendEvent('DROP_TO_TAB', {
+      itemId: parseInt(itemData.id), fromOwnerId: String(src.getOwnerId() || 0), toOwnerId: String(ownerKey)
+    });
+    dropHandledByTab = true;
+  }
+});
+
+/* 格子准入：储物与中控台货舱之间互拖、各自内部挪位。
+   从「脚边」横排拖出来的东西（_external）两个格子都收：它们平时互拖走的就是通用移物，横排拖入与之同一条执行体。 */
+function canAccept(targetBag, itemData){
+  var src = itemData ? itemData.containerId : '';
+  var tgt = targetBag.getContainerId();
+  if (itemData && itemData._external) return tgt === 'bagGrid' || tgt === 'storeGrid';
+  if (tgt === 'bagGrid' || tgt === 'storeGrid') return src === 'bagGrid' || src === 'storeGrid';
+  return false;
+}
+
+var dragCoord = createBagDragCoordinator([bagGrid, storeGrid], {
+  canAcceptItem: function(bag, itemData){ return canAccept(bag, itemData); },
+  onItemMove: function(data){ core.UnitySendEvent('ITEM_MOVE', data); },
+  onItemPickup: function(itemData){
+    hideItemTip(); closeCatMenu(); dropHandledByRack = false; dropHandledByTab = false;
+    if (itemData && !itemData._external) tabDrop.arm();
+    core.UnitySendEvent('SFX_ITEM_PICKUP', { itemId: itemData ? itemData.id : 0 });
+    if (State.bagIsRack && rackRows && itemData && itemData._raw) rackRows.setDropHint(itemData._raw.configId);
+  },
+  onDragFinished: function(){ tabDrop.disarm(); if (rackRows) rackRows.setDropHint(0); },
+  onItemPutback: function(itemData){
+    core.UnitySendEvent('SFX_ITEM_PUTBACK', { itemId: itemData ? itemData.id : 0 });
+    // 兜底句，覆盖 canAcceptItem 说不出原因的那几种回弹：格子被占 / 空间不够（checkValidity 那一档，
+    // 它在 canAcceptItem 之前就返回 false，回调根本不会被调到）、松手时不在任何格子上。
+    // 已经飘过具体原因就不覆盖；落在材料架分行区是合法放入，不是回弹。
+    if (!showWarn._t && !dropHandledByRack && !dropHandledByTab) showWarn(t('warnNoRoom'));
+  },
+  onItemHover: function(itemId, isEnter){
+    if (!isEnter){ _hoverItemId = 0; clearKinHint(); hideItemTip(); return; }
+    var it = findItem(State.bagItems, itemId) || findItem(State.storeItems, itemId);
+    if (!it){ _hoverItemId = 0; clearKinHint(); hideItemTip(); return; }
+    _hoverItemId = itemId;
+    applyKinHint(itemId);
+    showItemTip(it);
+  },
+  onItemClick: function(itemId, rightClick){
+    core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId), rightClick: !!rightClick, grid: gridOfItem(itemId) });
+  },
+  /* 「脚边」横排拖出来松手：落在能放下的格子上 = 捡进那一格；落空不发任何事件。两侧都等 Logic 刷新回来再画 */
+  onExternalDrop: function(payload, target){
+    if (payload && payload.groundBoxId){
+      if (target && !panelClosed){
+        core.UnitySendEvent('GROUND_PICK_TO', { id: payload.groundBoxId, ownerId: target.bag.getOwnerId(), x: target.x, y: target.y });
+      }
+      if (groundDock) groundDock.clearDragging();
+    }
+  }
+});
+/* 拖到格子之外一律回弹（不许丢地上）。左栏是材料架时，落在分行区 = 从中控台货舱放回材料架 */
+dragCoord.setDropInterceptor(function(itemData, x, y){
+  /* 落在另一颗页签上：一律回弹不做乐观移除 —— 放进去了 Unity 刷新回来源格子自然少这一件，放不进物品本就该留在原位 */
+  if (tabDrop.drop(x, y, itemData)) return 'reject';
+  if (State.bagIsRack && rackRows && itemData && rackRows.hit(x, y)){
+    var raw = itemData._raw || {};
+    if (!panelClosed && findItem(State.storeItems, raw.itemId)) core.UnitySendEvent('PUT_TO_RACK', { itemId: parseInt(raw.itemId) });
+    // 这里返回 'reject' 只是"格子动画回弹"，操作本身是成功的（东西进了材料架）。
+    // 打上标志让随后的 onItemPutback 闭嘴，否则每次往材料架放东西都会飘一句「这里放不下」。
+    dropHandledByRack = true;
+  }
+  return 'reject';
+});
+
+/* ── 「脚边」横排：挂在左栏（储物那块面板）下方。按住一格拖出来时造一个不在任何格子里的拖拽物，
+   落点判定 / 高亮 / 幽灵复用上面这套协调器，松手走 onExternalDrop。
+   本面板没有丢地上的通道（上面的拦截器一律回弹），把格子里的东西拖到横排上松手同样回弹。 ── */
+var groundDock = null;
+function groundDockAnchorRect(){
+  var el = $('paneMine');
+  return el ? el.getBoundingClientRect() : null;
+}
+/* 避让只取可见的面板本体。中间列 .midcol 是 align-self:stretch 撑满整块高度的透明容器，取它会把横排挤到屏幕底，
+   只取里面那组按钮 */
+function groundDockObstacles(){
+  var out = [];
+  ['paneMine', 'midTake', 'paneHub'].forEach(function(id){
+    var el = $(id);
+    if (!el) return;
+    var r = el.getBoundingClientRect();
+    if (r.width && r.height) out.push(r);
+  });
+  return out;
+}
+function placeGroundDock(){ if (groundDock) groundDock.place(); }
+groundDock = createGroundDock({
+  send: function(ev, payload){ send(ev, payload); },
+  getAnchorRect: groundDockAnchorRect,
+  getObstacleRects: groundDockObstacles,
+  getZoom: function(){ return viewportFit.getZoom() || 1; },
+  onDragStart: function(e, g){
+    if (panelClosed || !g || !g.ids || !g.ids.length) return false;
+    hideItemTip(); closeCatMenu();
+    return dragCoord.beginExternalDrag(e, { id: -g.ids[0], icon: g.icon, w: g.w, h: g.h, payload: { groundBoxId: g.ids[0] } }) === true;
+  }
+});
+
+/* ── tooltip（位置必须除 body zoom） ── */
+var _tipMouse={x:0,y:0}, _tipRaf=0;
+function moveTip(x,y){
+  var k = viewportFit.getZoom() || 1;
+  var tip=$('itemTooltip'); tip.style.left=((x+15)/k)+'px'; tip.style.top=((y+15)/k)+'px';
+}
+function showItemTip(it){
+  var tipEl=$('itemTooltip');
+  /* 按住高亮键时这个浮层就地变成「[点击] 批量转移 [肉类]」：同一个元素换内容换配色，
+     天生不会和物品详情重叠。 */
+  var kinGrid = gridOfItem(it.itemId);
+  if (State.highlightHeld && it.kindName && (kinGrid === 'bag' || kinGrid === 'store')){
+    tipEl.textContent = (t('kinTransferHint') || '[点击] 批量转移 [{0}]').replace('{0}', it.kindName);
+    tipEl.classList.add('kin-mode');
+    tipEl.style.display='block';
+    moveTip(_tipMouse.x, _tipMouse.y);
+    return;
+  }
+  tipEl.classList.remove('kin-mode');
+  var lines=[ it.name || '' ];
+  if (it.category) lines.push(it.category);
+  if (it.polluted) lines.push(t('moldyLabel'));
+  if (it.shelfLife) lines.push(t('shelfLifeLabel') + ': ' + it.shelfLife);
+  var tip=$('itemTooltip'); tip.textContent = lines.join('\n'); tip.style.display='block';
+  moveTip(_tipMouse.x, _tipMouse.y);
+}
+function hideItemTip(){ $('itemTooltip').style.display='none'; }
+document.addEventListener('mousemove', function(e){
+  _tipMouse.x=e.clientX; _tipMouse.y=e.clientY;
+  if (_tipRaf) return;
+  _tipRaf=requestAnimationFrame(function(){ _tipRaf=0; if ($('itemTooltip').style.display==='block') moveTip(_tipMouse.x,_tipMouse.y); });
+});
+
+/* ── 左栏页签（<=1 项整条隐藏改显标题；玩家页签钉左；active 不挂 click） ── */
+function createTabEl(tab, isActive){
+  var el = document.createElement('div');
+  el.className = 'bag-tab' + (isActive ? ' active' : '');
+  el.textContent = tab.name || t('bagTitle');
+  el.dataset.owner = String(tab.ownerId);
+  if (tab.locked){
+    el.classList.add('locked');
+    var badge = document.createElement('span'); badge.className = 'tab-lock-badge'; el.appendChild(badge);
+  }
+  if (!isActive && !tab.locked){
+    (function(ownerId){
+      el.addEventListener('click', function(){ if (!panelClosed) core.UnitySendEvent('SWITCH_BAG', { ownerId: ownerId }); });
+    })(tab.ownerId);
+  }
+  return el;
+}
+function renderBagTabs(){
+  var tabs = State.bagTabs || [];
+  $('bagTabPinned').innerHTML = ''; $('bagTabsScroll').innerHTML = '';
+  if (tabs.length <= 1){ $('bagTabs').style.display = 'none'; $('bagTitleBar').style.display = 'flex'; return; }
+  $('bagTabs').style.display = 'flex'; $('bagTitleBar').style.display = 'none';
+  $('bagTabPinned').appendChild(createTabEl(tabs[0], tabs[0].ownerId === State.bagOwnerId));
+  for (var i = 1; i < tabs.length; i++) $('bagTabsScroll').appendChild(createTabEl(tabs[i], tabs[i].ownerId === State.bagOwnerId));
+  requestAnimationFrame(updateTabScrollButtons);
+}
+function updateTabScrollButtons(){
+  var sc = $('bagTabsScroll'), L = $('tabScrollLeft'), R = $('tabScrollRight');
+  if (!sc || !L || !R) return;
+  var need = sc.scrollWidth > sc.clientWidth + 1;
+  L.classList.toggle('is-visible', need); R.classList.toggle('is-visible', need);
+  if (need){ L.disabled = sc.scrollLeft <= 0; R.disabled = sc.scrollLeft >= sc.scrollWidth - sc.clientWidth - 1; }
+}
+function syncBagTitle(){
+  var tabs = State.bagTabs || [], name = t('bagTitle');
+  for (var i = 0; i < tabs.length; i++){ if (tabs[i].ownerId === State.bagOwnerId){ name = tabs[i].name || t('bagTitle'); break; } }
+  $('bagTitleText').textContent = name;
+}
+function applyFrozenClass(){ $('bagGrid').classList.toggle('is-frozen', !!State.bagFrozen); }
+
+/* ── 左栏负重条 / 一键整理 ── */
+function fmtKg(v){ return (Math.round((v || 0) * 10) / 10).toFixed(1); }
+function renderWeights(){
+  $('bagWeightLb').textContent = t('weightLabel');
+  var cap = $('bagCap'), max = State.bagMaxWeight, w = State.bagWeight;
+  if (!(max > 0)){ cap.style.display = 'none'; return; }
+  cap.style.display = 'flex';
+  $('bagWeightBar').style.transform = 'scaleX(' + Math.min(1, w / max) + ')';
+  $('bagWeightNum').textContent = fmtKg(w) + ' / ' + fmtKg(max) + ' kg';
+  cap.classList.toggle('over', w > max);
+}
+function renderSortButtons(){
+  var label = t('sortLabel');
+  var bagEmpty = State.bagIsRack || !(State.bagItems || []).length;
+  ['sortBagBtn1', 'sortBagBtn2'].forEach(function(id){ $(id).textContent = label; $(id).disabled = bagEmpty; $(id).style.visibility = State.bagIsRack ? 'hidden' : ''; });
+  $('sortStoreBtn').textContent = label;
+  $('sortStoreBtn').disabled = !(State.storeItems || []).length;
+}
+$('sortBagBtn1').addEventListener('click', function(){ if (!panelClosed && !this.disabled) core.UnitySendEvent('SORT_BAG', {}); });
+$('sortBagBtn2').addEventListener('click', function(){ if (!panelClosed && !this.disabled) core.UnitySendEvent('SORT_BAG', {}); });
+$('sortStoreBtn').addEventListener('click', function(){ if (!panelClosed && !this.disabled) core.UnitySendEvent('SORT_STORE', {}); });
+
+/* ── 中控台货舱水位 ── */
+function renderStoreStats(){
+  $('storeLabel').textContent = t('storeLabel');
+  $('cellUnit').textContent = t('cellUnit');
+  $('storeUsed').textContent = State.storeUsed;
+  $('storeTotal').textContent = State.storeTotal;
+  $('storeTitle').classList.toggle('over', !!State.storeFull);
+  $('storeGrid').classList.toggle('full-warn', !!State.storeFull);
+  ui.storeFull = !!State.storeFull;
+}
+
+/* ── 全部取出 / 分类取出（分类候选从货舱物品现算，口径同背包面板） ── */
+function extractCategories(items){
+  var seen = {}, out = [];
+  (items || []).forEach(function(it){
+    if (!(it.categoryId > 0)) return;
+    if (!seen[it.categoryId]){ seen[it.categoryId] = { id: it.categoryId, name: it.category || ('#' + it.categoryId), qty: 0 }; out.push(seen[it.categoryId]); }
+    seen[it.categoryId].qty += (it.w || 1) * (it.h || 1);
+  });
+  return out;
+}
+function closeCatMenu(){ $('catWrap').classList.remove('open'); }
+function renderCatMenu(){
+  var menu = $('catMenu'); menu.innerHTML = '';
+  var cats = extractCategories(State.storeItems);
+  if (!cats.length){
+    var e = document.createElement('div'); e.className = 'catopt empty'; e.textContent = t('emptyTransferText'); menu.appendChild(e); return;
+  }
+  cats.forEach(function(c){
+    var opt = document.createElement('div'); opt.className = 'catopt';
+    var nm = document.createElement('span'); nm.textContent = c.name;
+    var q = document.createElement('span'); q.className = 'qty'; q.textContent = c.qty;
+    opt.appendChild(nm); opt.appendChild(q);
+    opt.addEventListener('click', function(){ closeCatMenu(); if (!panelClosed) core.UnitySendEvent('TAKE_CATEGORY', { categoryId: c.id }); });
+    menu.appendChild(opt);
+  });
+}
+function refreshTakeButtons(){
+  var hasItems = (State.storeItems || []).length > 0 && State.bagOwnerId !== 0;
+  $('midLabel').textContent = t('storeLabel');
+  $('takeAllText').textContent = stripArrow(t('takeAllLabel'));
+  $('takeCatText').textContent = stripArrow(t('takeCategoryLabel'));
+  $('takeAllBtn').disabled = !hasItems;
+  $('takeCatBtn').disabled = !hasItems;
+  if (!hasItems) closeCatMenu();
+  renderCatMenu();
+}
+$('takeAllBtn').addEventListener('click', function(){ closeCatMenu(); if (!panelClosed && !this.disabled) core.UnitySendEvent('TAKE_ALL', {}); });
+$('takeCatBtn').addEventListener('click', function(e){ e.stopPropagation(); if (this.disabled) return; $('catWrap').classList.toggle('open'); });
+document.addEventListener('click', function(e){ if (!e.target.closest('#catWrap')) closeCatMenu(); });
+
+function applyPageLayout(){
+  $('shiftHint').textContent = t('shiftHint');
+  refreshTakeButtons();
+}
+
+/* ── Vue：标题栏 / 屏幕 ── */
+var SEG_SPAN = 6;
+var SEGS = [
+  { h: 0,  key: 'seg0', range: '00-06' },
+  { h: 6,  key: 'seg1', range: '06-12' },
+  { h: 12, key: 'seg2', range: '12-18' },
+  { h: 18, key: 'seg3', range: '18-24' }
+];
+/* 派遣记录每行左侧的类型图标 */
+var SVG = {
+  trade: '<svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>',
+  active: '<svg viewBox="0 0 24 24"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg>',
+  reply: '<svg viewBox="0 0 24 24"><path d="M4 6h16v10H9l-5 4z"/><path d="M12 8.5v5M9.5 11h5"/></svg>',
+  give: '<svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="1"/><path d="M12 10v10M3 7h18v3H3zM12 7c-1.5-3-5-3.5-5-1.2C7 7 9.5 7 12 7zM12 7c1.5-3 5-3.5 5-1.2C17 7 14.5 7 12 7z"/></svg>',
+  forage: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="M15 15l5 5"/></svg>',
+  loot: '<svg viewBox="0 0 24 24"><path d="M4 9l8-4 8 4v9l-8 4-8-4z"/><path d="M4 9l8 4 8-4M12 13v9"/></svg>',
+  task: '<svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2.5 4L17 12H6"/></svg>',
+  aid: '<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.4-3.4 8-8 9-4.6-1-8-4.6-8-9V6z"/></svg>'
+};
+var LOG_KINDS = ['all', 'forage', 'loot', 'active', 'reply', 'give', 'aid', 'task'];
+var RING_C = (2 * Math.PI * 46).toFixed(1);
+var DRONE_ICON = '../../Res/Furniture/UI_Item_Icon_wurenji.png';
+
+function pad2(n){ return String(n | 0).padStart(2, '0'); }
+function send(ev, data){ if (!panelClosed) core.UnitySendEvent(ev, data || {}); }
+
+function stateHelpers(){
+  function stCls(d){ return 'st-' + d.st + (d.st === 'idle' && d.tu >= d.tm ? ' st-done' : ''); }
+  function stLabel(d){ return t('st_' + d.st); }
+  function durText(sec){
+    var m = Math.max(1, Math.ceil((sec || 0) / 60));
+    if (m < 60) return fmt(t('durMin'), m);
+    var h = Math.floor(m / 60), mm = m % 60;
+    return mm ? fmt(t('durHourMin'), h, mm) : fmt(t('durHour'), h);
+  }
+  function stSub(d){
+    if (d.st === 'out') return d.kindName + ' · ' + fmt(t('remainShort'), durText(d.remain));
+    if (d.st === 'aid') return fmt(t('remainShort'), durText(d.remain));
+    if (d.st === 'hold') return t('holdSub');
+    if (d.tu >= d.tm) return t('doneToday');
+    return d.auto ? fmt(t('autoOnSub'), SEGS[segIndex(d.hour)].range) : t('autoOffSub');
+  }
+  function hasRing(d){ return (d.st === 'out' || d.st === 'aid') && d.total > 0; }
+  function ringFrac(d){ return d.total > 0 ? Math.max(0, Math.min(1, 1 - (d.remain || 0) / d.total)) : 0; }
+  function ringOffset(d){ return (RING_C * (1 - ringFrac(d))).toFixed(1); }
+  function segIndex(h){ var v = h | 0; if (v < 0 || v > 23) return 1; return Math.floor(v / SEG_SPAN); }
+  return { stCls: stCls, stLabel: stLabel, stSub: stSub, durText: durText, hasRing: hasRing, ringFrac: ringFrac, ringOffset: ringOffset, segIndex: segIndex };
+}
+var H = stateHelpers();
+
+var hubTitleApp = Vue.createApp({
+  setup: function(){
+    var crumbs = Vue.computed(function(){
+      var out = [], d = curDrone();
+      if (ui.page === 'main') return out;
+      if (ui.page === 'log'){ out.push(t('logBtn')); return out; }
+      if (d) out.push(d.name);
+      return out;
+    });
+    return {
+      page: Vue.computed(function(){ return ui.page; }), crumbs: crumbs, t: t,
+      back: function(){ send('BACK'); },
+      close: function(){ onClose(); }
+    };
+  }
+});
+hubTitleApp.mount('#hubTitle');
+
+var screenApp = Vue.createApp({
+  setup: function(){
+    var clock = Vue.computed(function(){ return fmt(t('dayLabel'), ui.day) + ' · ' + pad2(ui.hour) + ':' + pad2(ui.minute); });
+    var alerts = Vue.computed(function(){
+      var lines = [];
+      if (ui.storeFull) lines.push(t('storeFullTip'));
+      ui.fleet.forEach(function(d){ if (d.st === 'hold') lines.push(fmt(t('holdFleetLine'), d.name)); });
+      return lines;
+    });
+    function nav(page, droneId){ send('NAV', { page: page, droneId: String(droneId || 0) }); }
+    function setLogFilter(k){ if (ui.log.filter !== k) send('LOG_FILTER', { kind: k }); }
+    function toggleAuto(d){
+      d.auto = !d.auto;
+      send('SET_AUTO', { droneId: d.id, enabled: !!d.auto, hour: d.hour | 0 });
+    }
+    function pickSeg(d, i){
+      if (!d.auto || H.segIndex(d.hour) === i) return;
+      d.hour = SEGS[i].h;
+      send('SET_AUTO', { droneId: d.id, enabled: true, hour: d.hour });
+    }
+    return Object.assign({
+      page: Vue.computed(function(){ return ui.page; }),
+      fleet: Vue.computed(function(){ return ui.fleet; }),
+      cur: Vue.computed(curDrone),
+      log: Vue.computed(function(){ return ui.log; }),
+      clock: clock, alerts: alerts,
+      t: t, fmt: fmt, SEGS: SEGS, SVG: SVG, LOG_KINDS: LOG_KINDS, RING_C: RING_C, droneIcon: DRONE_ICON,
+      nav: nav, send: send,
+      setLogFilter: setLogFilter, toggleAuto: toggleAuto, pickSeg: pickSeg
+    }, H);
+  }
+});
+screenApp.mount('#screenApp');
+
+/* ── 消息 ── */
+core.registerHandlers({
+  'WebUI_DroneHub_BagMsg': function(data){
+    var prevOwner = State.bagOwnerId;
+    if (data.bagOwnerId !== undefined){ State.bagOwnerId = data.bagOwnerId; bagGrid.setOwnerId(data.bagOwnerId || 0); }
+    if (data.bagIsRack !== undefined) State.bagIsRack = !!data.bagIsRack;
+    if (data.bagRackRowsJson !== undefined) State.rackRows = parseJson(data.bagRackRowsJson, []);
+    if (data.storeOwnerId !== undefined){ State.storeOwnerId = data.storeOwnerId; storeGrid.setOwnerId(data.storeOwnerId || 0); }
+    // resize 只改 cfg 不重绘，必须先于 refresh
+    if (data.bagCols !== undefined){ State.bagCols = data.bagCols; State.bagRows = data.bagRows; bagGrid.resize(data.bagCols, data.bagRows); }
+    if (data.storeCols !== undefined){ State.storeCols = data.storeCols; State.storeRows = data.storeRows; storeGrid.resize(data.storeCols, data.storeRows); }
+    if (data.bagMaxCols !== undefined) State.bagMaxCols = data.bagMaxCols;
+    if (data.bagMaxRows !== undefined) State.bagMaxRows = data.bagMaxRows;
+    if (data.bagTabs !== undefined) State.bagTabs = data.bagTabs || [];
+    if (data.bagIsFreezing !== undefined) State.bagIsFreezing = !!data.bagIsFreezing;
+    if (data.bagIsPowered !== undefined) State.bagIsPowered = !!data.bagIsPowered;
+    State.bagFrozen = State.bagIsFreezing && State.bagIsPowered;
+    applyFrozenClass();
+    if (data.bagWeight !== undefined) State.bagWeight = data.bagWeight || 0;
+    if (data.bagMaxWeight !== undefined) State.bagMaxWeight = data.bagMaxWeight || 0;
+
+    if (data.bagItems !== undefined){ State.bagItems = data.bagItems || []; bagGrid.refresh(State.bagItems); }
+    if (data.storeItems !== undefined){ State.storeItems = data.storeItems || []; storeGrid.refresh(State.storeItems); }
+
+    renderBagTabs(); syncBagTitle(); renderWeights(); renderSortButtons();
+    applyLeftView(prevOwner !== State.bagOwnerId);
+    applyPageLayout();
+    viewportFit.apply(); placeGroundDock();
+    if (data.storeItems !== undefined) flyer.settle(State.storeItems);
+  },
+  'WebUI_DroneHub_StoreMsg': function(data){
+    if (data.storeUsed !== undefined) State.storeUsed = data.storeUsed || 0;
+    if (data.storeTotal !== undefined) State.storeTotal = data.storeTotal || 0;
+    if (data.storeFull !== undefined) State.storeFull = !!data.storeFull;
+    renderStoreStats();
+  },
+  'WebUI_DroneHub_FleetMsg': function(data){
+    if (data.fleetJson !== undefined) ui.fleet = parseJson(data.fleetJson, []);
+    if (data.day !== undefined) ui.day = data.day | 0;
+    if (data.hour !== undefined) ui.hour = data.hour | 0;
+    if (data.minute !== undefined) ui.minute = data.minute | 0;
+    applyPageLayout();
+    viewportFit.apply(); placeGroundDock();
+  },
+  'WebUI_DroneHub_ScreenMsg': function(data){
+    if (data.pageJson !== undefined){
+      var p = parseJson(data.pageJson, {});
+      ui.page = p.page || 'main';
+      ui.droneId = p.droneId ? Number(p.droneId) : 0;
+    }
+    if (data.logJson !== undefined) ui.log = parseJson(data.logJson, { filter: 'all', total: 0, days: [] });
+    hideItemTip();
+    applyPageLayout();
+    viewportFit.apply(); placeGroundDock();
+  },
+  'WebUI_DroneHub_HighlightHeldMsg': function(data){
+    if (!data || data.highlightHeld === undefined) return;
+    State.highlightHeld = !!data.highlightHeld;
+    /* 就地重放当前悬停：不刷的话玩家得把鼠标移开再移回来才看到高亮 / 提示变化 */
+    refreshKinHint();
+  },
+  'WebUI_DroneHub_GroundDockMsg': function(data){
+    if (!data || data.groundDockJson === undefined) return;
+    if (groundDock) groundDock.setData(data.groundDockJson);
+  },
+  'WebUI_DroneHub_LocalizationMsg': function(data){
+    if (!data) return;
+    I18N_KEYS.forEach(function(k){ if (typeof data[k] === 'string' && data[k]) i18nText[k] = data[k]; });
+    if (data.textsJson){
+      var dict = parseJson(data.textsJson, {});
+      Object.keys(dict).forEach(function(k){ if (dict[k]) i18nText[k] = dict[k]; });
+    }
+    if (data.pageTitle) document.title = data.pageTitle;
+    bagGrid.refresh(State.bagItems); storeGrid.refresh(State.storeItems);
+    renderBagTabs(); syncBagTitle(); renderWeights(); renderStoreStats(); renderSortButtons();
+    applyPageLayout();
+    viewportFit.apply(); placeGroundDock();
+  }
+});
+
+/* ── 关闭：✕ / ESC / 点空白（mousedown 守卫：拖出格子松手时 click 的 target 是最近公共祖先） ── */
+var overlayDown = false;
+function onClose(){
+  if (panelClosed) return;
+  panelClosed = true; closeCatMenu(); hideItemTip();
+  core.UnitySendEvent('CLOSE');
+}
+/* 空白 = body，或透明的布局容器本身：.hub-root 按最高的右栏撑满整块高度，左栏下方、两栏间距、中间列上下的空处
+   点到的都是它或中间列。只认 body 的话这些地方看着是空白、点了却没反应。
+   分类下拉开着时，点空白只收下拉（document 上那条监听负责），不关面板。 */
+function isBlank(el){ return el === document.body || el === $('hubRoot') || el === $('midCol') || el === $('midTake'); }
+document.body.addEventListener('mousedown', function(e){ overlayDown = isBlank(e.target); });
+document.body.addEventListener('click', function(e){
+  if (!overlayDown) return;
+  overlayDown = false;
+  if (!isBlank(e.target) || $('catWrap').classList.contains('open')) return;
+  onClose();
+});
+/* ESC 不在这里接。WebUI 预制体 KeyboardEnabled=0（全局关 Vuplex 键盘转发），页面一个键都收不到——
+   这里曾有一个 keydown → send('BACK') 的监听器，从头到尾是死代码。
+   逐级后退现由 C# 侧 ReduxUISystem.HandleEscKey 的硬编码拦截段派 Ac_DroneHub_EscBack 完成（非主页退一级、
+   主页关面板），口径与标题栏「‹ 返回」共用 Reducer 里的 BackOneLevel。 */
+
+$('tabScrollLeft').onclick  = function(){ $('bagTabsScroll').scrollLeft -= 90; setTimeout(updateTabScrollButtons, 280); };
+$('tabScrollRight').onclick = function(){ $('bagTabsScroll').scrollLeft += 90; setTimeout(updateTabScrollButtons, 280); };
+$('bagTabsScroll').addEventListener('scroll', updateTabScrollButtons);
+
+bagGrid.refresh([]); storeGrid.refresh([]);
+renderBagTabs(); renderWeights(); renderStoreStats(); renderSortButtons(); applyPageLayout();
+core.notifyReady();
+</script>
+</body>
+</html>

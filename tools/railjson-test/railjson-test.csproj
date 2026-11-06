@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- RailJson 解析器测试工件（评审 Important 3）：链源码不复制——直接编译
+       ../../SurvivalLog.CabinetEverywhere/RailJson.cs（纯托管零游戏依赖，可独立构建）。
+       运行：DOTNET_MULTILEVEL_LOOKUP=0 <dotnet> run · tools/railjson-test · Release -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>railjson-test</AssemblyName>
+    <RootNamespace>RailJsonTest</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\SurvivalLog.CabinetEverywhere\RailJson.cs" Link="RailJson.cs" />
+  </ItemGroup>
+
+</Project>

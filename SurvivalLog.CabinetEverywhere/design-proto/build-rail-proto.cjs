@@ -6,8 +6,9 @@
  * 规格文档: ../UI-SPEC.md（交互与几何的唯一定义源）；截图存档见 shots/
  *
  * 场景 ↔ 官方页面：
- *   backpack 单独背包    BackpackUI.html   切 .bag-slot（整个背包区换成侧栏；bagonly 纯背包模式）
- *   rack     整理柜      MaterialRack.html 切 .rack-system（官方原版双面板整体移除，注入自研双面板，v11）
+ *   backpack 单独背包    BackpackUI.html iframe 真渲染（对齐整理物资背包侧：12列+滚动；负重条保留）
+ *   access   取用界面    BackpackUI.html iframe 真渲染（单柜面板：柜名+分类按钮，12列+滚动，无负重条）
+ *   organize 整理物资    BackpackUI.html iframe 真渲染（官方双背包，12列+滚动，柜侧无负重条）
  *   cook     烹饪        Cooking.html      切 .panel（背包面板）
  *   brew     酿酒桶      BrewPanel.html    刷 .col（背包列）
  *   cage     老鼠笼      RatCage.html      刷 .panel（背包面板）
@@ -21,7 +22,19 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC = path.join(__dirname, '..', '..', '..', 'suite', 'tools', 'webui_src', 'UI');
+/* suite 官方源码快照定位：主仓布局 ../../../suite；worktree 布局（.worktrees/<名>/…）向上
+   逐级找 suite/tools/webui_src（与 serve.cjs 两级解析同理） */
+function findSuiteUi() {
+  const rel = ['suite', 'tools', 'webui_src', 'UI'];
+  let d = __dirname;
+  for (let up = 0; up < 6; up++) {
+    const cand = path.join.apply(null, [d].concat(rel));
+    if (fs.existsSync(cand)) return cand;
+    d = path.dirname(d);
+  }
+  return path.join.apply(null, [__dirname, '..', '..', '..'].concat(rel));
+}
+const SRC = findSuiteUi();
 const OUT = path.join(__dirname, 'rail-game-1to1.html');
 const OUT_STANDALONE = path.join(__dirname, 'standalone.html');
 
@@ -120,13 +133,6 @@ function buildBackpack() {
   return { style: p.style, body: b, shell: 'bag-panel' };
 }
 
-/* ── 整理柜 MaterialRack：官方 rack-system（原版双面板）整体切掉，rail.js 注入自研双面板：
-     左 = 优化版背包面板（我们的设计），右 = 柜子侧栏。官方原版背包不再出现（v11） ── */
-function buildRack() {
-  const p = extract('MaterialRack/MaterialRack.html');
-  let b = cutRail(p.body, '<div class="rack-system"', 'div');
-  return { style: p.style, body: b, shell: 'rack-system' };
-}
 
 /* ── 烹饪 Cooking ── */
 function buildCook() {
@@ -229,9 +235,18 @@ function buildDrone() {
   return { style: p.style, body: b, shell: 'pane mine' };
 }
 
+/* v13.2（作者 2026-10-31 审核）：取用/整理物资 两界面=官方页面 iframe 真渲染（rail.js 喂数+mod CSS）
+   ——取用=单柜面板（柜名+分类标签按钮，无负重条）；整理物资=官方双背包（柜侧无负重条）。
+   mod 改造点：宽度统一 12 列 / 高度扩容+纵向滚动（gutter 不压格）。 */
+function buildLive(kind) {
+  return { style: '', body: '<iframe class="proto-live" data-live="' + kind + '" src="./fixtures/BackpackUI.html"></iframe>', shell: 'live', live: kind };
+}
 const scenes = {
-  backpack: buildBackpack(),
-  rack: buildRack(),
+  /* v13.3（作者 2026-10-31）：单独背包不再注入自研侧栏，对齐整理物资背包侧=官方页真渲染
+     （同 12 列+高度滚动；背包侧负重条保留）。旧注入版 buildBackpack() 保留备查不再挂场景。 */
+  backpack: buildLive('backpack'),
+  access: buildLive('access'),
+  organize: buildLive('organize'),
   cook: buildCook(),
   brew: buildBrew(),
   cage: buildCage(),
@@ -248,7 +263,7 @@ const RAIL_CSS = fs.readFileSync(path.join(__dirname, 'rail.css'), 'utf8');
 const RAIL_JS = fs.readFileSync(path.join(__dirname, 'rail.js'), 'utf8');
 
 const SCENE_LABELS = [
-  ['backpack', '单独背包'], ['rack', '整理柜'], ['cook', '烹饪'], ['brew', '酿酒桶'],
+  ['backpack', '单独背包'], ['access', '取用界面'], ['organize', '整理物资'], ['cook', '烹饪'], ['brew', '酿酒桶'],
   ['cage', '老鼠笼'], ['shred', '粉碎机'], ['press', '食物压制器'], ['dye', '颜料桶'],
   ['tool', '工作台'], ['trade', '无人机交易'], ['drone', '调度机队']
 ];
@@ -271,7 +286,7 @@ ${Object.entries(scenes).map(([k, v]) => `<style id="gs-${k}" class="gs">${v.sty
   <span class="srp-badge" id="scaleBadge">1536×864 · 100%</span>
 </div>
 <script id="scene-data" type="application/json">${JSON.stringify({
-  scenes: Object.fromEntries(Object.entries(scenes).map(([k, v]) => [k, { body: v.body, shell: v.shell }]))
+  scenes: Object.fromEntries(Object.entries(scenes).map(([k, v]) => [k, { body: v.body, shell: v.shell, live: v.live || null }]))
 }).replace(/</g, '\\u003c')}</script>
 <script>
 ${RAIL_JS}

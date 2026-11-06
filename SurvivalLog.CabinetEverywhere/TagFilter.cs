@@ -110,7 +110,8 @@ internal static class TagFilter
     /// 材料架补"材料"伪标签保留在 t 数组内）；lib = 标签库（含 dim：0=物资，1/2/3=食物细分行，4=全部
     /// 食物——JS 侧把 1-4 汇总为一个"食物"选项；v3 追加 icon/color 原样字符串透出，JS 不解析只透传）；
     /// scenario = 页面 id→"food"|"material"|"browser"（cfg [Scenario] View_*，页面 id 用 T1 实测清单——
-    /// Trade 不是 TradeUI；T5 仅下发，JS 消费在 T6）。
+    /// Trade 不是 TradeUI；T5 仅下发，JS 消费在 T6）；railOn = [Rail] Enable 直出（T13，JS 侧
+    /// rail 覆盖页 UI 行为让位门，见 DESIGN.md §9）。
     /// </summary>
     private static string BuildDataJson()
     {
@@ -177,7 +178,11 @@ internal static class TagFilter
         sb.Append("\"GreenhouseBuild\":\"").Append(ViewStr(CabinetEverywherePlugin.ViewGreenhouseBuild)).Append("\",");
         sb.Append("\"Trade\":\"").Append(ViewStr(CabinetEverywherePlugin.ViewTrade)).Append("\",");
         sb.Append("\"DroneHub\":\"").Append(ViewStr(CabinetEverywherePlugin.ViewDroneHub)).Append("\"");
-        sb.Append("}}");
+        // railOn 段（T13）：[Rail] Enable 直出（RailUi.Enabled=T8 同一门语义，null 视同开）。
+        // rail 开 → tagfilter.page.js 对 rail 覆盖的 12 页全部 UI 行为让位（旧页签隐藏/自绘
+        // 下拉/A-D 弹回全跳过——官方页签已随宿主面板移除，跳过是防其作用于不存在 DOM 报错）；
+        // false → 旧行为完全不变（回退态）。数据推送本身保留（owners/lib/scenario 照常直推，无害）。
+        sb.Append("},\"railOn\":").Append(RailUi.Enabled ? "true" : "false").Append('}');
         return sb.ToString();
     }
 

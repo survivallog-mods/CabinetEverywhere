@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title></title>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
+<script src="../../webui-rackrows.js"></script>
+<style>
+/* ══════════════════════════════════════════════════════════════════════════
+   暖房工程面板
+   左 = 取材页签（角色背包 + 家里的取材柜，行为同粉碎机左栏）
+   中 = 待交格（工程台自己的容器 8×7）：从左栏拖进来 = 物品真的搬进去了，关面板也留在里面
+   右 = 暖房工程四期竖列表（当期逐项 已交 / 需要，上色期可选暖房颜色）
+
+   视觉沿用同线染料桶面板的暖金 / 琥珀 / 绿基调。不用 backdrop-filter、不引外链字体、无常驻动画。
+   格子尺寸 40 / 6 / 10 与 webui-bag.js createGridBag 默认值严格对应。
+   竖向按 864 CSS px 设计，横向不做假设（外层 flex 居中，放不下时整体按比例缩小）。
+   ══════════════════════════════════════════════════════════════════════════ */
+:root{
+  --warm-gold:#e8b04b; --amber:#c8873a; --ok-green:#7fae62;
+  --leaf:#8cc45f; --leaf-deep:#4a6b33; --danger-red:#e05555;
+  --txt:#f1ece2; --txt-dim:#b0a794; --txt-dark:#847b6c;
+  --bd:rgba(232,176,75,.18); --bd-leaf:rgba(140,196,95,.22); --hair:rgba(255,255,255,.06);
+  --grid-bg:#0b0906; --slot-border:rgba(255,255,255,.12);
+  --slot-bg:linear-gradient(180deg,#181410 0%,#221c16 100%);
+  --slot:40px; --gap:6px; --gpad:10px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; padding:20px; background-color:transparent; color:var(--txt);
+  font-family:'Segoe UI',"Microsoft YaHei",sans-serif; font-size:13px;
+  overflow:hidden; text-shadow:0 1px 2px rgba(0,0,0,.6);
+  display:flex; justify-content:center; align-items:center; min-height:100vh;
+}
+/* 压暗衬底：rgba 底色（最外层背后没有同文档内容，不用 backdrop-filter） */
+body::before{content:'';position:absolute;inset:0;background-color:rgba(12,9,5,.55);z-index:-1;pointer-events:none;}
+
+.gh{display:flex;align-items:flex-start;gap:16px;}
+
+/* ── 面板通用 ── */
+.pane{background:linear-gradient(168deg, rgba(38,30,21,.975) 0%, rgba(20,16,11,.985) 100%);
+  border:1px solid var(--bd);border-radius:8px;padding-bottom:13px;
+  box-shadow:0 26px 64px -12px rgba(0,0,0,.9),0 2px 10px rgba(0,0,0,.5),inset 0 1px 0 rgba(240,205,150,.09);}
+.pane.cart{border-color:var(--bd-leaf);padding:12px 14px 12px;display:flex;flex-direction:column;align-items:center;}
+.pane.pick{width:fit-content;}
+.pane.prog{width:318px;}
+.tb{height:41px;display:flex;align-items:center;padding:0 13px;position:relative;border-bottom:1px solid var(--hair);}
+.tb::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(232,176,75,.45),transparent);}
+.tb .dot{width:5px;height:5px;border-radius:50%;background:var(--warm-gold);margin-right:9px;box-shadow:0 0 8px var(--warm-gold);flex-shrink:0;}
+.tb .t{font-size:13.5px;font-weight:600;letter-spacing:1.6px;color:#f3e3c6;white-space:nowrap;}
+.tb .side{margin-left:10px;font-size:12px;color:#f0dcb4;letter-spacing:.6px;white-space:nowrap;}
+.tb .x{margin-left:auto;width:22px;height:22px;padding:0;border-radius:4px;border:1px solid var(--hair);background:transparent;
+  color:var(--txt-dim);font-size:13px;line-height:1;cursor:pointer;font-family:inherit;}
+.tb .x:hover{color:var(--danger-red);border-color:rgba(224,85,85,.5);}
+
+/* ── 左栏：页签（首个页签固定，其余可横向滚动） ──
+   左栏宽度只由格子 / 分行视图决定：页签条 width:0 + min-width:100% 不参与撑宽，放不下就出左右箭头。
+   否则页签多时整栏被撑宽，页签上的件数一变（交付、退回）整栏宽度跟着变 */
+.left-tabs{display:flex;align-items:stretch;gap:4px;width:0;min-width:100%;margin-bottom:10px;}
+.left-tab-pinned{flex-shrink:0;display:flex;gap:4px;position:relative;margin-right:12px;}
+.left-tab-pinned::after{content:'';position:absolute;right:-8px;top:22%;bottom:22%;width:1px;background:rgba(255,255,255,.18);pointer-events:none;}
+.left-tab-pinned.solo{margin-right:0;}
+.left-tab-pinned.solo::after{display:none;}
+.left-tabs-scroll{position:relative;flex:1 1 0;min-width:0;overflow-x:hidden;display:flex;gap:4px;}
+.left-tab{flex-shrink:0;padding:6px 12px;font-size:12.5px;font-weight:600;letter-spacing:1px;font-family:inherit;cursor:pointer;
+  color:var(--txt-dark);background:rgba(0,0,0,.35);border:1px solid var(--hair);border-radius:7px;white-space:nowrap;position:relative;}
+.left-tab:hover{color:var(--txt);border-color:rgba(255,255,255,.2);}
+.left-tab.active{color:#f3e3c6;cursor:default;border-color:rgba(232,176,75,.55);
+  background:linear-gradient(180deg,rgba(72,58,30,.6) 0%,rgba(40,32,18,.62) 100%);box-shadow:0 0 10px rgba(232,176,75,.10);}
+.left-tab .cnt{margin-left:5px;font-family:Consolas,monospace;font-size:11px;color:var(--leaf);font-weight:600;}
+.tab-scroll-btn{flex-shrink:0;width:24px;padding:0;display:none;align-items:center;justify-content:center;font-size:16px;font-weight:bold;
+  color:var(--txt-dark);background:rgba(0,0,0,.35);border:1px solid var(--hair);border-radius:7px;cursor:pointer;font-family:inherit;}
+.tab-scroll-btn.is-visible{display:flex;}
+.tab-scroll-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+/* 负重（只在角色背包页签显示；隐藏时高度让给下面的容器，左栏总高不变）。填充走 scaleX，不做 width 过渡 */
+.weight-section{width:100%;margin-bottom:10px;}
+.weight-label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--txt-dark);margin-bottom:5px;}
+.weight-label b{color:var(--txt);font-weight:600;}
+.weight-bar{height:7px;border-radius:4px;background:#0a0806;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.5);}
+.weight-fill{width:100%;height:100%;transform:scaleX(0);transform-origin:left;
+  background:linear-gradient(90deg,#7a5a1c,var(--warm-gold));transition:transform .25s ease;}
+
+.cart-ft{width:0;min-width:100%;display:flex;gap:8px;margin-top:10px;}
+.minibtn{flex:1 1 0;padding:7px 10px;border-radius:6px;font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;
+  color:var(--txt);background:linear-gradient(180deg,rgba(58,50,40,.9),rgba(38,32,26,.92));border:1px solid rgba(255,255,255,.14);}
+.minibtn:hover{border-color:rgba(232,176,75,.45);}
+.minibtn.primary{color:#fff3da;background:linear-gradient(180deg,rgba(120,88,32,.94),rgba(78,56,18,.96));border-color:rgba(232,176,75,.55);}
+.minibtn.primary:hover{border-color:var(--warm-gold);}
+.sidehint{width:0;min-width:100%;padding:8px 0 0;font-size:10.5px;color:var(--txt-dark);text-align:center;line-height:1.6;}
+
+/* ── 格子（左栏 / 待交格同一套；createGridBag 不带样式，每个页面自备） ── */
+.gridwrap{padding:12px 14px 0;}
+.grid{position:relative;background:var(--grid-bg);padding:var(--gpad);border-radius:8px;display:grid;gap:var(--gap);width:fit-content;
+  border:1px solid rgba(0,0,0,.5);box-shadow:inset 0 0 0 1px rgba(0,0,0,.65), inset 0 2px 8px rgba(0,0,0,.55);}
+.grid.pk{border-color:rgba(232,176,75,.22);}
+.slot{width:var(--slot);height:var(--slot);background:var(--slot-bg);border:1px solid var(--slot-border);border-radius:3px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.5), inset 0 -1px 0 rgba(240,220,180,.05);
+  position:relative;}
+.slot.valid-hover{background:rgba(140,196,95,.22);border-color:var(--leaf);}
+.slot.invalid-hover{background:rgba(224,85,85,.2);border-color:var(--danger-red);}
+.item{position:absolute;z-index:10;cursor:grab;display:flex;justify-content:center;align-items:center;
+  background:linear-gradient(rgba(170,170,170,.1), rgba(170,170,170,.1)), var(--slot-bg);
+  border:1.5px solid rgba(200,200,200,.5);border-radius:4px;box-shadow:0 2px 6px rgba(0,0,0,.5);}
+.item:hover{border-color:var(--warm-gold);z-index:150;}
+.item img{max-width:86%;max-height:86%;object-fit:contain;pointer-events:none;position:relative;z-index:2;}
+.item-count{position:absolute;bottom:1px;right:3px;font-size:12px;font-weight:bold;color:#fff;
+  text-shadow:0 1px 2px #000,0 0 3px rgba(0,0,0,.9);pointer-events:none;z-index:6;line-height:1;}
+/* 染料八色共用一张图标：格子上改画色块 */
+.item .sw{width:22px;height:22px;border-radius:4px;border:1px solid rgba(255,255,255,.3);pointer-events:none;position:relative;z-index:2;}
+.item.has-sw img{display:none;}
+/* 这一期不收 / 已交满 / 放不下的压暗 */
+.item.not-wanted{filter:saturate(.2) brightness(.45);border-color:rgba(255,255,255,.22);}
+.item.not-wanted:hover{filter:saturate(.4) brightness(.7);border-color:rgba(255,255,255,.35);}
+/* 行为队列占用（使用中 / 排队等待），与背包、粉碎机同一套表现 */
+.item.in-action{border-color:rgba(38,198,218,.85);}
+.action-glow{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:3;opacity:.85;
+  box-shadow:inset 0 0 8px rgba(38,198,218,.35),inset 0 0 2px rgba(38,198,218,.55);}
+.item.in-action.using .action-glow{animation:action-mark-breathe 1.6s ease-in-out infinite;}
+@keyframes action-mark-breathe{0%,100%{opacity:.45;}50%{opacity:1;}}
+html.quality-low .item.in-action.using .action-glow{animation:none;opacity:.85;}
+/* 待交格里的物品：点一下退回左栏当前页签，也可以直接拖回去 */
+.grid.pk .item{border-color:rgba(232,176,75,.55);}
+.grid.pk .item:hover{border-color:var(--warm-gold);}
+.grid.pk .item.flash::after{content:'';position:absolute;inset:-2px;border-radius:5px;pointer-events:none;
+  box-shadow:0 0 0 2px var(--warm-gold),0 0 14px rgba(232,176,75,.7);opacity:0;animation:pk-flash .5s ease-out;}
+@keyframes pk-flash{0%{opacity:1;}100%{opacity:0;}}
+.gridmsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:1;
+  font-size:12px;color:var(--txt-dark);letter-spacing:.5px;pointer-events:none;}
+.grid.off .slot{opacity:.35;}
+
+/* ── 左栏：材料架分行视图（尺寸沿用格子页签算好的包络，行多时纵向滚动） ── */
+.rack-view{position:relative;overflow-x:hidden;overflow-y:auto;background:#07060a;border-radius:6px;padding:8px;
+  box-shadow:inset 0 2px 10px rgba(0,0,0,.85);}
+.rack-view::-webkit-scrollbar{width:6px;}
+.rack-view::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:3px;}
+#cartRack.rk-host{--rk-accent:#e8b04b;--rk-card-bg:linear-gradient(rgba(170,170,170,.1),rgba(170,170,170,.1)),linear-gradient(180deg,#181410 0%,#221c16 100%);}
+/* 这一期不收 / 已交满的行压得和格子页签的压暗物品一样重 */
+#cartRack .rk-row.rk-blocked .rk-track{opacity:.4;filter:saturate(.3);}
+#cartRack .rk-row.rk-blocked .rk-plate{opacity:.5;}
+
+/* ── 中栏：待交 ── */
+.toast{margin:10px 14px 0;padding:6px 10px;border-radius:5px;font-size:12px;line-height:1.5;display:none;
+  color:#ffb4af;background:rgba(255,90,80,.10);border:1px solid rgba(255,120,110,.5);max-width:382px;}
+.toast.show{display:block;}
+.toast.ok{color:#cfe3b4;background:rgba(140,196,95,.10);border-color:rgba(140,196,95,.5);}
+.sum{display:flex;align-items:baseline;gap:8px;margin:11px 14px 0;padding-top:9px;border-top:1px dashed var(--bd);}
+.sum .lb{font-size:11.5px;color:var(--txt-dark);}
+.sum .v{margin-left:auto;font-family:Consolas,monospace;font-size:15px;font-weight:600;color:var(--warm-gold);}
+.sum .u{font-size:11px;color:var(--txt-dim);}
+.acts{padding:10px 14px 0;display:flex;gap:8px;}
+.gbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 14px;border-radius:6px;
+  font-size:13px;font-weight:bold;color:#e9eed6;font-family:inherit;cursor:pointer;white-space:nowrap;
+  background:linear-gradient(to bottom, rgba(56,68,40,.92), rgba(31,39,22,.92));
+  border:1px solid rgba(140,196,95,.5);box-shadow:inset 0 2px 6px rgba(0,0,0,.55);text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.gbtn:hover:not(:disabled){border-color:var(--leaf);}
+.gbtn .ar{width:0;height:0;border-left:9px solid var(--leaf);border-top:6px solid transparent;border-bottom:6px solid transparent;}
+.gbtn:disabled{opacity:.42;filter:grayscale(.7);cursor:default;}
+.gbtn.will{border-color:var(--warm-gold);box-shadow:inset 0 2px 6px rgba(0,0,0,.55), 0 0 14px rgba(232,176,75,.28);}
+.gbtn.will .ar{border-left-color:var(--warm-gold);}
+.gbtn.sub{flex:0 0 auto;color:var(--txt-dim);background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.14);font-weight:600;}
+.hint{padding:8px 14px 0;font-size:11px;color:var(--txt-dark);text-align:center;line-height:1.6;max-width:410px;}
+.hint.ok{color:var(--ok-green);}
+
+/* ── 右栏：暖房工程四期竖列表 ── */
+.phs{margin:12px 14px 0;display:flex;flex-direction:column;gap:4px;}
+.ph{border:1px solid var(--hair);border-radius:5px;background:rgba(255,255,255,.025);}
+.ph .row{display:flex;align-items:center;gap:8px;height:31px;padding:0 9px;cursor:pointer;}
+.ph.cur .row{cursor:default;}
+.ph .mk{width:19px;height:19px;flex-shrink:0;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:Consolas,monospace;font-size:11px;font-weight:700;color:var(--txt-dark);border:1px solid rgba(132,123,108,.7);}
+.ph .nm{font-size:12.5px;font-weight:600;letter-spacing:.6px;color:var(--txt-dim);white-space:nowrap;}
+.ph .sub{flex:1;min-width:0;font-size:11px;color:var(--txt-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ph .rt{font-family:Consolas,monospace;font-size:12px;color:var(--txt-dark);white-space:nowrap;}
+.ph .rt .u{font-family:inherit;font-size:10.5px;color:var(--txt-dim);margin-left:3px;}
+.ph.done .mk{border-color:var(--leaf);color:var(--leaf);background:rgba(140,196,95,.12);}
+.ph.done .nm{color:#cfe3b4;}
+.ph.done .rt{color:var(--leaf);}
+.ph.cur{border-color:rgba(232,176,75,.5);background:rgba(232,176,75,.08);}
+.ph.cur .mk{border-color:var(--warm-gold);background:var(--warm-gold);color:#241a0c;text-shadow:none;}
+.ph.cur .nm{color:#f0dcb4;}
+.ph.cur .rt{font-size:13px;font-weight:600;color:var(--warm-gold);}
+.ph.open:not(.cur){border-color:rgba(255,255,255,.16);}
+.ph .body{padding:0 9px 9px;}
+/* 进度条：已交段 + 待交预览段，都用 transform，不做布局过渡 */
+.bar{position:relative;height:9px;border-radius:5px;overflow:hidden;background:rgba(0,0,0,.5);
+  border:1px solid rgba(255,255,255,.07);box-shadow:inset 0 1px 4px rgba(0,0,0,.6);}
+.bar i,.bar u,.mb i,.mb u{position:absolute;left:0;top:0;bottom:0;width:100%;transform-origin:left;}
+.bar i{background:linear-gradient(90deg,var(--leaf-deep),var(--leaf));}
+.bar u{background:linear-gradient(90deg,rgba(232,176,75,.30),rgba(232,176,75,.62));}
+.line{font-size:11px;color:var(--txt-dark);line-height:1.6;margin-top:7px;}
+.rqcap{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px;font-size:11px;color:var(--txt-dark);}
+.rqcap span:first-child{color:#f0dcb4;font-weight:600;letter-spacing:.8px;}
+.reqs{display:flex;flex-direction:column;gap:4px;margin-top:5px;}
+.rq{padding:4px 7px 5px;border-radius:4px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);min-width:0;}
+.rq .hd{display:flex;align-items:center;gap:6px;}
+.ic{width:22px;height:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  border-radius:3px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.07);}
+.ic img{max-width:88%;max-height:88%;}
+.ic .sw{width:13px;height:13px;border-radius:3px;border:1px solid rgba(255,255,255,.25);}
+.rq .nm{flex:1;min-width:0;font-size:12px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rq .nm small{font-size:10.5px;color:var(--txt-dark);margin-left:4px;}
+.rq .add{font-family:Consolas,monospace;font-size:11.5px;font-weight:600;color:var(--warm-gold);}
+.rq .ct{font-family:Consolas,monospace;font-size:12.5px;color:var(--txt-dim);white-space:nowrap;}
+.rq .ct b{color:#f3e3c6;font-weight:600;}
+.rq .mb{position:relative;height:3px;margin-top:4px;border-radius:2px;background:rgba(0,0,0,.5);overflow:hidden;}
+.rq .mb i{background:var(--leaf);}
+.rq .mb u{background:var(--warm-gold);opacity:.75;}
+.rq.full{border-color:rgba(140,196,95,.35);background:rgba(140,196,95,.07);}
+.rq.full .ct,.rq.full .ct b{color:var(--leaf);}
+.rq .kinds{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;align-items:center;}
+.rq .kinds .ic{width:18px;height:18px;}
+.rq .kinds .ic .sw{width:11px;height:11px;}
+.rq .kinds em{font-style:normal;font-size:10.5px;color:var(--txt-dark);margin-left:4px;}
+.plist{margin-top:6px;opacity:.75;}
+.pm{display:flex;align-items:center;gap:8px;padding:2px 4px;}
+.pm .ic{width:20px;height:20px;}
+.pm .n{flex:1;min-width:0;font-size:11.5px;color:var(--txt-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pm .e{font-family:Consolas,monospace;font-size:11.5px;color:var(--txt-dim);}
+.plist.two{display:grid;grid-template-columns:1fr 1fr;}
+/* 重新刷漆：工程列表底部的一行（不算第五期，用分隔线与刷子标记区分），配色取雾紫与四期的金色分开 */
+.rpsep{display:flex;align-items:center;gap:8px;margin:4px 2px 0;font-size:10.5px;color:var(--txt-dark);letter-spacing:.8px;}
+.rpsep::before,.rpsep::after{content:'';flex:1;height:1px;background:var(--hair);}
+.ph.rp .mk{border-color:#c9a2d6;color:#e6cdef;background:rgba(163,153,173,.14);}
+.ph.rp .mk svg{width:11px;height:11px;display:block;}
+.ph.rp .nm{color:#e6d6ee;}
+.ph.rp .sub{color:#b9a9c4;}
+.ph.rp .rt{color:#e6d6ee;display:flex;align-items:center;gap:5px;}
+.ph.rp.open{border-color:rgba(201,162,214,.55);background:rgba(163,153,173,.09);}
+.dyes.rpd{grid-template-columns:repeat(8,1fr);margin-bottom:20px;}
+.dy.now{position:relative;cursor:default;}
+.dy.now::after{content:attr(data-tag);position:absolute;left:50%;top:100%;transform:translate(-50%,2px);font-size:9.5px;color:var(--txt-dim);white-space:nowrap;}
+.rpnote{margin-top:8px;font-size:11px;line-height:1.6;color:var(--txt-dim);}
+.rpnote.warn{color:#e8b04b;}
+.gbtn.rpbtn{background:linear-gradient(180deg,#a98bb6,#7d6690);border-color:#c9a2d6;color:#fff;}
+.gbtn.rpbtn:disabled{filter:grayscale(.7) brightness(.7);}
+.alldone{padding:14px 4px 4px;font-size:12px;color:#cfe3b4;text-align:center;line-height:1.7;}
+
+/* 上色期：暖房颜色 */
+.dyes{display:grid;grid-template-columns:repeat(9,1fr);gap:4px;margin-top:6px;}
+.dy{height:22px;padding:0;border-radius:4px;border:1px solid rgba(255,255,255,.2);cursor:pointer;font-family:inherit;}
+.dy:hover{border-color:rgba(255,255,255,.6);}
+.dy.on{border-color:#fff;box-shadow:0 0 0 2px var(--warm-gold);}
+.dy.dflt{background:#8c867c;color:#241a0c;font-size:10px;font-weight:600;letter-spacing:0;text-shadow:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.swl{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid rgba(255,255,255,.25);vertical-align:-1px;margin:0 4px 0 2px;}
+
+/* 悬停提示（位置按 body zoom 换算） */
+.tip{position:fixed;z-index:2000;display:none;pointer-events:none;max-width:250px;padding:8px 10px;border-radius:6px;
+  font-size:12px;line-height:1.55;color:var(--txt);background:rgba(30,24,20,.96);border:1px solid rgba(232,176,75,.5);
+  box-shadow:0 8px 24px rgba(0,0,0,.8);}
+.tip .t{font-weight:600;color:#f3e3c6;}
+.tip .m{color:var(--txt-dark);font-size:11px;}
+.tip .s{margin-top:3px;}
+.tip .s.ok{color:var(--leaf);}
+.tip .s.no{color:#e08a80;}
+</style>
+</head>
+<body>
+<div class="gh" id="ghRoot">
+
+  <!-- 左栏：取材页签 -->
+  <section class="pane cart" id="cartPane">
+    <div class="left-tabs">
+      <div class="left-tab-pinned" id="tabPinned"></div>
+      <button class="tab-scroll-btn" id="tabLeft" type="button">&lsaquo;</button>
+      <div class="left-tabs-scroll" id="tabsScroll"></div>
+      <button class="tab-scroll-btn" id="tabRight" type="button">&rsaquo;</button>
+    </div>
+    <div class="weight-section" id="weightSection">
+      <div class="weight-label"><span id="weightLabel">负重</span><b id="weightText">—</b></div>
+      <div class="weight-bar"><div class="weight-fill" id="weightFill"></div></div>
+    </div>
+    <div class="grid" id="cartGrid"></div>
+    <div class="rack-view" id="cartRack" style="display:none"></div>
+    <div class="cart-ft">
+      <button class="minibtn" id="btnSort" type="button"></button>
+      <button class="minibtn primary" id="btnQuick" type="button"></button>
+    </div>
+    <div class="sidehint" id="sideHint"></div>
+  </section>
+
+  <!-- 中栏：待交格 -->
+  <section class="pane pick">
+    <div class="tb"><span class="dot"></span><span class="t" id="pickTitle"></span><span class="side" id="pickSide"></span></div>
+    <div class="toast" id="toast"></div>
+    <div class="gridwrap"><div class="grid pk" id="pickGrid"></div></div>
+    <div class="sum" id="sum"><span class="lb" id="sumLabel"></span><span class="v" id="sumV">0</span><span class="u" id="sumU"></span></div>
+    <div class="acts">
+      <button class="gbtn sub" id="btnClear" type="button"></button>
+      <button class="gbtn" id="btnDeliver" type="button"><span id="btnDeliverT"></span><span class="ar"></span></button>
+    </div>
+    <div class="hint" id="pickHint"></div>
+  </section>
+
+  <!-- 右栏：暖房工程 -->
+  <section class="pane prog">
+    <div class="tb"><span class="dot"></span><span class="t" id="pageTitle"></span><button class="x" id="closeBtn" type="button" aria-label="Close">&#10005;</button></div>
+    <div class="phs" id="phases"></div>
+  </section>
+</div>
+<div class="tip" id="itemTip" data-no-sync></div>
+
+<script>
+var core = createWebUICore('GreenhouseBuild');
+var $ = function(id){ return document.getElementById(id); };
+var viewportFit = createViewportFit({ measureSelector:'#ghRoot', margin:40, bodyHeightProp:'minHeight' });
+
+/* ── 文案 ──
+   C# 侧取词走 ToConstantTextOrExposeKey：词条还没导表回 ''（用下面的中文占位），
+   导表了但某语言缺译回 loc key（让 key 上屏，不能用中文把它盖住）。所以合并时只采纳非空值。 */
+var i18nText = {
+  pageTitle:'暖房工程', bagTitle:'角色背包', weightLabel:'负重', sortBtn:'整理', quickLoadBtn:'一键放入',
+  sideHint:'右键 / Shift+点击 快速放入 · 拖动换位置 · 压暗的物品这一期不收或已交满',
+  tipCells:'占格', warnNoRoom:'这里放不下，换个空位',
+  pickTitle:'待交', deliverBtn:'交付', clearBtn:'全部退回',
+  emptyPickHint:'从左栏拖进来', pickReturnHint:'点击待交格里的物品退回原处',
+  willAdvanceHint:'交完这一批，这一期就完工了，面板关闭开始施工',
+  phaseShutHint:'这一期还动不了', allDoneHint:'四期已完工，不再收材料',
+  reqCaption:'这一期要交', reqColumns:'已交 / 需要', poolAll:'都收', dyeOnlyThis:'只收这一种颜色',
+  kindsCount:'{0} 种材料', dyeCaption:'暖房颜色', dyeDefault:'默认颜色', dyeDefaultShort:'默认',
+  dyeLineOn:'只收{0}染料，交满后暖房刷成这个颜色。',
+  dyeLineOff:'默认颜色：什么颜色的染料都收，暖房不换色。选了颜色就只收那一种。',
+  tipPending:'（待交 +{0}）', tipReturn:'点击退回{0}', tipRackTake:'点这一行取一件', noteDelivered:'交付 {0} {1}',
+  errPhaseNotOpen:'这一期还动不了', errAlreadyComplete:'四期已经全部建完',
+  errItemGone:'有东西已经不在原处了', errNotWanted:'这一期收不了这些',
+  errLineFull:'有一项已经交满了，这一批没交出去', errDyeMismatch:'只收所选颜色的染料', errGeneric:'交付失败',
+  repaintName:'重新刷漆', repaintSub:'可以反复刷，每次 {0} 桶同色染料', repaintSep:'工程之外', repaintBtn:'刷漆', repaintUnit:'桶',
+  repaintNow:'现在的颜色', repaintPickCaption:'换成什么颜色', repaintNowTag:'当前',
+  repaintLineOn:'只收{0}染料，交满 {1} 桶后暖房刷成这个颜色。', repaintLineOff:'选一个和现在不同的颜色，交满 {0} 桶该色染料就能重新刷。',
+  repaintSwitchWarn:'已交 {0} 桶{1}染料；换颜色会把它们退回背包。', repaintPickFirst:'先在右栏选一个颜色',
+  repaintWillStart:'交完这一批就够 {0} 桶了，面板关闭开始刷漆', allDoneRepaint:'四期已完工 · 想换颜色可以重新刷漆',
+  errRepaintClosed:'现在还不能重新刷漆', errRepaintNoTarget:'先选一个刷漆颜色'
+};
+var LIST_FALLBACK = {
+  phaseNames:['框架','采光供暖','上色','植栽'],
+  phaseUnits:['件','件','份','朵'],
+  poolLabels:['','','染料','花'],
+  poolNotes:['','','颜色不限，染料桶产出','品种不限，花盆种植'],
+  dyeNames:['鼠尾草绿','陶土橙','奶油黄','暮蓝','樱花粉','燕麦白','雾紫','赭红']
+};
+var i18nLists = {};
+function t(key){ return i18nText[key] || ''; }
+function fmt(tpl){
+  var a = Array.prototype.slice.call(arguments, 1);
+  return String(tpl || '').replace(/\{(\d+)\}/g, function(m, i){ return a[i] !== undefined ? a[i] : m; });
+}
+function listText(name, idx){
+  var arr = i18nLists[name];
+  if (arr && arr[idx]) return arr[idx];
+  var fb = LIST_FALLBACK[name];
+  return (fb && fb[idx]) || '';
+}
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+/* Logic 侧 reason 码 → 文案 key */
+var REASON_MAP = {
+  phase_not_open:'errPhaseNotOpen', already_complete:'errAlreadyComplete',
+  item_gone:'errItemGone', item_not_wanted:'errNotWanted', item_blocked:'errNotWanted',
+  line_full:'errLineFull', dye_mismatch:'errDyeMismatch',
+  repaint_closed:'errRepaintClosed', repaint_no_target:'errRepaintNoTarget'
+};
+function reasonText(code){ return t(REASON_MAP[code] || 'errGeneric'); }
+
+var State = {
+  /* 载荷 */
+  payload:null, items:{}, selRow:0,
+  /* 左栏 */
+  cartOwnerId:0, cartCols:8, cartRows:7, cartMaxCols:8, cartMaxRows:7, cartItems:[], cartIsRack:false, cartRackRows:[],
+  cartTabs:[], activeTab:0, weightCurrent:0, weightMax:0,
+  /* 待交格（工程台自己的容器） */
+  pickOwnerId:0, pickItems:[], pickCols:8, pickRows:7,
+  /* 状态 */
+  canDeliver:false, pickCount:0, willAdvance:false, pending:[],
+  /* 重新刷漆（待交格里交得掉的目标色桶数 / 能不能点 / 这一批交完就够） */
+  rpPick:0, rpCanPaint:false, rpWillStart:false
+};
+var panelClosed = false;
+var _lastErrSeq = 0, _lastNoticeSeq = 0, _toastTimer = 0;
+var _knownPickIds = null;
+
+/* ── 格子 ── */
+var GRID_CFG = (function(){
+  var cs = getComputedStyle(document.documentElement);
+  function px(name, fb){ var v = parseFloat(cs.getPropertyValue(name)); return isFinite(v) ? v : fb; }
+  return { slotSize:px('--slot', 40), gap:px('--gap', 6), padding:px('--gpad', 10) };
+})();
+function gridOuter(n){ return GRID_CFG.padding * 2 + n * GRID_CFG.slotSize + (n - 1) * GRID_CFG.gap + 2; }
+function mkCfg(cols, rows, painter){
+  return { cols:cols, rows:rows, slotSize:GRID_CFG.slotSize, gap:GRID_CFG.gap, padding:GRID_CFG.padding, onItemRendered:painter };
+}
+var cartBag = createGridBag('cartGrid', mkCfg(8, 7, paintCartItem));
+var pickBag = createGridBag('pickGrid', mkCfg(8, 7, paintPickItem));
+var cartLock = createGridSizeLock('cartGrid');
+/* 负重块占高：加载时它还显示着，趁这时量；隐藏后要把这段高度补给容器，左栏总高才不随页签跳 */
+var _weightSecH = (function(){
+  var sec = $('weightSection');
+  if (!sec) return 0;
+  return sec.offsetHeight + (parseFloat(getComputedStyle(sec).marginBottom) || 0);
+})();
+
+function paintSwatch(el, r){
+  if (!r.hex) return;
+  el.classList.add('has-sw');
+  var sw = document.createElement('span');
+  sw.className = 'sw';
+  sw.style.background = r.hex;
+  el.appendChild(sw);
+}
+function paintCartItem(el, item){
+  var r = item._raw || {};
+  if (r.why) el.classList.add('not-wanted');
+  paintSwatch(el, r);
+  if (r.actionMark > 0){
+    el.classList.add('in-action');
+    if (r.actionMark === 2) el.classList.add('using');
+    var glow = document.createElement('div');
+    glow.className = 'action-glow';
+    el.appendChild(glow);
+  }
+}
+function paintPickItem(el, item){
+  var r = item._raw || {};
+  // 摆进来之后才变成「这一期不收」的（改了暖房颜色 / 这一行已经够了）：压暗，交付时跳过
+  if (r.why) el.classList.add('not-wanted');
+  // 刷漆目标色染料与四期的花各走各的按钮：不归当前按钮的那一类也压暗（留在格子里，切过去还能交）
+  else if (rpOpen() && (rpMode() ? r.configId !== rpItem() : r.configId === rpItem())) el.classList.add('not-wanted');
+  paintSwatch(el, r);
+  if (_knownPickIds && !_knownPickIds[String(r.itemId)]) el.classList.add('flash');
+}
+function findIn(list, itemId){
+  for (var i = 0; i < list.length; i++){ if (String(list[i].itemId) === String(itemId)) return list[i]; }
+  return null;
+}
+function findCartByConfig(configId){
+  for (var i = 0; i < State.cartItems.length; i++){ if (State.cartItems[i].configId === configId) return State.cartItems[i]; }
+  return null;
+}
+
+/* ── 提示条 ── */
+function showToast(msg, good){
+  if (!msg) return;
+  var el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (good ? ' ok' : '');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function(){ _toastTimer = 0; el.className = 'toast'; viewportFit.apply(); }, good ? 3200 : 2600);
+  viewportFit.apply();
+}
+function clearToast(){
+  if (_toastTimer){ clearTimeout(_toastTimer); _toastTimer = 0; }
+  $('toast').className = 'toast';
+}
+
+/* ── 拖拽：左栏与待交格是两只真容器，来回拖都走同一条 ITEM_MOVE ── */
+var _dragging = false, _rejectShown = false;
+function inPick(itemId){ return !!findIn(State.pickItems, itemId); }
+var dragCoord = createBagDragCoordinator([cartBag, pickBag], {
+  canAcceptItem: function(bag, itemData, isFinal){
+    var raw = (itemData && itemData._raw) || {};
+    if (bag.getContainerId() !== 'pickGrid') return true;          // 回左栏：随便放，占格冲突由 checkValidity 判
+    if (itemData.containerId === 'pickGrid') return true;          // 待交格内换位
+    if (raw.why){
+      // 具体原因（这一期不收 / 这一项已交满）比通用的「放不下」有用，说了就别让回弹提示盖掉
+      if (isFinal){ showToast(raw.whyText, false); _rejectShown = true; }
+      return false;
+    }
+    return true;
+  },
+  onItemMove: function(data){ core.UnitySendEvent('ITEM_MOVE', data); },
+  onItemPickup: function(itemData){
+    hideTip();
+    _dragging = true;
+    core.UnitySendEvent('SFX_ITEM_PICKUP', { itemId: itemData ? itemData.id : 0 });
+  },
+  onItemPutback: function(){
+    if (_rejectShown){ _rejectShown = false; return; }
+    showToast(t('warnNoRoom'), false);
+  },
+  onItemHover: function(itemId, isEnter){
+    if (!isEnter){ hideTip(); return; }
+    var it = findIn(State.pickItems, itemId);
+    if (it){ showTip(it, 'pick'); return; }
+    it = findIn(State.cartItems, itemId);
+    if (it) showTip(it, 'cart'); else hideTip();
+  },
+  onItemClick: function(itemId, rightClick){
+    // 待交格里点一下 = 退回左栏当前页签；左栏里左键看详情、右键 / Shift 快速放入
+    if (inPick(itemId)){
+      core.UnitySendEvent('PICK_RETURN', { itemId: parseInt(itemId, 10) });
+      return;
+    }
+    core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId, 10), rightClick: !!rightClick });
+  },
+  onDragFinished: function(){ _dragging = false; _rejectShown = false; }
+});
+/* 落点不在任何格子上（拖出面板）：一律回弹，不把材料丢地上 */
+dragCoord.setDropInterceptor(function(){ return 'reject'; });
+
+/* ── 材料架分行视图 ── */
+var RACK_NAME_W = 64, RACK_PAD = 8, RACK_SCROLL_W = 8;
+var _rackRows = null, _rackTrackW = 0, _rackOwnerId = 0;
+function ensureRackRows(trackW){
+  if (_rackRows && _rackTrackW === trackW) return _rackRows;
+  _rackTrackW = trackW;
+  _rackRows = createRackRows($('cartRack'), {
+    trackWidth: trackW, unit: 32, rowHeight: 40, gap: 4, plateWidth: RACK_NAME_W, compact: true,
+    onCardClick: function(row){ core.UnitySendEvent('RACK_PICK', { configId: row.configId, itemId: row.lastId || 0 }); },
+    onBlocked: function(row){
+      var it = findCartByConfig(row.configId);
+      showToast(it ? it.whyText : t('errNotWanted'), false);
+    },
+    onCardHover: function(row, isEnter){
+      if (!isEnter){ hideTip(); return; }
+      var it = findCartByConfig(row.configId);
+      if (it) showTip(it, 'rack'); else hideTip();
+    }
+  });
+  return _rackRows;
+}
+function renderCartView(){
+  var grid = $('cartGrid'), rack = $('cartRack');
+  if (!State.cartIsRack){
+    rack.style.display = 'none';
+    grid.style.display = '';
+    return;
+  }
+  // 尺寸 = 最大格子容器的外框（含 1px 边框）+ 负重条让出的高度，与格子页签锁定后的左栏等大。
+  // 按参数现算而不取尺寸锁：锁的是上一个格子页签的状态，从取材柜页签切过来时会把让出的高度再算一遍
+  var w = gridOuter(State.cartMaxCols || 8), h = gridOuter(State.cartMaxRows || 7);
+  if ($('weightSection').style.display === 'none') h += _weightSecH;
+  grid.style.display = 'none';
+  rack.style.display = '';
+  rack.style.width = w + 'px';
+  rack.style.height = h + 'px';
+  var rows = ensureRackRows(Math.max(120, Math.floor(w - RACK_PAD * 2 - RACK_NAME_W - 10 - RACK_SCROLL_W)));
+  if (_rackOwnerId !== State.cartOwnerId){ _rackOwnerId = State.cartOwnerId; rows.resetCounts(); }
+  rows.render(State.cartRackRows);
+}
+
+/* ── 页签 ── */
+function renderTabs(){
+  var pin = $('tabPinned'), box = $('tabsScroll'), tabs = State.cartTabs || [];
+  pin.innerHTML = ''; box.innerHTML = '';
+  tabs.forEach(function(tab, i){
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'left-tab' + (State.activeTab === i ? ' active' : '');
+    var name = tab.name || t('bagTitle');
+    b.innerHTML = esc(name) + (tab.count > 0 ? '<span class="cnt">' + tab.count + '</span>' : '');
+    b.title = name;
+    b.onclick = function(){ if (State.activeTab !== i) core.UnitySendEvent('TAB_SWITCH', { tab: i }); };
+    (i === 0 ? pin : box).appendChild(b);
+  });
+  pin.classList.toggle('solo', tabs.length <= 1);
+  // 只在切页签时把当前页签滚进可视区：数据刷新不能把玩家用箭头翻到的位置拽回去
+  if (_lastActiveTab !== State.activeTab){ _lastActiveTab = State.activeTab; scrollActiveTabIntoView(); }
+  updateTabArrows();
+}
+var _lastActiveTab = -1;
+function scrollActiveTabIntoView(){
+  var box = $('tabsScroll'), el = box.querySelector('.left-tab.active');
+  if (!el) return;
+  if (el.offsetLeft < box.scrollLeft) box.scrollLeft = el.offsetLeft;
+  else if (el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft + el.offsetWidth - box.clientWidth;
+}
+function updateTabArrows(){
+  var el = $('tabsScroll'), need = el.scrollWidth > el.clientWidth + 2;
+  $('tabLeft').classList.toggle('is-visible', need);
+  $('tabRight').classList.toggle('is-visible', need);
+  if (!need) return;
+  $('tabLeft').disabled = el.scrollLeft <= 1;
+  $('tabRight').disabled = el.scrollLeft >= el.scrollWidth - el.clientWidth - 1;
+}
+$('tabLeft').onclick = function(){ $('tabsScroll').scrollLeft -= 90; setTimeout(updateTabArrows, 280); };
+$('tabRight').onclick = function(){ $('tabsScroll').scrollLeft += 90; setTimeout(updateTabArrows, 280); };
+$('tabsScroll').addEventListener('scroll', updateTabArrows);
+
+function renderWeight(){
+  var sec = $('weightSection'), max = State.weightMax, cur = State.weightCurrent;
+  if (!(max > 0)){ sec.style.display = 'none'; return; }
+  sec.style.display = '';
+  if (!_weightSecH) _weightSecH = sec.offsetHeight + (parseFloat(getComputedStyle(sec).marginBottom) || 0);
+  $('weightText').textContent = cur.toFixed(2) + ' Kg / ' + max.toFixed(2) + ' Kg';
+  $('weightFill').style.transform = 'scaleX(' + Math.max(0, Math.min(1, cur / max)) + ')';
+}
+
+function renderLeft(){
+  renderTabs();
+  renderWeight();
+  $('btnSort').style.display = State.cartIsRack ? 'none' : '';
+  renderCartView();
+  if (!State.cartIsRack){
+    cartLock.apply({
+      cols: State.cartCols, rows: State.cartRows,
+      maxCols: State.cartMaxCols, maxRows: State.cartMaxRows,
+      extraTop: $('weightSection').style.display === 'none' ? _weightSecH : 0
+    });
+  }
+}
+
+/* ── 右栏 ── */
+function payload(){ return State.payload || {}; }
+function curPhaseNo(){ return payload().curPhase | 0; }
+function isComplete(){ return !!payload().complete; }
+function phaseDef(no){
+  var ps = payload().phases || [];
+  for (var i = 0; i < ps.length; i++) if (ps[i].no === no) return ps[i];
+  return null;
+}
+function itemDef(id){ return State.items[id] || { id:id, name:'', icon:'', hex:'' }; }
+function iconHtml(id){
+  var d = itemDef(id);
+  if (d.hex) return '<span class="sw" style="background:' + esc(d.hex) + '"></span>';
+  return d.icon ? '<img src="' + esc(d.icon) + '" loading="lazy" decoding="async" alt="">' : '';
+}
+function unitOf(no){ return listText('phaseUnits', no - 1); }
+function isPool(line){ return (line.ids || []).length > 1; }
+function lineName(no, line){ return isPool(line) ? listText('poolLabels', no - 1) : itemDef(line.ids[0]).name; }
+function pendingOf(i){ return (State.pending && State.pending[i]) | 0; }
+function sumQ(ph){ var n = 0; (ph.lines || []).forEach(function(l){ n += l.q | 0; }); return n; }
+function sumGot(ph){ var n = 0; (ph.lines || []).forEach(function(l){ n += Math.min(l.got | 0, l.q | 0); }); return n; }
+function dyeName(slot){ return slot > 0 ? listText('dyeNames', slot - 1) : t('dyeDefault'); }
+function paletteHex(slot){
+  var pal = payload().palette || [];
+  for (var i = 0; i < pal.length; i++) if (pal[i].slot === slot) return pal[i].hex || '';
+  return '';
+}
+/* 色块 + 色名；0 = 默认颜色（不画色块） */
+function dyeLabel(slot){
+  return slot > 0 ? '<i class="swl" style="background:' + esc(paletteHex(slot)) + '"></i>' + esc(dyeName(slot)) : esc(t('dyeDefault'));
+}
+function barHtml(cls, done, add){
+  done = Math.max(0, Math.min(1, done));
+  add = Math.max(0, Math.min(1 - done, add));
+  return '<div class="' + cls + '"><i style="transform:scaleX(' + done.toFixed(4) + ')"></i>'
+    + (add > 0 ? '<u style="transform:translateX(' + (done * 100).toFixed(2) + '%) scaleX(' + add.toFixed(4) + ')"></u>' : '')
+    + '</div>';
+}
+function reqHtml(no, line, i){
+  var got = line.got | 0, q = line.q | 0, add = Math.min(pendingOf(i), Math.max(0, q - got));
+  var acc = line.acc || line.ids || [];
+  var pool = isPool(line), locked = pool && acc.length === 1;
+  var nameHtml = locked
+    ? esc(itemDef(acc[0]).name) + '<small>' + esc(t('dyeOnlyThis')) + '</small>'
+    : esc(lineName(no, line)) + (pool ? '<small>' + esc(listText('poolNotes', no - 1)) + '</small>' : '');
+  var h = '<div class="rq' + (got + add >= q ? ' full' : '') + '"><div class="hd">'
+    + (pool && !locked ? '' : '<span class="ic">' + iconHtml(acc[0]) + '</span>')
+    + '<span class="nm">' + nameHtml + '</span>'
+    + (add > 0 ? '<span class="add">+' + add + '</span>' : '')
+    + '<span class="ct"><b>' + got + '</b> / ' + q + '</span></div>'
+    + barHtml('mb', q > 0 ? got / q : 0, q > 0 ? add / q : 0);
+  if (pool && !locked){
+    h += '<div class="kinds">';
+    line.ids.forEach(function(id){ h += '<span class="ic" title="' + esc(itemDef(id).name) + '">' + iconHtml(id) + '</span>'; });
+    h += '<em>' + esc(t('poolAll')) + '</em></div>';
+  }
+  return h + '</div>';
+}
+function dyePickHtml(){
+  var p = payload(), cur = p.dye | 0;
+  var h = '<div class="rqcap"><span>' + esc(t('dyeCaption')) + '</span><span>' + dyeLabel(cur) + '</span></div><div class="dyes">'
+    + '<button type="button" class="dy dflt' + (cur ? '' : ' on') + '" data-dye="0" title="' + esc(t('dyeDefault')) + '">' + esc(t('dyeDefaultShort')) + '</button>';
+  (p.palette || []).forEach(function(c){
+    h += '<button type="button" class="dy' + (cur === c.slot ? ' on' : '') + '" data-dye="' + c.slot
+      + '" title="' + esc(dyeName(c.slot)) + '" style="background:' + esc(c.hex) + '"></button>';
+  });
+  h += '</div>';
+  return h + '<div class="line">' + esc(cur ? fmt(t('dyeLineOn'), dyeName(cur)) : t('dyeLineOff')) + '</div>';
+}
+function phaseRow(ph){
+  var no = ph.no, cur = curPhaseNo(), p = payload();
+  var st = no < cur || isComplete() ? 'done' : (no === cur ? 'cur' : 'todo');
+  var open = (st === 'cur' && !rpMode()) || State.selRow === no;
+  var total = sumQ(ph), lines = ph.lines || [];
+  var unit = unitOf(no);
+  var sub = '';
+  if (st !== 'cur'){
+    sub = lines.length === 1 && isPool(lines[0])
+      ? lineName(no, lines[0]) + ' ×' + lines[0].q
+      : fmt(t('kindsCount'), lines.length);
+    if (no === (p.dyePhase | 0) && st === 'done' && (p.dye | 0) > 0) sub += ' · ' + dyeName(p.dye | 0);
+  }
+  var rt = st === 'done' ? '&#10003;'
+    : (st === 'cur' ? sumGot(ph) + ' / ' + total + '<span class="u">' + esc(unit) + '</span>' : '');
+  var h = '<div class="ph ' + st + (open ? ' open' : '') + '"><div class="row" data-sel="' + no + '">'
+    + '<span class="mk">' + no + '</span><span class="nm">' + esc(listText('phaseNames', no - 1)) + '</span>'
+    + '<span class="sub">' + esc(sub) + '</span><span class="rt">' + rt + '</span></div>';
+  if (!open) return h + '</div>';
+
+  h += '<div class="body">';
+  if (st === 'cur'){
+    var add = 0;
+    lines.forEach(function(l, i){ add += Math.min(pendingOf(i), Math.max(0, (l.q | 0) - (l.got | 0))); });
+    h += barHtml('bar', total > 0 ? sumGot(ph) / total : 0, total > 0 ? add / total : 0);
+    h += '<div class="rqcap"><span>' + esc(t('reqCaption')) + '</span><span>' + esc(t('reqColumns')) + '</span></div><div class="reqs">';
+    lines.forEach(function(l, i){ h += reqHtml(no, l, i); });
+    h += '</div>';
+    if (no === (p.dyePhase | 0) && p.dyeSelectable) h += dyePickHtml();
+  } else if (lines.length === 1 && isPool(lines[0])){
+    var l0 = lines[0];
+    if (no === (p.dyePhase | 0) && st === 'done') h += '<div class="rqcap"><span>' + esc(t('dyeCaption')) + '</span><span>' + dyeLabel(p.dye | 0) + '</span></div>';
+    h += '<div class="line">' + esc(lineName(no, l0)) + ' ×' + l0.q + ' · ' + esc(listText('poolNotes', no - 1)) + '</div><div class="plist two">';
+    l0.ids.forEach(function(id){ h += '<div class="pm"><span class="ic">' + iconHtml(id) + '</span><span class="n">' + esc(itemDef(id).name) + '</span></div>'; });
+    h += '</div>';
+  } else {
+    h += '<div class="plist">';
+    lines.forEach(function(l){
+      h += '<div class="pm"><span class="ic">' + iconHtml(l.ids[0]) + '</span><span class="n">' + esc(lineName(no, l))
+        + '</span><span class="e">×' + l.q + '</span></div>';
+    });
+    h += '</div>';
+  }
+  return h + '</div></div>';
+}
+/* ── 重新刷漆（上色那一期完工后开放，不属于四期） ── */
+var RP_ROW = 99;
+function rpData(){ return payload().repaint || null; }
+function rpOpen(){ var r = rpData(); return !!(r && r.open); }
+function rpItem(){ var r = rpData(); return r ? (r.item | 0) : 0; }
+/* 中栏按钮此刻是不是「刷漆」：点开了刷漆行，或四期全完工后默认就是它 */
+function rpMode(){ return rpOpen() && (State.selRow === RP_ROW || (isComplete() && State.selRow === 0)); }
+function repaintRow(){
+  var r = rpData(); if (!r || !r.open) return '';
+  var open = rpMode(), tg = r.target | 0, got = r.got | 0, q = r.q | 0, now = r.now | 0;
+  var add = open ? Math.min(State.rpPick | 0, Math.max(0, q - got)) : 0;
+  var rt = tg ? '<b>' + got + '</b> / ' + q + '<span class="u">' + esc(t('repaintUnit')) + '</span>' : dyeLabel(now);
+  var h = '<div class="rpsep">' + esc(t('repaintSep')) + '</div>'
+    + '<div class="ph rp' + (open ? ' open' : '') + '"><div class="row" data-sel="' + RP_ROW + '">'
+    + '<span class="mk"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M13.6 1.3a1.2 1.2 0 0 1 1.7 1.7L9 9.3 7.3 7.6z"/><path d="M6.5 8.4l1.9 1.9c-.3 2.2-2.1 3.9-4.6 4.1-1.1.1-2.3-.2-3.1-.8 1.2-.5 1.5-1.5 1.7-2.6.3-1.7 1.8-2.8 4.1-2.6z"/></svg></span><span class="nm">' + esc(t('repaintName')) + '</span>'
+    + '<span class="sub">' + esc(tg ? dyeName(tg) : fmt(t('repaintSub'), q)) + '</span><span class="rt">' + rt + '</span></div>';
+  if (!open) return h + '</div>';
+  h += '<div class="body">';
+  h += '<div class="rqcap"><span>' + esc(t('repaintNow')) + '</span><span>' + dyeLabel(now) + '</span></div>';
+  h += '<div class="rqcap"><span>' + esc(t('repaintPickCaption')) + '</span><span>' + (tg ? dyeLabel(tg) : '—') + '</span></div><div class="dyes rpd">';
+  (payload().palette || []).forEach(function(c){
+    var cls = 'dy' + (c.slot === tg ? ' on' : '') + (c.slot === now ? ' now' : '');
+    h += '<button type="button" class="' + cls + '" data-rp="' + c.slot + '" data-tag="' + esc(t('repaintNowTag')) + '" title="'
+      + esc(dyeName(c.slot)) + '" style="background:' + esc(c.hex) + '"></button>';
+  });
+  h += '</div>';
+  if (tg){
+    h += barHtml('bar', q > 0 ? got / q : 0, q > 0 ? add / q : 0);
+    h += '<div class="rpnote">' + esc(fmt(t('repaintLineOn'), dyeName(tg), q)) + '</div>';
+    if (got > 0) h += '<div class="rpnote warn">' + esc(fmt(t('repaintSwitchWarn'), got, dyeName(tg))) + '</div>';
+  } else {
+    h += '<div class="rpnote">' + esc(fmt(t('repaintLineOff'), q)) + '</div>';
+  }
+  return h + '</div></div>';
+}
+function renderRight(){
+  var p = payload(), h = '';
+  (p.phases || []).forEach(function(ph){ h += phaseRow(ph); });
+  if (isComplete()) h += '<div class="alldone">' + esc(rpOpen() ? t('allDoneRepaint') : t('allDoneHint')) + '</div>';
+  h += repaintRow();
+  $('phases').innerHTML = h;
+}
+$('phases').addEventListener('click', function(e){
+  if (panelClosed) return;
+  var rpDy = e.target.closest('.dy[data-rp]');
+  if (rpDy){
+    // 现在的颜色不能再选（刷了等于白刷）
+    if (!rpDy.classList.contains('now')) core.UnitySendEvent('REPAINT_SELECT', { index: parseInt(rpDy.getAttribute('data-rp'), 10) || 0 });
+    return;
+  }
+  var dy = e.target.closest('.dy');
+  if (dy){ core.UnitySendEvent('SELECT_DYE', { index: parseInt(dy.getAttribute('data-dye'), 10) || 0 }); return; }
+  var row = e.target.closest('.row');
+  if (!row) return;
+  var n = parseInt(row.getAttribute('data-sel'), 10) || 0;
+  // 当期行常开：刷漆行选中时点它 = 切回四期交付；四期全完工后刷漆行常开，点它不收起
+  if (n === curPhaseNo() && !isComplete()){
+    if (State.selRow !== RP_ROW) return;
+    n = 0;
+  }
+  if (n === RP_ROW && isComplete() && State.selRow === 0) return;
+  State.selRow = State.selRow === n ? 0 : n;
+  // 中栏按钮与待交格压暗都跟着换对象
+  pickBag.refresh(State.pickItems);
+  renderPick();
+  renderRight();
+  viewportFit.apply();
+});
+
+/* ── 中栏 ── */
+function renderPick(){
+  if (rpMode()) return renderPickRp();
+  $('btnDeliver').classList.remove('rpbtn');
+  var g = $('pickGrid'), p = payload();
+  var no = curPhaseNo(), open = !!p.phaseOpen && !isComplete();
+  var n = State.pickCount | 0, unit = unitOf(no);
+  $('pickSide').textContent = open ? no + ' · ' + listText('phaseNames', no - 1) : '';
+  g.classList.toggle('off', !open);
+  var old = g.querySelector('.gridmsg');
+  if (old) old.remove();
+  if (!State.pickItems.length){
+    var msg = document.createElement('div');
+    msg.className = 'gridmsg';
+    msg.textContent = isComplete() ? t('allDoneHint') : (open ? t('emptyPickHint') : t('phaseShutHint'));
+    g.appendChild(msg);
+  }
+  $('sum').style.display = open ? '' : 'none';
+  $('sumLabel').textContent = t('pickTitle');
+  $('sumV').textContent = n;
+  $('sumU').textContent = unit;
+  $('btnDeliver').disabled = !State.canDeliver;
+  $('btnDeliver').classList.toggle('will', !!State.willAdvance);
+  $('btnDeliverT').textContent = t('deliverBtn') + (n > 0 ? ' ' + n + ' ' + unit : '');
+  $('btnClear').disabled = n === 0;
+  $('pickHint').textContent = State.willAdvance ? t('willAdvanceHint') : (open ? t('pickReturnHint') : '');
+  $('pickHint').className = 'hint' + (State.willAdvance ? ' ok' : '');
+}
+
+/* 中栏的「刷漆」形态：按钮换色换字，只算目标色染料 */
+function renderPickRp(){
+  var g = $('pickGrid'), r = rpData(), tg = r.target | 0, n = State.rpPick | 0, unit = t('repaintUnit');
+  var will = !!State.rpWillStart;
+  $('pickSide').textContent = t('repaintName') + (tg ? ' · ' + dyeName(tg) : '');
+  g.classList.remove('off');
+  var old = g.querySelector('.gridmsg');
+  if (old) old.remove();
+  if (!State.pickItems.length){
+    var msg = document.createElement('div');
+    msg.className = 'gridmsg';
+    msg.textContent = tg ? t('emptyPickHint') : t('repaintPickFirst');
+    g.appendChild(msg);
+  }
+  $('sum').style.display = '';
+  $('sumLabel').textContent = t('pickTitle');
+  $('sumV').textContent = n;
+  $('sumU').textContent = unit;
+  var b = $('btnDeliver');
+  b.classList.add('rpbtn');
+  b.classList.toggle('will', will);
+  b.disabled = !State.rpCanPaint;
+  $('btnDeliverT').textContent = t('repaintBtn') + (n > 0 ? ' ' + n + ' ' + unit : '');
+  $('btnClear').disabled = State.pickItems.length === 0;
+  $('pickHint').textContent = !tg ? t('repaintPickFirst') : (will ? fmt(t('repaintWillStart'), r.q | 0) : t('pickReturnHint'));
+  $('pickHint').className = 'hint' + (will ? ' ok' : '');
+}
+
+function renderStaticText(){
+  $('pageTitle').textContent = t('pageTitle');
+  $('pickTitle').textContent = t('pickTitle');
+  $('weightLabel').textContent = t('weightLabel');
+  $('btnSort').textContent = t('sortBtn');
+  $('btnQuick').textContent = t('quickLoadBtn');
+  $('btnClear').textContent = t('clearBtn');
+  $('sideHint').textContent = t('sideHint');
+  if (t('pageTitle')) document.title = t('pageTitle');
+}
+
+/* ── 悬停提示 ── */
+var _tipMouse = { x:0, y:0 }, _tipRaf = 0;
+function moveTip(x, y){
+  var tip = $('itemTip'), k = viewportFit.getZoom() || 1;
+  var nx = x + 16, ny = y + 14;
+  if (nx + tip.offsetWidth * k > window.innerWidth - 8) nx = x - tip.offsetWidth * k - 12;
+  if (ny + tip.offsetHeight * k > window.innerHeight - 8) ny = y - tip.offsetHeight * k - 10;
+  tip.style.left = (nx / k) + 'px';
+  tip.style.top = (ny / k) + 'px';
+}
+function showTip(it, where){
+  var h = '<div class="t">' + esc(it.name) + '</div>'
+    + '<div class="m">' + esc(t('tipCells')) + ' ' + (it.w || 1) + '×' + (it.h || 1) + ' · ' + (+it.weight || 0).toFixed(2) + ' Kg</div>';
+  if (it.whyText) h += '<div class="s ' + (it.why ? 'no' : 'ok') + '">' + esc(it.whyText) + '</div>';
+  if (where === 'pick') h += '<div class="m">' + esc(fmt(t('tipReturn'), it.srcName || '')) + '</div>';
+  else if (where === 'rack') h += '<div class="m">' + esc(t('tipRackTake')) + '</div>';
+  var tip = $('itemTip');
+  tip.innerHTML = h;
+  tip.style.display = 'block';
+  moveTip(_tipMouse.x, _tipMouse.y);
+}
+function hideTip(){ $('itemTip').style.display = 'none'; }
+
+/* 全页只有这一个 mousemove：L0 只存坐标 + 排一帧；L1 里才写提示跟手位置。
+   落点高亮由格子库自己画（valid-hover / invalid-hover），这里不再算 */
+function onMoveFrame(){
+  _tipRaf = 0;
+  if ($('itemTip').style.display === 'block') moveTip(_tipMouse.x, _tipMouse.y);
+}
+document.addEventListener('mousemove', function(e){
+  _tipMouse.x = e.clientX; _tipMouse.y = e.clientY;
+  if (_tipRaf) return;
+  _tipRaf = requestAnimationFrame(onMoveFrame);
+});
+
+/* ── 按钮 ── */
+$('btnSort').onclick = function(){ if (!panelClosed) core.UnitySendEvent('SORT', {}); };
+// 一键放入只搬中栏此刻那颗按钮交得掉的东西（刷漆 = 目标色染料，交付 = 当期材料）
+$('btnQuick').onclick = function(){ if (!panelClosed) core.UnitySendEvent('QUICK_LOAD', { repaint: rpMode() }); };
+$('btnClear').onclick = function(){ if (!panelClosed && State.pickCount > 0) core.UnitySendEvent('PICK_CLEAR', {}); };
+$('btnDeliver').onclick = function(){
+  if (panelClosed) return;
+  if (rpMode()){
+    if (!State.rpCanPaint) return;
+    clearToast();
+    core.UnitySendEvent('REPAINT', {});
+    return;
+  }
+  if (!State.canDeliver) return;
+  clearToast();
+  core.UnitySendEvent('DELIVER', {});
+};
+
+function renderAll(){
+  renderLeft();
+  renderPick();
+  renderRight();
+  viewportFit.apply();
+}
+
+/* ── 消息 ── */
+core.registerHandlers({
+  'WebUI_GreenhouseBuild_PhaseMsg': function(data){
+    if (data.payloadJson === undefined) return;
+    var p = null;
+    try { p = JSON.parse(data.payloadJson || '{}'); } catch (err) { p = null; }
+    State.payload = p || {};
+    State.items = {};
+    (State.payload.items || []).forEach(function(it){ State.items[it.id] = it; });
+    pickBag.refresh(State.pickItems);
+    renderPick();
+    renderRight();
+    viewportFit.apply();
+  },
+  'WebUI_GreenhouseBuild_BagMsg': function(data){
+    if (data.cartOwnerId !== undefined){ State.cartOwnerId = data.cartOwnerId; cartBag.setOwnerId(data.cartOwnerId || 0); }
+    // resize 只改 cfg 不重绘，必须先于 refresh
+    if (data.cartCols !== undefined && data.cartCols > 0){ State.cartCols = data.cartCols; }
+    if (data.cartRows !== undefined && data.cartRows > 0){ State.cartRows = data.cartRows; }
+    cartBag.resize(State.cartCols, State.cartRows);
+    if (data.cartMaxCols !== undefined) State.cartMaxCols = data.cartMaxCols;
+    if (data.cartMaxRows !== undefined) State.cartMaxRows = data.cartMaxRows;
+    if (data.cartIsRack !== undefined) State.cartIsRack = !!data.cartIsRack;
+    if (data.cartRackRowsJson !== undefined){
+      try { State.cartRackRows = data.cartRackRowsJson ? JSON.parse(data.cartRackRowsJson) : []; }
+      catch (e) { State.cartRackRows = []; }
+    }
+    if (data.cartTabs !== undefined) State.cartTabs = data.cartTabs || [];
+    if (data.activeTab !== undefined) State.activeTab = data.activeTab;
+    if (data.weightCurrent !== undefined) State.weightCurrent = data.weightCurrent;
+    if (data.weightMax !== undefined) State.weightMax = data.weightMax;
+    if (data.pickOwnerId !== undefined){ State.pickOwnerId = data.pickOwnerId; pickBag.setOwnerId(data.pickOwnerId || 0); }
+    if (data.pickCols !== undefined && data.pickCols > 0) State.pickCols = data.pickCols;
+    if (data.pickRows !== undefined && data.pickRows > 0) State.pickRows = data.pickRows;
+    pickBag.resize(State.pickCols, State.pickRows);
+
+    if (data.cartItems !== undefined){ State.cartItems = data.cartItems || []; cartBag.refresh(State.cartItems); }
+    if (data.pickItems !== undefined){
+      State.pickItems = data.pickItems || [];
+      pickBag.refresh(State.pickItems);
+      _knownPickIds = {};
+      State.pickItems.forEach(function(it){ _knownPickIds[String(it.itemId)] = true; });
+    }
+    renderLeft();
+    renderPick();
+    viewportFit.apply();
+  },
+  'WebUI_GreenhouseBuild_StateMsg': function(data){
+    if (data.canDeliver !== undefined) State.canDeliver = !!data.canDeliver;
+    if (data.pickCount !== undefined) State.pickCount = data.pickCount | 0;
+    if (data.willAdvance !== undefined) State.willAdvance = !!data.willAdvance;
+    if (data.rpPick !== undefined) State.rpPick = data.rpPick | 0;
+    if (data.rpCanPaint !== undefined) State.rpCanPaint = !!data.rpCanPaint;
+    if (data.rpWillStart !== undefined) State.rpWillStart = !!data.rpWillStart;
+    if (data.pendingJson !== undefined){
+      try { State.pending = JSON.parse(data.pendingJson || '[]') || []; } catch (e) { State.pending = []; }
+    }
+    // 提示按流水号判「这是新的一次」：同一句话连着来两次时文案本身不变
+    if (data.errorSeq !== undefined && (data.errorSeq | 0) > _lastErrSeq){
+      _lastErrSeq = data.errorSeq | 0;
+      showToast(reasonText(data.lastError || ''), false);
+    }
+    if (data.noticeSeq !== undefined && (data.noticeSeq | 0) > _lastNoticeSeq){
+      _lastNoticeSeq = data.noticeSeq | 0;
+      showToast(data.notice || '', !!data.noticeOk);
+    }
+    renderPick();
+    renderRight();
+    viewportFit.apply();
+  },
+  'WebUI_GreenhouseBuild_LocalizationMsg': function(data){
+    if (!data) return;
+    for (var k in data){
+      if (typeof data[k] === 'string' && data[k]) i18nText[k] = data[k];
+      else if (Array.isArray(data[k])) i18nLists[k] = data[k];
+    }
+    renderStaticText();
+    renderAll();
+  }
+});
+
+/* ── 关闭：✕ / ESC / 点空白 ──
+   点空白带 mousedown 守卫：click 的 target 是按下与松开的最近公共祖先，
+   把东西从格子里拖出去松手会被误判成「点了空白」。 */
+var _blankDown = false;
+function isBlankTarget(el){ return el === document.body || el === $('ghRoot'); }
+function onClose(){
+  if (panelClosed) return;
+  panelClosed = true;
+  clearToast();
+  hideTip();
+  core.UnitySendEvent('CLOSE');
+}
+$('closeBtn').addEventListener('click', onClose);
+document.addEventListener('mousedown', function(e){ _blankDown = isBlankTarget(e.target); }, true);
+document.body.addEventListener('click', function(e){
+  if (!_blankDown) return;
+  _blankDown = false;
+  if (isBlankTarget(e.target)) onClose();
+});
+window.addEventListener('keydown', function(e){ if (e.key === 'Escape') onClose(); });
+
+renderStaticText();
+renderAll();
+core.notifyReady();
+</script>
+</body>
+</html>

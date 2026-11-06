@@ -4,9 +4,10 @@
   root.__srInit = true;
 
   var DATA = JSON.parse(document.getElementById('scene-data').textContent);
-  /* 固定 10 列：428px 侧栏内 10×34px + 9×6px = 394px，恰好铺满。
-     所有容器一律 10 列，扩容只增加行数（纵向滚动）。 */
-  var COLS = 10, SLOT = 34, GAP = 6;
+  /* v13.8 作者拍板（2026-10-31）：所有柜子统一 12 列（对齐 BackpackUI live 场景 12 列口径）。
+     12×34px + 11×6px = 474px，侧栏宽 494px（v13 壳宽跟格 428-640 区间内）；
+     容量只决定行数（纵向滚动）。 */
+  var COLS = 12, SLOT = 34, GAP = 6;
   var CAT_COLORS = { '食材': '#8fc06e', '菜品': '#e8a33d', '材料': '#7aa2d6', '医疗': '#d68ab8', '饮品': '#6fc7c9', '燃料': '#b08968' };
   var POOL = [
     { n: '生态香米', e: '🍚', c: '食材', v: 12, s: 180, sat: 15, hp: 0, en: 0, mind: 0 }, { n: '野兔肉', e: '🍖', c: '食材', v: 28, s: 36, sat: 35, hp: 5, en: 0, mind: 0 },
@@ -40,6 +41,34 @@
     { k: 'hp', label: '生命' }, { k: 'en', label: '精力' }, { k: 'mind', label: '心态' }
   ];
   var GLOBAL_LIMIT = 300;
+  /* v13.5 机器界面简化（作者 2026-10-31 需求）：9 个机器场景侧栏去掉搜索行/快捷标签行/
+     排序工具行（plain）。食品类设施（烹饪/酿酒桶/老鼠笼/食物压制器/颜料桶）页脚左下角
+     加排序按钮：默认（官方原顺序）+ 饱食度/生命值/精力值/心态值/保质期，选属性排序时
+     每个物品格右上角显示该维数值角标。 */
+  var PLAIN = ['cook', 'brew', 'cage', 'shred', 'press', 'dye', 'tool', 'trade', 'drone'];
+  var FOODS = ['cook', 'brew', 'cage', 'press', 'dye'];
+  /* v13.7 排序菜单按作者参考图：7 项+图标+参考图顺序（默认→饱腹→心态→精力→生命→交易价值→保质期） */
+  var FSORTS = [
+    { k: 'official', label: '默认', ico: '⊞' },
+    { k: 'sat', label: '饱腹', ico: '🍗' },
+    { k: 'mind', label: '心态', ico: '🧠' },
+    { k: 'en', label: '精力', ico: '⚡' },
+    { k: 'hp', label: '生命', ico: '❤️' },
+    { k: 'value', label: '交易价值', ico: '💲' },
+    { k: 'shelf', label: '保质期', ico: '🕐' }
+  ];
+  var BADGE_COLOR = { sat: '#8fc06e', hp: '#e07ab0', en: '#6fc7c9', mind: '#b08fd6', shelf: '#f0b03c', value: '#f0b03c', tvalue: '#f0b03c' };
+  /* 无人机交易：每个交易点/人物各有品类喜好 → 计算后交易价值 = 单价×数量×(1+品类加成)。
+     原型内置三个演示买家，点买家条切换（正式实现由当前交易对象驱动，无切换控件） */
+  var TRADES = [
+    { n: '收购商·老周', prefs: { '食材': 0.40, '医疗': 0.25 } },
+    { n: '小卖部·胖姐', prefs: { '菜品': 0.35, '饮品': 0.20 } },
+    { n: '军需·老韩', prefs: { '燃料': 0.50, '材料': 0.30 } }
+  ];
+  var tradeIdx = 0;
+  function tradeCur() { return TRADES[tradeIdx]; }
+  function tradeBonus(cat) { var p = tradeCur().prefs[cat]; return p || 0; }
+  function tval(it) { return Math.round(it.value * it.count * (1 + tradeBonus(it.cat))); }
   /* 场景入口默认容器：B 键单独背包 → 背包页（bagonly 纯背包）；整理柜 → 架子本体
      （官方左背包保留在页面，侧栏=纯柜子页，背包页签不进侧栏）；其余机器界面（官方被
      替换的原面板就是背包）→ 背包页。柜子页签仍在，随时可切。 */
@@ -149,13 +178,16 @@
     st.items = itemsOf(st.currentId);
     GCACHE = null;
   }
-  /* 排序键：交易价值 = 单价 × 数量（多份按总数计）；其余为单体属性 */
+  /* 排序键：交易价值 = 单价 × 数量（多份按总数计）；tvalue = 交易场景计算后价值；
+     official = 官方原顺序（取得顺序，不走数值比较）；其余为单体属性 */
   function sortVal(it) {
     if (st.sort === 'value') return it.value * it.count;
+    if (st.sort === 'tvalue') return tval(it);
     if (st.sort === 'shelf') return it.shelf;
     return it[st.sort] || 0;
   }
   function sortArr(arr) {
+    if (st.sort === 'official') return arr.slice().sort(function (a, b) { return a.id - b.id; });
     return arr.slice().sort(function (a, b) {
       var d = sortVal(b) - sortVal(a);           /* dir=1：数值高的在前 */
       if (d) return d * st.dir;
@@ -185,17 +217,39 @@
   }
   var DYN = {
     value: { label: '总价值', f: function (i) { return i.value * i.count; } },
+    tvalue: { label: '交易额', f: function (i) { return tval(i); } },
     shelf: { label: '保质(h)', f: function (i) { return i.shelf; } },
     sat: { label: '饱食', f: function (i) { return i.sat > 0 ? '+' + i.sat : '—'; } },
     hp: { label: '生命', f: function (i) { return i.hp ? '+' + i.hp : '—'; } },
     en: { label: '精力', f: function (i) { return i.en ? '+' + i.en : '—'; } },
     mind: { label: '心态', f: function (i) { return i.mind ? (i.mind > 0 ? '+' + i.mind : String(i.mind)) : '—'; } }
   };
-  function sortLabel() { for (var i = 0; i < SORTS.length; i++) if (SORTS[i].k === st.sort) return SORTS[i].label; return '按分类'; }
+  function sortLabel() {
+    if (st.sort === 'official') return '官方默认';
+    if (st.sort === 'tvalue') return '交易价值';
+    for (var i = 0; i < SORTS.length; i++) if (SORTS[i].k === st.sort) return SORTS[i].label;
+    return '按分类';
+  }
+  /* 格子右上角数值角标（v13.5）：食品类设施按属性排序 / 交易场景按计算后交易价值 */
+  var BADGE = null;
+  function badgeMode() {
+    if (st.scene === 'trade') return { k: 'tvalue', color: BADGE_COLOR.tvalue };
+    if (FOODS.indexOf(st.scene) >= 0 && st.sort !== 'official') return { k: st.sort, color: BADGE_COLOR[st.sort] };
+    return null;
+  }
+  function badgeText(it, k) {
+    if (k === 'tvalue') return String(tval(it));
+    if (k === 'value') return String(it.value * it.count);
+    if (k === 'shelf') return it.shelf + 'h';
+    var v = it[k];
+    return v > 0 ? String(v) : (v < 0 ? String(v) : '—');
+  }
   function slotHtml(it, cls) {
     var col = CAT_COLORS[it.cat] || '#b0a89a';
+    var bd = BADGE ? badgeText(it, BADGE.k) : '';
     return '<button type="button" class="' + cls + (it.fav ? ' fav' : '') + (st.sel === it.id ? ' selected' : '') + '" data-it="' + it.id + '" aria-label="' + esc(it.name + ' ×' + it.count) + '" style="--cat:' + col + '">' +
-      '<span class="s-dot"></span><span aria-hidden="true">' + it.emoji + '</span><span class="s-cnt">' + it.count + '</span>' + (it.fresh ? '<span class="s-new"></span>' : '') + '</button>';
+      '<span class="s-dot"></span><span aria-hidden="true">' + it.emoji + '</span><span class="s-cnt">' + it.count + '</span>' +
+      (bd ? '<span class="s-badge" style="color:' + BADGE.color + '">' + bd + '</span>' : (it.fresh ? '<span class="s-new"></span>' : '')) + '</button>';
   }
 
   /* 侧栏 DOM（每次切场景重建后重绑）。
@@ -205,6 +259,7 @@
     '<div class="sr-sub"><b id="srCols"></b><span id="srCap"></span><span id="srTags"></span></div></div></div>' +
     '<div class="sr-ctnbar"><div class="sr-pinrow" id="srPinRow"></div>' +
     '<button class="sr-allctn" id="srAllCtn" type="button" aria-label="全部容器" title="全部容器">▾</button></div>' +
+    '<div class="sr-tradeinfo" id="srTrade" hidden></div>' +
     '<div class="sr-searchrow"><div class="sr-search">🔍 <input id="srSearch" type="text" placeholder="搜索物品" autocomplete="off"></div>' +
     '<button class="sr-scope" id="srScope" type="button" title="筛选范围：当前容器 / 全部容器">本柜</button></div>' +
     '<div class="sr-tagrow"><div class="sr-tags" id="srTagRow"></div>' +
@@ -215,10 +270,11 @@
     '<button data-mode="list" type="button">列表</button></div></div>' +
     '<div class="sr-body" id="srBody"><div class="sr-grid" id="srGrid"></div><div class="sr-list" id="srList" hidden></div></div>' +
     '<div class="sr-hover" id="srHover">悬停查看物品详情</div>' +
-    '<div class="sr-foot"><div class="sr-foot-l"><span id="srFill"></span><span class="fr" id="srView"></span></div>' +
+    '<div class="sr-foot"><button class="sr-act sr-fsort" id="srFoodSort" type="button" hidden title="排序：官方默认，或按属性排序（格子右上角显示数值）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg><span id="srFoodSortLbl">排序</span><span class="sb-caret2" aria-hidden="true">▾</span></button>' +
+    '<div class="sr-foot-l"><span id="srFill"></span><span class="fr" id="srView"></span></div>' +
     '<div class="sr-actrow">' +
-    '<button class="sr-act" id="srTidy" type="button" title="同名叠合并，按分类归位"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>一键整理</button>' +
     '<button class="sr-act primary" id="srStoreAll" type="button" hidden title="按物品分类自动放入带对应标签的柜子（柜满顺延，无匹配留在背包）">📦 一键入库</button>' +
+    '<button class="sr-act" id="srTidy" type="button" title="同名叠合并，按分类归位"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>一键整理</button>' +
     '</div></div>' +
     '<div class="sr-toast" id="srToast" hidden></div>' +
     '<div class="sr-pop sr-popctn" id="srCtnPop" hidden><div class="sr-popbody" id="srCtnPopBody"></div></div>' +
@@ -237,12 +293,15 @@
     '<div class="sr-tm-add"><input id="srTagNew" type="text" placeholder="自定义标签（≤6字）" maxlength="6">' +
     '<button class="sr-popclear" id="srTagNewBtn" type="button">添加</button></div></div></div>' +
     '<div class="sr-pop sr-popsort" id="srSortPop" hidden><div class="sr-pophead"><span>排序方式</span></div>' +
-    '<div class="sr-popbody" id="srSortPopBody"></div></div>';
+    '<div class="sr-popbody" id="srSortPopBody"></div></div>' +
+    '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-pophead"><span>排序方式</span></div>' +
+    '<div class="sr-popbody" id="srFootSortBody"></div></div>';
 
   function closePops(keep) {
     if (keep !== 'ctn') el.srCtnPop.hidden = true;
     if (keep !== 'tag') el.srTagManage.hidden = true;
     if (keep !== 'sort') el.srSortPop.hidden = true;
+    if (keep !== 'fsort') el.srFootSortPop.hidden = true;
     if (keep !== 'edit') el.srCtnEdit.hidden = true;
     if (keep !== 'store') el.srStoreConfirm.hidden = true;
   }
@@ -252,7 +311,8 @@
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGrid', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
       'srCtnPop', 'srCtnPopBody',
       'srCtnEdit', 'srEditName', 'srEditTags', 'srEditSave', 'srEditCancel',
-      'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody'];
+      'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody',
+      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody', 'srTrade'];
     el = {};
     for (var i = 0; i < ids.length; i++) el[ids[i]] = document.getElementById(ids[i]);
 
@@ -274,7 +334,7 @@
         if (!el.srCtnPop) return;
         var t = e.target;
         if (t.closest && t.closest('.sr-pop')) return;
-        if (t.closest && (t.closest('#srAllCtn') || t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll'))) return;
+        if (t.closest && (t.closest('#srAllCtn') || t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll') || t.closest('#srFoodSort'))) return;
         closePops();
         var sbC = document.getElementById('sbConfirm');
         if (sbC && !sbC.hidden && t.closest && !t.closest('#sbStoreAll')) sbC.hidden = true;
@@ -362,6 +422,21 @@
       el.srSortPop.hidden = true; render();
     };
     el.srDir.onclick = function () { st.dir = -st.dir; render(); };
+    /* 设施排序（食品类设施页脚左下角）：上弹 6 项，选属性排序时格子上角显示数值 */
+    el.srFoodSort.onclick = function () { closePops('fsort'); el.srFootSortPop.hidden = !el.srFootSortPop.hidden; renderFootSortPop(); };
+    el.srFootSortBody.onclick = function (e) {
+      var b = e.target.closest('[data-fsort]'); if (!b) return;
+      st.sort = b.getAttribute('data-fsort');
+      el.srFootSortPop.hidden = true; render();
+      toast(st.sort === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(st.sort) + '」排序 · 格子右上角显示数值');
+    };
+    /* 交易买家条：点击买家名切换演示买家（品类加成→计算后价值→排序联动刷新） */
+    el.srTrade.onclick = function (e) {
+      if (!e.target.closest('.ti-buyer')) return;
+      tradeIdx = (tradeIdx + 1) % TRADES.length;
+      toast('买家切换为 ' + tradeCur().n + '，按计算后交易价值重新排序');
+      render();
+    };
     el.srSeg.onclick = function (e) {
       if (st.global) return; /* 全库模式锁定列表视图 */
       var b = e.target.closest('[data-mode]'); if (b) { st.mode = b.getAttribute('data-mode'); render(); }
@@ -372,13 +447,21 @@
         var g = LISTGRP[parseInt(gr.getAttribute('data-grp'), 10)];
         if (g) el.srHover.innerHTML = '<b>' + esc(g.name) + '</b> ×' + g.total + ' · ' + g.entries.length + ' 叠 · 保质 ' + g.minShelf + 'h' +
           (g.srcs.length ? ' · 来自 ' + esc(g.srcs[0]) + (g.srcs.length > 1 ? ' 等 ' + g.srcs.length + ' 处' : '') : '') +
-          ' · 右键取 1 · Shift+右键整行';
+          ' · 纯汇总展示（只读）';
         return;
       }
       var n = e.target.closest('[data-it]'); if (!n) return;
       var it = entryById(parseInt(n.getAttribute('data-it'), 10)); if (!it) return;
+      if (st.scene === 'trade') {
+        var bn = tradeBonus(it.cat);
+        el.srHover.innerHTML = '<b>' + esc(it.name) + '</b> ×' + it.count + ' · 基础 ' + (it.value * it.count) +
+          (bn ? ' · <span style="color:#8fc06e">' + it.cat + ' +' + Math.round(bn * 100) + '%</span>' : ' · 无品类加成') +
+          ' → 计算后 <b>' + tval(it) + '</b>' +
+          (it.src ? ' · 来自 ' + esc(it.src) : '') + ' · 官方原生：右键快转 · 高亮键批转';
+        return;
+      }
       el.srHover.innerHTML = '<b>' + esc(it.name) + '</b> ×' + it.count + ' · 交易 ' + it.value + ' · 保质 ' + it.shelf + 'h · 饱食 +' + it.sat +
-        (it.src ? ' · 来自 ' + esc(it.src) : '') + ' · 右键取 1 · Shift+右键整堆';
+        (it.src ? ' · 来自 ' + esc(it.src) : '') + ' · 官方原生：右键快转 · 高亮键批转';
     };
     el.srBody.onmouseleave = function () { el.srHover.textContent = '悬停查看物品详情'; };
     el.srBody.onclick = function (e) {
@@ -386,8 +469,8 @@
       var id = parseInt(n.getAttribute('data-it'), 10);
       st.sel = st.sel === id ? null : id; render();
     };
-    /* 右键取出（口径=官方右键快转一件）：网格=那一叠，列表行=同名汇总行；
-       右键取 1 件入背包，Shift+右键取整堆/整行；空白处也吞掉浏览器菜单 */
+    /* 【原型模拟，非实现口径】v13 实现口径：网格=官方 DOM 原件，右键/拖拽/高亮键全官方
+       原生（mod 零接线）；列表=纯展示行零事件。下面的模拟取物仅用于原型演示数据流动。 */
     el.srBody.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     el.srGrid.addEventListener('contextmenu', function (e) {
       var n = e.target.closest('[data-it]'); if (!n) return;
@@ -522,9 +605,9 @@
     el.srStoreConfirm.hidden = false;
   }
 
-  /* 取出到背包：右键 = 取 1 件，Shift+右键 = 整堆（列表行=整行全部）。
-     口径对齐官方：webui-bag 右键=快转一件；rackrows 行视图注释「右键 = 快速转走一件」，
-     整行取出官方走专门的行按钮——这里以 Shift+右键承担。背包满则中止并提示。 */
+  /* 【原型模拟，非实现口径】取出/放入在实现里=官方 DOM 原件上的官方原生动作
+     （webui-bag 右键快转/高亮键批转/拖拽；rackrows 行拖拽/右键取1）。
+     本函数仅供原型演示数据流动，实现侧无对应物。 */
   function takeEntries(entries, all) {
     var bag = itemsOf(1), bagCap = ctnById(1).cap, total = 0, name = entries.length ? entries[0].name : '';
     for (var i = 0; i < entries.length; i++) {
@@ -597,14 +680,14 @@
     try { localStorage.setItem('srp_ctn_tags', JSON.stringify(TAGOV)); } catch (e) { }
   }
 
-  /* 整理柜专属：左侧「优化版背包面板」（我们的设计，非官方原版）——与右侧柜子侧栏
-     组成双面板（.sr-duo）。交互：右键物品 = 放入右侧当前柜 1 件，Shift+右键 = 整堆；
-     底部动作组 = 一键整理 + 一键入库（弹窗确认），与主侧栏同款同位。 */
+  /* 整理柜专属（v13 口径）：左段 = **官方背包面板原件占位**（实现=官方 #panelA reparent，
+     负重条+官方背包格，拖拽/详情/高亮键全原生——本原型用自绘网格模拟其布局与尺寸，
+     模拟交互不构成实现口径）。底部动作组 = 一键整理（入库走官方放入流程，本场景无入库按钮）。 */
   var BAGPANEL_HTML =
     '<div class="sr-head"><div class="sr-headtxt"><div class="sr-title">背包</div>' +
     '<div class="sr-sub"><b>' + COLS + ' 列</b><span> · ' + ctnById(1).cap + ' 格</span></div></div></div>' +
     '<div class="sr-body" id="sbBody"><div class="sr-grid" id="sbGrid"></div></div>' +
-    '<div class="sr-hover" id="sbHover">悬停查看物品详情 · 右键放入右侧柜子</div>' +
+    '<div class="sr-hover" id="sbHover">官方原件区 · 右键快转/高亮键批转（官方原生）</div>' +
     '<div class="sr-foot"><div class="sr-foot-l"><span id="sbFill"></span><span class="fr" id="sbView"></span></div>' +
     '<div class="sr-actrow">' +
     '<button class="sr-act" id="sbTidy" type="button" title="同名叠合并，按分类归位"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>一键整理</button>' +
@@ -645,7 +728,8 @@
       tp.title = tags.length ? '按「' + tags.join('·') + '」标签放入背包中的对应物品' : '右侧柜子未设置标签';
     }
   }
-  /* 背包 → 右侧当前柜（整理柜场景的"存物"方向，与右键取出的"取物"对称） */
+  /* 【原型模拟，非实现口径】背包→柜在实现里=官方原生（拖拽入 #panelB / 官方放入按钮 /
+     高亮键批转）。本函数仅原型演示用。 */
   function putEntries(it, all) {
     var tgt = ctnById(st.currentId);
     if (!tgt || tgt.id === 1) { sbToast('请先在右侧选择要放入的柜子'); return; }
@@ -783,13 +867,14 @@
       var n = e.target.closest('[data-it]'); if (!n) return;
       var it = bagEntry(parseInt(n.getAttribute('data-it'), 10)); if (!it) return;
       document.getElementById('sbHover').innerHTML = '<b>' + esc(it.name) + '</b> ×' + it.count +
-        ' · 交易 ' + it.value + ' · 保质 ' + it.shelf + 'h · 右键放入右侧柜 · Shift+右键整堆';
+        ' · 交易 ' + it.value + ' · 保质 ' + it.shelf + 'h · 官方原生：右键快转 · 高亮键批转';
     });
     g.addEventListener('mouseleave', function () {
-      document.getElementById('sbHover').textContent = '悬停查看物品详情 · 右键放入右侧柜子';
+      document.getElementById('sbHover').textContent = '官方原件区 · 拖拽/右键/高亮键（官方原生）';
     });
     g.addEventListener('contextmenu', function (e) {
       e.preventDefault();
+      /* 原型模拟（实现=官方原生右键快转，mod 零接线） */
       var n = e.target.closest('[data-it]'); if (!n) return;
       var it = bagEntry(parseInt(n.getAttribute('data-it'), 10));
       if (it) putEntries(it, e.shiftKey);
@@ -920,6 +1005,31 @@
     }
     el.srSortPopBody.innerHTML = h;
   }
+  /* 设施排序弹层（v13.7 参考图样式：图标+文字独立按钮堆叠，选中=金色） */
+  function fsortLabel(k) { for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
+  function renderFootSortPop() {
+    if (el.srFootSortPop.hidden) return;
+    var h = '';
+    for (var i = 0; i < FSORTS.length; i++) {
+      var s = FSORTS[i];
+      h += '<button type="button" class="sr-fsopt' + (s.k === st.sort ? ' active' : '') + '" data-fsort="' + s.k + '">' +
+        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + s.label + '</button>';
+    }
+    el.srFootSortBody.innerHTML = h;
+  }
+  /* 交易买家条：当前交易对象名下品类加成 chips + 排序口径说明 */
+  function renderTradeInfo() {
+    var t = el.srTrade; if (!t) return;
+    t.hidden = st.scene !== 'trade';
+    if (t.hidden) return;
+    var c = tradeCur(), ps = [];
+    for (var k in c.prefs) {
+      ps.push('<i class="ti-pref"><span class="t-dot" style="background:' + (CAT_COLORS[k] || '#b0a89a') + '"></span>' + k + ' +' + Math.round(c.prefs[k] * 100) + '%</i>');
+    }
+    t.innerHTML = '<button type="button" class="ti-buyer" title="每个交易点/人物各有品类喜好（演示：点击切换买家）">' + esc(c.n) + ' <span class="ti-arr" aria-hidden="true">▸</span></button>' +
+      '<span class="ti-prefs">' + ps.join('') + '</span>' +
+      '<span class="ti-mode" title="交易价值 = 单价 × 数量 × (1 + 品类加成)">按交易价值排序</span>';
+  }
   function bindPinDrag() {
     var row = el.srPinRow;
     row.addEventListener('dragstart', function (e) {
@@ -1003,6 +1113,11 @@
     el.srSortLbl.textContent = sortLabel();
     el.srDir.textContent = st.dir === 1 ? '↓' : '↑';
     el.srDir.title = st.dir === 1 ? '当前：数值高在前（点击切倒序）' : '当前：数值低在前（点击切回）';
+    /* v13.5/v13.7：食品类设施页脚排序按钮（左下角，参考图样式）+ 交易买家条 + 格子数值角标 */
+    el.srFoodSort.hidden = FOODS.indexOf(st.scene) < 0;
+    renderTradeInfo();
+    if (!el.srFootSortPop.hidden) renderFootSortPop();
+    BADGE = badgeMode();
     el.srFill.textContent = st.global
       ? '匹配 ' + fiAll.length + ' 件' + (limited ? '（显示前 ' + GLOBAL_LIMIT + '）' : '')
       : fi.length + ' / ' + st.cap + ' 格';
@@ -1057,13 +1172,290 @@
     if (typeof fitPage === 'function') fitPage();
   }
 
+  /* ================= v13.2 取用/整理物资：官方页 iframe 真渲染 =================
+     mod 改造点（仅此四项，其余官方原生）：
+     ① 宽度统一 12 列（mock gridCols=12；正式实现=数据层包/柜 cols 统一 12）
+     ② 高度扩容+纵向滚动（max-height+overflow+scrollbar-gutter:stable 不压格）
+     ③ 柜子面板不显示负重条（.weight-section 隐藏；取用=整个面板即柜子；整理物资=B 侧柜子）
+     ④ 背包面板底部 mod 按钮 bar（v13.9 提案，见 srn* 区：⇅排序 ▾ + 📦 一键入库）
+     取用=单柜面板（InfoAMsg 绑柜子 + canTag:true → 头部=柜名·分类标签按钮，官方原生渲染）；
+     整理物资=官方双背包（InfoA/InfoB/ItemsA/ItemsB 喂数）。 */
+  var ICOA2 = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==#a';
+  var ICOB2 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==#b';
+  function liveItem(id, x, y, n, ico) { return { id: id, x: x, y: y, w: 1, h: 1, icon: ico || ICOA2, name: '物品' + id, count: n || 3, quality: 3 }; }
+  function liveBag(n, rows) {
+    var out = [], id = 901;
+    for (var y = 0; y < rows; y++) for (var x = 0; x < 12 && out.length < n; x++)
+      out.push(liveItem(id++, x, y, 2 + ((id * 7) % 40), (x + y) % 3 === 0 ? ICOB2 : ICOA2));
+    return out;
+  }
+  function livePost(fr, type, data) { try { fr.contentWindow.postMessage({ type: type, data: data }, '*'); } catch (e) { } }
+  function liveMods(fr, extra) {
+    try {
+      var d = fr.contentDocument;
+      var st = d.createElement('style');
+      st.setAttribute('data-proto-mod', '1');
+      st.textContent = '/* mod 点②③ */' +
+        '.grid-container{max-height:560px;overflow-y:auto;scrollbar-gutter:stable;scrollbar-width:thin;scrollbar-color:rgba(255,193,7,.5) transparent}' +
+        '.grid-container::-webkit-scrollbar{width:8px}.grid-container::-webkit-scrollbar-thumb{background:rgba(255,193,7,.45);border-radius:4px}' +
+        /* 滚动条不得压格：官方 JS 写死 .grid-container{width:cols*56px}+全页 border-box，滚动槽(~10px)会从
+           该宽度里扣 → 格底 repeat(12,56px) 轨道与绝对定位物品层一起被顶进滚动条底下。
+           content-box+行末 padding 让滚动槽加在官方宽度之外：格底/物品恢复完整 12×56，滚动条独立在右侧 */
+        '.grid-container{box-sizing:content-box;padding-right:12px}' +
+        (extra || '');
+      d.head.appendChild(st);
+      var bd = d.createElement('div');
+      bd.textContent = '原型 · 12列 · 高度滚动';
+      bd.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:999;padding:4px 10px;border-radius:99px;background:rgba(20,24,36,.92);border:1px solid rgba(240,176,60,.55);color:#ffe1a0;font-size:12px;pointer-events:none';
+      d.body.appendChild(bd);
+    } catch (e) { }
+  }
+  /* ================= v13.9 提案（作者缺陷单#1）：背包页 mod 按钮 ⇅排序 ▾ + 📦 一键入库 =================
+     背景：v13.4 三 live 场景转官方原生时，排序/一键入库随 rail 一并离开本页（作者看原型
+     定稿）→ 作者实测缺陷单：背包界面缺失 排序、一键入库 按钮。
+     提案=背包面板（单背包/整理物资 A 侧）底部加一条 **mod 按钮 bar**（mod 自有 DOM 自有
+     监听，官方元素零接线零改造，§0 红线不动）：
+     - 左「⇅ 排序 ▾」：v13.7 作者参考图样式 7 项弹层（默认/饱腹/心态/精力/生命/交易价值/
+       保质期，选中金色，152→128px 控件基准与食品设施同款）；选属性=数据层重排（正式实现
+       走既有 sortBy 命令；此处演示=按伪属性降序重排重喂 ItemsAMsg，官方网格原生重渲染）
+       + 格子右上角数值角标（v13.5 同款壳层 overlay，pointer-events:none）。
+     - 右「📦 一键入库」：金色主按钮（§4.6）；点击先弹确认窗（件数/叠数按当前背包实时计，
+       弹窗锚在按钮上方），确认后演示入库 + §4.7 toast 口径（正式实现=既有 storeAll 命令）。
+     取用（access=柜子面板）不加：不是背包界面。 */
+  var SRN_SORTS = FSORTS; /* 7 项与食品设施排序完全同款（§4.11 v13.7） */
+  var SRN_BADGE = BADGE_COLOR;
+  function srnAttr(key, it) { /* 演示伪属性：按 id 稳定生成（原型无真实物品配置） */
+    var id = it.id % 97;
+    if (key === 'sat') return (id * 13) % 50;
+    if (key === 'mind') return (id * 11) % 38;
+    if (key === 'en') return (id * 17) % 45;
+    if (key === 'hp') return (id * 7) % 40;
+    if (key === 'shelf') return (id * 29) % 120;
+    return it.count * (10 + (id % 20)); /* value = 单价×数量（演示单价 10~29） */
+  }
+  function srnOrdered(key, items) { /* 数据层重排演示：重排+12 列 row-major 落位 */
+    var arr = key === 'official' ? items : items.slice().sort(function (a, b) { return srnAttr(key, b) - srnAttr(key, a); });
+    for (var i = 0; i < arr.length; i++) { arr[i].x = i % 12; arr[i].y = (i / 12) | 0; }
+    return arr;
+  }
+  var SRN_CSS =
+    /* v13.9 作者反馈两轮收口：mod 按钮**并入官方 .toolbar 按钮行**（不再自起一行），
+       基类=官方 .action-btn（同尺寸同观感，spec §4.10「mod 新增按钮用页面自带官方类」先例），
+       srn-* 只做金色系点缀（v13.7 排序钮参考图色 / v13.6 入库金）。弹层挂各自触发钮内
+       （按钮 position:relative，absolute 上弹），span nowrap 防 zoom 重排断行。 */
+    '.srn-sort,.srn-store{position:relative;flex:0 0 auto}' +
+    '.srn-sort{background:#1a1a1e !important;border-color:rgba(240,176,60,.45) !important;color:#f0b03c !important}' +
+    '.srn-sort:hover{color:#ffe1a0 !important;border-color:rgba(240,176,60,.68) !important}' +
+    '.srn-caret{font-size:10px;color:#c9932f;margin-left:1px}' +
+    '.srn-store{border-color:rgba(240,176,60,.5) !important;background:rgba(240,176,60,.14) !important;color:#ffe1a0 !important;' +
+    'margin-right:auto !important}' + /* auto 边距吃掉行内剩余空间：mod 两钮钉死左缘，官方丢弃/整理保持右缘 */
+    '.srn-store:hover{background:rgba(240,176,60,.26) !important}' +
+    '.srn-sort span,.srn-store span{display:inline-block;white-space:nowrap;flex:0 0 auto}' +
+    '.srn-pop{position:absolute;bottom:calc(100% + 8px);z-index:30;border-radius:10px;' +
+    'background:rgba(10,10,12,.94);box-shadow:0 8px 24px rgba(0,0,0,.5)}' +
+    /* !important 必须带：#srnSortPop{display:flex} 是 ID 权重，会压过普通 [hidden] 规则
+       （=作者看到的按钮上方常驻黑条；§4.10 同款教训） */
+    '.srn-pop[hidden]{display:none !important}' +
+    '#srnSortPop{left:0;width:128px;border:1px solid rgba(255,255,255,.12);padding:6px;' +
+    'display:flex;flex-direction:column;gap:5px}' +
+    '#srnSortPop .srn-opt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;border-radius:7px;' +
+    'border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;text-align:left;font-family:inherit;cursor:pointer}' +
+    '#srnSortPop .srn-opt:hover{color:#fff;border-color:rgba(255,255,255,.30)}' +
+    '#srnSortPop .srn-opt.active{color:#f0b03c}' +
+    '#srnSortPop .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}' +
+    '#srnSortPop .srn-tick{margin-left:auto;font-size:11px}' +
+    '#srnConfirm{left:0;width:300px;border:1px solid rgba(240,176,60,.4);padding:10px 12px}' + /* 入库钮已在左缘，弹窗向右展开防出界 */
+    '#srnConfirm .srn-cf-head{font-size:13px;color:#ffe1a0;margin-bottom:6px}' +
+    '#srnConfirm .srn-cf-body{font-size:12px;color:#cfc8bc;line-height:1.5;margin-bottom:10px}' +
+    '#srnConfirm .srn-cf-foot{display:flex;gap:8px;justify-content:flex-end}' +
+    '#srnConfirm button{padding:5px 12px;border-radius:7px;font-size:12px;font-family:inherit;cursor:pointer}' +
+    '#srnConfirm .srn-cf-cancel{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#d8d0c2}' +
+    '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}' +
+    '#srnBadges{position:absolute;inset:0;pointer-events:none;z-index:5}' +
+    '#srnBadges span{position:absolute;width:56px;height:56px}' +
+    '#srnBadges span i{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.80);' +
+    'font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}' +
+    '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;' +
+    'background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}' +
+    '#srnToast[hidden]{display:none}';
+  function srnMount(fr, demo) {
+    try {
+      var d = fr.contentDocument;
+      var panel = d.querySelector('.bag-panel:not(.is-storage)'); /* 单背包=唯一面板；整理物资=A 侧背包 */
+      if (!panel) return;
+      var row = panel.querySelector('.toolbar'); /* 官方按钮行（一键丢弃/一键整理所在行） */
+      if (!row) return;
+      if (!d.getElementById('srnStyle')) {
+        var stl = d.createElement('style'); stl.id = 'srnStyle'; stl.textContent = SRN_CSS; d.head.appendChild(stl);
+      }
+      if (!d.getElementById('srnSortBtn')) {
+        /* 两钮 append 进官方 .toolbar 行尾（同排同观感：基类=官方 .action-btn）；
+           弹层挂各自触发钮内（按钮 position:relative），absolute 上弹不占行高 */
+        var sortBtn = d.createElement('button');
+        sortBtn.className = 'action-btn srn-sort'; sortBtn.id = 'srnSortBtn'; sortBtn.type = 'button';
+        sortBtn.innerHTML = '<span>⇅</span><span>排序</span><span class="srn-caret">▾</span>';
+        var pop = d.createElement('div'); pop.className = 'srn-pop'; pop.id = 'srnSortPop'; pop.hidden = true;
+        sortBtn.appendChild(pop);
+        var storeBtn = d.createElement('button');
+        storeBtn.className = 'action-btn srn-store'; storeBtn.id = 'srnStoreBtn'; storeBtn.type = 'button';
+        storeBtn.innerHTML = '<span>📦</span><span>一键入库</span>';
+        var cf = d.createElement('div'); cf.className = 'srn-pop'; cf.id = 'srnConfirm'; cf.hidden = true;
+        storeBtn.appendChild(cf);
+        row.insertBefore(sortBtn, row.firstChild); /* 两钮放行首（左侧），官方丢弃/整理保持靠右 */
+        row.insertBefore(storeBtn, sortBtn.nextSibling);
+        sortBtn.onclick = function () {
+          var c = d.getElementById('srnConfirm'); if (c) c.hidden = true;
+          var p = d.getElementById('srnSortPop'); if (!p) return;
+          p.hidden = !p.hidden; srnRenderPop(fr, demo);
+        };
+        storeBtn.onclick = function () { srnOpenConfirm(fr, demo); };
+      }
+      if (!d.__srnDocBound) { /* 点空白关弹层；mod 按钮内点击不关（v9 豁免清单同款教训） */
+        d.__srnDocBound = true;
+        d.addEventListener('click', function (ev) {
+          if (ev.target && ev.target.closest && ev.target.closest('.srn-sort,.srn-store')) return;
+          var p = d.getElementById('srnSortPop'); if (p) p.hidden = true;
+          var c = d.getElementById('srnConfirm'); if (c) c.hidden = true;
+        });
+      }
+      srnBadges(fr, demo);
+    } catch (e) { }
+  }
+  function srnRenderPop(fr, demo) {
+    var d = fr.contentDocument, pop = d.getElementById('srnSortPop');
+    if (!pop) return;
+    var h = '';
+    for (var i = 0; i < SRN_SORTS.length; i++) {
+      var s = SRN_SORTS[i], on = demo.key === s.k;
+      h += '<button class="srn-opt' + (on ? ' active' : '') + '" data-k="' + s.k + '" type="button">' +
+        '<span class="f-ico">' + s.ico + '</span>' + s.label + (on ? '<span class="srn-tick">✓</span>' : '') + '</button>';
+    }
+    pop.innerHTML = h;
+    var btns = pop.querySelectorAll('.srn-opt');
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = function () {
+        demo.key = this.getAttribute('data-k');
+        if (demo.bag) srnOrdered(demo.key, demo.bag); /* 入库后的余量也跟随重排 */
+        pop.hidden = true; /* 与食品设施弹层同款：选完即关 + toast 口径一致 */
+        feedLive(fr, demo.kind); /* 重喂 ItemsAMsg=数据层重排演示；官方网格原生重渲染 */
+        srnToast(fr, demo.key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(demo.key) + '」排序 · 格子右上角显示数值');
+      };
+    }
+  }
+  function srnBadges(fr, demo) { /* v13.5 同款：属性排序时格子右上角数值角标（0=「—」） */
+    var d = fr.contentDocument;
+    var old = d.getElementById('srnBadges');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (demo.key === 'official') return;
+    var gc = d.querySelector('.bag-panel:not(.is-storage) .grid-container');
+    if (!gc) return;
+    var lay = d.createElement('div'); lay.id = 'srnBadges';
+    var items = demo.cur || [];
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], v = srnAttr(demo.key, it);
+      var cell = d.createElement('span');
+      cell.style.left = (it.x * 56) + 'px'; cell.style.top = (it.y * 56) + 'px';
+      var b = d.createElement('i');
+      b.style.color = SRN_BADGE[demo.key] || '#f0b03c';
+      b.textContent = demo.key === 'shelf' ? (v ? v + 'h' : '—') : (v || '—');
+      cell.appendChild(b);
+      lay.appendChild(cell);
+    }
+    gc.appendChild(lay);
+  }
+  function srnOpenConfirm(fr, demo) { /* §4.6 确认前置：弹窗锚在按钮上方，件数/叠数实时计 */
+    var d = fr.contentDocument;
+    var pop = d.getElementById('srnSortPop'); if (pop) pop.hidden = true;
+    var cf = d.getElementById('srnConfirm'); if (!cf) return;
+    var items = demo.cur || [], pieces = 0;
+    for (var i = 0; i < items.length; i++) pieces += items[i].count;
+    cf.innerHTML = '<div class="srn-cf-head">一键入库</div>' +
+      '<div class="srn-cf-body">背包现有 ' + pieces + ' 件（' + items.length + ' 叠），将按物品分类放入带对应标签的柜子…</div>' +
+      '<div class="srn-cf-foot"><button class="srn-cf-cancel" type="button">取消</button>' +
+      '<button class="srn-cf-go" type="button">确认入库</button></div>';
+    cf.hidden = false;
+    cf.querySelector('.srn-cf-cancel').onclick = function () { cf.hidden = true; };
+    cf.querySelector('.srn-cf-go').onclick = function () {
+      cf.hidden = true;
+      /* 演示入库：保留 1/4 重喂（原型无真实柜子数据），toast 按 §4.7 差量口径 */
+      var keep = items.slice(0, Math.max(1, Math.floor(items.length / 4))), left = 0;
+      for (var k = 0; k < keep.length; k++) left += keep[k].count;
+      demo.bag = srnOrdered(demo.key, keep);
+      feedLive(fr, demo.kind);
+      srnToast(fr, '已入库 ' + (pieces - left) + ' 件 → 床头柜 · 食品柜（演示）…（' + left + ' 件留背包）');
+    };
+  }
+  function srnToast(fr, msg) {
+    var d = fr.contentDocument, t = d.getElementById('srnToast');
+    if (!t) { t = d.createElement('div'); t.id = 'srnToast'; d.body.appendChild(t); }
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(t.__srnT); t.__srnT = setTimeout(function () { t.hidden = true; }, 3000);
+  }
+
+  function feedLive(fr, kind) {
+    if (kind === 'access') {
+      /* 取用=单柜面板：柜名+分类标签按钮（canTag），无负重条 */
+      livePost(fr, 'WebUI_Backpack_InfoAMsg', { ownerId: 900103, backpackName: '床头柜', gridCols: 12, gridRows: 14, currentWeight: 0, maxWeight: 0 });
+      /* 分类标签按钮：canTag 在 InfoBMsg 处理器里（官方结构）——单袋形态补喂一笔仅翻 canTag，
+         不带其余字段（bagB 不参与 single 渲染）→ 头部= 柜名 · ＋分类（官方原生） */
+      livePost(fr, 'WebUI_Backpack_InfoBMsg', { canTag: true });
+      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(liveBag(60, 14).map(function (it) { it.id += 700; it.name = '柜藏' + it.id; return it; })) });
+      liveMods(fr, '.weight-section{display:none !important}'); /* mod 点③：柜子无负重条 */
+      return;
+    }
+    /* v13.9 提案：背包页演示态（排序键/入库余量）挂在 iframe 元素上，重喂循环保活一致 */
+    var demo = fr.__srn || (fr.__srn = { key: 'official', bag: null, cur: null, kind: kind });
+    demo.kind = kind;
+    var items = demo.bag || srnOrdered(demo.key, liveBag(48, 12));
+    demo.cur = items;
+    if (kind === 'backpack') {
+      /* v13.3 单独背包=B 键纯背包页：对齐整理物资背包侧（同一只 仓管背包·12列·同数据），
+         负重条保留（mod 点③只藏柜侧），无 InfoB/canTag（单袋形态，头部无分类按钮） */
+      livePost(fr, 'WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '仓管背包', gridCols: 12, gridRows: 12, currentWeight: 8, maxWeight: 60 });
+      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(items) });
+      liveMods(fr, '');
+    } else {
+      livePost(fr, 'WebUI_Backpack_InfoAMsg', { ownerId: 900001, backpackName: '仓管背包', gridCols: 12, gridRows: 12, currentWeight: 8, maxWeight: 60, isDualBag: true });
+      livePost(fr, 'WebUI_Backpack_InfoBMsg', { ownerId: 900103, backpackName: '床头柜', gridCols: 12, gridRows: 12, currentWeight: 0, maxWeight: 0, canTag: true });
+      livePost(fr, 'WebUI_Backpack_ItemsAMsg', { itemsJson: JSON.stringify(items) });
+      livePost(fr, 'WebUI_Backpack_ItemsBMsg', { itemsJson: JSON.stringify(liveBag(40, 12).map(function (it) { it.id += 500; it.name = '柜藏' + it.id; return it; })) });
+      liveMods(fr, '.bag-panel.is-storage .weight-section{display:none !important}'); /* mod 点③：柜侧无负重条（背包侧保留） */
+    }
+    srnMount(fr, demo); /* mod 点④：背包侧按钮 bar（排序/入库），幂等重挂 */
+  }
+  function setSceneLive(key) {
+    var kind = DATA.scenes[key].live;
+    var g = document.getElementById('gpage');
+    /* width:100% 必须显式给：.gfit 绝对定位无宽度会 shrink-to-fit 塌到 iframe 默认 300px，
+       官方页 applyViewportFit 按容器算 zoom → 整页被压到 ~17%（"放大镜"病根） */
+    g.innerHTML = '<div class="gfit" style="width:100%;height:100%">' + DATA.scenes[key].body + '</div>';
+    var fr = g.querySelector('iframe.proto-live');
+    if (!fr) return;
+    fr.style.cssText = 'width:100%;height:100%;border:0;border-radius:14px;background:#111;display:block';
+    var fed = 0;
+    fr.addEventListener('load', function () { setTimeout(function () { feedLive(fr, kind); }, 500); });
+    var t = setInterval(function () {
+      fed++;
+      try { if (fr.contentDocument && fr.contentDocument.body && fr.contentDocument.body.children.length) { feedLive(fr, kind); if (fed > 5) clearInterval(t); } } catch (e) { }
+      if (fed > 20) clearInterval(t);
+    }, 1200);
+  }
+
   /* 场景切换：换官方页 DOM + 启用对应 CSS + 载入该场景的页签顺序/快捷标签 + 回入口默认容器 + 插入侧栏 */
   function setScene(key) {
     st.scene = key;
+    /* v13.2：取用/整理物资=官方页 iframe 真渲染场景——不注入 rail，喂数+mod CSS */
+    if (DATA.scenes[key] && DATA.scenes[key].live) { setSceneLive(key); return; }
     loadScenePrefs();
     st.currentId = SCENE_DEF[key] || 1;
     /* B 键单独背包 = 纯背包页：柜子页签栏/全库切换都不显示（bagonly），跨柜搜索一并关闭 */
     if (key === 'backpack' && st.global) { st.global = false; st.mode = st.prevMode || 'grid'; }
+    /* 机器界面（plain，v13.5）：搜索/快捷标签/工具行不显示 → 固定网格+本柜+清筛选；
+       排序随场景：食品类设施=官方默认（页脚左下角可改），交易=计算后交易价值，其余=官方默认 */
+    if (PLAIN.indexOf(key) >= 0) {
+      st.global = false; st.mode = 'grid'; st.tags = []; st.query = ''; st.dir = 1;
+      st.sort = key === 'trade' ? 'tvalue' : 'official';
+    } else if (st.sort === 'official' || st.sort === 'tvalue') st.sort = 'value';
     applySize(ctn().cap);
     st.sel = null;
     var styles = root.querySelectorAll('style.gs');
@@ -1073,10 +1465,11 @@
     // 图片占位（相对路径在原型里不可达）
     var imgs = g.querySelectorAll('img');
     for (var m = 0; m < imgs.length; m++) imgs[m].src = 'data:image/gif;base64,R0lGODlhAQABAIAAAPLt4gAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
-    // 插入侧栏（整理柜 = 双面板：左背包面板[我们的优化版] + 右柜子侧栏）
+    // 插入侧栏（v13：整理柜 = 三段壳，左/右物品区=官方原件占位[实现 reparent]，跨柜=rackOpen）
     var host = findRailHost(g);
     var rail = document.createElement('div');
-    rail.className = 'sr-rail ' + DATA.scenes[key].shell + (key === 'backpack' ? ' bagonly' : '');
+    rail.className = 'sr-rail ' + DATA.scenes[key].shell + (key === 'backpack' ? ' bagonly' : '') +
+      (PLAIN.indexOf(key) >= 0 ? ' plain' : '') + (key === 'trade' ? ' trade' : '');
     rail.id = 'srRail';
     rail.innerHTML = RAIL_HTML;
     if (key === 'rack') {
@@ -1086,8 +1479,11 @@
       bp.className = 'sr-rail bagpanel';
       bp.id = 'srBagP';
       bp.innerHTML = BAGPANEL_HTML;
-      /* 中间转移按钮列 = 官方改版背包（BackpackUI 双背包）同款四按钮，标记照搬官方静态模板：
-         全部取出◀ / ◀分类取出(下拉) / 放入▶ / 分类放入▶(下拉)；按钮本体样式用页面自带官方 .transfer-btn */
+      /* v13.1（作者 2026-10-31 裁决）：右段=**普通存储取物面板**——仅 柜名标题+格数副标+
+         官方格网格+底栏用量；页签栏/搜索栏/快捷标签栏/排序栏/网格列表切换 一律不要 */
+      /* 中段转移按钮列（v13 口径）：「全部取出◀」「放入▶」= 官方 btnTakeAll/btnPutAll 原件
+         （实现 reparent，官方监听原样）；「分类取出/分类放入/按标签放入」= mod 增值按钮
+         （官方 .transfer-btn 样式，C# 命令通道）。右段物品区 = 官方 #panelB 汇总行原件占位。 */
       var mid = document.createElement('div');
       mid.className = 'transfer-controls';
       mid.innerHTML =
@@ -1104,9 +1500,19 @@
         '<span class="putin-row" id="srTagChips"></span>' +
         '<span class="putin-row putin-main"><span class="btn-label">按标签放入</span><span class="btn-arrow">▶</span></span>' +
         '</button>';
+      var plain = document.createElement('div');
+      plain.className = 'sr-rail ctnpanel';
+      plain.id = 'srCtnP';
+      var curCtn = ctnById(st.currentId) || CTN[1];
+      plain.innerHTML =
+        '<div class="sr-head"><div class="sr-headtxt"><div class="sr-title">' + esc(curCtn.name) + '</div>' +
+        '<div class="sr-sub"><b>' + COLS + ' 列</b><span> · ' + curCtn.cap + ' 格</span></div></div></div>' +
+        '<div class="sr-body" id="scBody"><div class="sr-grid" id="scGrid"></div></div>' +
+        '<div class="sr-hover" id="scHover">官方原件区 · 拖拽/右键/高亮键（官方原生）</div>' +
+        '<div class="sr-foot"><div class="sr-foot-l"><span id="scFill"></span><span class="fr" id="scView"></span></div></div>';
       duo.appendChild(bp);
       duo.appendChild(mid);
-      duo.appendChild(rail);
+      duo.appendChild(plain);
       host.parentNode.replaceChild(duo, host);
     } else {
       host.parentNode.replaceChild(rail, host);

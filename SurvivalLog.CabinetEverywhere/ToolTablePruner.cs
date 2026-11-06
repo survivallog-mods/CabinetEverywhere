@@ -107,7 +107,7 @@ internal static class ToolTablePruner
         }
     }
 
-    // ---- 对账：期望集（视图谓词）vs 列表现状，收敛后一次重推 ----
+    // ---- 对账：期望集（视图谓词）vs 列表现状 + T3 拖拽序对齐，收敛后一次重推 ----
     private static void Reconcile(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, State_Web_ToolTable st,
         ObservableCollections.ObservableList<Data_Web_ToolTable_CabinetTab> tabs)
     {
@@ -122,9 +122,13 @@ internal static class ToolTablePruner
             verdicts.Add($"{kv.Value.Name}({kv.Key})={(ok ? "留" : "剪")}:{why}");
         }
 
+        // v1.8.7 T3：拖拽序对齐先行（cerail_pinorder.json "tooltable"；TabInjector.ApplyOrder
+        // 幂等——无本页键/序已同=恒 false 零动作，序变=清空+按目标序整体重建）。
+        bool reordered = TabInjector.ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "tooltable");
+
         // 签名比对：无变化不动作不重推（避免 0.5s 轮询变成常量推送源）
         var sig = view + "|" + string.Join(",", desired);
-        if (sig == _lastSig && ListMatches(tabs, desired)) return;
+        if (sig == _lastSig && !reordered && ListMatches(tabs, desired)) return;
 
         // 活动页签（activeLeftTab>=2 时指向列表位次）本轮不剪，防原生活动态错位
         int active = 0;
@@ -146,31 +150,8 @@ internal static class ToolTablePruner
             removed++;
         }
 
-        // 重排 Index=列表位次（JS 与原生均按位次切换）
-        for (int i = 0; i < tabs.Count; i++)
-        {
-            try { tabs[i].Index = i; } catch { }
-        }
-
-        // 平移活动页签到同 owner 新位次
-        if (activeOwner != 0)
-        {
-            for (int i = 0; i < tabs.Count; i++)
-            {
-                long owner = 0;
-                try { owner = tabs[i]?.OwnerId?.Value ?? 0; } catch { }
-                if (owner == activeOwner)
-                {
-                    if (active != i + 2)
-                    {
-                        try { st.ActiveLeftTab.Value = i + 2; } catch { }
-                    }
-                    break;
-                }
-            }
-        }
-
-        // 加回新可见（登记有底：名称/配置/IsRack 原样重建）
+        // 加回新可见（登记有底：名称/配置/IsRack 原样重建）——先加回后重排 Index：
+        // 加回条目追加尾部（Index=当时位次），下一段 Index/Active 平移统一按终态收口
         var have = new HashSet<long>();
         for (int i = 0; i < tabs.Count; i++)
         {
@@ -199,11 +180,35 @@ internal static class ToolTablePruner
             }
         }
 
+        // 重排 Index=列表位次（JS 与原生均按位次切换；覆盖修剪/加回/拖拽序三路终态）
+        for (int i = 0; i < tabs.Count; i++)
+        {
+            try { tabs[i].Index = i; } catch { }
+        }
+
+        // 平移活动页签到同 owner 新位次
+        if (activeOwner != 0)
+        {
+            for (int i = 0; i < tabs.Count; i++)
+            {
+                long owner = 0;
+                try { owner = tabs[i]?.OwnerId?.Value ?? 0; } catch { }
+                if (owner == activeOwner)
+                {
+                    if (active != i + 2)
+                    {
+                        try { st.ActiveLeftTab.Value = i + 2; } catch { }
+                    }
+                    break;
+                }
+            }
+        }
+
         _lastSig = sig;
 
-        if (removed > 0 || added > 0)
+        if (removed > 0 || added > 0 || reordered)
         {
-            Log($"视图={view} 修剪 {removed} 条 / 加回 {added} 条，扫描集=所见={tabs.Count} 条" +
+            Log($"视图={view} 修剪 {removed} 条 / 加回 {added} 条 / 序对齐={reordered}，扫描集=所见={tabs.Count} 条" +
                 $"（登记 {_registry.Count}，背包/抽屉不在内）");
             if (CabinetEverywherePlugin.Verbose.Value)
                 foreach (var v in verdicts) LogDetail(v);

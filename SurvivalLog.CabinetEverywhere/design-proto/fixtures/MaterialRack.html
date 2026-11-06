@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>材料架</title>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
+<script src="../../webui-rackrows.js"></script>
+<script src="../../webui-flyitems.js"></script>
+<!-- 「脚边」横排：界面下方那一排身边地面物品（与其他物品界面共用） -->
+<script src="../../webui-grounddock.js"></script>
+<style>
+/* 配色与组件口径同背包面板（BackpackUI）：深灰半透明面板 + 1px 细边 + 内阴影，右侧容器用暖色格 */
+:root{
+  --panel-bg:linear-gradient(168deg,rgba(34,34,36,.94) 0%,rgba(20,20,22,.96) 100%);
+  --panel-border:rgba(255,255,255,.15);
+  --slot-bg:linear-gradient(180deg,#131316 0%,#1d1d20 100%);
+  --slot-border:rgba(255,255,255,.13);
+  --grid-frame-bg:#08080a;
+  --text-color:#eee; --text-dim:#999;
+  --accent:#FFC107; --accent-glow:rgba(255,193,7,.28);
+  --rarity-common-bg:rgba(170,170,170,.1); --rarity-common-border:rgba(200,200,200,.5);
+  --danger:#FF6B5B;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  background:transparent; color:var(--text-color);
+  font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+  display:flex; justify-content:center; align-items:center; min-height:100vh;
+  user-select:none; overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:rgba(0,0,0,.4);}
+
+.rack-system{position:relative;display:flex;flex-direction:row;align-items:center;gap:18px;}
+.bag-panel{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.header{display:flex;align-items:center;gap:10px;}
+.panel-title{font-size:18px;font-weight:600;letter-spacing:1px;text-shadow:0 2px 6px rgba(0,0,0,.6);}
+
+/* 标题栏「允许机器人存入」拨杆：结构与配色照背包面板的 .rsw；滑块位移只用 transform，
+   开关态只切 class（不给 box-shadow / background 挂 transition，见 webui-effects-performance.md） */
+.rsw-box{display:inline-flex;align-items:center;gap:8px;padding:3px 9px 3px 7px;border-radius:9px;
+  background:rgba(255,255,255,.055);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10);}
+.rsw-prefix{font-size:12px;color:rgba(255,255,255,.78);font-weight:600;white-space:nowrap;}
+.rsw-group{display:inline-flex;align-items:center;gap:6px;}
+.rsw-label{font-size:12px;color:rgba(255,255,255,.7);white-space:nowrap;}
+.rsw{width:34px;height:17px;border-radius:2px;position:relative;cursor:pointer;flex-shrink:0;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);}
+.rsw i{position:absolute;top:3px;left:3px;width:11px;height:11px;border-radius:1px;background:rgba(255,255,255,.42);}
+.rsw.on{background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 1px rgba(255,255,255,.75);}
+.rsw.on i{transform:translateX(17px);background:#fff;box-shadow:0 0 8px rgba(255,255,255,.55);}
+.panel{
+  position:relative; background:var(--panel-bg); border:1px solid var(--panel-border);
+  border-radius:14px; padding:14px 16px 12px;
+  box-shadow:0 12px 40px rgba(0,0,0,.5),0 0 1px rgba(255,255,255,.05) inset;
+  display:flex; flex-direction:column; align-items:stretch;
+}
+/* 拖拽中的边框提示：只切 class，不做过渡（border-color / box-shadow 过渡会逐帧重绘） */
+.panel.drop-target{border-color:var(--accent);box-shadow:0 0 18px var(--accent-glow),0 12px 40px rgba(0,0,0,.5);}
+.panel.drop-reject{border-color:rgba(255,82,82,.7);box-shadow:0 0 18px rgba(255,82,82,.22),0 12px 40px rgba(0,0,0,.5);}
+
+/* ── 左栏：负重 + 格子背包 ── */
+.weight-section{margin-bottom:10px;}
+.weight-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.weight-label-left{font-size:12px;color:var(--text-dim);letter-spacing:.5px;}
+.weight-label-right{font-size:12px;font-weight:600;color:var(--text-color);font-variant-numeric:tabular-nums;}
+.weight-label-right.over{color:#e8784a;}
+.weight-bar{width:100%;height:7px;background:rgba(8,8,10,.92);border-radius:4px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.5);}
+.weight-bar-fill{width:100%;height:100%;transform:scaleX(0);transform-origin:left;transition:transform .35s cubic-bezier(.4,0,.2,1);
+  background:linear-gradient(90deg,#b8830a 0%,#FFC107 100%);}
+.weight-bar-fill.over{background:linear-gradient(90deg,#b04030 0%,#FF5252 100%);}
+
+.grid-wrap{position:relative;display:flex;justify-content:center;}
+.grid-container{
+  position:relative; display:grid; gap:2px; padding:4px; border-radius:6px; width:fit-content;
+  background:var(--grid-frame-bg);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.65),inset 0 2px 8px rgba(0,0,0,.55);
+}
+.slot{
+  background:var(--slot-bg); border:1px solid var(--slot-border); border-radius:3px;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.5),inset 0 -1px 0 rgba(170,200,240,.06);
+}
+.slot.valid-hover{border-color:rgba(255,193,7,.6);background:linear-gradient(180deg,#1c1c20 0%,#29292c 100%);}
+.slot.invalid-hover{border-color:rgba(255,82,82,.6);background:rgba(224,85,85,.18);}
+.item{
+  border-radius:5px; overflow:hidden; border:1.5px solid var(--rarity-common-border);
+  background:linear-gradient(var(--rarity-common-bg),var(--rarity-common-bg)),var(--slot-bg);
+}
+.item::before{content:'';position:absolute;inset:0;background:linear-gradient(160deg,rgba(255,255,255,.1) 0%,transparent 60%);pointer-events:none;}
+.item img{max-width:88%!important;max-height:88%!important;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45));}
+.item:hover{filter:brightness(1.15);}
+.item-count{position:absolute;bottom:3px;right:4px;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.62);
+  padding:0 6px;border-radius:9px;line-height:14px;pointer-events:none;z-index:6;}
+.item.q-perfect{border-color:#FFC107;}
+.item.q-good{border-color:#B988E6;}
+.item.q-normal{border-color:rgba(255,255,255,.55);}
+.item.q-fail{border-color:#707070;filter:saturate(.5) brightness(.85);}
+.item.expired{border-color:rgba(178,72,55,.75)!important;}
+.expired-mask{position:absolute;inset:0;border-radius:3px;pointer-events:none;z-index:0;
+  background:linear-gradient(to top,rgba(146,52,38,.7) 0%,rgba(146,52,38,.45) 35%,rgba(146,52,38,.15) 75%,rgba(146,52,38,0) 100%);}
+.near-expiry-mask{position:absolute;inset:0;border-radius:3px;pointer-events:none;z-index:5;
+  background:linear-gradient(to top,rgba(255,210,60,.42) 0px,rgba(255,210,60,.18) 5px,rgba(255,210,60,0) 12px);}
+.polluted-ring{position:absolute;inset:0;border:2px solid rgba(140,220,110,.9);border-radius:6px;pointer-events:none;z-index:4;
+  box-shadow:inset 0 0 12px rgba(110,190,90,.55);}
+.item.in-action{border-color:rgba(38,198,218,.85);}
+.action-glow{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;opacity:.85;
+  box-shadow:inset 0 0 8px rgba(38,198,218,.35),inset 0 0 2px rgba(38,198,218,.55);}
+.new-dot{position:absolute;top:3px;left:3px;width:8px;height:8px;border-radius:50%;background:#ff4d4d;
+  border:1px solid rgba(255,255,255,.7);pointer-events:none;z-index:5;}
+
+/* 悬停「取出最多」时在左栏画落点：虚线框 + 半透明图标 */
+.preview-layer{position:absolute;left:0;top:0;pointer-events:none;z-index:30;}
+.drop-preview{position:absolute;border:1.5px dashed rgba(124,224,135,.85);background:rgba(124,224,135,.12);border-radius:5px;
+  display:flex;align-items:center;justify-content:center;}
+.drop-preview img{max-width:80%;max-height:80%;object-fit:contain;opacity:.45;}
+
+/* ── 中栏按钮（口径同背包面板中栏） ── */
+.transfer-controls{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;padding:30px 22px;margin:0 -18px;}
+.transfer-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  background:linear-gradient(180deg,rgba(38,32,20,.88) 0%,rgba(28,24,16,.92) 100%);
+  color:#e8dcb8; border:1px solid rgba(255,195,100,.28);
+  padding:10px 18px; border-radius:9px; font-size:13px; font-weight:500; letter-spacing:.6px;
+  cursor:pointer; font-family:inherit; white-space:nowrap;
+  box-shadow:0 3px 10px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,220,140,.08);
+  transition:transform .12s;
+}
+.transfer-btn:hover:not(:disabled){
+  background:linear-gradient(180deg,rgba(58,48,28,.92) 0%,rgba(42,36,22,.95) 100%);
+  border-color:rgba(255,210,130,.55); color:#fff2c8; transform:translateY(-1px);
+}
+.transfer-btn:active:not(:disabled){transform:translateY(1px);}
+.transfer-btn:disabled{
+  background:linear-gradient(180deg,rgba(56,52,44,.55) 0%,rgba(40,38,32,.62) 100%);
+  color:rgba(230,220,200,.28); border-color:rgba(255,255,255,.06); box-shadow:none; cursor:not-allowed;
+}
+.transfer-btn-primary{
+  padding:13px 22px; font-size:14.5px; font-weight:700; letter-spacing:1px; min-width:138px; border-radius:10px;
+  background:linear-gradient(180deg,rgba(255,193,7,.94) 0%,rgba(228,162,0,.97) 100%);
+  color:#2a1f00; border-color:rgba(255,225,130,.75);
+  box-shadow:0 4px 12px rgba(255,193,7,.38),0 0 14px var(--accent-glow),inset 0 1px 0 rgba(255,245,200,.35);
+}
+.transfer-btn-primary:hover:not(:disabled){
+  background:linear-gradient(180deg,rgba(255,212,62,.98) 0%,rgba(244,178,12,1) 100%);
+  border-color:rgba(255,240,160,.9); color:#1a1300;
+}
+.btn-arrow{display:inline-block;line-height:1;font-size:15px;opacity:.85;}
+.transfer-btn-primary .btn-arrow{font-size:18px;opacity:1;}
+/* 「放入材料」与「全部取出」等宽居中：一主一次两个按钮上下叠，宽度不齐会读成两个不相干的控件 */
+.transfer-controls .transfer-btn{min-width:142px;justify-content:center;}
+
+/* ── 右栏：材料架 ── */
+.is-storage{--slot-bg:linear-gradient(180deg,#16161a 0%,#20201f 100%);--slot-border:rgba(220,200,175,.16);--grid-frame-bg:#0a0907;}
+/* 宽 = 名牌 84 + 10 + 轨道 380 + 10 + 取出图标 30 + 10 + 锁定图标 30，加面板左右内边距 */
+.rack-panel{width:586px;}
+/* 顶部「材料统计：X 种　X 件」，下面一条很淡的分隔线 */
+.rack-stat{display:flex;align-items:baseline;gap:14px;margin:0 2px 10px;padding-bottom:8px;border-bottom:1px solid rgba(255,236,200,.07);
+  font-size:12.5px;color:var(--text-dim);letter-spacing:.5px;}
+.rack-stat .k{color:#cfc4aa;}
+.rack-stat b{font-size:15px;color:#fff;font-weight:700;font-variant-numeric:tabular-nums;}
+
+.warning-box{color:var(--danger);font-size:13px;min-height:18px;font-weight:bold;text-shadow:0 1px 2px rgba(0,0,0,.8);text-align:center;margin-top:8px;}
+.rack-foot{font-size:12px;color:rgba(255,255,255,.38);text-align:center;letter-spacing:.5px;margin-top:2px;}
+
+/* 同类预览高亮（2026-09-23）：按住高亮键悬停某件时左栏同类一起描边，class 由 webui-bag.js 的 setKinHint 打。
+   transition:none 是必须的——.item 多半带 box-shadow/border-color 过渡，不覆盖会渐显 200ms，
+   比整条推送链路还慢。配色与背包 / 无人机面板同一支亮黄。 */
+.grid-container.kin-active .item.kin-hint{
+  transition:none;
+  border-color:rgba(255,233,74,1) !important;
+  box-shadow:0 0 14px rgba(255,233,74,0.6), inset 0 0 8px rgba(255,233,74,0.3) !important;
+}
+/* 按住高亮键时 tooltip 就地变成批量放入提示：同一个元素换内容换配色，天生不会和详情重叠 */
+#itemTooltip.kin-mode{ border-color:rgba(255,233,74,.55); color:rgba(255,233,74,1); white-space:nowrap; }
+#itemTooltip{position:fixed;background:rgba(30,24,22,.96);border:1px solid rgba(255,193,7,.45);color:var(--text-color);
+  padding:8px 11px;border-radius:6px;font-size:12px;pointer-events:none;z-index:2000;display:none;line-height:1.55;
+  box-shadow:0 8px 24px rgba(0,0,0,.8);white-space:pre-line;}
+
+/* 画质分级：Low 档的飞入在 JS 里按 quality-low 跳过；行卡片的分级在公共分行脚本里 */
+</style>
+</head>
+<body>
+<div id="itemTooltip" data-no-sync></div>
+
+<div class="rack-system" id="rackSystem">
+  <div class="bag-panel">
+    <div class="header"><div class="panel-title" data-i18n="bagTitle">背包</div></div>
+    <div class="panel" id="panelA">
+      <div class="weight-section">
+        <div class="weight-label">
+          <span class="weight-label-left" data-i18n="weightLabel">负重</span>
+          <span class="weight-label-right" id="wtText"></span>
+        </div>
+        <div class="weight-bar"><div class="weight-bar-fill" id="wtFill"></div></div>
+      </div>
+      <div class="grid-wrap" id="gridWrap">
+        <div class="grid-container" id="bagGrid"></div>
+        <div class="preview-layer" id="previewLayer"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="transfer-controls">
+    <button class="transfer-btn transfer-btn-primary" id="btnPutAll" type="button" disabled>
+      <span class="btn-label" data-i18n="putAll">放入材料</span><span class="btn-arrow">▶</span>
+    </button>
+    <button class="transfer-btn" id="btnTakeAll" type="button" disabled>
+      <span class="btn-arrow">◀</span><span class="btn-label" data-i18n="takeAll">全部取出</span>
+    </button>
+  </div>
+
+  <div class="bag-panel is-storage">
+    <div class="header">
+      <div class="panel-title" id="rackTitle">材料架</div>
+      <div class="rsw-box" id="rswBox" style="display:none;">
+        <span class="rsw-prefix" data-i18n="robotOwner">整理机器人</span>
+        <div class="rsw-group" id="rswGroup">
+          <span class="rsw-label" data-i18n="robotPut">存</span>
+          <div class="rsw" id="rswPut"><i></i></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel rack-panel" id="panelB">
+      <div class="rack-stat" id="rackStat"></div>
+      <div id="rackBody"></div>
+      <div class="warning-box" id="warnBox"></div>
+      <div class="rack-foot" data-i18n="footHint">左键拖动搬运　·　右键取 1 件　·　单击看详情</div>
+    </div>
+  </div>
+
+  <div class="fly-layer" id="flyLayer" data-no-sync></div>
+</div>
+
+<script>
+var core = createWebUICore('MaterialRack');
+
+var i18nText = {
+  bagTitle:'背包', weightLabel:'负重', putAll:'放入材料', takeMax:'取出最多',
+  bagFull:'背包已满', weightFull:'负重已满', total:'共 {0} 件',
+  footHint:'左键拖动搬运　·　右键取 1 件　·　单击看详情',
+  rejectHint:'材料架不收这件物品', moldyLabel:'已经发霉', shelfLifeLabel:'保质期:',
+  statLabel:'材料统计：', statKinds:'{0} 种', statItems:'{0} 件',
+  takeRow:'取出这一行', takeRowFit:'背包能放下 {0} 件', takeRowTotal:'（这行共 {0} 件）',
+  lockRow:'锁定这一行', unlockRow:'取消锁定',
+  takeAll:'全部取出', robotOwner:'整理机器人', robotPut:'存',
+  robotPutTip:'打开后，整理机器人会把收纳范围内的材料送到这个架子上',
+  kinTransferHint:'[点击] 批量转移 [{0}]'
+};
+
+/* 去掉词条自带的方向箭头。「全部取出」复用背包面板的 UI_BattleBag_0，原文就是「← 全部取出」/「← Take All」，
+   而本页按钮左边已经画了 .btn-arrow，直接上屏会显示成「◀ ← 全部取出」。
+   口径同 BackpackUI / DroneHub / RatCage 的 stripArrow。 */
+var ARROW_KEYS = { takeAll:true };
+function stripArrow(s){ return String(s || '').replace(/^\s*[←→⟵⟶⇐⇒]\s*|\s*[←→⟵⟶⇐⇒]\s*$/g, ''); }
+
+var SLOT = 52, GAP = 2, PAD = 4;
+/* 12 行 + 统计行要在 864 高的视口里放下不缩放：行高 52、行距 4 */
+var TRACK_W = 380, UNIT = 42, ROW_H = 52, ROW_GAP = 4, PLATE_W = 84;
+var FIT_REASON_WEIGHT = 2;
+
+var State = {
+  bagOwnerId:0, rackOwnerId:0, bagCols:8, bagRows:7, bagItems:[],
+  bagWeight:0, bagMaxWeight:0, bagOverweightLine:0,
+  furnitureName:'', rows:[], total:0,
+  /* 标题栏「允许机器人存入」拨杆：show 由 Logic 判（家里有整理机器人 + 这台架子机器人能碰） */
+  robotSwitchShow:false, robotPut:false,
+  /* 高亮键按住态（C# 广播 Ac_HighlightKeyHeld → HighlightHeldMsg）：开着时悬停 = 同类预览、点击 = 整批放入 */
+  highlightHeld:false
+};
+
+var $ = function(id){ return document.getElementById(id); };
+function findItem(list, itemId){ for (var i=0;i<list.length;i++){ if (list[i].itemId == itemId) return list[i]; } return null; }
+
+var _fit = createViewportFit({ measureSelector:'.rack-system', margin:24, bodyHeightProp:'height' });
+function getZoom(){ return _fit.getZoom ? _fit.getZoom() : 1; }
+
+function showWarn(msg){
+  var w = $('warnBox'); w.textContent = msg || '';
+  clearTimeout(showWarn._t);
+  showWarn._t = setTimeout(function(){ w.textContent = ''; }, 2600);
+}
+
+/* ══════ 左栏背包 ══════ */
+/* 取出时物品从架子飞进格子：起点终点都在本页面里，公共件只管画，认哪几件是新到的由下面的 flyItems 判 */
+var flyer = createItemFlyer({ host:$('rackSystem'), layer:$('flyLayer'), getZoom:getZoom });
+
+var bagBag = createGridBag('bagGrid', { cols:8, rows:7, slotSize:SLOT, gap:GAP, padding:PAD, onItemRendered:paintBagItem });
+function paintBagItem(el, item){
+  var r = item._raw || {};
+  if (r.isExpired){
+    el.classList.add('expired');
+    var mask = document.createElement('div'); mask.className = 'expired-mask'; el.appendChild(mask);
+  } else if (r.nearExpiry){
+    var near = document.createElement('div'); near.className = 'near-expiry-mask'; el.appendChild(near);
+  }
+  if (r.polluted){ var ring = document.createElement('div'); ring.className = 'polluted-ring'; el.appendChild(ring); }
+  if (r.actionMark > 0){
+    el.classList.add('in-action');
+    var glow = document.createElement('div'); glow.className = 'action-glow'; el.appendChild(glow);
+  }
+  if (r.isNewUnread){ var dot = document.createElement('div'); dot.className = 'new-dot'; el.appendChild(dot); }
+  flyer.applyArriving(el, r.itemId);
+}
+
+function renderWeight(){
+  var max = State.bagMaxWeight, w = State.bagWeight;
+  var txt = $('wtText'), fill = $('wtFill');
+  if (!(max > 0)){ txt.textContent = (w/1000).toFixed(1) + ' Kg'; fill.style.transform = 'scaleX(0)'; return; }
+  txt.textContent = (Math.ceil(w/100)/10).toFixed(1) + ' / ' + (Math.floor(max/100)/10).toFixed(1) + ' Kg';
+  var over = State.bagOverweightLine > 0 && w > State.bagOverweightLine;
+  txt.classList.toggle('over', over);
+  fill.classList.toggle('over', over);
+  fill.style.transform = 'scaleX(' + Math.max(0, Math.min(1, w/max)).toFixed(3) + ')';
+}
+
+function renderPutAll(){
+  var any = false;
+  for (var i=0;i<State.bagItems.length;i++){ if (State.bagItems[i].rackable){ any = true; break; } }
+  $('btnPutAll').disabled = !any;
+}
+
+/* 「全部取出」：架上有东西才可点；装不装得下由 Logic 逐件判，放不下的留在架上并统一飘一次 */
+function renderTakeAll(){
+  $('btnTakeAll').disabled = !(State.total > 0);
+}
+
+/* 标题栏「允许机器人存入」：show 由 Logic 判（家里有整理机器人 + 这台架子机器人能碰） */
+function renderRobotSwitch(){
+  $('rswBox').style.display = State.robotSwitchShow ? '' : 'none';
+  $('rswPut').classList.toggle('on', !!State.robotPut);
+}
+
+/* ══════ 右栏：材料架行（一个显示行 = 材料架的一个格子行，点哪行取哪行） ══════ */
+function fmt(tpl, n){ return String(tpl || '{0}').split('{0}').join(String(n)); }
+function blockedText(r){ return r.fitReason === FIT_REASON_WEIGHT ? i18nText.weightFull : i18nText.bagFull; }
+
+var rackRows = createRackRows($('rackBody'), {
+  trackWidth:TRACK_W, unit:UNIT, rowHeight:ROW_H, gap:ROW_GAP, plateWidth:PLATE_W,
+  takeButton:{ disabled:function(r){ return !(r.count > 0) || !(r.fit > 0); } },
+  lockButton:true,
+  /* 单击看详情（背包满也能看），右键取 1 件，左键拖出去自己选位置 —— 与左栏背包同一套手势 */
+  clickIsDetail:true,
+  onCardClick:function(r){ onRowDetail(r); },
+  onCardRightClick:function(r){ onTakeOne(r); },
+  onCardDrag:function(r, ev){ onRowDrag(r, ev); },
+  onBlocked:function(r){ showWarn(blockedText(r)); },
+  onCardHover:function(r, isEnter){
+    if (isEnter) showTextTip((r.name || '') + '　' + fmt(i18nText.statItems, r.count || 0)); else hideItemTip();
+  },
+  onTake:function(r){ onTakeMax(r); },
+  onTakeHover:function(r, isEnter){
+    /* 悬停说明只留一行标题；放不下时才补一句原因（「背包能放下几件」那行按需求去掉） */
+    if (!isEnter){ hideItemTip(); clearTakePreview(); return; }
+    showTextTip(r.fit > 0 ? i18nText.takeRow : (i18nText.takeRow + '\n' + blockedText(r)));
+    showTakePreview(r);
+  },
+  onLock:function(r){ onToggleLock(r); },
+  onLockHover:function(r, isEnter){
+    if (isEnter) showTextTip(r.locked ? i18nText.unlockRow : i18nText.lockRow); else hideItemTip();
+  }
+});
+
+/* 统计按行数据算：种类 = 不同材料数，件数 = 各行件数之和 */
+function appendCount(host, tpl, n){
+  var parts = String(tpl || '{0}').split('{0}');
+  var s = document.createElement('span');
+  s.appendChild(document.createTextNode(parts[0] || ''));
+  var b = document.createElement('b'); b.textContent = n; s.appendChild(b);
+  s.appendChild(document.createTextNode(parts.slice(1).join('{0}')));
+  host.appendChild(s);
+}
+function renderStat(){
+  var kinds = {}, kindCount = 0, items = 0;
+  for (var i=0;i<State.rows.length;i++){
+    var r = State.rows[i];
+    /* 只统计架上真有的材料：钉住的空行（件数 0）不算一种 */
+    if (!(r.configId > 0) || !(r.count > 0)) continue;
+    if (!kinds[r.configId]){ kinds[r.configId] = true; kindCount++; }
+    items += r.count;
+  }
+  var host = $('rackStat');
+  host.innerHTML = '';
+  var k = document.createElement('span'); k.className = 'k'; k.textContent = i18nText.statLabel; host.appendChild(k);
+  appendCount(host, i18nText.statKinds, kindCount);
+  appendCount(host, i18nText.statItems, items);
+}
+
+function renderRack(){
+  rackRows.render(State.rows);
+  renderStat();
+  $('rackTitle').textContent = State.furnitureName || '材料架';
+}
+
+/* ══════ 取出 ══════ */
+function cardRects(key, n){
+  var cards = rackRows.getCards(key), list = [];
+  for (var i=0;i<n && i<cards.length;i++) list.push(cards[cards.length - 1 - i].getBoundingClientRect());
+  return list;
+}
+
+/* 单击一行：看这一行最后一件的详情（口径同左栏背包左键，背包放不下也照看不误） */
+function onRowDetail(r){
+  if (!r || !(r.count > 0) || !r.lastId) return;
+  hideItemTip();
+  clearTakePreview();
+  core.UnitySendEvent('ITEM_CLICK', { itemId:r.lastId, rightClick:false, fromRack:true });
+}
+
+/* 从一行拖出：拖的是这一行的最后一件（同点一行取出的口径），落到背包哪一格由松手位置定。
+   自己拖的不再补飞行动画 —— 手就是动画；落空 / 那一格放不下都按不发处理，两侧维持原样 */
+function onRowDrag(r, ev){
+  if (!r || !(r.count > 0) || !r.lastId) return;
+  if (!(r.fit > 0)){ showWarn(blockedText(r)); return; }
+  hideItemTip();
+  clearTakePreview();
+  dragCoord.beginExternalDrag(ev, {
+    id:r.lastId, icon:r.icon, w:r.w || 1, h:r.h || 1,
+    payload:{ configId:r.configId, itemId:r.lastId, rowY:r.rowY }
+  });
+}
+
+/* 点一行取 1 件：取的是这一行的最后一件（lastId），行号一并带上供 C# 侧校验 */
+function onTakeOne(r){
+  if (!r || !(r.count > 0)) return;
+  if (!(r.fit > 0)){ showWarn(blockedText(r)); return; }
+  flyer.pend({ configId:r.configId, fromRects:cardRects(rackRows.keyOf(r), 1), before:flyer.snapshot(State.bagItems) });
+  core.UnitySendEvent('TAKE_ONE', { configId:r.configId, itemId:r.lastId || 0, rowY:r.rowY });
+}
+
+/* 锁定这一行：锁上后这一行取空也留着（件数写 0）、别的材料进不来；再点一次解开 */
+function onToggleLock(r){
+  if (!r || !(r.configId > 0) || !(r.rowY >= 0)) return;
+  hideItemTip();
+  core.UnitySendEvent('TOGGLE_LOCK', { configId:r.configId, rowY:r.rowY, locked: !r.locked });
+}
+
+/* 取出这一行：只取这一行的件数，放不下的留在架上 */
+function onTakeMax(r){
+  if (!r || !(r.fit > 0)) return;
+  hideItemTip();
+  clearTakePreview();
+  flyer.pend({ configId:r.configId, fromRects:cardRects(rackRows.keyOf(r), Math.min(r.fit, 12)), before:flyer.snapshot(State.bagItems) });
+  core.UnitySendEvent('TAKE_MAX', { configId:r.configId, rowY:r.rowY });
+}
+
+/* 悬停「取出这一行」：行内高亮将被取走的卡片 + 左栏按「先行后列、第一个放得下」画落点 */
+var _previewKey = '';
+function showTakePreview(r){
+  clearTakePreview();
+  if (!r || !(r.fit > 0)) return;
+  _previewKey = rackRows.keyOf(r);
+  rackRows.markWill(_previewKey, r.fit);
+
+  var cols = State.bagCols, rows = State.bagRows, occ = [];
+  for (var y=0;y<rows;y++){ occ.push([]); for (var x=0;x<cols;x++) occ[y].push(false); }
+  for (var j=0;j<State.bagItems.length;j++){
+    var it = State.bagItems[j];
+    if (it.x < 0 || it.y < 0) continue;
+    for (var dy=0; dy<(it.h||1); dy++) for (var dx=0; dx<(it.w||1); dx++){
+      if (it.y+dy < rows && it.x+dx < cols) occ[it.y+dy][it.x+dx] = true;
+    }
+  }
+  var w = r.w || 1, h = r.h || 1, layer = $('previewLayer'), grid = $('bagGrid');
+  layer.style.left = grid.offsetLeft + 'px'; layer.style.top = grid.offsetTop + 'px';
+  for (var placed = 0; placed < r.fit; placed++){
+    var spot = null;
+    for (var sy=0; sy<=rows-h && !spot; sy++){
+      for (var sx=0; sx<=cols-w; sx++){
+        var ok = true;
+        for (var ay=0; ay<h && ok; ay++) for (var ax=0; ax<w; ax++){ if (occ[sy+ay][sx+ax]){ ok = false; break; } }
+        if (ok){ spot = { x:sx, y:sy }; break; }
+      }
+    }
+    if (!spot) break;
+    for (var by=0; by<h; by++) for (var bx=0; bx<w; bx++) occ[spot.y+by][spot.x+bx] = true;
+    var box = document.createElement('div'); box.className = 'drop-preview';
+    box.style.left = (PAD + spot.x*(SLOT+GAP)) + 'px';
+    box.style.top = (PAD + spot.y*(SLOT+GAP)) + 'px';
+    box.style.width = (w*SLOT + (w-1)*GAP) + 'px';
+    box.style.height = (h*SLOT + (h-1)*GAP) + 'px';
+    var img = document.createElement('img'); img.src = r.icon || ''; box.appendChild(img);
+    layer.appendChild(box);
+  }
+}
+function clearTakePreview(){
+  $('previewLayer').innerHTML = '';
+  if (_previewKey) rackRows.clearWill();
+  _previewKey = '';
+}
+
+/* ══════ 放入：拖拽 + 右键 / Shift ══════ */
+function hitRackPanel(x, y){
+  var r = $('panelB').getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+}
+
+var _dragRaw = null, _dragPos = null, _dragRaf = 0, _dragRect = null, _dragOver = -1;
+function clearDragMarks(){
+  _dragRaw = null; _dragRect = null; _dragOver = -1;
+  $('panelB').classList.remove('drop-target', 'drop-reject');
+  rackRows.setDropHint(0);
+}
+/* 拖动期间只在 mousemove 里记坐标，命中判定放到 rAF 里做一次，且用拿起时缓存的面板矩形 */
+document.addEventListener('mousemove', function(e){
+  if (!_dragRaw) return;
+  _dragPos = { x:e.clientX, y:e.clientY };
+  if (_dragRaf) return;
+  _dragRaf = requestAnimationFrame(function(){
+    _dragRaf = 0;
+    if (!_dragRaw || !_dragPos || !_dragRect) return;
+    var r = _dragRect;
+    var over = _dragPos.x >= r.left && _dragPos.x <= r.right && _dragPos.y >= r.top && _dragPos.y <= r.bottom ? 1 : 0;
+    if (over === _dragOver) return;
+    _dragOver = over;
+    $('panelB').classList.toggle('drop-target', !!over && !!_dragRaw.rackable);
+    $('panelB').classList.toggle('drop-reject', !!over && !_dragRaw.rackable);
+  });
+});
+
+var dragCoord = createBagDragCoordinator([bagBag], {
+  smartDrop: false,
+  onItemPickup: function(itemData){
+    hideItemTip();
+    clearTakePreview();
+    _dragRaw = itemData._raw || {};
+    _dragRect = $('panelB').getBoundingClientRect();
+    if (_dragRaw.rackable) rackRows.setDropHint(_dragRaw.configId);
+  },
+  onDragFinished: function(){ clearDragMarks(); },
+  onItemHover: function(itemId, isEnter){
+    if (!isEnter){ _hoverItemId = 0; clearKinHint(); hideItemTip(); return; }
+    var it = findItem(State.bagItems, itemId);
+    if (!it){ _hoverItemId = 0; clearKinHint(); hideItemTip(); return; }
+    _hoverItemId = itemId;
+    applyKinHint(itemId);
+    showItemTip(it);
+  },
+  onItemClick: function(itemId, rightClick){
+    core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId, 10), rightClick: !!rightClick });
+  },
+  /* 从右栏架子拖进左栏背包：带上松手那一格的坐标，Logic 侧按坐标落位（放不下会退回架子原位）。
+     从「脚边」横排拖来的（payload 带 groundBoxId）只收进左栏背包；落在右栏 / 空白处按落空处理 ——
+     右栏的放入走本页专用的放入通道，不接横排 */
+  onExternalDrop: function(payload, drop){
+    if (payload && payload.groundBoxId){
+      if (drop) core.UnitySendEvent('GROUND_PICK_TO', { id:payload.groundBoxId, ownerId:drop.bag.getOwnerId(), x:drop.x, y:drop.y });
+      if (groundDock) groundDock.clearDragging();
+      return;
+    }
+    if (!payload || !drop) return;
+    core.UnitySendEvent('TAKE_ONE', { configId:payload.configId, itemId:payload.itemId, rowY:payload.rowY, x:drop.x, y:drop.y });
+  }
+});
+
+/* 右栏不是格子背包，落点由这里接管。一律回弹：放入成功后两侧会随背包刷新更新，
+   不做前端乐观移除，放不进时格子不会先空一下 */
+dragCoord.setDropInterceptor(function(itemData, x, y){
+  var raw = itemData._raw || {};
+  if (hitRackPanel(x, y)){
+    if (!raw.rackable){ showWarn(i18nText.rejectHint); return 'reject'; }
+    core.UnitySendEvent('PUT_ITEM', { itemId: parseInt(itemData.id, 10) });
+  }
+  return 'reject';
+});
+
+/* ══════ 「脚边」横排 ══════
+   挂在左栏背包面板本体（#panelA）下方；按住一格拖出来走格子拖拽的外部起拖，落点见上面 onExternalDrop。
+   把左栏物品拖到横排上松手不算丢地上：本页没有丢到地上的通道，照旧回弹 */
+var groundDock = null, groundDockJson = '';
+function groundDockObstacles(){
+  var out = [];
+  document.querySelectorAll('#rackSystem .panel, #rackSystem .header, #rackSystem .transfer-controls').forEach(function(el){
+    var r = el.getBoundingClientRect();
+    if (r.width && r.height) out.push(r);
+  });
+  return out;
+}
+groundDock = createGroundDock({
+  send: function(ev, payload){ core.UnitySendEvent(ev, payload); },
+  getAnchorRect: function(){ return $('panelA').getBoundingClientRect(); },
+  getObstacleRects: groundDockObstacles,
+  getZoom: getZoom,
+  onDragStart: function(e, g){
+    if (!g || !g.ids || !g.ids.length) return false;
+    hideItemTip();
+    clearTakePreview();
+    return dragCoord.beginExternalDrag(e, { id:-g.ids[0], icon:g.icon, w:g.w || 1, h:g.h || 1, payload:{ groundBoxId:g.ids[0] } }) === true;
+  }
+});
+if (groundDockJson) groundDock.setData(groundDockJson);
+
+$('btnPutAll').addEventListener('click', function(){ core.UnitySendEvent('PUT_ALL', {}); });
+$('btnTakeAll').addEventListener('click', function(){ core.UnitySendEvent('TAKE_ALL', {}); });
+
+/* 拨杆是乐观更新（点了就动），Logic 落地后回推真实值纠正（ContainerRobotSwitchShow → RA_SyncRobotSwitch） */
+$('rswPut').addEventListener('click', function(){
+  State.robotPut = !State.robotPut;
+  renderRobotSwitch();
+  core.UnitySendEvent('SET_ROBOT_PUT', { on: State.robotPut });
+});
+$('rswGroup').addEventListener('mouseenter', function(){ showTextTip(i18nText.robotPutTip); });
+$('rswGroup').addEventListener('mouseleave', function(){ hideItemTip(); });
+
+/* ══════ tooltip ══════ */
+var _tipMouse = { x:0, y:0 }, _tipRaf = 0;
+function moveTip(x, y){ var t = $('itemTooltip'); t.style.left = (x + 15) + 'px'; t.style.top = (y + 15) + 'px'; }
+/* ── 同类预览高亮（2026-09-23）────────────────────────────────────────
+   按住高亮键（默认左 Alt，态由 C# 广播）悬停左栏某件时，把同类的格子一起描边，此时点击 =
+   把同类里**能上架的**整批放进架子。同类判据 (categoryId, subCategoryId) **成对**相等，
+   必须与 C# 侧 IsSameItemKind 一致 —— 小类编号跨大类复用，只比小类会串味。
+   右栏是行视图不是格子容器，不参与。 */
+var _hoverItemId = 0;
+
+function applyKinHint(itemId){
+  if (!State.highlightHeld || !itemId){ clearKinHint(); return; }
+  var anchor = findItem(State.bagItems, itemId);
+  if (!anchor){ clearKinHint(); return; }
+  var set = new Set();
+  for (var i = 0; i < State.bagItems.length; i++){
+    var it = State.bagItems[i];
+    if (it.categoryId === anchor.categoryId && it.subCategoryId === anchor.subCategoryId){
+      set.add(String(it.itemId));
+    }
+  }
+  bagBag.setKinHint(set);
+}
+
+function clearKinHint(){ bagBag.setKinHint(null); }
+
+/* 高亮键按下 / 松开时就地重放当前悬停：不这么做玩家得把鼠标移开再移回来才看到变化 */
+function refreshKinHint(){
+  if (!_hoverItemId){ clearKinHint(); return; }
+  applyKinHint(_hoverItemId);
+  var it = findItem(State.bagItems, _hoverItemId);
+  if (it) showItemTip(it); else hideItemTip();
+}
+
+function showItemTip(it){
+  var tipEl = $('itemTooltip');
+  /* 按住高亮键时这个浮层就地变成「[点击] 批量转移 [肉类]」：同一个元素换内容换配色，不会和详情重叠 */
+  if (State.highlightHeld && it.kindName){
+    tipEl.classList.add('kin-mode');
+    showTextTip((i18nText.kinTransferHint || '[点击] 批量转移 [{0}]').replace('{0}', it.kindName));
+    return;
+  }
+  tipEl.classList.remove('kin-mode');
+  var lines = [ it.name || '' ];
+  if (it.category) lines.push(it.category);
+  if (it.polluted) lines.push(i18nText.moldyLabel);
+  if (it.shelfLife) lines.push(i18nText.shelfLifeLabel + ' ' + it.shelfLife);
+  showTextTip(lines.join('\n'));
+}
+function showTextTip(text){
+  var t = $('itemTooltip'); t.textContent = text; t.style.display = 'block';
+  moveTip(_tipMouse.x, _tipMouse.y);
+}
+function hideItemTip(){ $('itemTooltip').style.display = 'none'; }
+document.addEventListener('mousemove', function(e){
+  _tipMouse.x = e.clientX; _tipMouse.y = e.clientY;
+  if (_tipRaf) return;
+  _tipRaf = requestAnimationFrame(function(){
+    _tipRaf = 0;
+    if ($('itemTooltip').style.display === 'block') moveTip(_tipMouse.x, _tipMouse.y);
+  });
+});
+
+/* ══════ 消息 ══════ */
+core.registerHandlers({
+  'WebUI_MaterialRack_BagMsg': function(data){
+    if (data.bagOwnerId !== undefined){ State.bagOwnerId = data.bagOwnerId; bagBag.setOwnerId(data.bagOwnerId || 0); }
+    if (data.rackOwnerId !== undefined) State.rackOwnerId = data.rackOwnerId;
+    if (data.bagCols !== undefined){ State.bagCols = data.bagCols; State.bagRows = data.bagRows; bagBag.resize(data.bagCols, data.bagRows); }
+    if (data.bagWeight !== undefined) State.bagWeight = data.bagWeight;
+    if (data.bagMaxWeight !== undefined) State.bagMaxWeight = data.bagMaxWeight;
+    if (data.bagOverweightLine !== undefined) State.bagOverweightLine = data.bagOverweightLine;
+    if (data.furnitureName !== undefined) State.furnitureName = data.furnitureName || '';
+    if (data.total !== undefined) State.total = data.total;
+    if (data.robotSwitchShow !== undefined) State.robotSwitchShow = !!data.robotSwitchShow;
+    if (data.robotPut !== undefined) State.robotPut = !!data.robotPut;
+    if (data.bagItems !== undefined){
+      State.bagItems = data.bagItems || [];
+      bagBag.refresh(State.bagItems);
+    }
+    if (data.rows !== undefined) State.rows = data.rows || [];
+    clearTakePreview();
+    renderWeight();
+    renderPutAll();
+    renderTakeAll();
+    renderRobotSwitch();
+    renderRack();
+    if (data.bagItems !== undefined) flyer.settle(State.bagItems);
+    _fit.apply();
+    if (groundDock) groundDock.place();
+  },
+  'WebUI_MaterialRack_GroundDockMsg': function(data){
+    if (!data || data.groundDockJson === undefined) return;
+    groundDockJson = data.groundDockJson;
+    if (groundDock) groundDock.setData(groundDockJson);
+  },
+  'WebUI_MaterialRack_HighlightHeldMsg': function(data){
+    if (!data || data.highlightHeld === undefined) return;
+    State.highlightHeld = !!data.highlightHeld;
+    /* 就地重放当前悬停：不刷的话玩家得把鼠标移开再移回来才看到高亮 / 提示变化 */
+    refreshKinHint();
+  },
+  'WebUI_MaterialRack_LocalizationMsg': function(data){
+    if (!data) return;
+    Object.keys(data).forEach(function(k){ if (data[k]) i18nText[k] = ARROW_KEYS[k] ? stripArrow(data[k]) : data[k]; });
+    ['bagTitle','weightLabel','putAll','footHint','takeAll','robotOwner','robotPut'].forEach(function(k){
+      if (data[k]) core.i18n.updateText('[data-i18n="' + k + '"]', i18nText[k]);
+    });
+    renderRack();
+    if (groundDock) groundDock.place();
+  }
+});
+
+/* 点空白关面板。必须带 mousedown 守卫：click 的 target 是按下与松开的最近公共祖先，
+   拖一个物品松手在空白处会合成出 target=空白的 click，面板会凭空关掉 */
+function isBlankTarget(t){
+  return !!t && (t === document.body || t === $('rackSystem') || (t.classList && t.classList.contains('transfer-controls')));
+}
+var _blankMouseDown = false;
+document.addEventListener('mousedown', function(e){ _blankMouseDown = isBlankTarget(e.target); }, true);
+document.body.addEventListener('click', function(e){
+  if (!_blankMouseDown) return;
+  if (isBlankTarget(e.target)) core.UnitySendEvent('CLOSE', {});
+});
+renderWeight(); renderRack();
+_fit.apply();
+core.notifyReady();
+</script>
+</body>
+</html>

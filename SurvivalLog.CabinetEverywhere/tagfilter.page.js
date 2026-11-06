@@ -1,7 +1,13 @@
 (function () {
   if (window.__SLTF__) return;
   var LS_KEY = 'sltf_sel_v3'; // v2 全局单值废弃、不迁移（旧键 sltf_sel_v2 残留无害）；v3 按界面记忆
-  var S = { sel: {}, owners: {}, lib: [], dim: {}, foodId: 0, kind: {}, scenario: {}, matId: 0, toolId: 0, matFood: false, frames: [] };
+  // S.railOn（T13 旧层让位门）：数据段 railOn=true（[Rail] Enable 开）时本脚本对 rail 覆盖的
+  // 12+1 页全部 UI 行为让位——旧页签隐藏/自绘下拉注入/A-D 弹回全跳过（rail 已随宿主移除官方
+  // 背包面板，官方页签不复存在；跳过是防本脚本作用于不存在 DOM 报错）。false=旧行为完全不变。
+  // 消费点四处：tryHold / applyFrame / refreshDD 早退 + setData 存标志；页级粒度不需要——
+  // rail 开=全局让位，tagfilter scenario 表 10 页全在 rail 12 页之内（BackpackUI/MaterialRack
+  // 本就不进筛选名单）。数据推送本身保留（owners/lib/scenario 照常收，无害）。
+  var S = { sel: {}, owners: {}, lib: [], dim: {}, foodId: 0, kind: {}, scenario: {}, matId: 0, toolId: 0, matFood: false, frames: [], railOn: false };
   try { S.sel = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (e) {} // { pageId: sel }，sel = tagId 数字 | 'other' | 0
   // ---- 消息层扣发 + 伪造切换（2026-10-15 七轮，根治到头闪烁）----
   // 官方 A/D 步进切到被藏柜子时会推一条 active=被藏柜 的 BagMsg——放行则页面先渲染它一帧
@@ -145,6 +151,7 @@
   // 返回 true=消息已被扣下（调用方不得再放行）
   function tryHold(st, msg, arr, orig, win) {
     try {
+      if (S.railOn) return false; // railOn（T13）：A-D 弹回让位 rail，全部消息原样放行
       // 失败点打点（mis1-9）：拦截没跑成时留下原因码，不再靠推理定位
       if (!S.sel || !st.doc || !st.doc.body) { return false; }
       var c = detectC(st.doc);
@@ -387,6 +394,7 @@
       unfreeze(st);
       for (var i = 0; i < st.hidden.length; i++) { var h = st.hidden[i]; if (h && h.el) h.el.style.display = h.prev; }
       st.hidden.length = 0;
+      if (S.railOn) return; // railOn（T13）：页签隐藏/弹回让位 rail（先还原已藏页签再退——cfg 热翻后不残留旧 display:none）
       if (!S.sel) return; // v3 恒为对象（恒过）：固定视图页 sel=0 也要套隐藏，判定全在 shouldHide/viewAllows
       var cands = c.list.querySelectorAll(c.sel);
       var arr = c.pos ? st.tabs : null;
@@ -749,8 +757,10 @@
 
   function refreshDD(st, c) {
     try {
-      if (frameMode(st) !== 'browser') {
-        // 固定视图页（food/material）无任何 UI 注入：摘除遗留下拉/包裹器/弹出层（cfg 把该页改走时）
+      if (S.railOn || frameMode(st) !== 'browser') {
+        // railOn（T13）与固定视图页（food/material）同路：无任何 UI 注入——摘除遗留下拉/
+        // 包裹器/弹出层（rail 开=12 页官方页签已随宿主移除，下拉不复存在；cfg 热翻 railOn
+        // 后由本分支清残留）。
         if (st.ddw) { try { st.ddw.remove(); } catch (e) {} st.ddw = null; st.dd = null; }
         else if (st.dd) { try { st.dd.remove(); } catch (e) {} st.dd = null; }
         closePop(st);
@@ -901,11 +911,13 @@
   scanFrames();
 
   window.__SLTF__ = {
-    ver: 3, // 数据契约 v3：owners 对象化（t+kind）、lib 带 icon/color、scenario 段（T6 起驱动固定视图）
+    ver: 3, // 数据契约 v3：owners 对象化（t+kind）、lib 带 icon/color、scenario 段（T6 起驱动固定视图）；
+            // railOn 段（T13 增补，缺省 false=旧行为）——rail 覆盖页 UI 行为让位门
     setData: function (json) {
       S.owners = (json && json.owners) || {};
       S.lib = (json && json.lib) || [];
       S.scenario = (json && json.scenario) || {}; // 页面 id→'food'|'material'|'browser'（frameMode 消费，cfg 改动重推即换视图）
+      S.railOn = !!(json && json.railOn);         // T13：rail 让位门（数据段缺省=false=旧筛选行为不变）
       S.kind = {}; // ownerId→kind 平铺（诊断用；视图判定走 owners 原对象）
       for (var k in S.owners) S.kind[k] = ownerOf(k).kind;
       rebuildLib();
@@ -914,7 +926,7 @@
     state: function () {
       var xs = 0;
       for (var i = 0; i < S.frames.length; i++) if (S.frames[i].xorigin) xs++;
-      return { sel: S.sel, owners: Object.keys(S.owners).length, frames: S.frames.length, xorigin: xs };
+      return { sel: S.sel, owners: Object.keys(S.owners).length, frames: S.frames.length, xorigin: xs, railOn: !!S.railOn };
     }
   };
 })();

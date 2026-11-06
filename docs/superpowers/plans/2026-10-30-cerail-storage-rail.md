@@ -275,7 +275,7 @@ git commit -m "feat(cerail): 一键整理（同名叠合并+差量 toast+降级�
 ### Task 13: 旧层门控、发版与文档收尾
 
 **Files:**
-- Modify: `SurvivalLog.CabinetEverywhere/tagfilter.page.js`（railOn 门）、`CabinetEverywherePlugin.cs`（如 T8 未加 cfg 则补）、`SurvivalLog.CabinetEverywhere.csproj`（`<Version>` 1.8.0）、`DESIGN.md`、`CHANGELOG.md`、`UI-SPEC.md`（§8 加一行「正式实现落地」注记）
+- Modify: `SurvivalLog.CabinetEverywhere/tagfilter.page.js`（railOn 门）、`SurvivalLog.CabinetEverywhere/TagFilter.cs`（BuildDataJson 追加 railOn 段）、`CabinetEverywherePlugin.cs`（如 T8 未加 cfg 则补）、`SurvivalLog.CabinetEverywhere.csproj`（`<Version>` 1.8.0）、`DESIGN.md`、`CHANGELOG.md`、`UI-SPEC.md`（§8 加一行「正式实现落地」注记）
 
 **Interfaces:**
 - Consumes: T8 `RailUi.Enabled`。

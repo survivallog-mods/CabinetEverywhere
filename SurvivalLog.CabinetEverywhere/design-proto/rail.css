@@ -1,9 +1,9 @@
 /* 版式约束（全部 !important，防止场景页自己的 CSS 反向覆盖）：
-   侧栏 428×816 恒定 —— 任何柜子、任何容器都不改变页面尺寸；
-   画布恒定 1536×864（见构建脚本内 .gpage 规则）。
+   侧栏宽跟格（v13.8：12 列 × 34px + 11×6 间距 + 2×10 内边距 = 494px）× 高 816 恒定
+   —— 任何柜子、任何容器都不改变页面尺寸；画布恒定 1536×864（见构建脚本内 .gpage 规则）。
    字号规范：主控件/正文 12px，次要信息 11.5px，分组标题 11px，数字 Consolas 11.5px。 */
 #srp .sr-rail{position:relative;z-index:2;display:flex;flex-direction:column;
-  width:428px !important;min-width:428px !important;max-width:428px !important;flex-basis:428px !important;
+  width:494px !important;min-width:494px !important;max-width:494px !important;flex-basis:494px !important;
   height:816px !important;min-height:816px !important;max-height:816px !important;
   box-sizing:border-box !important;margin:0 !important;padding:10px !important;border-radius:12px;
   align-items:stretch !important;justify-content:flex-start !important}
@@ -174,3 +174,50 @@
 
 /* v-if 静态隐藏：官方 display 规则会盖过 UA 的 [hidden]，必须强制 */
 #srp .gpage [hidden]{display:none !important}
+
+/* ── v13.5 机器界面简化（plain，9 个机器场景；作者 2026-10-31 需求）──
+   搜索行/快捷标签行/排序工具行一律不显示：侧栏=头部+页签+物品区+悬停+页脚，
+   排序收进页脚左下角（食品类设施）。三 live 场景（单独背包/取用/整理物资）不受影响。 */
+#srp .sr-rail.plain .sr-searchrow,
+#srp .sr-rail.plain .sr-tagrow,
+#srp .sr-rail.plain .sr-tools,
+#srp .sr-rail.plain .sr-head{display:none}   /* v13.6：头部两行（容器名+列数副标）也去掉（作者 2026-10-31） */
+#srp .sr-rail.plain .sr-popctn{top:48px}     /* 头部去掉后容器菜单跟随 ▾ 触发钮就近下锚 */
+/* v13.7 作者批注：悬停详情条与「N 行 · 全部可见」在机器场景一并去掉 */
+#srp .sr-rail.plain .sr-hover,
+#srp .sr-rail.plain .sr-foot .fr{display:none}
+/* 设施排序按钮（页脚左下角，v13.7 换作者参考图样式）：暗底+暗金描边+金图标金字+▾ */
+#srp .sr-fsort{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
+#srp .sr-fsort:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}
+#srp .sr-fsort svg{width:13px;height:13px;fill:currentColor}
+#srp .sr-fsort .sb-caret2{font-size:10px;color:#c9932f;margin-left:1px}
+/* 设施排序弹层（v13.7 参考图配色/结构，v13.8 尺寸对齐侧栏控件基准 26px 高/12px 字，
+   作者「按钮太大了不协调」）：近黑容器 + 独立小圆角按钮堆叠；
+   常规=炭灰底近白字，选中=图标文字金色（边框同款，对齐参考图） */
+#srp .sr-popfsort{left:10px;right:auto;width:128px;top:auto;bottom:44px;max-height:320px;
+  background:rgba(10,10,12,.94);border-color:rgba(255,255,255,.12);border-radius:10px}
+#srp .sr-popfsort .sr-pophead{display:none}
+#srp .sr-popfsort .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:5px}
+#srp .sr-fsopt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;
+  border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;
+  text-align:left;cursor:pointer;font-family:inherit}
+#srp .sr-fsopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
+#srp .sr-fsopt.active{color:#f0b03c}
+#srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
+/* 物品格右上角数值角标（设施排序/交易价值）：与右下 s-cnt 同款底衬，色随维度；
+   角标在场时原「新获得」小点让位（slotHtml 二选一） */
+#srp .sr-slot .s-badge{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;
+  background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;
+  font-family:Consolas,monospace;white-space:nowrap;pointer-events:none}
+/* 无人机交易买家条：当前交易对象的品类加成（点击买家名=演示切换） */
+#srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
+  border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
+  color:#a89f92;font-size:11.5px;white-space:nowrap;overflow:hidden}
+#srp .sr-tradeinfo[hidden]{display:none}
+#srp .ti-buyer{flex:0 0 auto;border:0;background:transparent;padding:0;color:#ffe1a0;font-size:11.5px;font-family:inherit;cursor:pointer;white-space:nowrap}
+#srp .ti-buyer:hover{text-decoration:underline}
+#srp .ti-arr{color:#7a7268;font-size:10px}
+#srp .ti-prefs{display:inline-flex;gap:6px;min-width:0;overflow:hidden}
+#srp .ti-pref{font-style:normal;display:inline-flex;align-items:center;gap:3px;color:#cfc8bc}
+#srp .ti-pref .t-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+#srp .ti-mode{margin-left:auto;flex:0 0 auto;color:#7a7268}
