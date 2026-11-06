@@ -1,7 +1,7 @@
 # 酿酒桶界面 酒品品质角标 + 饱腹排序收敛（Brew Tier Badge）设计
 
 日期：2026-11-07
-状态：待作者批准
+状态：已实施（2026-11-07，brew-tier-badge 分支；harness-brew-tier 27/27；待实机验收——§7 清单与聚合公式一步验证未跑）
 视觉基准：原型 v14（`design-proto/`，七轮实机断言+AI 读图核验；截图 `design-proto/shots/v14-01…07`）
 
 ## 1. 意图与为什么
