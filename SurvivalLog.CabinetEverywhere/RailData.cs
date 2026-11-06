@@ -13,10 +13,11 @@ namespace SurvivalLog.CabinetEverywhere;
 ///
 /// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，2026-11-01 缺陷单#1/#2 增补 ctx.view/tradePrefs/
 /// 与物品行数值段对齐；v1.8.5 起 lastSortAck 随数据层 sortBy 退役）。
-///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,uniformWidth,view,tradePrefs,lastTidyFail},
+///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,uniformWidth,brewP1,brewP2,view,tradePrefs,lastTidyFail},
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
-///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]],
+///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]]
+///         （页专属尾列：FuelGenerator +[burnable,burnValue]；BrewPanel +[canBrew]——brew spec §5.1），
 ///     items:{ "bag":[[id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days]], "&lt;ownerId&gt;":[...] } }
 ///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
 ///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
@@ -430,6 +431,12 @@ internal static class RailData
         // 壳宽地板/抽屉克隆包的目标宽直出（[Rail] UniformBagWidth；0=off 也推——JS 地板停用信号；
         // 契约增补照 bagCap 先例：读取先行缺省 12，C# 直推）
         sb.Append(",\"uniformWidth\":").Append(Math.Max(0, CabinetEverywherePlugin.UniformBagWidth?.Value ?? 12));
+        // 酿酒桶品质阈值直推（brew spec §5.1，uniformWidth 先例同点位）：GameKey 运行时读，
+        // try/catch 缺省 0/0.5（官方 BrewPanel.html 界面兜底同值）；所有页都带、仅 BrewPanel 消费
+        float brewP1 = 0f, brewP2 = 0.5f;
+        try { brewP1 = GameCore.HotUpdate.GameKey.GlobalSetting_Brew_TierMoodDensityP1; } catch { }
+        try { brewP2 = GameCore.HotUpdate.GameKey.GlobalSetting_Brew_TierMoodDensityP2; } catch { }
+        sb.Append(",\"brewP1\":").Append(F(brewP1)).Append(",\"brewP2\":").Append(F(brewP2));
         // 2026-11-01 缺陷单#2：机器页页签逐页语义（v1.7.0 场景视图口径）——ctx.view 供 JS
         // railCtns 收窄（food=冰箱全显+柜子按食物域标签；material=材料/工具柜+架子；browser=全显）
         sb.Append(",\"view\":\"").Append(ScenarioViewOf(sc?.Page)).Append('"');
@@ -472,10 +479,11 @@ internal static class RailData
 
         sb.Append(",\"icfg\":[");
         bool fuelCols = sc?.Page == "FuelGenerator"; // 尾列仅本页（其他 12 页推送形状不变——spec 约束）
+        bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
         for (int i = 0; i < icfgOrder.Count; i++)
         {
             if (i > 0) sb.Append(',');
-            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols));
+            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols));
         }
         sb.Append(']');
 
@@ -529,13 +537,17 @@ internal static class RailData
     /// 下一周期再查即可拿到真值。已缓存的正常行不受影响。
     /// fuelCols=true（燃油发电机页专属，spec §5.3）：行尾追加 [burnable(0/1),burnValue] 两列，
     /// 独立缓存 _icfgFuelCache——同一 cfgId 在普通页(14 列)与本页(16 列)间不得共用缓存行。
+    /// brewCols=true（酿酒桶页专属，brew spec §5.1）：行尾追加 canBrew(0/1) 一列，
+    /// 独立缓存 _icfgBrewCache——同上分键防串形（15 列）。
     /// </summary>
-    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false)
+    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false)
     {
-        var cache = fuelCols ? _icfgFuelCache : _icfgCache;
+        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : _icfgCache);
         if (cache.TryGetValue(cfgId, out var row)) return row;
-        row = BuildIcfgRow(cfgId, itemDict, fuelCols);
-        if (row == null) return fuelCols ? PlaceholderIcfgRow(cfgId) + ",0,0" : PlaceholderIcfgRow(cfgId); // 未就绪窗口：不缓存，等下周期
+        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols);
+        if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
+            return fuelCols ? PlaceholderIcfgRow(cfgId) + ",0,0"
+                : (brewCols ? PlaceholderIcfgRow(cfgId) + ",0" : PlaceholderIcfgRow(cfgId));
         cache[cfgId] = row;
         return row;
     }
@@ -797,7 +809,7 @@ internal static class RailData
     /// 返回 null = cfgId 查不到 Config_Item（含配置表未就绪窗口）——调用方（IcfgRow）不缓存，
     /// 直接出占位行，防未就绪首包把 "?" 负缓存整会话（评审 Important 1）。
     /// </summary>
-    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false)
+    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false)
     {
         var cm = BagTable.Cm();
         if (itemDict == null) { itemDict = cm?._Config_Item_Dict; }
@@ -839,6 +851,15 @@ internal static class RailData
             try { burnable = ic.Burnable; } catch { }
             try { burnValue = ic.BurnValue; } catch { }
             sb.Remove(sb.Length - 1, 1).Append(',').Append(burnable ? 1 : 0).Append(',').Append(burnValue).Append(']');
+        }
+        /* 酿酒桶页专属尾列（brew spec §5.1，fuelCols 同款纪律）：canBrew(0/1)——发酵原料的
+           物品级标志（Config_Item.CanBrew，dump @Config_Item 列表 190 件），**禁止**从
+           Category==1 推导（官方判定是物品级 CanBrew，Burnable 先例同款）。读不到=0。 */
+        if (brewCols)
+        {
+            bool canBrew = false;
+            try { canBrew = ic.CanBrew; } catch { }
+            sb.Remove(sb.Length - 1, 1).Append(',').Append(canBrew ? 1 : 0).Append(']');
         }
         return sb.ToString();
     }
@@ -1140,6 +1161,7 @@ internal static class RailData
     private static volatile string _feedFailPending; // feed 失败码一次性标志（MarkFeedFail 置位，同上点位清）
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存，14 列）
     private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
+    private static readonly Dictionary<int, string> _icfgBrewCache = new(); // 酿酒桶页 15 列行（尾列 canBrew，brew spec §5.1——同上分键防串形）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>
     internal static string EscapeJs(string s)
