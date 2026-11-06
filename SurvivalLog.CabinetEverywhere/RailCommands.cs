@@ -573,10 +573,14 @@ internal static class RailCommands
             return;
         }
 
-        // ④ 叠并重解析：按 ItemConfigId 在背包找目标叠（原 InstanceId 可能已并入既存叠）
+        // ④ 叠并重解析（终审 Important2 修正）：**先查原 InstanceId**——未并叠时原 id 存活
+        //（背包无同 cfg 叠，或同 cfg 满叠+有空位=建新叠两种情形都命中），仅查不到才按 cfg
+        // 遍历兜底（真并叠）。旧写法直接 cfg-first 遍历：满叠情形可能先命中背包 99 叠旧木柴
+        // =错喂整叠（点了柜里 5 根进了背包 99 根）。
         long target = 0;
         var bagInner = OwnerItems(im, bag);
-        if (bagInner != null)
+        if (ItemOf(bagInner, c.Item) != null) target = c.Item;
+        else if (bagInner != null)
         {
             try
             {

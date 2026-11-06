@@ -230,6 +230,7 @@ window.__HZ_READY__ = function () {
      契约字段在夹具侧的建模——默认 12，测试改 window.__HZ_UNIW__ 后 __HZ_PUSH__ 重推生效 */
   window.__HZ_UNIW__ = 12;
   window.__HZ_FEEDFAIL__ = ''; /* fuelgen：ctx.feedFail 测试旋钮（置码后 __HZ_PUSH__ 生效，一次性由 JS 消费侧清） */
+  window.__HZ_FGON__ = true;    /* fuelgen：ctx.fgOn 旋钮（C# EnableFuelGen 的夹具侧等价物，终审 Important1） */
   /* v14 brew：ctx.brewP1/brewP2 测试旋钮（C# GameKey 直推字段的夹具建模；默认 0/0.5=
      官方界面兜底值；置值后 __HZ_PUSH__ 生效——P2≤P1 时 JS 应回兜底，harness §1③） */
   window.__HZ_BREWP1__ = 0;
@@ -242,7 +243,7 @@ window.__HZ_READY__ = function () {
       uniformWidth: window.__HZ_UNIW__,
       brewP1: window.__HZ_BREWP1__, brewP2: window.__HZ_BREWP2__
     };
-    if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
+    if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.fgOn = window.__HZ_FGON__ !== false; }
     return ctx;
   }
   var MOCK = {

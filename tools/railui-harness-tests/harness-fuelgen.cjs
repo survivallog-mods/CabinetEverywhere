@@ -74,6 +74,8 @@ function check(name, ok, detail) {
   check('fg:ctn-tab-grid', (await fdisp('#backpackGrid')) === 'none' && (await fhas('#srfgGrid')), '柜页签：官方格 display:none、mod 格渲染');
   const fuelCnt = await F().evaluate(() => document.querySelectorAll('#srfgGrid .item.is-fuel').length);
   check('fg:ctn-tab-fuel-badge', fuelCnt === 2, '燃料火苗角标 2/3（木柴+柴油，零件无）=' + fuelCnt);
+  const imgCnt = await F().evaluate(() => document.querySelectorAll('#srfgGrid .item img').length);
+  check('fg:ctn-tab-icons', imgCnt === 3, '柜格物品图标 icfg.icon 渲染 3/3（终审 Minor5：X 占位残留）=' + imgCnt);
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await F().waitForFunction(() => getComputedStyle(document.getElementById('backpackGrid')).display === 'grid', null, { timeout: 8000 });
   check('fg:bag-tab-restore', true, '切回背包页签：官方格恢复可见');
@@ -187,6 +189,20 @@ function check(name, ok, detail) {
   check('fg:no-fuel-teardown', !(await fhas('#srfgTabs')) && !(await fhas('#srfgFoot')) && !(await fhas('#srfgGrid')), '页签栏/底行/mod 格全部拆除');
   check('fg:no-fuel-official-back', (await fdisp('#bagPanelTitle')) !== 'none' && (await fdisp('#bagInfoBar')) !== 'none' && (await fdisp('#shiftHint')) !== 'none' && (await fdisp('#backpackGrid')) === 'grid',
     '官方 title/info-bar/hint/grid 四件全显');
+
+  /* ---- ⑩b cfg 开关（终审 Important1：EnableFuelGen 经 ctx.fgOn 全链生效） ---- */
+  await page.evaluate(() => {
+    const m = JSON.parse(JSON.stringify(window.__HZ_MOCKSET__()));
+    /* ⑨ 已剥 1013 柜——补回两条燃料柜（在残余集上 concat，勿再 filter 1013=空集陷阱） */
+    m.ctn = m.ctn.concat([[900105, '燃料柜·大号', 'c', 48, 1013], [900106, '柴油储存', 'c', 24, 1013]]);
+    window.__HZ_MOCKSET__(m); window.__HZ_FGON__ = false; window.__HZ_PUSH__('FuelGenerator');
+  });
+  await page.waitForTimeout(900);
+  check('fg:cfg-off-teardown', !(await fhas('#srfgTabs')) && !(await fhas('#srfgFoot')) && (await fdisp('#bagPanelTitle')) !== 'none',
+    'ctx.fgOn=false→mod DOM 全拆+官方元素还原（EnableFuelGen 消费链）');
+  await page.evaluate(() => { window.__HZ_FGON__ = true; window.__HZ_PUSH__('FuelGenerator'); });
+  await waitFg();
+  check('fg:cfg-on-restore', await fhas('#srfgTabs'), 'ctx.fgOn=true→页签回装（开关往返）');
 
   /* ---- ⑩ console-clean ---- */
   check('fg:console-clean', consoleErrors.length === 0 && pageErrors.length === 0,

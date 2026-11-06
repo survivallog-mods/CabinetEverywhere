@@ -231,7 +231,7 @@ function check(name, ok, detail) {
       const fed = await fgv(() => { const el = document.querySelector('#srfgGrid .item.is-fuel'); if (el) el.click(); return !!el; });
       await fgf.waitForTimeout(2200);
       const q1 = await fgv(() => document.querySelectorAll('#fuelQueueZone .fuel-slot.queued-item, #fuelQueueZone .fuel-slot.active-burn').length);
-      check('fg:feed-two-hop', fed && q1 > q0, `点燃料→队列 ${q0}→${q1}（两跳=C# OpFeed 实执行；校准点①：加满后再点看 full 门）`);
+      check('fg:feed-two-hop', fed && q1 > q0, `点燃料→队列 ${q0}→${q1}（两跳=C# OpFeed 实执行；校准点①：加满后再点看 full 门；校准点③=终审 Minor6：同帧快速连点 2+ 条 feed 时第 2 条容量校验是否读陈旧 FuelItems——若官方 SendAction 异步，观察「物品进背包未进队列」静默少喂形态）`);
       await page.evaluate(() => window.__CERAIL__.drain());
       await fgv(() => { document.querySelector('#srfgFoot button').click(); return 1; });
       await page.waitForTimeout(300);

@@ -3464,6 +3464,7 @@
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
   function fgFuelCtns() {
+    if (store.ctx && store.ctx.page === 'FuelGenerator' && store.ctx.fgOn === false) return []; /* cfg EnableFuelGen=false（ctx.fgOn，C# 直推）——空表=拆除态=原版 */
     var view = (store.ctx && store.ctx.view) || 'fuel';
     return store.ctn.filter(function (c) { return viewAllowsCtn(c, view); });
   }
@@ -3546,6 +3547,7 @@
   }
 
   function fgSettle() {
+    if (!store.ctx || store.ctx.page !== 'FuelGenerator') return; /* 页守卫：他页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
     if (!FG.doc || !FG.doc.getElementById('srfgTabs')) return;
     var fuel = fgFuelCtns();
     if (!fuel.length) { fgTeardown(); return; } /* 无燃料柜=原版（Review Focus 1） */
@@ -3628,8 +3630,9 @@
       el.style.top = (10 + it.y * 46) + 'px';
       el.style.width = (w * 40 + (w - 1) * 6) + 'px';
       el.style.height = (h * 40 + (h - 1) * 6) + 'px';
-      el.innerHTML = '<span style="pointer-events:none">X</span>' + (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : '');
-      if (!window.__NOIMG__) g.appendChild(el);
+      el.innerHTML = '<span style="pointer-events:none">' + (it.icon ? '<img src="' + it.icon + '" style="width:26px;height:26px;object-fit:contain" alt="">' : '') + '</span>' +
+        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : '');
+      g.appendChild(el);
     }
   }
 
@@ -3742,6 +3745,7 @@
     for (var j = FRAMES.length - 1; j >= 0; j--) { /* 已移除的 iframe：清状态防泄漏（tagfilter scanFrames 同款） */
       if (!FRAMES[j].el.isConnected) {
         if (FRAMES[j].mo) { try { FRAMES[j].mo.disconnect(); } catch (e) { } }
+        if (SCENES[FRAMES[j].key] && SCENES[FRAMES[j].key].bagtabs) FG.active = false; /* 终审 Minor7：帧移除复位（Root A/D 守卫收口，实机关界面形态） */
         FRAMES.splice(j, 1);
       }
     }
@@ -3764,7 +3768,7 @@
   try {
     setInterval(function () {
       try {
-        if (!el.rail) return;
+        if (!el.rail && !FG.active) return; /* 十四批心跳门扩 bagtabs 页（无 el.rail；FG.active=燃料页可见在装）——首包丢弃自愈不再缺位（终审 Important3） */
         var now = Date.now();
         var hungry = !store.ctx || (lastSetAt > 0 && now - lastSetAt > 60000);
         if (!hungry) return;

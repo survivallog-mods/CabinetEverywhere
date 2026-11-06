@@ -447,6 +447,10 @@ internal static class RailData
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
         // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
         sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
+        // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版
+        //（spec §5.4 对称拆装；仅本页带出=tradePrefs 页条件字段先例）
+        if (sc?.Page == "FuelGenerator")
+            sb.Append(",\"fgOn\":").Append(CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
 
@@ -546,8 +550,9 @@ internal static class RailData
         if (cache.TryGetValue(cfgId, out var row)) return row;
         row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols);
         if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
-            return fuelCols ? PlaceholderIcfgRow(cfgId) + ",0,0"
-                : (brewCols ? PlaceholderIcfgRow(cfgId) + ",0" : PlaceholderIcfgRow(cfgId));
+            // 终审 Minor4：尾列必须拼在行括号内（旧写法 ,0,0 落在 ] 外=非法形状，normRows 数组过滤侥幸无症状）
+            return fuelCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0,0]"
+                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]" : PlaceholderIcfgRow(cfgId));
         cache[cfgId] = row;
         return row;
     }
