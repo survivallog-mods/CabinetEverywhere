@@ -130,6 +130,23 @@
     { k: 'shelf', label: '保质期', ico: '🕐' }
   ];
   var FBCOLOR = { sat: '#8fc06e', mind: '#b08fd6', en: '#6fc7c9', hp: '#e07ab0', value: '#f0b03c', shelf: '#f0b03c', tvalue: '#f0b03c' };
+  /* v14 酿酒桶品质（brew spec §2/§5.2）：发酵品质=桶内原料「心态密度」(Σ心态/Σ饱腹) 对两条
+     全局阈值三段——<P1 劣质 / P1~P2 普通 / ≥P2 烈性（游戏 BrewPanel.html 品质条同源）。
+     阈值=ctx.brewP1/brewP2（C# GameKey 直推；P2≤P1/缺失兜底 0/0.5=官方界面同守卫）；
+     三档色取游戏 TIER_COLOR 同源值（劣绿/普黄/烈粉）。单件口径=dispRows 行 s2/s1
+     （RailSortMath 实例+天赋口径，与饱腹角标同源）；bw=icfg 尾列 canBrew（仅 BrewPanel 页
+     推送，C# fuelCols 同纪律）。brewTierOf 供排序比较器（§Task4）与角标（§Task5）共用。 */
+  var TIER_TXT = ['劣', '普', '烈'];
+  var TIER_COLOR = ['#9dc47f', '#e8b04b', '#e0899b'];
+  function brewTierOf(row) { /* -1=不可酿/无饱腹（排序垫底+不标角标） */
+    if (!row || row.s1 == null || !(row.s1 > 0)) return -1;
+    var ic = ICFG[row.cfgId];
+    if (!ic || !ic.bw) return -1;
+    var p1 = store.ctx.brewP1, p2 = store.ctx.brewP2;
+    if (typeof p1 !== 'number' || typeof p2 !== 'number' || !(p2 > p1)) { p1 = 0; p2 = 0.5; }
+    var d = (row.s2 == null ? 0 : row.s2) / row.s1;
+    return d < p1 ? 0 : (d < p2 ? 1 : 2);
+  }
 
   /* 12 页场景表 —— host 选择器照 Task 1 取证表逐页抄录
      （docs/superpowers/plans/2026-10-30-cerail-spike-findings.md §6，模板标记已逐页核实）。
@@ -404,7 +421,10 @@
       cat: r[7] != null ? String(r[7]) : '', life: r[8] || 0,
       v1: r[9] || 0, v2: r[10] || 0, v3: r[11] || 0, v4: r[12] || 0, v5: r[13] || 0,
       uses: r[14] || 0, /* v1.8.5④：cfgUses（交易使用折旧） */
-      burn: r[15] ? 1 : 0, burnV: r[16] || 0 /* fuelgen 页尾列（C# BuildIcfgRow fuelCols；其他页缺省 0 无消费方） */
+      burn: r[15] ? 1 : 0, burnV: r[16] || 0, /* fuelgen 页尾列（C# BuildIcfgRow fuelCols；其他页缺省 0 无消费方） */
+      /* v14 canBrew 尾列（仅 BrewPanel 页推送=恰 16 列行；按行宽判形与 fuel 尾列(17 列)
+         页无关互斥——brewTierOf 只在 BrewPanel 场景被调，此处守形不守页） */
+      bw: (r.length === 16 && r[15]) ? 1 : 0
     };
   }
   /* ---- 查表（Produces：ctnById / bagArr；T4/T5 复用）---- */
@@ -1318,6 +1338,7 @@
       out.push({
         id: it.id, x: jx, y: jy, w: it.w || 1, h: it.h || 1,
         count: row ? row.count : (it.count || 1),
+        cfgId: row ? row.cfgId : null, /* v14：brewTierOf 查 ICFG[canBrew] 用（brew spec §5.2） */
         s1: row && row.s1 != null ? row.s1 : null,
         s2: row && row.s2 != null ? row.s2 : null,
         s3: row && row.s3 != null ? row.s3 : null,
@@ -3867,6 +3888,7 @@
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
   window.__CERAIL__ = {
     dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0, ct: { choice: DISP_CT.choice, owner: DISP_CT.owner, items: DISP_CT.model ? DISP_CT.model.items.length : 0 }, nb: { bag: NB.fsort, ctn: NB2.fsort } }; },
+    brewTier: function (row) { return brewTierOf(row); }, /* v14 自检口（dispInfo 先例）：harness §1 三档派生/阈值兜底断言用 */
     _ppCount: 0,
     _pp: function () { this._ppCount++; }, /* v1.8.10 十三批六追：微包回执钩（OpPing 发 ~40B 微型 ExecuteJavaScript——达=通道活、长度丢弃实锤；不达=通道级死） */
     /* v1.8.10 八追分片落包（同日九点修订：乱序免疫）：大契约（>7.5KB）C# 侧拆片下发（大包
