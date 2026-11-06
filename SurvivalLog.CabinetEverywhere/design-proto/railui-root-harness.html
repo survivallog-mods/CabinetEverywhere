@@ -83,6 +83,8 @@ window.__HZ_READY__ = function () {
   window.__HZ_TIDYFAIL__ = false;
   var TIDY_SEQ = 0; /* tidy 合并新叠 logicId 序列（960000+seq，与 take 的 950000 系不撞） */
   var TAKE_SEQ = 0; /* take 搬运新叠 logicId 序列（950000+seq，终审建议-4 take mock 用） */
+  var FGQ = [];     /* fuelgen：燃料队列 mock 态（feed 命令执行后入列；夹具 BagMsg fuelItems 驱动 DOM） */
+  window.__HZ_FGQ__ = function () { return FGQ.slice(); };
   var origCmd = R.cmd, lastCmd = '';
   R.cmd = function (op, payload) {
     lastCmd = op + ':' + JSON.stringify(payload || {});
@@ -188,6 +190,21 @@ window.__HZ_READY__ = function () {
       log('mock C# 回推（take 已生效 moved=' + movedT + ' skip=' + skipT + '——查无静默跳过）');
       if (current) pushCtx(current);
     }
+    if (op === 'feed' && payload && payload.owner != null && payload.item) {
+      /* mock C# OpFeed 两跳保真（fuelgen spec）：柜中物品移除→燃料队列+1；队列 DOM 由夹具
+         BagMsg fuelItems 驱动——回发官方消息（data 只带 fuelItems，夹具 LAST 合并语义）+pushCtx */
+      var fsrcF = MOCK.items[String(payload.owner)] || [];
+      var fiF = -1; for (var fjF = 0; fjF < fsrcF.length; fjF++) if (fsrcF[fjF][0] === payload.item) { fiF = fjF; break; }
+      if (fiF >= 0) {
+        var rowF = fsrcF.splice(fiF, 1)[0];
+        var emoF = rowF[1] === 10 ? '🪵' : (rowF[1] === 11 ? '⛽' : '📦');
+        var nmF = ''; for (var fnF = 0; fnF < MOCK.icfg.length; fnF++) if (MOCK.icfg[fnF][0] === rowF[1]) nmF = MOCK.icfg[fnF][1];
+        FGQ.push({ emoji: emoF, name: nmF, pct: '95%' });
+        window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: { fuelItems: FGQ.slice() } });
+      }
+      log('mock C# 回推（feed 已生效：柜-' + (fiF >= 0 ? 1 : 0) + ' 队列+' + (fiF >= 0 ? 1 : 0) + '）');
+      if (current) pushCtx(current);
+    }
     return r;
   };
   window.__HZ_LASTCMD__ = function () { return lastCmd; };
@@ -206,18 +223,22 @@ window.__HZ_READY__ = function () {
     BackpackUI: { family: 'backpack', bagOnly: true }, MaterialRack: { family: 'rack', bagOnly: false, rackOwner: 900103 },
     Cooking: { family: 'bag' }, BrewPanel: { family: 'bag' }, RatCage: { family: 'bag' }, DyePanel: { family: 'bag' },
     Compressor: { family: 'cart0' }, Shredder: { family: 'cart' }, GreenhouseBuild: { family: 'cart' },
-    ToolTable: { family: 'tt' }, Trade: { family: 'trade' }, DroneHub: { family: 'bag' }
+    ToolTable: { family: 'tt' }, Trade: { family: 'trade' }, DroneHub: { family: 'bag' },
+    FuelGenerator: { family: 'fg' } /* bagtabs 页（fuelgen spec）：ctx.view='fuel' 固定 */
   };
   /* ctx.uniformWidth 测试旋钮（harness-width-floor 用）：C# [Rail] UniformBagWidth 直出的
      契约字段在夹具侧的建模——默认 12，测试改 window.__HZ_UNIW__ 后 __HZ_PUSH__ 重推生效 */
   window.__HZ_UNIW__ = 12;
+  window.__HZ_FEEDFAIL__ = ''; /* fuelgen：ctx.feedFail 测试旋钮（置码后 __HZ_PUSH__ 生效，一次性由 JS 消费侧清） */
   function ctxFor(key) {
     var f = FAMILY[key] || { family: 'bag' };
-    return {
+    var ctx = {
       page: key, family: f.family, bagOnly: !!f.bagOnly,
       rackOwner: f.rackOwner || 0, bagCap: 42,
       uniformWidth: window.__HZ_UNIW__
     };
+    if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
+    return ctx;
   }
   var MOCK = {
     rev: 7,
@@ -227,7 +248,9 @@ window.__HZ_READY__ = function () {
       [900101, '食材柜', 'c', 40, 101, 104],
       [900102, '冷藏柜', 'f', 24, 102],
       [900103, '材料架', 'r', 60, 103, 106],
-      [900104, '杂物柜', 'c', 18]
+      [900104, '杂物柜', 'c', 18],
+      [900105, '燃料柜·大号', 'c', 48, 1013],
+      [900106, '柴油储存', 'c', 24, 1013]
     ],
     lib: [
       [101, '食材', 4, 1, '', '#8fc06e'],
@@ -235,7 +258,8 @@ window.__HZ_READY__ = function () {
       [103, '材料', 0, 3, '', '#7aa2d6'],
       [104, '蔬果', 1, 4, '', '#8fc06e'],
       [105, '贵重品', 0, 5, '', '#c9b458'],
-      [106, '种植', 5, 6, '', '#6fc7c9']
+      [106, '种植', 5, 6, '', '#6fc7c9'],
+      [1013, '燃料', 0, 7, 'fuel', '#E2703A']
     ],
     icfg: [
       [1, '生态香米', ICO, 12, 99, 1, 1, '食材', 0, 15, 0, 0, 0, 0],
@@ -246,7 +270,10 @@ window.__HZ_READY__ = function () {
       [6, '木板', ICO, 5, 999, 9, 0, '材料', 0, 0, 0, 0, 0, 0],
       [7, '净水', ICO, 10, 30, 1, 9, '食材', 0, 5, 0, 2, 0, 0],
       [8, '草药', ICO, 15, 99, 2, 0, '医疗', 0, 0, 0, 0, 0, 12],
-      [9, '钨锭', ICO, 88, 99, 9, 0, '材料', 0, 0, 0, 0, 0, 0]
+      [9, '钨锭', ICO, 88, 99, 9, 0, '材料', 0, 0, 0, 0, 0, 0],
+      [10, '木柴', ICO, 6, 999, 13, 0, '燃料', 0, 0, 0, 0, 0, 0],
+      [11, '柴油', ICO, 8, 999, 13, 0, '燃料', 0, 0, 0, 0, 0, 0],
+      [12, '零件', ICO, 20, 99, 9, 0, '材料', 0, 0, 0, 0, 0, 0]
     ],
     items: {
       bag: [
@@ -267,6 +294,8 @@ window.__HZ_READY__ = function () {
       ],
       '900102': [[915, 2, 6, 7200, 0, 0, 1, 1, 0], [916, 3, 2, 0, 1, 0, 1, 1, 0]],
       '900103': [[917, 5, 200, 0, 0, 0, 1, 1, 0], [918, 6, 120, 0, 1, 0, 1, 1, 0], [919, 9, 10, 0, 2, 0, 1, 1, 0]],
+      '900105': [[921, 10, 36, 0, 0, 0, 1, 1, 0], [922, 11, 20, 0, 1, 0, 1, 1, 0], [923, 12, 7, 0, 2, 0, 1, 1, 0]],
+      '900106': [[924, 11, 50, 0, 0, 0, 1, 1, 0], [925, 10, 12, 0, 1, 0, 1, 1, 0]],
       '900104': []
     }
   };
@@ -279,6 +308,16 @@ window.__HZ_READY__ = function () {
     var j = JSON.parse(JSON.stringify(MOCK));
     j.ctx = ctxFor(key);
     j.rev = ++REV;
+    /* fuelgen 页：icfg 行尾补 burnable/burnValue 两列（C# BuildIcfgRow fuelCols 同形状——
+       cfg10 木柴/11 柴油=燃料，其余 [0,0]；其他页推送形状不变=契约约束在夹具侧同口径） */
+    if (key === 'FuelGenerator') {
+      var FB = { 10: [1, 600], 11: [1, 900] };
+      j.icfg = j.icfg.map(function (r) { return r.concat(FB[r[0]] || [0, 0]); });
+    } else {
+      /* 燃料柜（tag 1013）仅 fuelgen 场景可见：旧 12 场景夹具数据形状冻结（storeAll 路由序/
+       容量对账等既有断言零改动——fuelgen 是新页新数据，不得污染回归基线） */
+      j.ctn = j.ctn.filter(function (c) { return c[4] !== 1013; });
+    }
     R.setData(j);
     log('setData rev=' + j.rev + ' ctx=' + key);
   }
@@ -286,7 +325,7 @@ window.__HZ_READY__ = function () {
   /* ---- 12 iframe 建（SCENES 键=iframe id，fixture 文件同名；Trade 模板=TradeUI.html 拷贝）----
      全部隐藏建、后台预备；场景切换=纯 display 切换 + 投喂数据（Root hidePage/loadPage 语义）。 */
   var SCENE_KEYS = ['BackpackUI', 'MaterialRack', 'Cooking', 'BrewPanel', 'RatCage', 'DyePanel',
-    'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade', 'DroneHub'];
+    'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade', 'DroneHub', 'FuelGenerator'];
   var cont = document.getElementById('iframe-container');
   var frames = {}, btns = {};
   var bar = document.getElementById('hzScenes');
@@ -327,6 +366,9 @@ window.__HZ_READY__ = function () {
       }
       var bagItems = [mk(901, 0, 30, 1), mk(902, 1, 5, 3), mk(903, 2, 40, 5), mk(904, 3, 12, 5), mk(905, 4, 3, 9), mk(906, 5, 2, 2), mk(907, 6, 6, 8), mk(908, 7, 1, 4)];
       var M = {
+        FuelGenerator: ['WebUI_FuelGenerator_BagMsg', { bagOwnerId: 900001, bagCols: 12, bagRows: 6,
+          bagItems: bagItems.map(function (b) { return { itemId: b.itemId, x: b.x, y: b.y, w: 1, h: 1, emoji: '📦', name: '物品' + b.itemId, count: b.count, burnable: false }; }),
+          fuelSlotCount: 8, fuelItems: [], generatorName: '中型' }],
         Cooking: ['WebUI_Cooking_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
         BrewPanel: ['WebUI_Brew_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
         RatCage: ['WebUI_RatCage_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
@@ -482,6 +524,9 @@ window.__HZ_READY__ = function () {
     docReady(key, function (doc) {
       if (key === 'Cooking') preWrapChain(frames[key]); /* T9 包装链断言：Cooking 帧在 rail 装配前先挂预包装（帧隐藏时 rail 尚未 wrap） */
       if (key === 'BackpackUI' || key === 'Trade') nudge(key); /* ready 门页：补发数据（幂等） */
+      /* bagtabs 页（FuelGenerator）：无宿主替换（SCENES.host=null）——无快照可捕，
+         resolved=true 直接过（装配由 ensureBagtabs 以官方 #backpackGrid 建格为门） */
+      if (!R.scenes[key].host) { HOSTCHK[key] = { anchors: 0, resolved: true, html: '' }; log('prepare ' + key + '：bagtabs 页（无宿主替换）'); return; }
       var st = hostStat(doc, R.scenes[key].host);
       /* 就绪判定=resolved（Trade 的 .cols v-if 要等 nudge 后才出现；BackpackUI 的容器
          v-show 常在）。不做可见性判定：帧隐藏时computed display 不可靠且无必要——

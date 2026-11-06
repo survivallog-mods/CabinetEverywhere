@@ -251,3 +251,44 @@
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;
   font-style:normal;white-space:nowrap;pointer-events:none}
 /* v1.8.9：交易买家条（.sr-tradeinfo/.ti-prefs/.ti-pref/.ti-mode）随「按交易价值排序」条退役 */
+
+/* ================= 燃油发电机 bagtabs（srfg-*，spec 2026-11-06-fuelgen-cabinet-tabs） =================
+   仅 FuelGenerator 页消费（这些 id 只在 bagtabs 装配后存在，其他页零命中零影响）。
+   视觉基准=原型 v6：页签栏克隆官方 Cooking .bag-tabs 观感、底行克隆官方 .action-btn（暖金化）、
+   mod 柜格复用官方 .grid-container/.slot/.item/.is-fuel（同文档官方样式表）。 */
+.srfg-on { /* 官方左面板标记类：mod 页签在场=官方标题/空间条/提示行隐藏（元素保留在文档=官方查询仍可达） */
+  display: flex; flex-direction: column;
+}
+.srfg-on > .panel-title, .srfg-on > .info-bar, .srfg-on > .hint-shift { display: none !important; }
+#srfgTabs { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-shrink: 0; }
+.srfg-pin { display: flex; gap: 4px; position: relative; margin-right: 12px; flex-shrink: 0; }
+.srfg-pin::after { content: ''; position: absolute; right: -7px; top: 22%; bottom: 22%; width: 1px; background: rgba(255,255,255,.18); }
+.srfg-tab { padding: 6px 14px; font-size: 14px; color: #c0c0c0; cursor: pointer; user-select: none;
+  background: rgba(20,15,12,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+  transition: background .15s, color .15s, border-color .15s; white-space: nowrap; flex-shrink: 0; }
+.srfg-tab:hover { background: rgba(251,176,52,.12); color: #fcfcfc; border-color: rgba(251,176,52,.5); }
+.srfg-tab.active { background: linear-gradient(180deg, rgba(251,176,52,.25) 0%, rgba(251,176,52,.1) 100%);
+  color: #fbb034; border-color: #fbb034; cursor: default; box-shadow: 0 0 8px rgba(251,176,52,.35) inset; }
+.srfg-scroll { flex: 1 1 0; min-width: 0; overflow-x: hidden; display: flex; gap: 4px; }
+.srfg-tabbtn { flex-shrink: 0; width: 26px; height: 33px; padding: 0; line-height: 1;
+  background: rgba(20,15,12,.55); color: #c0c0c0; border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
+  cursor: pointer; font-size: 18px; font-weight: bold; display: none; align-items: center; justify-content: center;
+  user-select: none; font-family: inherit; }
+.srfg-tabbtn.is-visible { display: flex; }
+.srfg-tabbtn:hover { background: rgba(251,176,52,.12); color: #fbb034; border-color: rgba(251,176,52,.5); }
+#srfgBody { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+#srfgBody .grid-container { max-height: 100%; overflow-y: auto; box-sizing: border-box;
+  scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
+#srfgBody .grid-container::-webkit-scrollbar { width: 8px; }
+#srfgBody .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
+#srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
+#srfgBody .item { cursor: pointer; }
+.srfg-warn { color: #e05555; font-size: 13px; min-height: 18px; font-weight: bold; text-align: center; margin: 8px 0; }
+.srfg-foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; flex-shrink: 0; }
+.srfg-act { background: linear-gradient(180deg, rgba(58,58,60,.9) 0%, rgba(38,38,40,.92) 100%); color: #e8dfcf;
+  border: 1px solid rgba(255,255,255,.18); padding: 7px 11px; border-radius: 7px; font-size: 13px; font-weight: 500;
+  cursor: pointer; transition: all .2s; font-family: inherit; box-shadow: 0 3px 10px rgba(0,0,0,.3);
+  display: flex; align-items: center; gap: 5px; }
+.srfg-act svg { width: 14px; height: 14px; fill: currentColor; opacity: .8; }
+.srfg-act:hover { border-color: rgba(251,176,52,.5); color: #fff; transform: translateY(-1px); box-shadow: 0 5px 14px rgba(0,0,0,.35); }
+.srfg-act:active { transform: translateY(1px); }
