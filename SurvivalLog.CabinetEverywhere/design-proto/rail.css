@@ -209,6 +209,10 @@
 #srp .sr-slot .s-badge{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;
   font-family:Consolas,monospace;white-space:nowrap;pointer-events:none}
+/* v14 酿酒桶品质角标：垫在饱腹数值正下方（同底衬同款），色随三档（劣绿/普黄/烈粉，
+   游戏 BrewPanel TIER_COLOR 同源）；仅酿酒桶页+饱腹排序+可酿物品 */
+#srp .sr-slot .s-tier{position:absolute;right:1px;top:14px;min-width:12px;padding:0 2px;border-radius:2px;
+  background:rgba(0,0,0,.80);font-size:9px;line-height:12px;text-align:center;white-space:nowrap;pointer-events:none}
 /* 无人机交易买家条：当前交易对象的品类加成（点击买家名=演示切换） */
 #srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
   border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
