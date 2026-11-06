@@ -96,11 +96,20 @@ internal static class RailUi
     //     目标集（含 AllContainers 之外的功能包，配置级直写：家中未摆放不生效于 UI，与 2003
     //     场景侧共包同口径）。默认 1009 中控台（家具 9080 独占包）；厨房电器/机器槽/门窗床等
     //     槽位语义包不进白名单（改宽即变形）。
+    //   ⑤ 抽屉三档包 5010/5012/5013（2026-11-06 作者对齐终案：工作台抽屉=**全局包不挂家具**，
+    //     三档 [8×5/8×6/8×7] 升级链，全工作台共享互通；无家具引用/无共包/不在任何黑名单——
+    //     宽直进目标集（高/档位不动）。抽屉不是家具→不走 AllContainers，这里显式补入。
+    //     （DrawerWidthEngine 换绑方案已退役：备料格≠抽屉的误判产物，见 CHANGELOG 十八批。）
     // 直写 size[0]=目标宽——**勿回 RewriteSize 的 mult 路**：want=原值×(目标/当前宽)，重跑时
     // 当前宽=已改值 → 想要值被弹回原宽（12↔16 振荡）；v1.8.3 靠「每会话一次」掩盖了这一点。
     // 幂等：已是目标宽零写零日志；5s 周期重扫（RefreshMeta 慢通道）——新放柜子/换档重读 ≤5s
     // 收敛、cfg UniformBagWidth 改值当场跟进；高不变，容量=宽×高随之变；0=off（已写值不回滚）。
     private static string _sizeSig = ""; // 目标集签名（集合/宽未变=零日志快路径；异常轮不记号下轮重试）
+
+    /// <summary>工作台抽屉三档全局包（2026-11-06 终案）：5010[8×5]/5012[8×6]/5013[8×7] 升级链，
+    /// 不挂任何家具（Config_Furniture 零引用实锤）、全工作台共享互通（作者实测「四台抽屉通」）。
+    /// 宽随 cfg 统一；高/档位不动（升级链照常）。下轮换档配置表重建→5s 幂等重写自动收敛。</summary>
+    internal static readonly int[] DrawerBagIds = { 5010, 5012, 5013 };
 
     internal static void SizeEnginePoll()
     {
@@ -152,6 +161,8 @@ internal static class RailUi
             }
             foreach (var bagId in include)
                 if (!ids.Contains(bagId)) targets.Add(bagId); // 白名单独有（AllContainers 外的功能包）
+            foreach (var bagId in DrawerBagIds)              // 抽屉三档（全局包，非家具——见上注⑤）
+                if (!targets.Contains(bagId)) targets.Add(bagId);
             targets.Sort();
             skipped.Sort(string.CompareOrdinal);
             var sig = w + "|" + string.Join(",", targets) + "|" + string.Join(",", skipped);

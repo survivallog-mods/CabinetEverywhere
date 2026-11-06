@@ -22,7 +22,7 @@ public static class BagTable
     private static readonly Dictionary<long, float> OrigCold = new();
 
     /// <summary>
-    /// 改宽黑名单 34 包（套件单源；口径=CabinetExpand 2026-10-13 拍板，理由留档 CabinetSize DESIGN §5.3）：
+    /// 改宽黑名单（套件单源；口径=CabinetExpand 2026-10-13 拍板，理由留档 CabinetSize DESIGN §5.3）：
     /// 这些 Config_Bag 被机器功能界面/非储物家具/场景搜刮容器共用，改 Size 会连带变形——
     /// 2026-11-01 实锤：染料桶原料槽(66196)/自制工具台材料容器(313/80033/80164) 与工具桌/杂物纸箱
     /// 共用 1010，CabinetEverywhere 柜宽统一直写 1010 后两个机器容器随之翻倍。

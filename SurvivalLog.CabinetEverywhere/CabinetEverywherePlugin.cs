@@ -95,7 +95,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ApplyWebViewScrollbarEnv();
         ApplyRemoteDebugEnv();
         UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
-            "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。");
+            "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。含工作台抽屉三档全局包 5010/5012/5013（宽随本值、高/档位不动）与 rail 壳宽地板（窄柜两侧留白不缩放，=0 时两者整体停用）。");
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
             "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随 UniformBagWidth 统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
@@ -323,6 +323,9 @@ internal sealed class AccessTicker : MonoBehaviour
         if (_fastCheck < 0.5f) return;
         _fastCheck = 0f;
         TabInjector.PollAll();
+        // 十八批：抽屉页签（交易/粉碎机）——全局抽屉包补进两页页签（DrawerTabs 内自带
+        // General/EnableCraftSource 门；owner=WorkbenchDrawerConfig 常量直读）
+        DrawerTabs.PollAll();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
         // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：

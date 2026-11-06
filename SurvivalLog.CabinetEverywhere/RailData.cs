@@ -13,7 +13,7 @@ namespace SurvivalLog.CabinetEverywhere;
 ///
 /// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，2026-11-01 缺陷单#1/#2 增补 ctx.view/tradePrefs/
 /// 与物品行数值段对齐；v1.8.5 起 lastSortAck 随数据层 sortBy 退役）。
-///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,view,tradePrefs,lastTidyFail},
+///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,uniformWidth,view,tradePrefs,lastTidyFail},
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
 ///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]],
@@ -399,6 +399,9 @@ internal static class RailData
         sb.Append(",\"bpBag\":").Append(BpBagDyn() ? "true" : "false");
         sb.Append(",\"rackOwner\":").Append(rackOwner);
         sb.Append(",\"bagCap\":").Append(Math.Max(0, _bagCap));
+        // 壳宽地板/抽屉克隆包的目标宽直出（[Rail] UniformBagWidth；0=off 也推——JS 地板停用信号；
+        // 契约增补照 bagCap 先例：读取先行缺省 12，C# 直推）
+        sb.Append(",\"uniformWidth\":").Append(Math.Max(0, CabinetEverywherePlugin.UniformBagWidth?.Value ?? 12));
         // 2026-11-01 缺陷单#2：机器页页签逐页语义（v1.7.0 场景视图口径）——ctx.view 供 JS
         // railCtns 收窄（food=冰箱全显+柜子按食物域标签；material=材料/工具柜+架子；browser=全显）
         sb.Append(",\"view\":\"").Append(ScenarioViewOf(sc?.Page)).Append('"');
