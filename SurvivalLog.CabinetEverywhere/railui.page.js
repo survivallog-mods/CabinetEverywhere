@@ -298,7 +298,7 @@
      跟着帧走、不把 A 场景的筛选态渲染进 B。全局单套活跃集 + 每帧快照 = 与「单场景活跃」
      装配语义（frameVisible 门控，T8）一致的多帧安全形态。 */
   var SNAPS = {}; /* sceneKey → { st, COMMON, sceneApplied, PIN_KEY, TM_KEY, LISTGRP } */
-  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'w12Floor', 'w12Src']; /* v1.8.11：壳宽地板随页快照（重访免重标定；UNI_W 值变仍由 setData 全局清） */
+  var ST_KEYS = ['scene', 'currentId', 'mode', 'prevMode', 'sort', 'dir', 'query', 'global', 'tags', 'sel', 'cap', 'rows', 'items', 'dragId', 'w12Floor', 'w12Src']; /* 壳宽地板随页快照（重访免重标定；UNI_W 值变仍由 setData 全局清） */
   function saveSnap() {
     if (!st.scene || !SCENES[st.scene]) return;
     var sn = { st: {}, COMMON: COMMON.slice(), sceneApplied: sceneApplied, PIN_KEY: PIN_KEY, TM_KEY: TM_KEY, LISTGRP: LISTGRP };
@@ -1706,7 +1706,7 @@
     /* 壳宽=外沿+24+sb：24=rail 内衬 20+两重边框 4（补齐后格区横向溢出恒 0——第三轮实测
        ToolTable 官方格无内边距，+20 信用下末列右缘被结构性啃 3px；Brew 类 9px 内边距页
        此前把它藏着）。sb=滚动条（同上）。 */
-    /* v1.8.11 壳宽地板（spec §5.2，作者令「窄柜两侧留白不缩放」）：地板宽=本页首见 UNI_W 列
+    /* 壳宽地板（spec §5.2，作者令「窄柜两侧留白不缩放」）：地板宽=本页首见 UNI_W 列
        容器时标定的跟随宽（自动吸收各页 slot/内边距差异，零魔法常数）；此后壳宽=max(跟随宽,地板)
        ——窄柜居中留白（.sr-gridhost flex 居中已在位、官方锁 margin 已清），>UNI_W 仍可长胖永不
        裁格。UNI_W=0（cfg off）整段跳过=回纯跟随；UNI_W 值变（setData 清标定）与场景切换
@@ -2915,7 +2915,7 @@
     if (!doc || !doc.head) return;
     /* v1.8.12 native 地板退役（作者实报「背包/柜子界面右侧多一块黑色空白、交易/烹饪页没有」）：
        官方 .grid-container inline 宽=cols*56 整（BackpackUI fixture gridContainerStyle 实证：
-       CELL=56、容器零内边距）——v1.8.11 的「+18=内边距 9×2」是 rail 机器页几何（webui-bag
+       CELL=56、容器零内边距）——早版「+18=内边距 9×2」是 rail 机器页几何（webui-bag
        cfg.padding 9）误植到 native 页；min-width=UNI_W*56+18 对 12 列恒超宽 18px、窄袋（背包/
        后备箱页签/材料架等未直写容器）更多 → 格床右侧露出 --grid-frame-bg 暗底=黑块。且 native
        页各面板独占一袋、无 rail 切页签缩放场景（A 侧多页签官方自有 aSlotStyle 按 maxCols 垫宽），
@@ -3460,7 +3460,7 @@
   }
   function applyScene(key) {
     st.scene = key;
-    st.w12Floor = 0; st.w12Src = 0; /* v1.8.11 壳宽地板：跨页标定失效（各页 slot/内边距几何不同，本页首见 UNI_W 列重标定） */
+    st.w12Floor = 0; st.w12Src = 0; /* 壳宽地板：跨页标定失效（各页 slot/内边距几何不同，本页首见 UNI_W 列重标定） */
     loadScenePrefs();
     st.currentId = entryDefault();
     /* v13.5-v13.8：设施排序态随场景；缺陷单#1：**切场景重置为默认**（UI-SPEC §4.11 定版；

@@ -39,7 +39,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "CabinetEverywhere";
-    public const string Version = "1.8.4";
+    public const string Version = "1.8.1";
 
     internal static ManualLogSource Log;
 
@@ -60,7 +60,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> FilterEnable;
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     internal static ConfigEntry<int> UniformBagWidth; // v13.8 柜宽统一（0=off；作者拍板默认 12）
-    // v1.8.11 柜宽白名单：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
+    // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 UniformBagWidth 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
