@@ -228,6 +228,11 @@ const TAB_MSG = {
   ToolTable: { type: 'WebUI_ToolTable_BagMsg', data: { cabinetTabs: fakeTabs('tt'), activeLeftTab: 0, workbenchItems: [], drawerOwnerId: 0, workbenchOwnerId: 0 } },
   Trade: { type: 'WebUI_Trade_BagMsg', data: { bagTabsJson: JSON.stringify(fakeTabs('trade')), bagOwnerKey: '900001' } }
 };
+/* 二十一批：rack 行视图宿主入壳断言（材料架页签黑块根修）——宿主在 #srGridHost 槽内、
+   非桩、DOM 序恒 [grid, rack]（官方 sizeLock/壳宽量测按首子=格的旧约定）。Trade 夹具
+   无 .rack-view（Vue 运行时件，静态模板拷贝不含）=环境性 SKIP。 */
+const RACK_SEL = { Shredder: '#cartRack', GreenhouseBuild: '#cartRack', ToolTable: '#rack-rows', DroneHub: '#bagRackWrap', Trade: '.rack-view' };
+const GRID_ID = { Shredder: 'cartGrid', GreenhouseBuild: 'cartGrid', ToolTable: 'backpack-grid', DroneHub: 'bagGrid', Trade: 'tradeBagGrid' };
 for (const key of TAB_PAGES) {
   const tabsSel = await page.evaluate((k) => window.__CERAIL__.scenes[k].tabs, key);
   if (key === 'Trade') {
@@ -266,6 +271,33 @@ for (const key of TAB_PAGES) {
   check('tabs:visible:' + key, t.rowVisible, `页签栏可见宽>0=${t.rowVisible}（A/D 宽度守卫判据）`);
   check('tabs:rendered:' + key, t.tabsInSlot >= 4, `官方 BagMsg 渲染落槽：槽内页签元素 ${t.tabsInSlot} 个（fakeTabs=5，pin 位占 1）`);
   check('tabs:no-selfrow:' + key, t.oldPins === 0, `自绘页签行已退役（.sr-pin=${t.oldPins}）`);
+  /* 二十一批：rack 行视图宿主入壳 + DOM 序 + DroneHub 镜像 CSS 在场 */
+  if (RACK_SEL[key]) {
+    const rk = await f.evaluate(([sel, gid]) => {
+      const host = document.getElementById('srGridHost');
+      const el = host ? host.querySelector(sel) : null;
+      let firstOfficial = '';
+      for (let c = host && host.firstElementChild; c; c = c.nextElementSibling) {
+        if (!/^sr/i.test(c.id || '')) { firstOfficial = c.id; break; } /* 官方件=非 mod 层（sr 前缀），badge 层晚入不骗序 */
+      }
+      return {
+        present: !!el,
+        inHost: !!(el && el.closest('#srGridHost') === host),
+        notStub: !!(el && !el.hasAttribute('data-cer-stub')),
+        noIdTwin: !(el && el.id && document.querySelectorAll('[id="' + el.id + '"]').length > 1),
+        gridFirst: firstOfficial === gid,
+        mirrorCss: /:has\(#bagRackWrap\.on\)/.test((document.getElementById('srpRail') || {}).textContent || '')
+      };
+    }, [RACK_SEL[key], GRID_ID[key]]);
+    if (!rk.present && key === 'Trade') {
+      check('rack:slot:' + key, true, 'SKIP（夹具无 Vue 运行时 .rack-view——实机校准点）');
+    } else {
+      check('rack:slot:' + key, rk.present && rk.inHost && rk.notStub && rk.noIdTwin,
+        `rack(${RACK_SEL[key]})入槽=${rk.inHost} 非桩=${rk.notStub} 无同 id 桩=${rk.noIdTwin}`);
+      check('rack:grid-first:' + key, rk.gridFirst, `gridhost 首个官方件=${GRID_ID[key]}（DOM 序 [grid, rack]）=${rk.gridFirst}`);
+      if (key === 'DroneHub') check('rack:mirror-css:' + key, rk.mirrorCss, ':has(#bagRackWrap.on) 镜像藏格规则已注入');
+    }
+  }
 }
 
 /* ③ iframe 切换往返：Cooking → Trade → Cooking，rail 恢复（el 引用表随重装配回来） */

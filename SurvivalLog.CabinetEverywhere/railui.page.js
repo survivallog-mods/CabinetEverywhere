@@ -154,7 +154,16 @@
      支持——ToolTable '.weight-text'/'.weight-fill' 仅类名无 id、StatusMsg 无守卫解引用，
      其余 8 页类查询∩宿主复核零命中/全守卫，见 buildStubs 注释）。按 SCENES.stubs 声明
      驱动、不写死页名：宿主换成任何元素（如 T10 .sr-duo 替换 #rackSystem）同用同一机制；
-     Vue 页（BackpackUI/Trade）宿主内无被查询目标 = 空列表不建桩。 */
+     Vue 页（BackpackUI/Trade）宿主内无被查询目标 = 空列表不建桩。
+     【rack（二十一批）】材料架页签=官方**行视图**（webui-rackrows 分行取物，非网格）：页签激活
+     时官方页面藏格、显行视图宿主（Shredder/Greenhouse #cartRack、ToolTable #rack-rows、DroneHub
+     #bagRackWrap、Trade 袋列 .rack-view——@各页 renderCartView/applyLeftView/isRack 分支取证）。
+     rack=该宿主选择器（null=本页无行视图）：mount 在**替换宿主前**解析（类选择器须宿主域防误取，
+     如 Trade 双 .rack-view）、随官方格一起 reparent 进 .sr-gridhost——官方切页自切两件 inline
+     display（DroneHub 藏的是包格容器 bagGridWrap → 壳侧 CSS 按 .on 镜像藏格，见 railui.css），
+     行拖拽/右键取1/锁定/取出最多全原生。stubs 摘除对应 rack 件（真节点进壳在文档=桩自愈不建，
+     列表语义同步）。修复回归：v1.8.3 起这些宿主随宿主子树被摘=「格被藏+行视图不可见」，
+     材料架页签内容区整片黑（作者实报：工作台/交易/调度机队/粉碎机）。 */
   var SCENES = {
     /* v1.8.2 装配（全场景壳架构）：宿主替换（壳占官方面板原位）+
        grid=官方物品格容器（替换前取引用，appendChild 移动节点进壳 body——id/官方监听/
@@ -171,11 +180,11 @@
     RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs/tabs 同 Cooking */
     DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317；injTabs/tabs 同 Cooking */
     Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, tabs: '#tabs', grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs）；tabs=#tabs 平铺无 pin */
-    Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'cartRack', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned')；tabs=.left-tabs（pin+scroll 整件） */
-    GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'cartRack', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned')；tabs 同 Shredder */
-    ToolTable:       { host: '.backpack-panel', family: 'tt',    bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'backpack-grid', stubs: ['tab-bag', 'tabScrollLeft', 'leftTabsScroll', 'tab-drawer', 'tabScrollRight', 'cabinetGuide', 'cabinetGuideBtn', 'rack-rows', 'bagToolbar', 'btn-sort-bag', '.weight-text', '.weight-fill'] }, /* 内含 .left-tabs 页签列（@ToolTable.html @1947）；首抛 applyLeftGrid 的 getElementById('backpack-grid')（@2610 无守卫 .style 解引用）；类桩 '.weight-text'/'.weight-fill'=StatusMsg 无守卫解引用（markup L1968/L1971 仅类名无 id）；tabs=.left-tabs 整列（pin #tab-bag/滚动钮/#leftTabsScroll(含 #tab-drawer)/cabinetGuide；官方 document.querySelector('.left-tabs')/'.left-tabs .cabinet-tab' 同文档照常命中） */
-    Trade:           { host: '.cols>.col:first-child', family: 'trade', bagOnly: false, duo: false, tabs: '.bag-tabs', grid: 'tradeBagGrid', stubs: [] }, /* 第 1 个 .col=背包列（@TradeUI.html @2518；:first-child 收窄防级联，T8 评审 Critical）；grid=Vue 格（移动后 Vue 按元素引用继续 patch）；tabs=.bag-tabs（Vue v-if tabs>1——reparent 与 Vue patch 互作走宿主复活重挂兜底，实机校准点） */
-    DroneHub:        { host: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagRackWrap', 'bagRack', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] }  /* section.pane.mine（@DroneHub.html @408）；tabs=#bagTabs（自带 padding 头+尾 sortBagBtn2 官方排序钮，随件还原） */
+    Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', rack: '#cartRack', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned')；tabs=.left-tabs（pin+scroll 整件）。rack=#cartRack 官方行视图宿主（二十一批入壳——材料架页签 renderCartView 直写两件 inline display，官方自切）；官方 renderCartView 另读 $('weightSection') 无守卫=桩保留 */
+    GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', rack: '#cartRack', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned')；tabs 同 Shredder；rack 同 Shredder（二十一批入壳） */
+    ToolTable:       { host: '.backpack-panel', family: 'tt',    bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'backpack-grid', rack: '#rack-rows', stubs: ['tab-bag', 'tabScrollLeft', 'leftTabsScroll', 'tab-drawer', 'tabScrollRight', 'cabinetGuide', 'cabinetGuideBtn', 'bagToolbar', 'btn-sort-bag', '.weight-text', '.weight-fill'] }, /* 内含 .left-tabs 页签列（@ToolTable.html @1947）；首抛 applyLeftGrid 的 getElementById('backpack-grid')（@2610 无守卫 .style 解引用）；类桩 '.weight-text'/'.weight-fill'=StatusMsg 无守卫解引用（markup L1968/L1971 仅类名无 id）；tabs=.left-tabs 整列（pin #tab-bag/滚动钮/#leftTabsScroll(含 #tab-drawer)/cabinetGuide；官方 document.querySelector('.left-tabs')/'.left-tabs .cabinet-tab' 同文档照常命中）。rack=#rack-rows 行视图宿主（二十一批入壳——cabinetTab.isRack 分支直写 grid/rack 两件 inline display） */
+    Trade:           { host: '.cols>.col:first-child', family: 'trade', bagOnly: false, duo: false, tabs: '.bag-tabs', grid: 'tradeBagGrid', rack: '.rack-view', stubs: [] }, /* 第 1 个 .col=背包列（@TradeUI.html @2518；:first-child 收窄防级联，T8 评审 Critical）；grid=Vue 格（移动后 Vue 按元素引用继续 patch）；tabs=.bag-tabs（Vue v-if tabs>1——reparent 与 Vue patch 互作走宿主复活重挂兜底，实机校准点）。rack=袋列 .rack-view（Vue v-show=bag.isRack 直切，与 grid 同模板同级件；宿主域解析防误取无人机列件，二十一批入壳） */
+    DroneHub:        { host: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, tabs: '#bagTabs', grid: 'bagGrid', rack: '#bagRackWrap', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] }  /* section.pane.mine（@DroneHub.html @408）；tabs=#bagTabs（自带 padding 头+尾 sortBagBtn2 官方排序钮，随件还原）。rack=#bagRackWrap（内含 #bagRack）行视图宿主二十一批入壳——本页官方藏格写的是 bagGridWrap（**包格容器**，非格本体）：入壳的 #bagGrid 不在包内=官方藏格不达，壳侧 railui.css 按 #bagRackWrap.on 镜像藏 #bagGrid；bagGridWrap 桩保留吸官方写 */
   };
 
   /* 侧栏 DOM 常量（每次切场景重建后重绑；控件入口各只有一个）——原样拷自 rail.js。 */
@@ -1677,7 +1686,13 @@
      官方格瞬时拆建（nat≤40）不动宽度防抖。 */
   function syncRailWidth() {
     if (!el.rail || !el.srGridHost) return;
-    var childG = el.srGridHost.firstElementChild;
+    /* 二十一批：gridhost 内官方格与 rack 行视图并排（rack 常态 display:none、rack 页签激活时
+       反转）——量**首个可见件**（offsetWidth>40）；两件同隐（切页瞬态）=本轮不动作。单件时代
+       语义不变（隐=0 宽=原 nat<=40 早退同款）。 */
+    var childG = null;
+    for (var ci = el.srGridHost.firstElementChild; ci; ci = ci.nextElementSibling) {
+      if ((ci.offsetWidth || 0) > 40) { childG = ci; break; }
+    }
     if (!childG) return;
     /* 缺陷#5 第二轮（作者实测：工作台页滚动条遮格≈一格半）：官方 8 个机器页全用
        createGridSizeLock（webui-bag.js@1211）把格容器钉在**见过的最大列数**——切窄柜时给
@@ -2048,8 +2063,10 @@
        可能先入壳，firstElementChild 判定会被它骗过=门失效，夹具实测抓出）。 */
     SB_IND = sbMakeIndicator(el.srBody.ownerDocument, el.rail, el.srBody, 'background:rgba(255,255,255,.32)', 'srSbTrack', false,
       function () {
+        /* 二十一批补可见性：rack 行视图宿主（非 sr 前缀官方件）常驻槽内且常态 display:none——
+           仅「非 mod 层」会把它当骨架期已就绪（同 badge 层被骗问题家族），加 offsetWidth>0 */
         var c = el.srGridHost && el.srGridHost.firstElementChild;
-        while (c) { if (!/^sr/i.test(c.id || '')) return true; c = c.nextElementSibling; }
+        while (c) { if (!/^sr/i.test(c.id || '') && (c.offsetWidth || 0) > 0) return true; c = c.nextElementSibling; }
         return false;
       });
     /* T3：② 网格/列表分段（rail.js 原样；全库模式锁定列表视图） */
@@ -2278,6 +2295,14 @@
     }
     var host = resolveHost(doc, sc.host);
     if (!host) return false;
+    /* 二十一批：官方 rack 行视图宿主同款**替换宿主前**取引用（类选择器在宿主域内解析——
+       Trade 页无人机列也有 .rack-view，宿主域=袋列；替换后原宿主子树脱文档就查不到了） */
+    var rackEl = null;
+    if (sc.rack) {
+      rackEl = sc.rack.charAt(0) === '#'
+        ? (doc.getElementById(sc.rack.slice(1)) || null)
+        : (host.querySelector(sc.rack) || null);
+    }
     /* v1.8.2.5 统一口径（作者裁决：整理物资=简洁存储取物界面）——BackpackUI 与 MaterialRack
        都**只替换背包侧 .bag-panel:not(.is-storage)** 为简洁背包栏（plainbag：标题+官方格+页脚
        整理/入库；无页签/搜索/标签/排序/列表切换）；柜子侧面板与官方转移列原样不动。
@@ -2376,6 +2401,14 @@
       if (slotT) { try { slotT.appendChild(officialTabs); } catch (e) { } }
       bindTabDrag(officialTabs, sceneKey); /* T3 拖拽排序（幂等 __srTabDrag 门） */
     }
+    /* 二十一批：rack 行视图宿主入壳（.sr-gridhost 内与官方格并排；官方 TAB_SWITCH 后
+       renderCartView/applyLeftView 直切两件 inline display，壳只提供位置）。必须先于
+       buildStubs——真节点在文档，rack 类桩自愈跳过（stubs 列表已同步摘除）。 */
+    if (rackEl) {
+      var ghR = rail.querySelector('.sr-gridhost');
+      if (ghR) { try { ghR.appendChild(rackEl); } catch (e) { } }
+      RACKEL[sceneKey] = rackEl;
+    }
     /* 2026-11-02 七轮（官方模板对照定案，治老鼠笼反复）：官方机器页布局契约=三面板 flex
        拉伸**等高**（Cooking/RatCage 模板同构，无特例——差异只在运行时兄弟面板数据高度）。
        壳统一回归该契约：壳高=max(778, 兄弟面板最高自然高)——
@@ -2396,7 +2429,12 @@
        rsw 机器人开关+panelB 汇总行面板）整件进 srGridHost——行拖拽/右键取1/锁定/
        取出最多/落点预览全原生，rackOpen 切柜后官方重渲染写进同一容器。 */
     if (officialGrid && !bpPanel && el.srGridHost) {
-      try { el.srGridHost.appendChild(officialGrid); } catch (e) { }
+      try {
+        /* 二十一批：rack 宿主已在槽时官方格插其前——DOM 序恒 [grid, rack]（syncRailWidth
+           挑首个可见件已双保险；width-floor/官方 sizeLock 等按首子=格的旧约定同样成立） */
+        if (rackEl && rackEl.parentNode === el.srGridHost) el.srGridHost.insertBefore(officialGrid, rackEl);
+        else el.srGridHost.appendChild(officialGrid);
+      } catch (e) { }
       unlockGridSize(); /* v1.8.4c：入壳首清官方 sizeLock 的 margin 填充（后续由观察器跟清） */
     }
     if (sc.rackMid) bindMid(); /* 中段 mod 三按钮接线（mid 容器 __srMidBound 门防重绑双挂；官方两按钮零接线） */
@@ -2448,6 +2486,7 @@
      cart=TAB_SWITCH{tab:下标}（pin 背包占 0）、cart0=TAB_SWITCH{tab:下标}（无 pin）。
      hasActive 字段清单照抄：{bagOwnerId, bagOwnerKey, activeLeftTab, activeTab}。 */
   var TABS = {}; /* sceneKey → extractTabs 归一化页签数组缓存（String|null[]；tt/cart 索引族解 active/forge 对位用） */
+  var RACKEL = {}; /* 二十一批：sceneKey → 官方 rack 行视图宿主（mount 解析存档；ensureRackInSlot 对账入槽）。材料架页签激活时官方藏格显行视图——宿主必须随官方格一起进壳，否则「格被藏+行视图不可见」=内容区整片黑 */
 
   /* ---- extractTabs（tagfilter 原样移植：*_BagMsg → 页签 owner 数组，含 null 占位维持对齐）---- */
   function normOwner(t) {
@@ -3334,6 +3373,26 @@
       if (t && t !== slot) { slot.appendChild(t); bindTabDrag(t, f.key); scrollActiveTabIntoView(slot); }
     } catch (e) { }
   }
+  /* 二十一批：rack 行视图宿主入槽对账（ensureTabsInSlot 同语义，无拖拽/滚动接线）。引用死
+     （iframe 重载/整树重建）时类选择器不盲查（Trade 双 .rack-view 会误取无人机列件）——
+     交给宿主复活→mount 的宿主域重解析；id 形态无歧义可直查补挂。 */
+  function ensureRackInSlot(f) {
+    try {
+      var sc = SCENES[f.key], doc = f.doc;
+      if (!sc || !sc.rack || !doc) return;
+      var slot = doc.getElementById('srGridHost');
+      if (!slot) return;
+      var el = RACKEL[f.key];
+      if (el && el.isConnected) {
+        if (el.closest && el.closest('#srGridHost') === slot) return; /* 已在槽 */
+        slot.appendChild(el); /* 被官方挪出槽（罕见）：搬回 */
+        return;
+      }
+      if (sc.rack.charAt(0) !== '#') return; /* 类选择器等 remount 宿主域重解析 */
+      var t = doc.getElementById(sc.rack.slice(1));
+      if (t && !(t.closest && t.closest('#srp'))) { slot.appendChild(t); RACKEL[f.key] = t; }
+    } catch (e) { }
+  }
   function ensureMountedFrame(f) {
     var doc = f.doc, key = f.key, sc = SCENES[key];
     if (!doc || !doc.body || !sc) return;
@@ -3343,7 +3402,7 @@
        桩的重复 id 会让官方 $() 命中桩而非真节点；撤桩后 mount 重替换并重建新桩。
        （官方格引用在 mount 内先于摘除取得，复活重装配不丢格。） */
     if (doc.getElementById('srRail') && hostAlive(doc, sc)) stripStubs(doc);
-    if (mountedOk(doc, sc)) { ensureTabsInSlot(f); return; } /* 在位且宿主未复活：观察器/interval 噪声快速路径（BP 形态翻转由 Vue 重建摘壳→hostAlive('bp')=true→自然重装）；v1.8.7 快路径上补挂页签件 */
+    if (mountedOk(doc, sc)) { ensureTabsInSlot(f); ensureRackInSlot(f); return; } /* 在位且宿主未复活：观察器/interval 噪声快速路径（BP 形态翻转由 Vue 重建摘壳→hostAlive('bp')=true→自然重装）；v1.8.7 快路径上补挂页签件；二十一批同路补挂 rack 行视图宿主 */
     var railHere = doc.getElementById('srRail');
     if (railHere && railHere.isConnected && !hostAlive(doc, sc)) {
       rebindFrame(f, railHere);                        /* T9 重绑：rail 在位但 el 引用表在他帧（A→B→A 重访） */

@@ -347,6 +347,12 @@ v13.5 起机器场景（plain）无工具行，机器场景排序走 §4.11（�
 GreenhouseBuild（cart 族同款）。
 切分点（官方面板 → 侧栏）见 `design-proto/build-rail-proto.cjs` 头注释；
 温室工程台 GreenhouseBuild 走同款 cart 族适配，原型未单列。
+**材料架页签（rack 行视图，二十一批）**：Shredder/GreenhouseBuild/ToolTable/DroneHub/Trade
+五页官方袋区有「格/行」**互斥视图族**——材料架页签激活时官方藏格、显行视图宿主
+（#cartRack/#rack-rows/#bagRackWrap/袋列 .rack-view）。壳替换必须把行视图宿主与官方格
+一起 reparent 进 .sr-gridhost（SCENES.rack 字段；DOM 序恒 [grid, rack]；DroneHub 官方藏的
+是包格容器→壳侧 :has 镜像藏格），官方切页自切 display，行交互全原生。只搬格=行视图页签
+激活即内容区黑（v1.8.3-v1.8.10 实病，二十一批修）。
 
 ## 6. 演进记录
 

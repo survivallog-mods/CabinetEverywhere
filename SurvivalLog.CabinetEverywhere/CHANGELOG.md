@@ -7,6 +7,34 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十一批（2026-11-06，材料架页签机器页黑块根修——官方 rack 行视图宿主入壳）
+
+**作者实报：材料架在工作台/无人机交易/调度机队（实测连粉碎机）页签选中后内容区整片黑，
+底部计数（如 89/240 格）与页签高亮俱在——数据在、渲染空。**
+
+- **根因（结构缺口，非近批引入）**：材料架页签=官方**行视图**（webui-rackrows 分行取物，非
+  网格）。四页官方页 JS（Shredder/GreenhouseBuild `renderCartView`、ToolTable `isRack` 分支、
+  DroneHub `applyLeftView`、Trade `bag.isRack` v-show）在页签激活时**藏官方格、显 rack 行视图
+  宿主**（`#cartRack`/`#rack-rows`/`#bagRackWrap`/袋列 `.rack-view`）。而 v1.8.3「机器界面简化」
+  的壳替换只 reparent 了官方格与页签栏——rack 宿主随宿主子树脱文档（cart 三页再吃隐藏桩），
+  =「格被官方藏 + 行视图不可见」→ 内容区黑。v1.7.0（tagfilter 不动官方面板）时代材料架在机器页
+  正常，v1.8.4 发版起即为坏态；十八批抽屉页签进三页让页签区更受检视，作者首次点到即曝光。
+- **修复（官方件 reparent，与页签栏 v1.8.7 同款哲学）**：
+  - SCENES 五页补 `rack` 字段（宿主选择器；Trade 类选择器在**宿主域**解析防误取无人机列
+    .rack-view），mount 在替换宿主前取引用、随官方格进 `.sr-gridhost`（DOM 序恒 [grid, rack]）；
+    stubs 列表同步摘除 rack 件（真节点在文档=桩自愈不建）。官方切页直切两件 inline display，
+    行拖拽/右键取1/锁定/取出最多/落点预览全原生。
+  - DroneHub 特例：官方藏格写的是**包格容器** `#bagGridWrap`（桩保留吸写），入壳的 `#bagGrid`
+    不在包内=藏格不达——railui.css 增 `:has(#bagRackWrap.on)` 镜像藏真格。
+  - 配套三处鲁棒性：`syncRailWidth` 改量 gridhost 内**首个可见件**（rack 常态 display:none，
+    激活时反转——壳宽跟随 rack 行视图）；滚动指示轨 ready 门补可见性判定（rack 宿主非 sr 前缀
+    会骗过「非 mod 层」谓词，同 badge 层被骗家族）；`ensureRackInSlot` 周期对账入槽
+    （ensureTabsInSlot 同语义；类选择器形态不盲查、交宿主复活重解析）。
+- 材料架专属页（MaterialRack 整理柜三段壳）与背包页不涉（无 rack 页签/行视图路径），零改动。
+- 教训入档：**壳替换清单必须覆盖官方页的「互斥视图族」**——同一容器位有多套官方视图（格/行）
+  时，只搬常见路径=另一路径激活即黑；扫描依据=官方页 JS 的显示切换分支（renderCartView 族），
+  而非仅首屏可见件。
+
 ### 待发版·十九批（2026-11-06，native 页壳宽地板撤除——背包/柜子界面右侧黑块修复）
 
 **作者实报：背包与柜子界面右侧都多一块黑色空白区域，交易/烹饪等 rail 页没有。**
