@@ -1533,8 +1533,12 @@
     var lbl = cfg.lblId ? d.getElementById(cfg.lblId) : null;
     var body = cfg.bodyId ? d.getElementById(cfg.bodyId) : pop; /* rail 弹层=头+体两层；NB 选项直写 pop */
     if (!btn || !pop || !body) return null;
+    /* v14：cfg.keys 兼容函数（每次取用时解析——页脚实例按 st.scene 动态收敛，brew spec §5.2；
+       数组路径（工具行 SORTS/NB 实例）行为零改动） */
+    function keysOf() { return typeof cfg.keys === 'function' ? cfg.keys() : cfg.keys; }
     function labelOf(k) {
-      for (var i = 0; i < cfg.keys.length; i++) if (cfg.keys[i].k === k) return cfg.keys[i].label;
+      var ks = keysOf();
+      for (var i = 0; i < ks.length; i++) if (ks[i].k === k) return ks[i].label;
       return cfg.defLbl || k;
     }
     var M = {
@@ -1544,9 +1548,9 @@
       toggle: function () { if (pop.hidden) M.open(); else M.close(); },
       refresh: function () { if (!pop.hidden) M.renderPop(); }, /* render 主路：弹层开着才重渲染 */
       renderPop: function () {
-        var h = '';
-        for (var i = 0; i < cfg.keys.length; i++) {
-          var s = cfg.keys[i], on = s.k === cfg.getKey();
+        var h = '', ks = keysOf();
+        for (var i = 0; i < ks.length; i++) {
+          var s = ks[i], on = s.k === cfg.getKey();
           h += '<button type="button" class="' + cfg.optCls + (on ? ' active' : '') + '" ' + cfg.attr + '="' + s.k + '">' +
             (cfg.ico ? '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' : '') + s.label +
             (on && cfg.tick ? '<span class="srn-tick">✓</span>' : '') + '</button>';
@@ -1582,7 +1586,8 @@
     dispReapply(D, key, cfg.owner());
     if (cfg.menu) cfg.menu.sync();
     if (cfg.after) cfg.after();
-    toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
+    if (st.scene === 'BrewPanel' && key === 'sat') toast('已按「饱腹度」排序 · 烈→普→劣 · 同品质按饱腹值从高到低（仅显示排序，不改实际摆放）'); /* v14：品质主键口径（brew spec §3） */
+    else toast(key === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(key) + '」排序 · 格子右上角显示数值（仅显示排序，不改实际摆放）');
   }
   /* 角标规格：可排序页=当前属性排序维；Trade 特例（十三批）——官方序时常显金色交易价值
      角标（v1.8.9 十批口径保留），选了维度后改显所选维数值（与食品页同口径）。
@@ -2048,7 +2053,13 @@
     });
     menuFoot = makeSortMenu({
       doc: d, btnId: 'srFoodSort', lblId: 'srFoodSortLbl', popId: 'srFootSortPop', bodyId: 'srFootSortBody',
-      keys: FSORTS, optCls: 'sr-fsopt', attr: 'data-fsort', defLbl: '排序', ico: true, onCls: 'on',
+      /* v14：酿酒桶页收敛两项——默认/饱腹度（其余五维在该场景无意义，作者 2026-11-07 令；
+         sat 项 label 显示「饱腹度」）；其他可排序页 FSORTS 7 项原样 */
+      keys: function () {
+        if (st.scene === 'BrewPanel') return [FSORTS[0], { k: 'sat', label: '饱腹度', ico: '🍗' }];
+        return FSORTS;
+      },
+      optCls: 'sr-fsopt', attr: 'data-fsort', defLbl: '排序', ico: true, onCls: 'on',
       pre: function () { closePops('fsort'); },
       getKey: function () { return st.fsort; },
       onPick: function (k) {

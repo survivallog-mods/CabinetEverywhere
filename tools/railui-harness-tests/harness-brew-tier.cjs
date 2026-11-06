@@ -75,6 +75,48 @@ function check(name, ok, detail) {
   await page.evaluate(() => { window.__HZ_BREWP1__ = 0; });
   await pushCtx('BrewPanel');
 
+  /* ---- §2 菜单收敛（Task 3）：BrewPanel 两项/其他页 7 项/NB 数组路径零改动 ---- */
+  const showScene = async (key) => {
+    await page.getByRole('button', { name: key, exact: true }).click();
+    await page.waitForFunction((k) => {
+      for (let i = 0; i < window.frames.length; i++) {
+        try {
+          const d = window.frames[i].document;
+          if (!window.frames[i].location.href.includes('/' + k + '.html')) continue;
+          /* rail 页=srRail 在位；BackpackUI live 原生页=NB 按钮条（srnSortBtn）在位 */
+          const r = d.getElementById('srRail'), nb = d.getElementById('srnSortBtn');
+          if ((r && r.isConnected) || (nb && nb.isConnected)) return true;
+        } catch (e) { }
+      } return false;
+    }, key, { timeout: 9000 });
+  };
+  const frameEl = (key) => page.frames().find((f) => f.url().includes('/fixtures/' + key + '.html'));
+  const menuItems = async (key) => frameEl(key).evaluate(() => {
+    document.getElementById('srFoodSort').click();
+    return [...document.querySelectorAll('#srFootSortBody button')].map((b) => b.textContent.trim());
+  });
+  await showScene('BrewPanel');
+  let m = await menuItems('BrewPanel');
+  check('S2-brew-menu-2items', m.length === 2 && m[0] === '⊞默认' && m[1] === '🍗饱腹度', JSON.stringify(m));
+  const toastText = async () => frameEl('BrewPanel').evaluate(() => { const t = document.getElementById('srToast'); return t && !t.hidden ? t.textContent : ''; });
+  await frameEl('BrewPanel').evaluate(() => document.querySelector('[data-fsort="sat"]').click());
+  check('S2-brew-sat-toast', (await toastText()).indexOf('烈→普→劣') >= 0, await toastText());
+  const btnLbl = async () => frameEl('BrewPanel').evaluate(() => document.getElementById('srFoodSortLbl').textContent);
+  check('S2-brew-sat-label', (await btnLbl()) === '饱腹度', await btnLbl());
+  await frameEl('BrewPanel').evaluate(() => { document.getElementById('srFoodSort').click(); document.querySelector('[data-fsort="official"]').click(); });
+  check('S2-brew-back-official', (await btnLbl()) === '排序', await btnLbl());
+  await showScene('Cooking');
+  m = await menuItems('Cooking');
+  check('S2-cook-menu-7items', m.length === 7 && m[1] === '🍗饱腹', JSON.stringify(m));
+  await frameEl('Cooking').evaluate(() => { document.getElementById('srFoodSort').click(); document.querySelector('[data-fsort="official"]').click(); });
+  await showScene('BackpackUI');
+  const nbItems = await frameEl('BackpackUI').evaluate(() => {
+    const b = document.getElementById('srnSortBtn'); if (!b) return null;
+    b.click();
+    return [...document.querySelectorAll('#srnSortPop button')].map((x) => x.getAttribute('data-k'));
+  });
+  check('S2-nb-menu-7items', nbItems && nbItems.length === 7 && nbItems[1] === 'sat', JSON.stringify(nbItems));
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));
