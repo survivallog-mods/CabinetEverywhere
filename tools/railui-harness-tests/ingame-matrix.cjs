@@ -232,12 +232,12 @@ function check(name, ok, detail) {
       await fgf.waitForTimeout(250);
       const ad = await fgv(() => { const a = document.querySelector('#srfgTabs .srfg-tab.active'); return a ? a.getAttribute('data-id') : null; });
       check('fg:ad-key', ad !== 'bag', `D 键后 active=${ad}（bag→${ad}）`);
-      /* 点燃料→真实 feed（C# 两跳实执行）：队列+1（校准点②随跑观察：背包预放同 cfg 叠→叠并重解析） */
+      /* 右键燃料→真实 feed（四验收官方规则：左键=详情/右键=快转；C# 两跳实执行）：队列+1（校准点②随跑观察：背包预放同 cfg 叠→叠并重解析） */
       const q0 = await fgv(() => document.querySelectorAll('#fuelQueueZone .fuel-slot.queued-item, #fuelQueueZone .fuel-slot.active-burn').length);
-      const fed = await fgv(() => { const el = document.querySelector('#srfgGrid .item.is-fuel'); if (el) el.click(); return !!el; });
+      const fed = await fgv(() => { const el = document.querySelector('#srfgGrid .item.is-fuel'); if (el) el.dispatchEvent(new Event('contextmenu', { bubbles: true })); return !!el; });
       await fgf.waitForTimeout(2200);
       const q1 = await fgv(() => document.querySelectorAll('#fuelQueueZone .fuel-slot.queued-item, #fuelQueueZone .fuel-slot.active-burn').length);
-      check('fg:feed-two-hop', fed && q1 > q0, `点燃料→队列 ${q0}→${q1}（两跳=C# OpFeed 实执行；校准点①：加满后再点看 full 门；校准点③=终审 Minor6：同帧快速连点 2+ 条 feed 时第 2 条容量校验是否读陈旧 FuelItems——若官方 SendAction 异步，观察「物品进背包未进队列」静默少喂形态）`);
+      check('fg:feed-two-hop', fed && q1 > q0, `右键燃料→队列 ${q0}→${q1}（两跳=C# OpFeed 实执行；校准点①：加满后再右键看 full 门；校准点③=终审 Minor6：同帧快速连点 2+ 条 feed 时第 2 条容量校验是否读陈旧 FuelItems——若官方 SendAction 异步，观察「物品进背包未进队列」静默少喂形态）`);
       await page.evaluate(() => window.__CERAIL__.drain());
       await fgv(() => { document.querySelector('#srfgFoot button').click(); return 1; });
       await page.waitForTimeout(300);

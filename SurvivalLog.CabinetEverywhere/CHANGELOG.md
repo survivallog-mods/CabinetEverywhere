@@ -9,6 +9,15 @@
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**四验收轮交互归位（作者实机反馈：柜签物品只能左键移动、右键无反应）**：
+⑩ 柜签物品交互改**官方移动规则**（页面 hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径）：
+**右键 或 Shift+左键 = 整组送入发电机**（含预检：非燃料→「只能添加燃料」、满员→「燃油槽已满」；
+contextmenu preventDefault 吞浏览器菜单，rail srBody 同款）；**左键 = 查看详情**（物品名×数量+
+热值+操作提示，复用 #srfgWarn 节点换中性暖色 .srfg-info、2.6s 自隐——绝对悬浮不占布局，高锁
+稳定）。对账实锤：原功能提交（459ba38）起就只挂左键 click=喂料、右键从未实现——最初交互设计
+错误，非修复轮引入。harness ⑤ 重写（左键详情零命令/右键 feed/Shift+左键 feed/右键非燃料警示）
++⑥ 满员门改右键派发，**45/45**。
+
 **三验收轮根修（作者截图定位：重开后页签栏只剩「背包」、柜签全消失）**：
 ⑨ **tabSig/sig 跨文档残留**——游戏重开面板=新 iframe（Root.html 状态广播注释实锤「面板重开=新
 iframe+新 PAGE_READY」）；装配防观察器环的清单签名守卫 `FG.tabSig` 跨文档不清零，新文档首填时
@@ -56,7 +65,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **43/43**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **45/45**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。

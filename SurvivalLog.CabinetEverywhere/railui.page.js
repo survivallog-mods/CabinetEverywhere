@@ -3558,7 +3558,17 @@
       if (ev.target.closest && ev.target.closest('.srfg-tabbtn-l')) { fgScrollBy(-160); return; }
       if (ev.target.closest && ev.target.closest('.srfg-tabbtn-r')) { fgScrollBy(160); }
     });
+    /* 官方移动规则（四验收：左键=查看详情，右键/Shift+左键=快速转移→送发电机——官方
+       hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径；旧实现只挂左键=喂料，
+       最初交互设计错误，非后续修复轮引入）。contextmenu 吞浏览器菜单（srBody 同款）。 */
     body.addEventListener('click', function (ev) {
+      var it = ev.target.closest && ev.target.closest('.item');
+      if (!it || FG.current === 'bag') return;
+      if (ev.shiftKey) { fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0); return; }
+      fgDetail(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0);
+    });
+    body.addEventListener('contextmenu', function (ev) {
+      ev.preventDefault(); /* 吞浏览器默认菜单（rail srBody 同款零接线原则——本格是 mod 层，动作自持） */
       var it = ev.target.closest && ev.target.closest('.item');
       if (!it || FG.current === 'bag') return;
       fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0);
@@ -3736,6 +3746,16 @@
     if (fgQueueFull()) { fgWarn('燃油槽已满'); return; }
     cmdOut('feed', { owner: Number(FG.current), item: id });
   }
+  /* 左键=查看详情（官方口径；四验收）：物品名×数量+热值+操作提示——复用 #srfgWarn 节点换
+     中性色（绝对悬浮不占布局，高锁稳定），2.6s 自隐；不可燃也给详情（右键会被预检拦=提示口径一致） */
+  function fgDetail(id, cfgId) {
+    var ic = ICFG[cfgId] || {};
+    var own = itemsOf(Number(FG.current));
+    var st = null;
+    for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
+    fgInfo((st ? (st.name || ic.name || '物品') : (ic.name || '物品')) + ' ×' + (st ? st.count : 1) +
+      (ic.burn ? ' · 热值 ' + (ic.burnV || '—') + ' · 右键送入发电机' : ' · 不可燃烧'));
+  }
   function fgQueueFull() {
     var z = FG.doc.getElementById('fuelQueueZone');
     if (!z) return false;
@@ -3748,10 +3768,21 @@
     if (!FG.doc) return;
     var w = FG.doc.getElementById('srfgWarn');
     if (!w) return;
+    w.classList.remove('srfg-info'); /* 红色警示态（fgInfo 复用同节点换中性色） */
     w.textContent = text || '';
     w.hidden = !text;
     if (FG.warnT) { try { clearTimeout(FG.warnT); } catch (e) { } }
     if (text) FG.warnT = setTimeout(function () { try { w.hidden = true; } catch (e) { } }, 1800);
+  }
+  function fgInfo(text) { /* 详情态（左键查看详情）：同节点中性暖色 + 2.6s 自隐 */
+    if (!FG.doc) return;
+    var w = FG.doc.getElementById('srfgWarn');
+    if (!w) return;
+    w.classList.add('srfg-info');
+    w.textContent = text || '';
+    w.hidden = !text;
+    if (FG.warnT) { try { clearTimeout(FG.warnT); } catch (e) { } }
+    if (text) FG.warnT = setTimeout(function () { try { w.hidden = true; } catch (e) { } }, 2600);
   }
 
   /* 拆除=原版：三件 mod DOM 移除、.srfg-on 与宽高 inline 清除、官方格显式恢复 display */
