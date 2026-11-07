@@ -354,6 +354,13 @@ window.__HZ_READY__ = function () {
     };
     if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.fgOn = window.__HZ_FGON__ !== false; }
     if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.heaterOn = window.__HZ_HTON__ !== false; }
+    /* dye-pigment-sort：DyePanel 页条件字段 dyePal（C# ctx 页条件先例 tradePrefs 同源）。三态：
+       undefined=默认板 / 数组=测试板 / null=模拟 C# 缺席（配置未就绪窗口——字段整个不下发） */
+    if (key === 'DyePanel') {
+      if (window.__HZ_DYEPAL__ === null) { /* 缺席：不设字段 */ }
+      else if (window.__HZ_DYEPAL__ !== undefined) ctx.dyePal = window.__HZ_DYEPAL__;
+      else ctx.dyePal = [[3, '红', '#e05555', 1, 1], [5, '蓝', '#6fc7c9', 1, 2], [9, '黄', '#f0b03c', 1, 3]];
+    }
     return ctx;
   }
   var MOCK = {
@@ -438,6 +445,14 @@ window.__HZ_READY__ = function () {
       if (key === 'BrewPanel') {
         var BW = { 1: 1, 2: 1, 3: 1, 7: 1 };
         j.icfg = j.icfg.map(function (r) { return r.concat([0, BW[r[0]] || 0]); });
+      }
+      /* dye-pigment-sort：DyePanel 页尾列 pig 打包串（C# BuildIcfgRow dyeCols 同形状）：基座
+         14 列 + [uses 占位 0, pig 串]=16 列行，pig 落下标 15 与 C# 一致——string 类型（normIcfg
+         类型判形与 brew canBrew 数字同宽互斥）。__HZ_DYEPIG__ 整表替换（畸形串/缺席用例）。
+         默认：cfg1=[[3,2],[5,1]] cfg3=[[3,2]] cfg8=[[3,5]] cfg2="[]"（明示无色素植物）。 */
+      if (key === 'DyePanel') {
+        var PG = window.__HZ_DYEPIG__ || { 1: '[[3,2],[5,1]]', 3: '[[3,2]]', 8: '[[3,5]]', 2: '[]' };
+        j.icfg = j.icfg.map(function (r) { return r.concat([0, PG[r[0]] != null ? PG[r[0]] : '[]']); });
       }
       /* 燃料柜（tag 1013）仅 fuelgen 场景可见：旧 12 场景夹具数据形状冻结（storeAll 路由序/
        容量对账等既有断言零改动——fuelgen 是新页新数据，不得污染回归基线） */

@@ -122,7 +122,9 @@
      DroneHub（调度机队=bag 族物品面板）；−DyePanel（作者令先撤钮，颜料桶排序待重设计）。
      Trade 默认价值排序已随 v1.8.9 退役（本次加的是手动钮，口径见 badgeSpec）。 */
   var PLAIN_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Shredder: 1, Compressor: 1, DyePanel: 1, ToolTable: 1, Trade: 1, DroneHub: 1 };
-  var SORT_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, Trade: 1, DroneHub: 1 };
+  /* dye-pigment-sort：DyePanel 回归排序页（v1.8.10 十三批撤钮重设计落地——排序钮=页脚
+     srFoodSort 复活；菜单项=颜色板（Task 4），排序径=pig:<colorId> 专属 apply） */
+  var SORT_KEYS = { Cooking: 1, BrewPanel: 1, RatCage: 1, Compressor: 1, Trade: 1, DroneHub: 1, DyePanel: 1 };
   var FSORTS = [
     { k: 'official', label: '默认', ico: '⊞' },
     { k: 'sat', label: '饱腹', ico: '🍗' },
@@ -417,8 +419,12 @@
       uses: r[14] || 0, /* v1.8.5④：cfgUses（交易使用折旧） */
       burn: r[15] ? 1 : 0, burnV: r[16] || 0, /* fuelgen 页尾列（C# BuildIcfgRow fuelCols；其他页缺省 0 无消费方） */
       /* v14 canBrew 尾列（仅 BrewPanel 页推送=恰 16 列行；按行宽判形与 fuel 尾列(17 列)
-         页无关互斥——brewTierOf 只在 BrewPanel 场景被调，此处守形不守页） */
-      bw: (r.length === 16 && r[15]) ? 1 : 0
+         页无关互斥——brewTierOf 只在 BrewPanel 场景被调，此处守形不守页）。
+         dye-pigment-sort：pig 尾列（仅 DyePanel 页推送=恰 16 列行）与 canBrew **同宽**——
+         按类型判形互斥：pig=string / canBrew=number；bw 收紧 typeof number（染料页 pig 串
+         truthy 不再误读成 bw=1） */
+      bw: (r.length === 16 && typeof r[15] === 'number' && r[15]) ? 1 : 0,
+      pig: (r.length === 16 && typeof r[15] === 'string') ? r[15] : ''
     };
   }
   /* ---- 查表（Produces：ctnById / bagArr；T4/T5 复用）---- */
@@ -1235,6 +1241,9 @@
        公共比较器不再带 brew 分支（v14 的比较器内分支已拆出）；置灰/无角标语义由角标层
        按 brewTierOf 现场判定，无附加状态。 */
     if (D === DISP && st.scene === 'BrewPanel' && D.choice === 'sat') { dispApplyBrewSat(D, model); return; }
+    /* dye-pigment-sort：染料桶专属 apply（v14.1「不与公共排序规则混合」同构——公共比较器
+       零改动，pig:<colorId> 键整族走 dispApplyDyePig） */
+    if (D === DISP && st.scene === 'DyePanel' && String(D.choice).indexOf('pig:') === 0) { dispApplyDyePig(D, model); return; }
     var items = model.items;
     if (!items.__srReal) { /* real 快照挂 items 数组本体：先于 dispRows（join 需真实位）；
        数组被官方刷新替换=新数组无快照=自然重采（PC 判定同款） */
@@ -1295,6 +1304,63 @@
     });
     rest.sort(function (a, b) { return a.i - b.i; }); /* 不可酿：原序垫后 */
     var pairs = brew.concat(rest);
+    var packed = dispPack(pairs, model.cols, model.rows);
+    if (!packed) { dispRestore(D, model); return; }
+    var wrote = false;
+    for (var p = 0; p < pairs.length; p++) {
+      var at = packed.get(pairs[p].row.id);
+      if (!at) continue;
+      if (pairs[p].it.x !== at[0]) { pairs[p].it.x = at[0]; wrote = true; }
+      if (pairs[p].it.y !== at[1]) { pairs[p].it.y = at[1]; wrote = true; }
+    }
+    if (wrote && model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
+  }
+  /* ══ 染料桶色素排序（dye-pigment-sort spec §5.3；dispApplyBrewSat 镜像专属 apply）══
+     pig 尾列（normIcfg 类型判形）→ pigPointsOf 取所选色点数：点数降序主键、并列稳定（原
+     下标序）、无该色素/非植物沉底保持原相对序；dispPack 通用装填（w×h 多格不假设 1×1）。 */
+  var _pigParsed = new Map(); /* pig 串 → {colorId:points}；畸形/空=空对象。按**串**缓存（非
+     cfgId）：配置静态=同串恒命中；契约换串（重推/测试改表）=自然重解析，无陈旧值 */
+  function pigMapOf(cfgId) {
+    if (cfgId == null) return {};
+    var ic = ICFG[cfgId];
+    var key = ic && ic.pig ? ic.pig : '';
+    if (_pigParsed.has(key)) return _pigParsed.get(key);
+    var m = {};
+    if (key) {
+      try {
+        var a = JSON.parse(key);
+        if (a && a.length) for (var i = 0; i < a.length; i++) if (a[i] && a[i].length >= 2) m[a[i][0]] = a[i][1] | 0;
+      } catch (e) { } /* 畸形串：当无色素（沉底），不抛 */
+    }
+    _pigParsed.set(key, m);
+    return m;
+  }
+  function pigPointsOf(row, dyeId) {
+    if (!row || dyeId == null) return 0;
+    var m = pigMapOf(row.cfgId);
+    return m ? (m[dyeId] || 0) : 0;
+  }
+  function dispApplyDyePig(D, model) {
+    var dyeId = parseInt(String(D.choice).slice(4), 10); /* 'pig:<colorId>' */
+    var items = model.items;
+    if (!items.__srReal) {
+      var real = new Map();
+      for (var r0 = 0; r0 < items.length; r0++) real.set(items[r0].id, [items[r0].x || 0, items[r0].y || 0]);
+      items.__srReal = real;
+    }
+    var rows = dispRows(D, model);
+    var pig = [], rest = [];
+    for (var i = 0; i < rows.length; i++) {
+      var pr = { row: rows[i], it: items[i], i: i };
+      (pigPointsOf(rows[i], dyeId) > 0 ? pig : rest).push(pr);
+    }
+    pig.sort(function (a, b) {
+      var pa = pigPointsOf(a.row, dyeId), pb = pigPointsOf(b.row, dyeId);
+      if (pa !== pb) return pb - pa;   /* 点数降序主键 */
+      return a.i - b.i;                /* 并列稳定：原下标序 */
+    });
+    rest.sort(function (a, b) { return a.i - b.i; }); /* 沉底组：原相对序 */
+    var pairs = pig.concat(rest);
     var packed = dispPack(pairs, model.cols, model.rows);
     if (!packed) { dispRestore(D, model); return; }
     var wrote = false;
@@ -3911,6 +3977,13 @@
   window.__CERAIL__ = {
     dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0, ct: { choice: DISP_CT.choice, owner: DISP_CT.owner, items: DISP_CT.model ? DISP_CT.model.items.length : 0 }, nb: { bag: NB.fsort, ctn: NB2.fsort } }; },
     brewTier: function (row) { return brewTierOf(row); }, /* v14 自检口（dispInfo 先例）：harness §1 三档派生/阈值兜底断言用 */
+    /* dye-pigment-sort 自检口（brewTier 先例）：points/norm=harness §1 判形取值断言；
+       apply=§3 排序触发（menuFoot onPick 同路——applyDispSort 全参镜像） */
+    dyePig: {
+      points: function (row, dyeId) { return pigPointsOf(row, dyeId); },
+      norm: function (cfgId) { return ICFG[cfgId] || null; },
+      apply: function (k) { applyDispSort(k, { setKey: function (v) { st.fsort = v; }, owner: function () { return st.currentId; }, menu: menuFoot, after: render }); }
+    },
     _ppCount: 0,
     _pp: function () { this._ppCount++; }, /* v1.8.10 十三批六追：微包回执钩（OpPing 发 ~40B 微型 ExecuteJavaScript——达=通道活、长度丢弃实锤；不达=通道级死） */
     /* v1.8.10 八追分片落包（同日九点修订：乱序免疫）：大契约（>7.5KB）C# 侧拆片下发（大包
