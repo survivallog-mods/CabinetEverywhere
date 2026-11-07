@@ -7,6 +7,31 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十五批（2026-11-07，材料架转移列操作按钮归位官方——mod 三增值按钮整链退役）
+
+**作者实机对账裁决（停用 mod 官方截图实锤）**：材料架特殊，与其他柜子不一样——转移列
+**只有两个操作按钮**「放入材料 / 全部取出」（官方 #btnPutAll/#btnTakeAll 原件+官方监听）。
+v1.8.2 v13 曾往官方 .transfer-controls 尾部 append mod 三增值按钮（◀分类取出/分类放入▶/
+按标签放入+色点行，rackMid 装配），实机观感与官方不符=本批整链退役删除：
+
+- **railui.page.js**：MID_EXTRA_HTML 常量、mount 的 rackMid append 块、bindMid()（含内嵌
+  bindCat 分类下拉）、renderMidChips()（按标签色点联动）、putAllToCabinet/takeAllFromCabinet/
+  tagPutIn、armXfer + settleXfer 的 put/take 差量尾部、分类工具（catName/catMatch/catLabel/
+  catsOf）、sbToast 别名、bind() 引用表 srMid 七 id——全删；SCENES.MaterialRack 摘 rackMid
+  旗。closeMidMenus 与 document 级点外/Esc 收起守卫保留（无 mid 节点=空操作，零风险）。
+- **命令契约对账**：takeAll/putAll/takeCat/putCat/putTag 五 op JS 侧不再发出（文件头契约注
+  已标退役；C# 执行器保留无害——take/put 单件 op 退役同款先例）。settleXfer 仅存 storeAll/
+  tidy 两路（T11/T12 活跃消费，三处 arm 点不变）。
+- **railui.css**：#srMid/.transfer-controls-spacer/.category-dropdown*/.tag-putin* fork 段删除。
+- 对账：v1.8.2 v13 的「中段三按钮」为设计口径引入（非缺陷回归），本批按作者裁决整体推翻，
+  官方两按钮即全部。
+- harness-mount 新增回归断言 rack-mid-official2:MaterialRack（转移列按钮 id 恰
+  [btnPutAll,btnTakeAll] 且 #srMid 不存在）——**RED 实锤旧代码 5 按钮**
+  （btnPutAll,btnTakeAll,srTakeCat,srPutCat,srTagPutIn srMid=true）→修复后 PASS；
+  mount 166/179（基线 165/178+新断言，13 个 size 旧口径 FAIL 逐条不变）；
+  switch-cabinet 27/27、fuelgen 49/49、width-floor 13/13、native-width 8/8、
+  brew-tier/sbtrack/tagfilter 全绿；截图视觉对账=官方两按钮。
+
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
 **八验收轮（作者反馈：能拖起来，放不下去）**：

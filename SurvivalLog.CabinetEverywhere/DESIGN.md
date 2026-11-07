@@ -423,8 +423,9 @@ cfg 文件（置物架排除/炉具排除/电器排除三次演进都靠手工�
 > **v1.8.2 装配总纲（全 12+1 场景统一）**：壳（自绘 chrome）+ 物品格官方 DOM 原件
 > （reparent）+ 命令通道（仅新增整柜批量动作 + rackOpen）。机器页/BackpackUI/Trade =
 > 壳占官方面板原位 + 官方格容器进 #srGridHost；整理柜 = 三段壳（官方左面板/官方中段
-> 两按钮+mod 三按钮/官方右面板进壳，作用域容器继承 id=rackSystem+class=rack-system，
-> 见 railui.page.js mount rack 分支）；跨柜 = rackOpen（C# 重放官方
+> 两按钮/官方右面板进壳，作用域容器继承 id=rackSystem+class=rack-system，见 railui.page.js
+> mount rack 分支——中段 mod 三按钮 2026-11-07 作者实机对账裁决整链退役：材料架特殊，
+> 与其他柜子不一样，转移列只有官方两按钮「放入材料/全部取出」）；跨柜 = rackOpen（C# 重放官方
 > Ac_MaterialRack_Open.SendAction → state 整体重绑 → 官方行组件原生重渲染）。
 > 自绘格路径（BAGPANEL/renderBagPanel/bindBagPanel/duo 自绘柜格/列表行右键）已全删。
 
