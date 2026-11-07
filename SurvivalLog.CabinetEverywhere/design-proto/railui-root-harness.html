@@ -85,6 +85,32 @@ window.__HZ_READY__ = function () {
   var TAKE_SEQ = 0; /* take 搬运新叠 logicId 序列（950000+seq，终审建议-4 take mock 用） */
   var FGQ = [];     /* fuelgen：燃料队列 mock 态（feed 命令执行后入列；夹具 BagMsg fuelItems 驱动 DOM） */
   window.__HZ_FGQ__ = function () { return FGQ.slice(); };
+  /* fuelgen 九验收：官方通道事件捕获 + 当前官方视图 owner（switchBag mock 的 C# 保真态机） */
+  var FGVIEW = { owner: 0 };
+  window.__HZ_FGVIEW__ = function () { return FGVIEW.owner; };
+  var FGADDS = [], FGCLICKS = [];
+  window.__HZ_FGADDS__ = function () { return FGADDS.slice(); };
+  window.__HZ_FGCLICKS__ = function () { return FGCLICKS.slice(); };
+  window.addEventListener('message', function (ev) {
+    var m = ev.data;
+    if (!m || !m.type || m.sourcePageId !== 'FuelGenerator') return;
+    if (m.type === 'FUEL_ADD') {
+      /* 官方 C# 保真应用：按页面 bagOwnerId（=FGVIEW）取走该物品→燃料队列+整包回推 */
+      FGADDS.push(m.data || {});
+      var fid = Number(m.data && m.data.itemId) || 0;
+      var fown = FGVIEW.owner || MOCK.bag;
+      var farr = fown === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(fown)] || []);
+      var fidx = -1; for (var fi = 0; fi < farr.length; fi++) if (farr[fi][0] === fid) { fidx = fi; break; }
+      if (fidx >= 0) {
+        var frow = farr.splice(fidx, 1)[0];
+        var fnm = ''; for (var fk = 0; fk < MOCK.icfg.length; fk++) if (MOCK.icfg[fk][0] === frow[1]) fnm = MOCK.icfg[fk][1];
+        FGQ.push({ emoji: frow[1] === 10 ? '🪵' : '⛽', name: fnm, pct: '95%' });
+        R.cmd('switchBag', { owner: fown === MOCK.bag ? 0 : fown }); /* 整包回推（视图+fuelItems 同 mock switchBag 口径） */
+        pushCtx('FuelGenerator');
+      }
+    }
+    if (m.type === 'ITEM_CLICK') FGCLICKS.push(m.data || {});
+  });
   var origCmd = R.cmd, lastCmd = '';
   R.cmd = function (op, payload) {
     lastCmd = op + ':' + JSON.stringify(payload || {});
@@ -190,6 +216,32 @@ window.__HZ_READY__ = function () {
       log('mock C# 回推（take 已生效 moved=' + movedT + ' skip=' + skipT + '——查无静默跳过）');
       if (current) pushCtx(current);
     }
+    if (op === 'switchBag' && payload) {
+      /* mock C# OpSwitchBag 保真（九验收）：owner=0→背包；白名单柜→柜数据；官方形状 BagMsg
+         （bagItems 行=mapItem/dropInterceptor/hover 消费面：itemId/x/y/w/h/count/name/icon/
+         burnable/burnValue——burnable/burnValue 取自 fuelgen 页 icfg 尾列 [15]/[16]） */
+      var owner = Number(payload.owner) || 0;
+      var j = JSON.parse(JSON.stringify(MOCK));
+      if (owner === 0) owner = MOCK.bag;
+      var srcArr = owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(owner)] || []);
+      var icfgMap = {};
+      for (var ii = 0; ii < j.icfg.length; ii++) icfgMap[j.icfg[ii][0]] = j.icfg[ii];
+      var cap = 0;
+      for (var ci = 0; ci < MOCK.ctn.length; ci++) if (MOCK.ctn[ci][0] === owner) cap = MOCK.ctn[ci][3];
+      if (owner === MOCK.bag) cap = 216;
+      var rows = Math.max(5, Math.ceil((cap || 60) / 12));
+      var FBFUEL = { 10: [1, 600], 11: [1, 900] }; /* 与 pushCtx 燃料尾列同源表（MOCK.icfg 基座无尾列） */
+      var bagItems = srcArr.map(function (r) {
+        var ic = icfgMap[r[1]] || [];
+        var fb = FBFUEL[r[1]] || [0, 0];
+        return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2],
+          name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] };
+      });
+      FGVIEW.owner = owner;
+      window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data:
+        { bagOwnerId: owner, bagCols: 12, bagRows: rows, bagItems: bagItems } });
+      log('mock C# switchBag→官方 BagMsg（owner=' + owner + ' items=' + bagItems.length + ' rows=' + rows + '）');
+    }
     if (op === 'feed' && payload && payload.owner != null && payload.item) {
       /* mock C# OpFeed 两跳保真（fuelgen spec）：柜中物品移除→燃料队列+1；队列 DOM 由夹具
          BagMsg fuelItems 驱动——回发官方消息（data 只带 fuelItems，夹具 LAST 合并语义）+pushCtx */
@@ -200,7 +252,19 @@ window.__HZ_READY__ = function () {
         var emoF = rowF[1] === 10 ? '🪵' : (rowF[1] === 11 ? '⛽' : '📦');
         var nmF = ''; for (var fnF = 0; fnF < MOCK.icfg.length; fnF++) if (MOCK.icfg[fnF][0] === rowF[1]) nmF = MOCK.icfg[fnF][1];
         FGQ.push({ emoji: emoF, name: nmF, pct: '95%' });
-        window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: { fuelItems: FGQ.slice() } });
+        /* 回推带当前视图 bag 数据（官方 C# feed 后整包重推=同构；缺 bagOwnerId/bagItems 会
+           清格+owner 归 0=JS 失配自愈再拉柜视图——多一跳闪，mock 侧按官方整包口径给全） */
+        (function () {
+          var owner = FGVIEW.owner || MOCK.bag;
+          var srcArr = owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(owner)] || []);
+          var jf = JSON.parse(JSON.stringify(MOCK));
+          var icfgMap = {};
+          for (var k = 0; k < jf.icfg.length; k++) icfgMap[jf.icfg[k][0]] = jf.icfg[k];
+          var FBF2 = { 10: [1, 600], 11: [1, 900] };
+          window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data:
+            { bagOwnerId: owner, bagItems: srcArr.map(function (r) { var ic = icfgMap[r[1]] || []; var fb = FBF2[r[1]] || [0, 0]; return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2], name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] }; }),
+              fuelItems: FGQ.slice() } });
+        })();
       }
       log('mock C# 回推（feed 已生效：柜-' + (fiF >= 0 ? 1 : 0) + ' 队列+' + (fiF >= 0 ? 1 : 0) + '）');
       if (current) pushCtx(current);

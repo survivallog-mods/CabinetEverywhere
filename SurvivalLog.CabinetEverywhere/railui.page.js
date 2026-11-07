@@ -204,7 +204,7 @@
     Trade:           { host: '.cols>.col:first-child', family: 'trade', bagOnly: false, duo: false, tabs: '.bag-tabs', grid: 'tradeBagGrid', rack: '.rack-view', stubs: [] }, /* 第 1 个 .col=背包列（@TradeUI.html @2518；:first-child 收窄防级联，T8 评审 Critical）；grid=Vue 格（移动后 Vue 按元素引用继续 patch）；tabs=.bag-tabs（Vue v-if tabs>1——reparent 与 Vue patch 互作走宿主复活重挂兜底，实机校准点）。rack=袋列 .rack-view（Vue v-show=bag.isRack 直切，与 grid 同模板同级件；宿主域解析防误取无人机列件，二十一批入壳） */
     DroneHub:        { host: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, tabs: '#bagTabs', grid: 'bagGrid', rack: '#bagRackWrap', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] },  /* section.pane.mine（@DroneHub.html @408）；tabs=#bagTabs（自带 padding 头+尾 sortBagBtn2 官方排序钮，随件还原）。rack=#bagRackWrap（内含 #bagRack）行视图宿主二十一批入壳——本页官方藏格写的是 bagGridWrap（**包格容器**，非格本体）：入壳的 #bagGrid 不在包内=官方藏格不达，壳侧 railui.css 按 #bagRackWrap.on 镜像藏 #bagGrid；bagGridWrap 桩保留吸官方写（原末项无尾逗号，fuelgen 条目插入补上）*/
     /* 燃油发电机 bagtabs 页（spec 2026-11-06-fuelgen-cabinet-tabs）：host=null=**不替换宿主/无侧栏壳**
-       ——ensureBagtabs 在官方左背包面板内装配 页签栏(#srfgTabs)+柜格(#srfgBody)+底行(#srfgFoot)，
+       ——ensureBagtabs 在官方左背包面板内装配 页签栏(#srfgTabs)+底行(#srfgFoot)（柜签=官方格数据切换），
        右侧发电机面板零改动（作者底线）；官方 DOM 只隐藏不 detach（#backpackGrid 柜页签
        display:none；title/info-bar/hint 由 .srfg-on 类隐藏——无燃料柜时全拆除=原版）。 */
     FuelGenerator:   { host: null, bagtabs: true, family: 'fg', bagOnly: false, duo: false, grid: 'backpackGrid', stubs: [] },
@@ -3327,8 +3327,8 @@
     } catch (e) { }
   }
   /* ================= 燃油发电机 bagtabs 装配（spec 2026-11-06-fuelgen-cabinet-tabs） =================
-     不替换宿主/无侧栏壳：官方左背包面板内装配 页签栏(#srfgTabs)+柜格视口(#srfgBody)+
-     警示(#srfgWarn)+底行(#srfgFoot)。作者底线：右侧发电机面板零改动。
+     不替换宿主/无侧栏壳：官方左背包面板内装配 页签栏(#srfgTabs)+（九验收：柜签=官方格数据切换，
+     无自绘格）警示(#srfgWarn)+底行(#srfgFoot)。作者底线：右侧发电机面板零改动。
      官方 DOM 只隐藏不 detach：#backpackGrid 柜页签 display:none；title/info-bar/hint 由面板
      .srfg-on 类隐藏——无燃料柜（或 cfg 关）时三件 mod DOM 全拆+类清除=逐像素原版。
      官方查询点清点（T9 纪律，FuelGenerator.html getElementById/$ 全量扫描）：backpackGrid/
@@ -3339,7 +3339,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, dragCoord: null, dragging: false, lastMouse: null, dragArm: null, dragPayload: null, dropNet: null };
+  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, pushedOwner: null, missN: 0, missT: 0, msgOn: null };
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', full: '燃油槽已满', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' };
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3357,10 +3357,10 @@
     var grid = doc.getElementById('backpackGrid');
     if (!panel || !grid) return;             /* 官方左面板未建：等下一轮 */
     if (grid.children.length === 0) return;  /* 官方格未渲染（页面脚本未跑/BagMsg 未到）：等下一轮（默认 6×5 先建即可装配——宽度已无一次性锁，中间态无害） */
-    if (FG.doc === doc && doc.getElementById('srfgTabs') && doc.getElementById('srfgBody') && doc.getElementById('srfgWarn') && doc.getElementById('srfgFoot')) { fgSettle(); return; } /* 在位（四件全查=防半装配快路径陷阱：装配中途异常残留时能走全量重装自愈）：数据驱动更新 */
+    if (FG.doc === doc && doc.getElementById('srfgTabs') && doc.getElementById('srfgWarn') && doc.getElementById('srfgFoot')) { fgSettle(); return; } /* 在位（三件全查=防半装配快路径陷阱）：数据驱动更新 */
     injectRailStyle(doc); /* srfg-* 样式随 railui.css 注入（本页此前无 rail=首次注入） */
     fgTeardown(); /* 跨文档重建（iframe 重载）：清旧引用 */
-    FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.current = 'bag';
+    FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.current = 'bag'; FG.pushedOwner = null;
     panel.classList.add('srfg-on'); /* 宽不锁（min-width 结构锁）；高由 fgSyncHeight 持有（778 地板+视口钳，见其注释） */
     var tabs = doc.createElement('div');
     tabs.id = 'srfgTabs'; tabs.setAttribute('data-interactive', '');
@@ -3369,112 +3369,60 @@
       '<div class="srfg-scroll" id="srfgScroll"></div>' +
       '<button class="srfg-tabbtn srfg-tabbtn-r" type="button">›</button>';
     panel.insertBefore(tabs, panel.firstChild);
-    var body = doc.createElement('div');
-    body.id = 'srfgBody'; body.hidden = true; body.setAttribute('data-interactive', '');
-    panel.insertBefore(body, grid.nextSibling);
     var warn = doc.createElement('div');
     warn.id = 'srfgWarn'; warn.className = 'srfg-warn'; warn.hidden = true;
     panel.appendChild(warn);
     var foot = doc.createElement('div');
-    foot.id = 'srfgFoot'; foot.className = 'srfg-foot'; foot.setAttribute('data-interactive', '');
+    foot.id = 'srfgFoot'; foot.className = 'srfg-foot'; tabs.setAttribute('data-interactive', '');
     foot.innerHTML = '<button class="srfg-act" type="button">' + FG_TIDY_SVG + '<span>一键整理</span></button>';
     panel.appendChild(foot);
-    /* 事件（一次性，委托——子节点重建不重绑）：页签点击/‹›/物品点击/整理钮 */
+    /* 事件：页签点击/‹›/整理钮（委托）。物品层交互零自造——九验收架构：柜签=官方背包数据
+       切换（cmdOut switchBag→C# 注入官方形状 BagMsg，bagOwnerId=柜子），物品渲染/拖拽（含
+       拖到燃料槽=官方 FUEL_ADD）/左键 ITEM_CLICK 原生详情/悬浮热值 tooltip 全部官方代码路径
+       （烹饪/酿酒界面柜签同机制）。mod 侧仅保留：右键=整叠直送发电机（四验收作者定规）。 */
     tabs.addEventListener('click', function (ev) {
       var tb = ev.target.closest && ev.target.closest('.srfg-tab');
       if (tb && tb.getAttribute('data-id')) { fgSwitch(tb.getAttribute('data-id')); return; }
       if (ev.target.closest && ev.target.closest('.srfg-tabbtn-l')) { fgScrollBy(-160); return; }
       if (ev.target.closest && ev.target.closest('.srfg-tabbtn-r')) { fgScrollBy(160); }
     });
-    /* 官方移动规则（四验收：左键=查看详情，右键/Shift+左键=快速转移→送发电机——官方
-       hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径）。五验收升级：左键详情改
-       **游戏原生 ItemDetailPopup**（C# OpDetail 重放官方开面板动作，与背包侧同面板）；
-       悬浮提示改官方 #recipeTooltip 同逻辑（名+热值，仅燃料——作者截图基准）。
-       contextmenu 吞浏览器菜单（srBody 同款）。 */
-    body.addEventListener('click', function (ev) {
-      var it = ev.target.closest && ev.target.closest('.item');
-      if (!it || FG.current === 'bag') return;
-      if (ev.shiftKey) { fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0); return; }
-      cmdOut('detail', { owner: Number(FG.current), item: +it.getAttribute('data-it') || 0 });
-    });
-    body.addEventListener('mousedown', function (ev) {
-      if (ev.button !== 0 || !FG.dragCoord) return;
-      var it = ev.target.closest && ev.target.closest('.item');
-      if (!it || FG.current === 'bag') return;
-      var id = +it.getAttribute('data-it') || 0, cfg = +it.getAttribute('data-cfg') || 0;
-      var st = null, own = itemsOf(Number(FG.current));
-      for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
-      if (!st) return;
-      try { ev.preventDefault(); } catch (e) { } /* 原生图文拖选禁用（官方同效由协调器管袋内；外部来源自理） */
-      FG.dragArm = { x: ev.clientX, y: ev.clientY, id: id, cfg: cfg, icon: (it.querySelector('img') || {}).src || '', w: st.w || 1, h: st.h || 1 };
-    });
-    try { FG.doc.addEventListener('mousemove', function (ev) {
-      if (!FG.dragArm || FG.dragging) return;
-      var a = FG.dragArm;
-      if (Math.abs(ev.clientX - a.x) + Math.abs(ev.clientY - a.y) < 6) return; /* 起拖阈值（官方外部来源=调用方把关） */
-      FG.dragArm = null; FG.dragging = true; FG.dragPayload = { id: a.id, cfg: a.cfg }; fgTipHide();
-      var began = false;
-      try { began = FG.dragCoord.beginExternalDrag(ev, { id: a.id, icon: a.icon, w: a.w, h: a.h, payload: { id: a.id, cfg: a.cfg } }); } catch (e) { }
-      if (!began) { FG.dragging = false; FG.dragPayload = null; return; }
-      /* 放手保底（八验收「拖起来放不下去」纵深防御）：捕获相一次性 mouseup——用事件真实落点
-         路由+幽灵兜底清理+drag-over 复位。与协调器自身 stopDrag（冒泡相）双路，FG.dragging
-         幂等门保证只走一条；协调器链路被实机任何环节吞掉时本保底独立生效。 */
-      try {
-        var winD = FG.doc.defaultView;
-        FG.dropNet = function (e2) {
-          try { winD.removeEventListener('mouseup', FG.dropNet, true); } catch (e3) { }
-          FG.dropNet = null;
-          if (!FG.dragging) return;
-          FG.dragging = false;
-          var pl = FG.dragPayload; FG.dragPayload = null;
-          try { var gs = FG.doc.querySelectorAll('body > .item[data-no-sync]'); for (var k = 0; k < gs.length; k++) gs[k].remove(); } catch (e3) { } /* 幽灵兜底（stopDrag 正常时早已移除=空集） */
-          try { FG.doc.getElementById('fuelQueueZone').classList.remove('drag-over'); } catch (e3) { }
-          if (pl) fgDropRoute(pl, { x: e2.clientX, y: e2.clientY });
-        };
-        winD.addEventListener('mouseup', FG.dropNet, true);
-      } catch (e) { }
-    }, { passive: true }); } catch (e) { }
-    try { FG.doc.addEventListener('mouseup', function () { FG.dragArm = null; }, { passive: true }); } catch (e) { }
-    body.addEventListener('contextmenu', function (ev) {
-      ev.preventDefault(); /* 吞浏览器默认菜单（rail srBody 同款零接线原则——本格是 mod 层，动作自持） */
-      var it = ev.target.closest && ev.target.closest('.item');
-      if (!it || FG.current === 'bag') return;
-      fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0);
-    });
-    /* 悬浮提示=官方 showFuelTip 同款：复用页面自带 #recipeTooltip 节点与定位算式（+15/zoom），
-       仅燃料显示（官方口径：burnValue>0 才有——作者截图实证「鼠标悬浮提示，只有燃料有」） */
-    body.addEventListener('mouseover', function (ev) {
-      if (FG.dragging) return;
-      var it = ev.target.closest && ev.target.closest('.item');
-      if (!it || FG.current === 'bag') { fgTipHide(); return; }
-      var ic = ICFG[+it.getAttribute('data-cfg') || 0];
-      if (!ic || !ic.burn) { fgTipHide(); return; }
-      fgTipShow([(it.title || ic.name || ''), '热值 ' + (ic.burnV || '—')].join('\n'), ev.clientX, ev.clientY);
-    });
-    body.addEventListener('mousemove', function (ev) { fgTipMove(ev.clientX, ev.clientY); });
-    body.addEventListener('mouseout', function (ev) { /* 移出物品即隐（物品内子元素间移动不打扰） */
-      var it = ev.target.closest && ev.target.closest('.item');
-      if (!it) return;
-      var to = ev.relatedTarget;
-      if (to && to.closest && to.closest('.item') === it) return;
-      fgTipHide();
-    });
-    body.addEventListener('mouseleave', function () { fgTipHide(); });
     foot.addEventListener('click', function () { cmdOut('tidy', { owner: FG.current === 'bag' ? store.bag : Number(FG.current) }); });
+    /* 右键=整叠直送发电机（四验收作者定规「右键才是移动物品」；预检同口径：非燃料/满员红字）。
+       官方物品元素 id=itemId（webui-bag renderItems el.id=item.id）——零解析直取 */
+    panel.addEventListener('contextmenu', function (ev) {
+      var it = ev.target.closest && ev.target.closest('#backpackGrid .item');
+      if (!it || FG.current === 'bag') return;
+      var id = parseInt(it.id, 10) || 0;
+      if (id <= 0) return;
+      ev.preventDefault();
+      fgFeedCmd(id);
+    });
+    /* 官方 BagMsg 失配自愈：官方刷新链（feed 后 RefreshBag/开页首推等）会推「玩家背包」数据，
+       而当前柜签应显示柜子——监听帧 message，bagOwnerId ≠ 当前页签 owner 时防抖重发 switchBag
+       （官方推送闪一下背包即回柜视图；连续失配>5 次静默，防命令风暴） */
+    try {
+      var win = doc.defaultView;
+      FG.msgOn = function (ev) {
+        try {
+          var m = ev.data;
+          if (!m || m.type !== 'WebUI_FuelGenerator_BagMsg' || !m.data) return;
+          var got = m.data.bagOwnerId || 0;
+          var want = FG.current === 'bag' ? store.bag : Number(FG.current);
+          if (got === want) { FG.missN = 0; FG.pushedOwner = want; return; }
+          if (FG.missT) { try { clearTimeout(FG.missT); } catch (e) { } }
+          FG.missT = setTimeout(function () {
+            FG.missT = 0;
+            if (!FG.doc || FG.current === null) return;
+            if (FG.missN >= 5) return; /* 静默上限：C# 侧持续不可达时不再风暴 */
+            FG.missN++;
+            var w2 = FG.current === 'bag' ? store.bag : Number(FG.current);
+            cmdOut('switchBag', { owner: w2 === store.bag ? 0 : w2 });
+          }, 180);
+        } catch (e) { }
+      };
+      win.addEventListener('message', FG.msgOn);
+    } catch (e) { }
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
-    fgInitDrag(); /* 七验收：柜中物品拖拽——官方协调器 beginExternalDrag 外部来源通道（见 fgInitDrag 注释） */
-    try { doc.addEventListener('mousemove', function (ev) {
-      FG.lastMouse = { x: ev.clientX, y: ev.clientY }; /* 落点判定用（onExternalDrop 不带坐标） */
-      if (FG.dragging) { /* 官方同款料槽 drag-over 反馈（页面 watcher 只认它的协调器=外部拖拽无高亮） */
-        var z = FG.doc && FG.doc.getElementById('fuelQueueZone');
-        if (z) {
-          var r = z.getBoundingClientRect();
-          var ic = ICFG[FG.dragPayload ? FG.dragPayload.cfg : 0] || {};
-          var inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
-          z.classList.toggle('drag-over', !!(inside && ic.burn));
-        }
-      }
-    }, { passive: true }); } catch (e) { }
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
        FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
     try { doc.addEventListener('keydown', fgKey, true); } catch (e) { }
@@ -3533,49 +3481,11 @@
     FG.current = String(id);
     var ids = fgTabIds();
     if (ids.indexOf(FG.current) < 0) FG.current = 'bag'; /* 容器已消失：回背包 */
+    try { FG.grid.scrollTop = 0; } catch (e) { } /* 换容器滚动归顶 */
+    FG.missN = 0;
     fgSettle();
   }
 
-  /* 七验收：柜中物品拖拽——官方材料架同通道（webui-bag 协调器 beginExternalDrag「外部来源」
-     公共 API：官方幽灵/跟手/回弹全免实现，落点只回调不动数据）。拖到燃料槽=整叠加油（与右键
-     同口径预检），拖到背包格=整叠取出（cmd take all），其余落点=回弹（官方外部拖拽口径：不乐观
-     移除，命令执行后数据回推重画）。假配置袋只为供 slotSize/gap=40/6（空袋数组时协调器 ghost
-     按 50/4 默认值=偏大）。 */
-  function fgInitDrag() {
-    try {
-      var w = FG.doc.defaultView;
-      if (!w || !w.createBagDragCoordinator) return;
-      var fakeBag = {
-        _setCallbacks: function () { }, getConfig: function () { return { slotSize: 40, gap: 6, cols: 12, rows: 15 }; },
-        _beginDragCache: function () { return null; }, _endDragCache: function () { },
-        _flushPendingRefresh: function () { }, clearHighlights: function () { },
-        markPushItems: function () { }, isMouseOver: function () { return false; }
-      };
-      FG.dragCoord = w.createBagDragCoordinator([fakeBag], {
-        canAcceptItem: function () { return false; },
-        onExternalDrop: function (payload) { if (FG.dragging) { FG.dragging = false; fgDropRoute(payload); } }, /* 幂等：dropNet 捕获相先路由过则跳过（双路只走一） */
-        onDragFinished: function () { FG.dragging = false; }
-      });
-    } catch (e) { FG.dragCoord = null; }
-  }
-  function fgDropRoute(p, pos) {
-    if (!FG.doc || FG.current === 'bag' || !p || !p.id) return;
-    var m = pos || FG.lastMouse || {};
-    var q = FG.doc.getElementById('fuelQueueZone');
-    if (q) {
-      var r = q.getBoundingClientRect();
-      if (m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom) { fgItemClick(p.id, p.cfg); return; }
-    }
-    var g = FG.doc.getElementById('backpackGrid');
-    if (g) {
-      var r2 = g.getBoundingClientRect();
-      if (r2.width && m.x >= r2.left && m.x <= r2.right && m.y >= r2.top && m.y <= r2.bottom) {
-        cmdOut('take', { from: Number(FG.current), ids: [p.id], all: true });
-        return;
-      }
-    }
-    /* 其余落点=回弹（数据未变=原样） */
-  }
   function fgSettle() {
     if (!store.ctx || store.ctx.page !== 'FuelGenerator') return; /* 页守卫：他页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
     fgSyncHeight(); /* 等高契约每轮复核（同值守卫） */
@@ -3622,93 +3532,29 @@
       }
       fgBtnState(); /* ‹› 常驻+端点禁用（原 is-visible 溢出门已退役） */
     } catch (e) { }
-    /* 格网：背包页签=官方格原生；柜页签=官方格藏、mod 格渲。
-       **签名门防环**（实机教训=harness 挂死根因）：fgRenderGrid 整写 innerHTML 会触发帧内
-       观察器→scanFrames→ensureBagtabs→fgSettle 再整写=无限环（页面主线程打满、evaluate
-       永不返回）。柜页签只在 签名(当前柜+rev) 变化时重建；页签 active 类同加同值守卫。 */
-    var body = FG.doc.getElementById('srfgBody');
-    if (FG.current === 'bag') {
-      FG.sig = '';
-      fgTipHide(); /* 离开柜签：悬浮提示随手收（官方格自有官方提示，互不接手） */
-      if (FG.grid.style.display) FG.grid.style.display = '';
-      if (body && !body.hidden) body.hidden = true;
-    } else {
-      if (FG.grid.style.display !== 'none') FG.grid.style.display = 'none';
-      if (body) {
-        if (body.hidden) body.hidden = false;
-        var sig = FG.current + '|' + (store.rev || 0);
-        if (FG.sig !== sig) { FG.sig = sig; fgRenderGrid(body, Number(FG.current)); }
-      }
+    /* 九验收：格区恒=官方 #backpackGrid（柜签=数据切换非换格）。页签 owner 变化→cmdOut
+       switchBag（C# 注入官方形状 BagMsg；同值守卫防重发）；失配自愈见 ensureBagtabs msgOn。 */
+    var wantOwner = FG.current === 'bag' ? store.bag : Number(FG.current);
+    if (FG.pushedOwner !== wantOwner) {
+      FG.pushedOwner = wantOwner;
+      cmdOut('switchBag', { owner: FG.current === 'bag' ? 0 : wantOwner });
     }
     /* ctx.feedFail 一次性消费（lastTidyFail 同款：本地清零，C# 推出即清双保险） */
     var ff = store.ctx && store.ctx.feedFail;
     if (ff) { fgWarn(FG_FAIL_TEXT[ff] || ''); store.ctx.feedFail = ''; }
   }
 
-  /* mod 柜格：官方 .grid-container/.slot/.item/.is-fuel 类直接复用（同文档官方样式表=观感
-     逐像素官方）；固定 12 列（spec），行数=cap/12；物品按 x/y/w/h 绝对定位（官方格同式） */
-  function fgRenderGrid(body, ownerId) {
-    var c = ctnById(ownerId);
-    if (!c) { body.innerHTML = ''; return; }
-    var cols = 12, rows = Math.max(1, Math.ceil((c.cap || 24) / cols));
-    var html = '<div class="grid-container" id="srfgGrid" style="grid-template-columns:repeat(' + cols + ',var(--slot-size))">';
-    for (var i = 0; i < cols * rows; i++) html += '<div class="slot"></div>';
-    html += '</div>';
-    body.innerHTML = html;
-    var g = body.firstChild;
-    var items = itemsOf(ownerId);
-    for (var j = 0; j < items.length; j++) {
-      var it = items[j];
-      var ic = ICFG[it.cfgId];
-      var el = FG.doc.createElement('div');
-      el.className = 'item' + (ic && ic.burn ? ' is-fuel' : '');
-      el.setAttribute('data-it', it.id);
-      el.setAttribute('data-cfg', it.cfgId);
-      el.title = it.name || '';
-      var w = it.w || 1, h = it.h || 1;
-      el.style.left = (10 + it.x * 46) + 'px';
-      el.style.top = (10 + it.y * 46) + 'px';
-      el.style.width = (w * 40 + (w - 1) * 6) + 'px';
-      el.style.height = (h * 40 + (h - 1) * 6) + 'px';
-      el.innerHTML = (it.icon ? '<img src="' + it.icon + '" style="width:100%;height:100%;object-fit:contain;pointer-events:none;" loading="lazy" decoding="async" alt="">' : '📦') +
-        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : ''); /* 图标=官方 mapItem 同款内联（100% 填充+contain；旧 26px 定值=实机「图标压缩变小」） */
-      g.appendChild(el);
-    }
-  }
-
-  /* 点击柜中物品：JS 预检省往返（非燃料/满员直接弹 mod 警示），C# OpFeed 权威校验兜底
-     （拒绝经 ctx.feedFail 回执——fgSettle 消费弹同一节点） */
-  function fgItemClick(id, cfgId) {
-    var ic = ICFG[cfgId];
+  /* 右键整叠直送（四验收作者定规；九验收：数据层已官方化，本函数只做预检+feed 命令） */
+  function fgFeedCmd(id) {
+    var own = itemsOf(Number(FG.current));
+    var st = null;
+    for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
+    var ic = ICFG[st ? st.cfgId : 0];
     if (!ic || !ic.burn) { fgWarn('只能添加燃料'); return; }
     if (fgQueueFull()) { fgWarn('燃油槽已满'); return; }
     cmdOut('feed', { owner: Number(FG.current), item: id });
   }
-  /* 官方悬浮提示（五验收）：复用页面自带 #recipeTooltip（官方样式 position:fixed+金字边框），
-     定位算式=官方 moveTooltip 逐字（(clientX+15)/zoom——zoom=官方 _fit 写在 body.style.zoom）。
-     仅燃料显示（官方 onItemHover 口径 burnValue>0；作者截图实证「鼠标悬浮提示，只有燃料有」） */
-  function fgTipShow(text, x, y) {
-    if (!FG.doc) return;
-    var t = FG.doc.getElementById('recipeTooltip');
-    if (!t) return;
-    t.textContent = text;
-    t.style.whiteSpace = 'pre-line';
-    t.style.display = 'block';
-    fgTipMove(x, y);
-  }
-  function fgTipMove(x, y) {
-    if (!FG.doc) return;
-    var t = FG.doc.getElementById('recipeTooltip');
-    if (!t || t.style.display !== 'block') return;
-    var z = 1; try { z = parseFloat(FG.doc.body.style.zoom) || 1; } catch (e) { }
-    t.style.left = ((x + 15) / z) + 'px';
-    t.style.top = ((y + 15) / z) + 'px';
-  }
-  function fgTipHide() {
-    if (!FG.doc) return;
-    var t = FG.doc.getElementById('recipeTooltip');
-    if (t && t.style.display !== 'none') t.style.display = 'none';
-  }
+
   function fgQueueFull() {
     var z = FG.doc.getElementById('fuelQueueZone');
     if (!z) return false;
@@ -3730,8 +3576,10 @@
   /* 拆除=原版：三件 mod DOM 移除、.srfg-on 与宽高 inline 清除、官方格显式恢复 display */
   function fgTeardown() {
     if (!FG.doc) return;
-    fgTipHide(); /* 悬浮提示随拆收（防拆除后 tooltip 悬浮残帧） */
-    ['srfgTabs', 'srfgBody', 'srfgWarn', 'srfgFoot'].forEach(function (id) {
+    try { if (FG.msgOn) FG.doc.defaultView.removeEventListener('message', FG.msgOn); } catch (e) { } FG.msgOn = null; /* 失配监听随拆 */
+    try { if (FG.missT) { clearTimeout(FG.missT); } } catch (e) { } FG.missT = 0; FG.missN = 0;
+    if (FG.current !== 'bag') { try { cmdOut('switchBag', { owner: 0 }); } catch (e) { } } /* 柜签在场拆除：还原官方背包视图 */
+    ['srfgTabs', 'srfgWarn', 'srfgFoot'].forEach(function (id) {
       var el = FG.doc.getElementById(id);
       if (el && el.parentNode) { try { el.parentNode.removeChild(el); } catch (e) { } }
     });
@@ -3744,7 +3592,7 @@
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.current = 'bag';
     try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
-    FG.dragCoord = null; FG.dragging = false; FG.dragArm = null; FG.dragPayload = null; FG.dropNet = null; /* 拖拽协调器随文档销毁（监听挂帧 window） */
+    FG.pushedOwner = null; /* 官方数据切换态复位 */
     /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
        相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
        永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */

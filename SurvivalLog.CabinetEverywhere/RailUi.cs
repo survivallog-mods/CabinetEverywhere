@@ -472,6 +472,24 @@ internal static class RailUi
     /// 不走此路，由 Tick 全量签名兜底（与原行为一致）。
     /// AccessTicker.Update 每帧最先段调用（RefreshCoalescer.Flush 同位）。
     /// </summary>
+    private static Il2CppSystem.Action<string> _noopCb; /* PostPageMessage 回调占位（ ExecuteJavaScript 需回调形参；空动作） */
+
+    /// <summary>向 WebView 执行一段 JS（OpSwitchBag 注入官方形状 BagMsg 用——postMessage 进
+    /// FuelGenerator iframe；与 drain/push 同通道）。主帧调用。</summary>
+    internal static void PostPageMessage(string js)
+    {
+        try
+        {
+            var web = GetWebView();
+            if (web == null) return;
+            if (_noopCb == null)
+                _noopCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(_ => { }));
+            web.ExecuteJavaScript(js, _noopCb);
+        }
+        catch (Exception e) { WarnOnce("postmsg", "PostPageMessage 失败: " + e.Message); }
+    }
+
     internal static void FastPoll()
     {
         if (!Enabled) return;

@@ -60,6 +60,20 @@ v1.8.2 v13 曾往官方 .transfer-controls 尾部 append mod 三增值按钮（�
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**九验收轮（作者定调：官方原生拖拽没问题=用法问题；参考烹饪/酿酒/背包，撤掉保底堆叠）**：
+⑲ **架构改版：柜签=官方背包数据切换**——新增 C# 命令 `switchBag`：向 FuelGenerator iframe 注入
+   官方形状 BagMsg（bagOwnerId=柜子/背包，bagItems 带 icon/name/count/burnable/burnValue——
+   官方 mapItem/dropInterceptor/onItemHover 消费面）。此后**物品渲染、拖拽（含拖到燃料槽=官方
+   FUEL_ADD）、柜内拖拽整理（官方 ITEM_MOVE 按 BagOwnerId=柜子执行）、左键 ITEM_CLICK 原生
+   详情面板、悬浮热值 tooltip 全部官方代码路径**——与烹饪/酿酒柜签同机制（数据进官方格，交互
+   零自定义）。mod 自定义交互全数退役：自绘格/自造拖拽（外部通道+保底网）/自造 tooltip/
+   OpDetail 全删；仅保留作者定规的**右键=整叠直送发电机**（官方元素 el.id=itemId 直取+预检）
+   与页签栏/底行/等高契约。失配自愈：官方刷新链（feed 后 RefreshBag 等）会推玩家背包数据→
+   帧级 message 监听比对 bagOwnerId，失配防抖重发 switchBag（连续>5 次静默防风暴）。
+   harness **47/47**（官方路径断言：switchBag 命令流/官方格渲染柜数据/左键→ITEM_CLICK 官方
+   通道/官方 showFuelTip 悬浮/官方协调器拖拽→FUEL_ADD 捕获+mock 官方侧保真应用/满员门/
+   回弹/重开柜签渲染）；旧 JS 跑新测试直接不兼容（RED=崩溃实证）。
+
 **八验收轮（作者反馈：能拖起来，放不下去）**：
 ⑰ **放手链路纵深防御**：起拖时帧窗口挂**捕获相一次性 mouseup 保底**（dropNet）——用事件真实
 落点路由 feed/take、幽灵兜底清理、drag-over 复位；与协调器自身 stopDrag（冒泡相）双路并行，
@@ -162,7 +176,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **49/49**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **47/47**（九验收改版后官方路径断言套件）（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。

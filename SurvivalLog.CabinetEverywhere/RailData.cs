@@ -919,6 +919,15 @@ internal static class RailData
 
     /// <summary>背包 ownerId（RailCommands 白名单/转移方向用；三级兜底同 ResolveBagOwner）。</summary>
     internal static long BagOwner() => ResolveBagOwner(null);
+    internal static int BagCapCells => _bagCap; /* 玩家背包容量（格）——OpSwitchBag 官方 BagMsg 行数用 */
+    /// <summary>白名单容器容量（格）；查无=0（调用方按默认行数兜底）。</summary>
+    internal static int CtnCapOf(long owner)
+    {
+        var list = _ctn;
+        if (list == null) return 0;
+        for (int i = 0; i < list.Count; i++) if (list[i].OwnerId == owner) return list[i].Cap;
+        return 0;
+    }
 
     /// <summary>BattleLogicWorld 实例（RailCommands 取 AgentManager/组件用；未建= null）。</summary>
     internal static GameCore.HotUpdate.Battle.Logic.BattleLogicWorld World() => LogicWorld();

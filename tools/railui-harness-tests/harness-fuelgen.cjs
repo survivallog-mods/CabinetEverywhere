@@ -70,6 +70,7 @@ function check(name, ok, detail) {
   check('fg:tabs-render-infobar-hidden', (await fdisp('#bagInfoBar')) === 'none', '官方空间条隐藏');
   check('fg:tabs-render-hint-hidden', (await fdisp('#shiftHint')) === 'none', '官方提示行隐藏');
 
+  let d = []; /* drain 解析复用（②起多处） */
   /* ---- ② bag-tab-official ---- */
   const gridAncestor = await F().evaluate(() => {
     const g = document.getElementById('backpackGrid');
@@ -77,28 +78,33 @@ function check(name, ok, detail) {
   });
   check('fg:bag-grid-in-place', gridAncestor === 'official', '背包格在官方面板内（未 reparent）：' + gridAncestor);
   check('fg:bag-grid-visible', (await fdisp('#backpackGrid')) === 'grid', '背包页签官方格可见 display=' + (await fdisp('#backpackGrid')));
+  /* ② 九验收：柜签=官方格数据切换（switchBag 命令→mock 注入官方 BagMsg→官方渲染） */
+  await drain();
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 3; }, null, { timeout: 8000 });
-  check('fg:ctn-tab-grid', (await fdisp('#backpackGrid')) === 'none' && (await fhas('#srfgGrid')), '柜页签：官方格 display:none、mod 格渲染');
-  const fuelCnt = await F().evaluate(() => document.querySelectorAll('#srfgGrid .item.is-fuel').length);
-  check('fg:ctn-tab-fuel-badge', fuelCnt === 2, '燃料火苗角标 2/3（木柴+柴油，零件无）=' + fuelCnt);
-  const imgCnt = await F().evaluate(() => document.querySelectorAll('#srfgGrid .item img').length);
-  check('fg:ctn-tab-icons', imgCnt === 3, '柜格物品图标 icfg.icon 渲染 3/3（终审 Minor5：X 占位残留）=' + imgCnt);
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 3, null, { timeout: 8000 });
+  d = JSON.parse(await drain());
+  check('fg:ctn-tab-grid', d.some((x) => x.op === 'switchBag' && Number(x.owner) === 900105) && (await fdisp('#backpackGrid')) === 'grid' && !(await fhas('#srfgGrid')) && !(await fhas('#srfgBody')),
+    '柜签=官方数据切换：switchBag 命令+官方格直渲 3 件（无自绘格）：' + JSON.stringify(d));
+  const imgCnt = await F().evaluate(() => document.querySelectorAll('#backpackGrid .item img').length);
+  check('fg:ctn-tab-icons', imgCnt === 3, '官方渲染物品图标 3/3（mapItem 官方路径）=' + imgCnt);
+  await drain();
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
-  await F().waitForFunction(() => getComputedStyle(document.getElementById('backpackGrid')).display === 'grid', null, { timeout: 8000 });
-  check('fg:bag-tab-restore', true, '切回背包页签：官方格恢复可见');
+  await F().waitForFunction(() => { const ids = [...document.querySelectorAll('#backpackGrid .item')].map((e) => +e.id); return ids.indexOf(901) >= 0; }, null, { timeout: 8000 });
+  d = JSON.parse(await drain());
+  check('fg:bag-tab-restore', d.some((x) => x.op === 'switchBag' && Number(x.owner) === 0), '切回背包页签：switchBag owner=0+官方背包数据回显（item 901 在格）');
 
   /* ---- ③ tidy-btn ---- */
   check('fg:foot-only-tidy', await F().evaluate(() => { const f = document.getElementById('srfgFoot'); return !!f && f.querySelectorAll('button').length === 1 && f.textContent.indexOf('一键整理') >= 0; }), '底行仅一键整理一钮');
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
-  await page.waitForTimeout(120);
-  await drain();
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 2, null, { timeout: 8000 });
+  await drain(); /* 切签的 switchBag 已走：整理断言要纯净队列 */
   await F().evaluate(() => document.querySelector('#srfgFoot button').click());
   await page.waitForTimeout(120);
-  let d = JSON.parse(await drain());
+  d = JSON.parse(await drain());
   check('fg:tidy-ctn-owner', d.length === 1 && d[0].op === 'tidy' && Number(d[0].owner) === 900106, '柜页签整理 owner=900106：' + JSON.stringify(d));
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
-  await page.waitForTimeout(80);
+  await F().waitForFunction(() => { const ids = [...document.querySelectorAll('#backpackGrid .item')].map((e) => +e.id); return ids.indexOf(901) >= 0; }, null, { timeout: 8000 });
+  await drain(); /* 回背包的 switchBag 已走 */
   await F().evaluate(() => document.querySelector('#srfgFoot button').click());
   await page.waitForTimeout(120);
   d = JSON.parse(await drain());
@@ -122,78 +128,82 @@ function check(name, ok, detail) {
   await page.getByRole('button', { name: 'FuelGenerator', exact: true }).click();
   await waitFg();
 
-  /* ---- ⑤ feed-cmd（四验收官方移动规则：左键=查看详情零命令，右键/Shift+左键=快速转移→feed） ---- */
+  /* ---- ⑤ 官方交互路径（九验收：柜签数据进官方格后，交互全官方） ---- */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 3; }, null, { timeout: 8000 });
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 3, null, { timeout: 8000 });
+  /* ⑤a 左键官方物品 → 官方 ITEM_CLICK（Unity 原生详情面板通道；mod 零命令） */
   await drain();
-  /* ⑤a 左键木柴→detail 命令（五验收：游戏原生 ItemDetailPopup——C# OpDetail 重放官方开面板） */
-  await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel').click());
-  await page.waitForTimeout(120);
+  await page.evaluate(() => { window.__HZ_FGCLICKS__().length = 0; });
+  await F().evaluate(() => document.querySelector('#backpackGrid .item[id="921"]').click());
+  await page.waitForTimeout(150);
+  const clicks = await page.evaluate(() => window.__HZ_FGCLICKS__());
   d = JSON.parse(await drain());
-  check('fg:feed-leftclick-detail', d.length === 1 && d[0].op === 'detail' && Number(d[0].owner) === 900105 && Number(d[0].item) === 921,
-    '左键=查看详情→drain detail 921（原生面板命令）：' + JSON.stringify(d));
-  /* ⑤a-b 悬浮提示（五验收：官方 #recipeTooltip 同款，名+热值，仅燃料、移出即隐） */
-  const tipF = await F().evaluate(() => {
-    const el = document.querySelector('#srfgGrid .item.is-fuel');
-    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 300, clientY: 300 }));
-    const t = document.getElementById('recipeTooltip');
-    const on = t && t.style.display === 'block' ? t.textContent : '';
-    const pos = t ? t.style.left + ',' + t.style.top : '';
-    const bad = document.querySelector('#srfgGrid .item:not(.is-fuel)');
-    if (bad) bad.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 300, clientY: 300 }));
-    const onBad = !!(t && t.style.display === 'block' && bad && /零件/.test(t.textContent));
-    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 305, clientY: 305 }));
-    el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
-    const hidden = !t || t.style.display === 'none';
-    return { on, pos, onBad, hidden };
-  });
-  check('fg:hover-tooltip', /木柴/.test(tipF.on) && /热值\s*600/.test(tipF.on) && tipF.onBad === false && tipF.hidden,
-    '悬浮提示（官方 #recipeTooltip）：燃料「' + tipF.on.split('\n').join(' / ') + '」@' + tipF.pos + '、非燃料无提示=' + !tipF.onBad + '、移出即隐=' + tipF.hidden);
-  /* ⑤b 右键木柴→feed 921 */
-  await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel').dispatchEvent(new Event('contextmenu', { bubbles: true })));
+  check('fg:leftclick-itemclick', clicks.length === 1 && Number(clicks[0].itemId) === 921 && clicks[0].rightClick === false && d.length === 0,
+    '左键=官方 ITEM_CLICK 921（原生详情面板通道，mod 零命令）：' + JSON.stringify(clicks) + ' drain=' + d.length);
+  /* ⑤a-b 悬浮=官方 onItemHover→showFuelTip（500ms 延迟；仅燃料：木柴有热值、零件无） */
+  const tipSt = await F().evaluate(() => new Promise((res) => {
+    const fuel = document.querySelector('#backpackGrid .item[id="921"]');
+    fuel.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false, clientX: 300, clientY: 300 }));
+    setTimeout(() => {
+      const t = document.getElementById('recipeTooltip');
+      const fuelTip = t && t.style.display === 'block' ? t.textContent : '';
+      t.style.display = 'none';
+      const bad = document.querySelector('#backpackGrid .item[id="923"]');
+      bad.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+      setTimeout(() => {
+        const badTip = t && t.style.display === 'block' ? t.textContent : '';
+        fuel.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+        bad.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+        t.style.display = 'none';
+        res({ fuelTip: fuelTip, badShown: !!badTip });
+      }, 700);
+    }, 700);
+  }));
+  check('fg:hover-official-tip', /木柴/.test(tipSt.fuelTip) && /热值\s*600/.test(tipSt.fuelTip) && !tipSt.badShown,
+    '悬浮=官方 showFuelTip（木柴「' + tipSt.fuelTip.split('\n').join(' / ') + '」、非燃料无提示=' + !tipSt.badShown + '）');
+  /* ⑤b 右键=整叠直送（作者定规；预检同口径） */
+  await drain();
+  await F().evaluate(() => document.querySelector('#backpackGrid .item[id="921"]').dispatchEvent(new Event('contextmenu', { bubbles: true })));
   await page.waitForTimeout(150);
   d = JSON.parse(await drain());
   check('fg:feed-cmd-json', d.length === 1 && d[0].op === 'feed' && Number(d[0].owner) === 900105 && Number(d[0].item) === 921, '右键木柴→drain feed 921：' + JSON.stringify(d));
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 2; }, null, { timeout: 8000 });
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 2, null, { timeout: 8000 });
   const qCnt = await page.evaluate(() => window.__HZ_FGQ__().length);
-  check('fg:feed-mock-applied', qCnt === 1, 'mock 队列+1（回推后格 3→2）=' + qCnt);
-  /* ⑤c Shift+左键柴油→feed 922（官方 hint「Shift+点击 快速转移」同口径） */
+  check('fg:feed-mock-applied', qCnt >= 1, 'mock 队列+1（回推后格 3→2）=' + qCnt);
+  /* ⑤c 右键零件（不可燃）→「只能添加燃料」零命令 */
   await drain();
-  await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel').dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })));
-  await page.waitForTimeout(150);
-  d = JSON.parse(await drain());
-  check('fg:feed-shiftclick', d.length === 1 && d[0].op === 'feed' && Number(d[0].item) === 922, 'Shift+左键柴油→drain feed 922：' + JSON.stringify(d));
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 1; }, null, { timeout: 8000 });
-  await drain();
-  /* ⑤d 右键零件（不可燃）→「只能添加燃料」零命令 */
-  await F().evaluate(() => { const els = document.querySelectorAll('#srfgGrid .item'); for (let i = 0; i < els.length; i++) if (!els[i].classList.contains('is-fuel')) { els[i].dispatchEvent(new Event('contextmenu', { bubbles: true })); break; } });
+  await F().evaluate(() => document.querySelector('#backpackGrid .item[id="923"]').dispatchEvent(new Event('contextmenu', { bubbles: true })));
   await page.waitForTimeout(150);
   const warnNonFuel = await ftxt('#srfgWarn');
   d = JSON.parse(await drain());
   check('fg:feed-nonfuel-warn', warnNonFuel === '只能添加燃料' && d.length === 0, '右键零件→「只能添加燃料」且零命令：' + warnNonFuel + ' drain=' + d.length);
-
-  /* ⑤e 拖拽（七验收：官方协调器外部通道——幽灵跟手/落料槽=喂/拖空处=回弹零命令） */
-  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 2; }, null, { timeout: 8000 });
+  /* ⑤d 官方拖拽→燃料槽（页面自己的协调器+dropInterceptor→FUEL_ADD 官方事件+官方满员/可燃门） */
   await drain();
+  await page.evaluate(() => { window.__HZ_FGADDS__().length = 0; });
   const dragFeed = await F().evaluate(() => {
-    const el = document.querySelector('#srfgGrid .item.is-fuel');
+    const el = document.querySelector('#backpackGrid .item[id="922"]');
     const r = el.getBoundingClientRect(), q = document.getElementById('fuelQueueZone').getBoundingClientRect();
     el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.x + 8, clientY: r.y + 8, button: 0 }));
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + 50, clientY: r.y + 50 }));
-    const ghost = !!document.querySelector('body > .item[data-no-sync]');
-    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30 }));
-    const over = document.getElementById('fuelQueueZone').classList.contains('drag-over');
-    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30, button: 0 }));
-    return { ghost: ghost, ghostGone: !document.querySelector('body > .item[data-no-sync]'), over: over,
-      overOff: !document.getElementById('fuelQueueZone').classList.contains('drag-over') };
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + 60, clientY: r.y + 60 }));
+    return new Promise((res) => setTimeout(() => { /* 官方幽灵提升走 rAF：等两帧再验 */
+      const ghost = !!document.querySelector('body > .item[data-no-sync]');
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30 }));
+      setTimeout(() => {
+        const over = document.getElementById('fuelQueueZone').classList.contains('drag-over');
+        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30, button: 0 }));
+        res({ ghost: ghost, over: over });
+      }, 80);
+    }, 80));
   });
-  await page.waitForTimeout(250);
-  d = JSON.parse(await drain());
-  check('fg:drag-feed', d.length === 1 && d[0].op === 'feed' && Number(d[0].owner) === 900106 && dragFeed.ghost && dragFeed.ghostGone && dragFeed.over && dragFeed.overOff,
-    '拖柴油→料槽=feed（幽灵出现/收场干净/料槽 drag-over 金框亮起+松手灭）：' + JSON.stringify(d) + ' ghost=' + dragFeed.ghost + '/' + dragFeed.ghostGone + ' over=' + dragFeed.over + '/' + dragFeed.overOff);
+  await page.waitForTimeout(400);
+  const adds = await page.evaluate(() => window.__HZ_FGADDS__());
+  check('fg:drag-official-feed', adds.length === 1 && Number(adds[0].itemId) === 922 && dragFeed.ghost && dragFeed.over,
+    '官方拖拽柴油→料槽=官方 FUEL_ADD（幽灵+料槽 drag-over 全官方）：' + JSON.stringify(adds) + ' ghost=' + dragFeed.ghost + ' over=' + dragFeed.over);
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 1, null, { timeout: 8000 }).catch(() => { });
+  /* ⑤e 拖空处=官方回弹（零命令） */
+  await drain();
   const dragBounce = await F().evaluate(() => {
-    const el = document.querySelector('#srfgGrid .item');
+    const el = document.querySelector('#backpackGrid .item');
     if (!el) return { ok: false };
     const r = el.getBoundingClientRect();
     el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.x + 8, clientY: r.y + 8, button: 0 }));
@@ -203,18 +213,18 @@ function check(name, ok, detail) {
   });
   await page.waitForTimeout(200);
   d = JSON.parse(await drain());
-  check('fg:drag-bounce', dragBounce.ok && d.length === 0, '拖到空白处=回弹（幽灵清、零命令）：drain=' + d.length);
+  check('fg:drag-bounce', dragBounce.ok && d.length === 0, '拖空白处=官方回弹（幽灵清、零命令）：drain=' + d.length);
 
-  /* ---- ⑥ full-precheck（900105 燃料已喂尽→900106 柴油柜测满员门；⑤e 拖喂已用 1=剩 1） ---- */
+  /* ---- ⑥ full-precheck（队列 8 满员→「燃油槽已满」零命令；900105 燃料已喂尽→900106） ---- */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 1; }, null, { timeout: 8000 });
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 2, null, { timeout: 8000 });
   await page.evaluate(() => {
     const q = []; for (let i = 0; i < 8; i++) q.push({ emoji: '🪵', name: '木柴', pct: '95%' });
     window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: { fuelItems: q } });
   });
   await page.waitForTimeout(200);
   await drain();
-  await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel') && document.querySelector('#srfgGrid .item.is-fuel').dispatchEvent(new Event('contextmenu', { bubbles: true })));
+  await F().evaluate(() => { const el = document.querySelector('#backpackGrid .item'); el && el.dispatchEvent(new Event('contextmenu', { bubbles: true })); });
   await page.waitForTimeout(150);
   const warnFull = await ftxt('#srfgWarn');
   d = JSON.parse(await drain());
@@ -281,10 +291,10 @@ function check(name, ok, detail) {
     window.__HZ_MOCKSET__(m); window.__HZ_PUSH__('FuelGenerator');
   });
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900300"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.slot').length === 240; }, null, { timeout: 8000 });
+  await F().waitForFunction(() => { const g = document.getElementById('backpackGrid'); return g && g.querySelectorAll('.slot').length === 240; }, null, { timeout: 8000 });
   await page.waitForTimeout(150);
   const tallState = await F().evaluate(() => {
-    const g = document.getElementById('srfgGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+    const g = document.getElementById('backpackGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const foot = document.getElementById('srfgFoot'), tabs = document.getElementById('srfgTabs');
     return { sh: g.scrollHeight, ch: g.clientHeight, ovY: getComputedStyle(g).overflowY,
       spill: g.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom,
@@ -346,15 +356,15 @@ function check(name, ok, detail) {
   await page.evaluate(() => { window.__HZ_FGROWS__ = 24; });
   await F().evaluate(() => location.reload()).catch(() => { }); /* reload 自毁执行上下文=预期 */
   await page.waitForTimeout(900); /* 等旧文档销毁、F() 重解析到新帧 */
-  await F().waitForFunction(() => document.getElementById('srfgTabs') && document.getElementById('backpackGrid').querySelectorAll('.slot').length === 288, null, { timeout: 15000 });
+  await F().waitForFunction(() => document.getElementById('srfgTabs') && document.getElementById('backpackGrid').querySelectorAll('.slot').length === 216, null, { timeout: 15000 });
   await page.waitForTimeout(500);
   /* 三验收根因回归：重开(新文档)后柜子页签必须在（旧缺陷=tabSig 跨文档残留→滚动区永不首填） */
   const reopenTabs = await tabIds();
   check('fg:reopen-tablist', reopenTabs === 'bag,900105,900106,900200,900201,900202,900203,900300', '重开后页签清单完整（柜签 7 个全在）：' + reopenTabs);
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
-  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 1; }, null, { timeout: 8000 }).catch(() => { });
-  const reopenGrid = await F().evaluate(() => { const g = document.getElementById('srfgGrid'); return g ? g.querySelectorAll('.item').length : -1; });
-  check('fg:reopen-ctn-grid', reopenGrid === 1, '重开后点柜签 mod 格渲染（旧缺陷=FG.sig 跨文档残留→永不渲染）：items=' + reopenGrid + '（⑤ 右键+Shift 已喂走 2=剩 1）');
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 1, null, { timeout: 8000 }).catch(() => { });
+  const reopenGrid = await F().evaluate(() => document.querySelectorAll('#backpackGrid .item').length);
+  check('fg:reopen-ctn-grid', reopenGrid === 1, '重开后点柜签官方格渲染柜数据（旧缺陷=FG.sig 跨文档残留→永不渲染）：items=' + reopenGrid + '（⑤ 已喂走 2=剩 1）');
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await page.waitForTimeout(120);
   const reopenState = await F().evaluate(() => {

@@ -291,14 +291,10 @@
   user-select: none; font-family: inherit; transition: background .15s, color .15s, opacity .15s; }
 .srfg-tabbtn:hover:not(:disabled) { background: rgba(251,176,52,.12); color: #fbb034; border-color: rgba(251,176,52,.5); }
 .srfg-tabbtn:disabled { opacity: .3; cursor: not-allowed; }
-#srfgBody { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
-#srfgBody .grid-container { max-height: 100%; overflow-y: auto; box-sizing: border-box; }
-.srfg-on > .grid-container, #srfgBody .grid-container {
-  scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
-.srfg-on > .grid-container::-webkit-scrollbar, #srfgBody .grid-container::-webkit-scrollbar { width: 8px; }
-.srfg-on > .grid-container::-webkit-scrollbar-track, #srfgBody .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
-.srfg-on > .grid-container::-webkit-scrollbar-thumb, #srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
-#srfgBody .item { cursor: pointer; }
+.srfg-on > .grid-container { scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
+.srfg-on > .grid-container::-webkit-scrollbar { width: 8px; }
+.srfg-on > .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
+.srfg-on > .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
 /* 警示行绝对悬浮（底行上方）：不占布局流——高度锁跨「有/无警示」两态恒定，不因弹警示跳高。
    悬浮提示（名+热值）走官方页面自带 #recipeTooltip（零自定义样式）；左键详情走游戏原生面板 */
 .srfg-warn { position: absolute; left: 15px; right: 15px; bottom: 62px; z-index: 50; pointer-events: none;

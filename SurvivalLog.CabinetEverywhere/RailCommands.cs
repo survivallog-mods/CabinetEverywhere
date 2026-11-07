@@ -224,7 +224,7 @@ internal static class RailCommands
             case "putTag": OpPutTag(c); break;
             case "tidy": OpTidy(c); break;
             case "feed": OpFeed(c); break; // 燃油发电机柜中燃料直送（两跳，见 OpFeed 注释）
-            case "detail": OpDetail(c); break; // 燃油发电机柜签左键查看详情（五验收：官方 ItemDetailPopup 原生面板）
+            case "switchBag": OpSwitchBag(c); break; // 九验收：柜签=官方背包数据切换（官方网格/拖拽/详情/悬浮全原生，见 OpSwitchBag 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -604,31 +604,83 @@ internal static class RailCommands
     }
 
     /// <summary>
-    /// detail{owner,item}（五验收：柜签左键=查看详情）：打开**游戏原生 ItemDetailPopup**
-    /// （作者截图基准——与官方背包侧左键同面板同数据）。官方 ITEM_CLICK 链路只认页面背包态内
-    /// 物品（柜中物品到不了 Unity 侧），故走 mod 命令重放官方开面板动作。签名经 interop 元数据
-    /// 反射取证（MetadataLoadContext dump）：SendAction(long ItemId, long OwnerId, int ItemConfigId,
-    /// float Discount, TipsType TipsType /*Default=0/Use=1/UseByBag=2/Buy=3*/, int ShopShowHour,
-    /// float TimeScale, int ShopConfigId, long SourceFurnitureId, float SourceRectX/Y/W/H)——
-    /// 背包侧查看口径=UseByBag，非商店参全 0（TimeScale=1）。
+    /// switchBag{owner}（九验收架构改版，作者定调「用官方原生逻辑」）：柜签=**官方背包数据切换**——
+    /// 向 FuelGenerator iframe 注入官方形状 WebUI_FuelGenerator_BagMsg（bagOwnerId=柜子/玩家背包，
+    /// bagItems/bagCols/bagRows 与官方推送同构；物品行带 icon/name/count/burnable/burnValue——
+    /// 官方 mapItem 渲染、dropInterceptor 燃料判定、onItemHover 热值 tooltip 的消费面）。此后
+    /// 物品渲染、拖拽（含拖到燃料槽=官方 FUEL_ADD）、左键 ITEM_CLICK（原生详情面板）、悬浮热值
+    /// **全部官方代码路径**——与烹饪/酿酒界面柜子页签同机制（数据进官方格，交互零自定义）。
+    /// owner=0=玩家背包。白名单门（红线2）。物品移动（ITEM_MOVE）由官方 C# 按 BagOwnerId
+    /// （=柜子）执行=柜内拖拽整理亦原生。
     /// </summary>
-    private static void OpDetail(Cmd c)
+    private static void OpSwitchBag(Cmd c)
     {
-        if (!Whitelisted(c.Owner) || c.Item <= 0) return;
-        var im = RailData.ItemMgr();
-        if (im == null) { WarnOnce("detail:noim", "detail 丢弃：ItemManager 不可得"); return; }
-        var src = ItemOf(OwnerItems(im, c.Owner), c.Item);
-        if (src == null) return; /* 物品已不在：静默（详情非关键路径，与 fgItemClick 预检口径分离） */
-        int cfgId = 0; try { cfgId = src.ItemConfigId; } catch { }
-        try
+        long bag = RailData.BagOwner();
+        long owner = c.Owner;
+        if (owner == 0) { if (bag <= 0) return; owner = bag; }
+        else if (!Whitelisted(owner))
         {
-            GameCore.HotUpdate.ReduxUI.Ac_ItemDetailPopup_OpenUI.SendAction(
-                c.Item, c.Owner, cfgId, 0f,
-                GameCore.HotUpdate.TipsType.UseByBag,
-                0, 1f, 0, 0, 0f, 0f, 0f, 0f);
-            VLog(c.Op, $"item={c.Item} owner={c.Owner} cfg={cfgId}（ItemDetailPopup/UseByBag）");
+            CabinetEverywherePlugin.Log.LogWarning($"[CERail] switchBag 丢弃：owner={owner} 不在白名单（红线2）");
+            return;
         }
-        catch (Exception e) { WarnOnce("detail:open", "ItemDetailPopup 打开异常: " + e.Message); }
+        var im = RailData.ItemMgr();
+        if (im == null) return;
+        var cm = BagTable.Cm();
+        var itemDict = cm?._Config_Item_Dict;
+        int cap = owner == bag ? RailData.BagCapCells : RailData.CtnCapOf(owner);
+        int cols = 12;
+        int rows = Math.Max(5, (int)Math.Ceiling((cap <= 0 ? 60 : cap) / 12.0));
+
+        var sb = new System.Text.StringBuilder(8192);
+        sb.Append("{\"type\":\"WebUI_FuelGenerator_BagMsg\",\"data\":{\"bagOwnerId\":").Append(owner)
+          .Append(",\"bagCols\":").Append(cols).Append(",\"bagRows\":").Append(rows).Append(",\"bagItems\":[");
+        int n = 0;
+        var src = OwnerItems(im, owner);
+        if (src != null)
+        {
+            foreach (var pair in src)
+            {
+                var it = pair.Value;
+                if (it == null) continue;
+                long id = 0; int cfg = 0, count = 1, x = 0, y = 0, w = 1, h = 1;
+                try { id = it.InstanceId; } catch { }
+                if (id <= 0) continue;
+                try { cfg = it.ItemConfigId; count = it.ItemCount; } catch { }
+                try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
+                try { w = it.ItemSize.x; h = it.ItemSize.y; } catch { }
+                if (w <= 0) w = 1; if (h <= 0) h = 1;
+                string name = null, icon = null; bool burnable = false; int burnValue = 0;
+                try
+                {
+                    GameCore.HotUpdate.Config_Item ic = null;
+                    itemDict?.TryGetValue(cfg, out ic);
+                    if (ic != null)
+                    {
+                        name = string.IsNullOrEmpty(ic.ItemName_Local) ? ic.ItemName : ic.ItemName_Local;
+                        icon = ic.WebIcon;   // ICON_RULE：原样字符串
+                        burnable = ic.Burnable;
+                        burnValue = ic.BurnValue;
+                    }
+                }
+                catch { }
+                if (n > 0) sb.Append(',');
+                sb.Append("{\"itemId\":").Append(id)
+                  .Append(",\"x\":").Append(x).Append(",\"y\":").Append(y)
+                  .Append(",\"w\":").Append(w).Append(",\"h\":").Append(h)
+                  .Append(",\"count\":").Append(count)
+                  .Append(",\"name\":\"").Append(RailData.EscapeJs(name ?? "")).Append("\"")
+                  .Append(",\"icon\":\"").Append(RailData.EscapeJs(icon ?? "")).Append("\"")
+                  .Append(",\"burnable\":").Append(burnable ? "true" : "false")
+                  .Append(",\"burnValue\":").Append(burnValue)
+                  .Append('}');
+                n++;
+            }
+        }
+        sb.Append("]}}");
+        RailUi.PostPageMessage(
+            "(function(){var f=document.getElementById('FuelGenerator');if(f&&f.contentWindow)" +
+            "f.contentWindow.postMessage(" + sb + ",'*');})()");
+        VLog(c.Op, "owner=" + owner + " items=" + n + " rows=" + rows + "（官方 BagMsg 注入）");
     }
 
     /// <summary>
