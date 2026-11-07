@@ -198,6 +198,49 @@ function check(name, ok, detail) {
     await page.screenshot({ path: path.join(OUT, 'm-materialrack.png') });
   } else check('rack:rail', false, '未挂');
 
+  /* ── ④ FuelGenerator（2026-11-07 二十二批 bagtabs；spec §8 验收 1/3/5/6/7 驱动化，
+        2/8=作者手测（家中无燃料柜=原版；cfg 三开关退场）；两处校准点随跑观察 ── */
+  await uiShow('FuelGenerator');
+  const fgf = frameOf('FuelGenerator');
+  if (fgf) {
+    const fgv = (js) => fgf.evaluate(js, null, { timeout: 8000 });
+    const tabsOk = await fgf.waitForFunction(() => document.getElementById('srfgTabs') !== null, null, { timeout: 10000 }).then(() => true).catch(() => false);
+    check('fg:tabs', tabsOk, tabsOk ? '' : '#srfgTabs 未挂（家中无燃料标签柜=原版形态，spec §8-2；或装配异常——看 BepInEx 日志）');
+    if (tabsOk) {
+      const tabs0 = await fgv(() => [...document.querySelectorAll('#srfgTabs .srfg-tab')].map((t) => ({ id: t.getAttribute('data-id'), t: t.textContent.trim(), on: t.classList.contains('active') })));
+      check('fg:tabs-bag-first', tabs0.length > 1 && tabs0[0].id === 'bag' && tabs0[0].on, `页签=[${tabs0.map((t) => t.t).join('/')}]（首签=背包 active；柜签数=${tabs0.length - 1}）`);
+      check('fg:right-panel-untouched', await fgv(() => !document.querySelector('.gen-panel #srfgTabs, .gen-panel #srfgBody, .gen-panel #srfgFoot, .gen-panel .srfg-on')), '右面板零 mod 节点（作者底线）');
+      const w0 = await fgv(() => document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetWidth);
+      const firstCtn = tabs0.find((t) => t.id !== 'bag');
+      await fgv((id) => { document.querySelector('#srfgTabs .srfg-tab[data-id="' + id + '"]').click(); return 1; }, firstCtn.id);
+      await fgf.waitForFunction(() => document.getElementById('srfgGrid') !== null, null, { timeout: 8000 }).catch(() => { });
+      const ctnSt = await fgv(() => ({
+        officialHidden: getComputedStyle(document.getElementById('backpackGrid')).display === 'none',
+        items: document.querySelectorAll('#srfgGrid .item').length,
+        fuel: document.querySelectorAll('#srfgGrid .item.is-fuel').length,
+        w: document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetWidth
+      }));
+      check('fg:ctn-tab', ctnSt.officialHidden && ctnSt.items > 0, `官方格藏=${ctnSt.officialHidden} 柜物品=${ctnSt.items} 燃料=${ctnSt.fuel}（火苗角标=icfg 尾列）`);
+      check('fg:width-lock', ctnSt.w === w0, `面板宽 背包=${w0} 柜签=${ctnSt.w}`);
+      await fgv(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', bubbles: true })); return 1; });
+      await fgf.waitForTimeout(250);
+      const ad = await fgv(() => { const a = document.querySelector('#srfgTabs .srfg-tab.active'); return a ? a.getAttribute('data-id') : null; });
+      check('fg:ad-key', ad !== 'bag', `D 键后 active=${ad}（bag→${ad}）`);
+      /* 点燃料→真实 feed（C# 两跳实执行）：队列+1（校准点②随跑观察：背包预放同 cfg 叠→叠并重解析） */
+      const q0 = await fgv(() => document.querySelectorAll('#fuelQueueZone .fuel-slot.queued-item, #fuelQueueZone .fuel-slot.active-burn').length);
+      const fed = await fgv(() => { const el = document.querySelector('#srfgGrid .item.is-fuel'); if (el) el.click(); return !!el; });
+      await fgf.waitForTimeout(2200);
+      const q1 = await fgv(() => document.querySelectorAll('#fuelQueueZone .fuel-slot.queued-item, #fuelQueueZone .fuel-slot.active-burn').length);
+      check('fg:feed-two-hop', fed && q1 > q0, `点燃料→队列 ${q0}→${q1}（两跳=C# OpFeed 实执行；校准点①：加满后再点看 full 门；校准点③=终审 Minor6：同帧快速连点 2+ 条 feed 时第 2 条容量校验是否读陈旧 FuelItems——若官方 SendAction 异步，观察「物品进背包未进队列」静默少喂形态）`);
+      await page.evaluate(() => window.__CERAIL__.drain());
+      await fgv(() => { document.querySelector('#srfgFoot button').click(); return 1; });
+      await page.waitForTimeout(300);
+      const tidyCmd = JSON.parse(await page.evaluate(() => window.__CERAIL__.drain()));
+      check('fg:tidy', tidyCmd.length === 1 && tidyCmd[0].op === 'tidy' && Number(tidyCmd[0].owner) !== 0, `drain=${JSON.stringify(tidyCmd)}`);
+      await page.screenshot({ path: path.join(OUT, 'm-fuelgenerator.png') });
+    }
+  } else check('fg:frame', false, 'FuelGenerator iframe 未找到（需先在游戏内靠近发电机/uiShow 驱动）');
+
   check('zero-console-errors', errs.length === 0, JSON.stringify(errs.slice(0, 4)));
   const fail = results.filter((r) => !r.ok).length;
   console.log(`\n==== 实机矩阵 TOTAL ${results.length} PASS ${results.length - fail} FAIL ${fail} ====`);

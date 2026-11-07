@@ -35,6 +35,10 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   storeAll{order:[...]} §4.7 路由：物品分类名→柜标签名匹配，order 顺序优先，柜满顺延，无匹配/全满留背包
 ///   rename{owner, name}  mod 侧持久化 cerail_names.json（≤8 字截断）
 ///   setTags{owner, tags} FurnitureTagComponent.SetRule；tagId 先经 lib 白名单校验
+///   feed  {owner, item}  燃油发电机柜中燃料整组直送（spec 2026-11-06-fuelgen-cabinet-tabs §5.3）：
+///                        v1 只走两跳=柜→背包(TryQuickMoveItems)→官方 Ac_FuelGenerator_FuelAdd（S1 直达
+///                        属后续优化）；叠并重解析=按 ItemConfigId 在背包重找目标叠；拒绝经
+///                        RailData.MarkFeedFail(notfuel|full|bagfull|noitem)→ctx.feedFail 一次性回执
 ///
 /// 红线对照（suite/docs/03-教训与红线.md）：
 ///   1. drain 回调只解析入队（ConcurrentQueue，回调线程不确定）；执行全在 Pump（主帧）。✅
@@ -83,7 +87,7 @@ internal static class RailCommands
     {
         public string Op;
         public bool All;
-        public long From, To, Owner, Cat;
+        public long From, To, Owner, Cat, Item;
         public string Name;
         public string Key; // uiShow/uiClose/pinOrder 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP；v1.8.9：setFilter 同批退役）
         public List<long> Ids = new();
@@ -140,6 +144,7 @@ internal static class RailCommands
         c.To = Lng(o, "to");
         c.Owner = Lng(o, "owner");
         c.Cat = Lng(o, "cat");
+        c.Item = Lng(o, "item");
         if (o.TryGetValue("name", out var nm) && nm is string s) c.Name = s;
         if (o.TryGetValue("key", out var ky) && ky is string ks) c.Key = ks;
         c.Ids = Lngs(o, "ids");
@@ -218,6 +223,7 @@ internal static class RailCommands
             case "putCat": OpCat(c, false); break;
             case "putTag": OpPutTag(c); break;
             case "tidy": OpTidy(c); break;
+            case "feed": OpFeed(c); break; // 燃油发电机柜中燃料直送（两跳，见 OpFeed 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -518,6 +524,82 @@ internal static class RailCommands
             RailData.ReportTidyFail();
             WarnOnce("tidy:call", "tidy 官方排序/合并调用异常（已降级为失败标记）: " + e.Message);
         }
+    }
+
+    /// <summary>
+    /// feed{owner,item}：燃油发电机柜中燃料**整组**直送（spec 2026-11-06-fuelgen-cabinet-tabs §5.3）。
+    /// v1 只走两跳：柜→背包（TryQuickMoveItems 整叠，官方 API）→官方动作重放 Ac_FuelGenerator_FuelAdd
+    /// （rackOpen 同款纪律：官方静态派发入口，与页面按钮到达同一 Reducer）。S1 直达（SendAction 直喂
+    /// 柜中 itemId）待反编译/实机实证后作独立优化，不并本路径。
+    /// 叠并重解析：背包已有同 cfg 叠时第一跳会把源叠并入既存叠——原 InstanceId 消失，须按 ItemConfigId
+    /// 在背包重找目标叠再发 FUEL_ADD。
+    /// 拒绝四路（权威校验在 C#，JS 预检只为省往返）：notfuel=非燃料（物品级 Config_Item.Burnable，
+    /// 禁止按 Category 推导）/ full=燃料槽满（FuelItems.Count>=FuelSlotCount，官方 JS 谓词同源；
+    /// 校准注=若 FuelItems 不含在燃格，实机改按 (activeFuel?1:0)+queue>=slots）/ bagfull=背包无空位 /
+    /// noitem=物品已不在柜中。全部经 MarkFeedFail→ctx.feedFail 一次性回执，JS 弹 mod 警告条。
+    /// </summary>
+    private static void OpFeed(Cmd c)
+    {
+        long bag = RailData.BagOwner();
+        if (bag <= 0) { WarnOnce("feed:nobag", "feed 丢弃：背包 owner 不可得"); return; }
+        if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] feed 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
+        if (c.Item <= 0) return;
+        var im = RailData.ItemMgr();
+        if (im == null) { WarnOnce("feed:noim", "feed 丢弃：ItemManager 不可得"); return; }
+
+        var src = ItemOf(OwnerItems(im, c.Owner), c.Item);
+        if (src == null) { RailData.MarkFeedFail("noitem"); return; }
+
+        // ① burnable 权威校验（dump @40395 Config_Item.Burnable）
+        int cfgId = 0; try { cfgId = src.ItemConfigId; } catch { }
+        var ic = ItemCfg(cfgId);
+        bool burnable = false; try { burnable = ic != null && ic.Burnable; } catch { }
+        if (!burnable) { RailData.MarkFeedFail("notfuel"); return; }
+
+        // ② 燃料槽容量权威校验（State_Web_FuelGenerator 直读；读不到=放行交官方 Reducer 兜底）
+        var st = RailData.FuelGenState();
+        int slots = 0, queued = 0;
+        try { slots = st?.FuelSlotCount?.Value ?? 0; queued = st?.FuelItems?.Count ?? 0; } catch { }
+        if (slots > 0 && queued >= slots) { RailData.MarkFeedFail("full"); return; }
+
+        // ③ 第一跳：柜→背包（整叠，silent=不弹官方 toast——结果经数据回推自渲染）
+        var batch = new Il2CppSystem.Collections.Generic.List<long>();
+        batch.Add(c.Item);
+        int moved = im.TryQuickMoveItems(batch, c.Owner, bag, SilentQuickMove, false);
+        if (moved <= 0)
+        {
+            // 背包满 vs 物品消失：源物品仍在柜=背包满；已不在=noitem
+            RailData.MarkFeedFail(ItemOf(OwnerItems(im, c.Owner), c.Item) != null ? "bagfull" : "noitem");
+            return;
+        }
+
+        // ④ 叠并重解析（终审 Important2 修正）：**先查原 InstanceId**——未并叠时原 id 存活
+        //（背包无同 cfg 叠，或同 cfg 满叠+有空位=建新叠两种情形都命中），仅查不到才按 cfg
+        // 遍历兜底（真并叠）。旧写法直接 cfg-first 遍历：满叠情形可能先命中背包 99 叠旧木柴
+        // =错喂整叠（点了柜里 5 根进了背包 99 根）。
+        long target = 0;
+        var bagInner = OwnerItems(im, bag);
+        if (ItemOf(bagInner, c.Item) != null) target = c.Item;
+        else if (bagInner != null)
+        {
+            try
+            {
+                foreach (var pair in bagInner) // 白名单单 owner 内遍历（非整个 OwnerCache——红线2）
+                {
+                    var it = pair.Value;
+                    if (it == null) continue;
+                    long id = 0; int cfg = 0;
+                    try { id = it.InstanceId; cfg = it.ItemConfigId; } catch { }
+                    if (id > 0 && cfg == cfgId) { target = id; break; }
+                }
+            }
+            catch (Exception e) { WarnOnce("feed:iter", "背包叠并重解析遍历异常: " + e.Message); }
+        }
+        if (target <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 重解析失败（背包无目标叠）"); return; }
+
+        // ⑤ 第二跳：官方加油动作重放（与页面 FUEL_ADD 按钮同入口）
+        GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_FuelAdd.SendAction("{\"itemId\":" + target + "}");
+        VLog(c.Op, $"owner={c.Owner} item={c.Item}→bag 重解析={target} cfg={cfgId}（两跳完成）");
     }
 
     /// <summary>

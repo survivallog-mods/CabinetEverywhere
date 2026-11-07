@@ -93,6 +93,30 @@
 
 
 
+## 0b. FuelGenerator bagtabs（2026-11-07，燃油发电机柜子页签；视觉基准=原型 v6 存档
+.superpowers/brainstorm/10499-1793977845/content/fuelgen-proto-v6.html）
+
+第 13 个装配场景（SCENES.FuelGenerator，host=null **不替换宿主/无侧栏壳**——bagtabs 模式）：
+官方左背包面板内装配四件 mod DOM（右面板零改动=作者底线）：
+
+1. **#srfgTabs 页签栏**：背包（pinned 首签+分隔线）+ 燃料标签柜（viewAllows 'fuel'=tags 含 1013；
+   纯文字无圆点）；‹› 滚动钮（.srfg-tabbtn.is-visible，溢出才现）；A/D 切签（iframe+Root 双绑、
+   FG.active 守卫、60ms 去重；隐帧/切场景不动作）。官方 Cooking bag-tabs 观感克隆（srfg- 前缀）。
+2. **#srfgBody 柜格视口**：flex 主体限高滚动（8px 经典条）；mod 格复用官方 .grid-container/.slot/
+   .item/.is-fuel（同文档官方样式表=逐像素官方观感）；固定 12 列（玩家背包全 12 列实证）；燃料
+   火苗角标=icfg 尾列 burnable。背包页签=官方 #backpackGrid 原生（柜页签 display:none，永不 detach）。
+3. **#srfgWarn 警示条**：官方 .warning-box 同款观感（红字、格网下方）；触发=JS 预检（非燃料/满员）
+   与 ctx.feedFail 回执（四路文案）；1.8s 自隐。
+4. **#srfgFoot 底行**：仅「一键整理」（官方 .action-btn 基类暖金化，右缘、钉面板底；所有页签都有；
+   无一键入库——作者令背包界面专属）。
+
+**尺寸锁**：面板宽=官方 12 列格宽（mount 时官方格建成后量取锁死，页签只能滚动不能撑宽）；
+高=右 .gen-panel 自然高（对话框总高不再被背包 18 行撑爆，格区改内部滚动）；短柜下方留白、底行钉底。
+**官方元素**：#bagPanelTitle/#bagInfoBar/.hint-shift 由面板 .srfg-on 类隐藏（元素保留=官方查询仍
+可达，T9 纪律）；无燃料柜（或 cfg 关）时 mod DOM 全拆+类清除=逐像素原版。
+**观察器纪律（本模式铁律）**：所有 DOM 写必须签名/同值守卫——innerHTML 串比较与 active 类修正
+永不相等=自激环（59 万写/秒渲染器暴毙）；拆除态不得重建（无燃料柜门）。
+
 ## 0. 动作保真红线（总纲，2026-10-31 作者总裁决）
 
 **本 mod 的职责 = 重构储物系统的布局与导航（壳），不重造储物系统（物品格）。**

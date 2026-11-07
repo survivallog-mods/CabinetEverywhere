@@ -13,10 +13,11 @@ namespace SurvivalLog.CabinetEverywhere;
 ///
 /// 契约（T3 冻结 + T6 裁定增补 ctx.bagCap，2026-11-01 缺陷单#1/#2 增补 ctx.view/tradePrefs/
 /// 与物品行数值段对齐；v1.8.5 起 lastSortAck 随数据层 sortBy 退役）。
-///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,uniformWidth,view,tradePrefs,lastTidyFail},
+///   { rev, ctx:{page,family,bagOnly,rackOwner,bagCap,uniformWidth,brewP1,brewP2,view,tradePrefs,lastTidyFail},
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
-///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]],
+///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]]
+///         （页专属尾列：FuelGenerator +[burnable,burnValue]；BrewPanel +[canBrew]——brew spec §5.1），
 ///     items:{ "bag":[[id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days]], "&lt;ownerId&gt;":[...] } }
 ///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
 ///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
@@ -70,6 +71,11 @@ internal static class RailData
         new SceneDef{ Page="ToolTable",       Family="tt",       ReadsPlayerBagOwner=true, UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_ToolTable)) },
         new SceneDef{ Page="Trade",           Family="trade",    UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_TradeUI)) }, /* iframe id 实测='Trade'（T1 findings §6） */
         new SceneDef{ Page="DroneHub",        Family="bag",      ReadsPlayerBagOwner=true, UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub)) },
+        /* 燃油发电机 bagtabs 页（2026-11-07，spec fuelgen-cabinet-tabs）：**不替换宿主/无侧栏壳**——
+           JS 侧 SCENES.FuelGenerator.bagtabs 在官方左背包面板内装配页签/柜格/底行（右面板零改动）。
+           ReadsPlayerBagOwner=true：本页取 State_Web_FuelGenerator.BagOwnerId（ReactiveProperty<long>，
+           读 .Value——与别家裸 long 不同，ResolveBagOwner 该 case 单列）。 */
+        new SceneDef{ Page="FuelGenerator",   Family="fg",      ReadsPlayerBagOwner=true, UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)) },
     };
 
     // ================= 公共入口 =================
@@ -123,6 +129,8 @@ internal static class RailData
                 case "ToolTable": GameCore.HotUpdate.ReduxUI.Ac_ToolTable_RefreshBag.SendAction(); break;
                 case "Trade": GameCore.HotUpdate.ReduxUI.Ac_TradeUI_RefreshBag.SendAction(); break;
                 case "DroneHub": GameCore.HotUpdate.ReduxUI.Ac_DroneHub_RefreshBag.SendAction(); break;
+                // 燃油发电机：feed 两跳后官方背包格/燃料槽重渲染（spec §5.3 收尾）
+                case "FuelGenerator": GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_RefreshBag.SendAction(); break;
             }
         }
         catch (Exception e) { /* 刷新失败无害：下一周期数据门自然补 */ }
@@ -331,6 +339,25 @@ internal static class RailData
         _tidyFailPending = true;
     }
 
+    /// <summary>feed 失败码（notfuel/full/bagfull/noitem——RailCommands.OpFeed 权威校验拒绝时置位；
+    /// BuildJson ctx.feedFail 带出即清，一次性，lastTidyFail 同款）。JS 映射文案弹 mod 警告条（spec §5.2）。</summary>
+    internal static void MarkFeedFail(string code)
+    {
+        _feedFailPending = string.IsNullOrEmpty(code) ? null : code;
+    }
+
+    /// <summary>燃油发电机 Redux 状态（OpFeed 容量校验用；GetStateByUI 同 ResolveBagOwner 路径）。不可得=null。</summary>
+    internal static GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator FuelGenState()
+    {
+        try
+        {
+            var rus = ReduxUi();
+            return rus?.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)))
+                ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>();
+        }
+        catch { return null; }
+    }
+
     /// <summary>
     /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
     /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
@@ -352,6 +379,7 @@ internal static class RailData
                 case "GreenhouseBuild": v = CabinetEverywherePlugin.ViewGreenhouseBuild?.Value ?? v; break;
                 case "Trade": v = CabinetEverywherePlugin.ViewTrade?.Value ?? v; break;
                 case "DroneHub": v = CabinetEverywherePlugin.ViewDroneHub?.Value ?? v; break;
+                case "FuelGenerator": v = CabinetEverywherePlugin.ViewFuelGenerator?.Value ?? v; break;
             }
         }
         catch { }
@@ -359,6 +387,7 @@ internal static class RailData
         {
             SurvivalLog.CabinetEverywhere.ScenarioView.Food => "food",
             SurvivalLog.CabinetEverywhere.ScenarioView.Material => "material",
+            SurvivalLog.CabinetEverywhere.ScenarioView.Fuel => "fuel", // 燃料标签(1013)柜——JS viewAllows fuel 分支消费
             _ => "browser",
         };
     }
@@ -402,6 +431,12 @@ internal static class RailData
         // 壳宽地板/抽屉克隆包的目标宽直出（[Rail] UniformBagWidth；0=off 也推——JS 地板停用信号；
         // 契约增补照 bagCap 先例：读取先行缺省 12，C# 直推）
         sb.Append(",\"uniformWidth\":").Append(Math.Max(0, CabinetEverywherePlugin.UniformBagWidth?.Value ?? 12));
+        // 酿酒桶品质阈值直推（brew spec §5.1，uniformWidth 先例同点位）：GameKey 运行时读，
+        // try/catch 缺省 0/0.5（官方 BrewPanel.html 界面兜底同值）；所有页都带、仅 BrewPanel 消费
+        float brewP1 = 0f, brewP2 = 0.5f;
+        try { brewP1 = GameCore.HotUpdate.GameKey.GlobalSetting_Brew_TierMoodDensityP1; } catch { }
+        try { brewP2 = GameCore.HotUpdate.GameKey.GlobalSetting_Brew_TierMoodDensityP2; } catch { }
+        sb.Append(",\"brewP1\":").Append(F(brewP1)).Append(",\"brewP2\":").Append(F(brewP2));
         // 2026-11-01 缺陷单#2：机器页页签逐页语义（v1.7.0 场景视图口径）——ctx.view 供 JS
         // railCtns 收窄（food=冰箱全显+柜子按食物域标签；material=材料/工具柜+架子；browser=全显）
         sb.Append(",\"view\":\"").Append(ScenarioViewOf(sc?.Page)).Append('"');
@@ -410,6 +445,12 @@ internal static class RailData
         // sortBy 回执（一次性标志：[key,ok,moved,skip]；JS settle toast——治「排序不生效静默」）
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
+        // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
+        sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
+        // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版
+        //（spec §5.4 对称拆装；仅本页带出=tradePrefs 页条件字段先例）
+        if (sc?.Page == "FuelGenerator")
+            sb.Append(",\"fgOn\":").Append(CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
 
@@ -441,10 +482,12 @@ internal static class RailData
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);
 
         sb.Append(",\"icfg\":[");
+        bool fuelCols = sc?.Page == "FuelGenerator"; // 尾列仅本页（其他 12 页推送形状不变——spec 约束）
+        bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
         for (int i = 0; i < icfgOrder.Count; i++)
         {
             if (i > 0) sb.Append(',');
-            sb.Append(IcfgRow(icfgOrder[i], itemDict));
+            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols));
         }
         sb.Append(']');
 
@@ -469,6 +512,7 @@ internal static class RailData
 
         _forcePending = false;
         _tidyFailPending = false; // 推出即清（一次性标志）
+        _feedFailPending = null;  // 同上（feed 失败码随本包带出即清）
         _rev++;
         _lastSig = ComputeSig();
         /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
@@ -495,13 +539,21 @@ internal static class RailData
     /// 配置查不到时**不入缓存**（评审 Important 1，fix round 1）：占位行直接返回、不写
     /// _icfgCache——首包若落在配置表未就绪窗口，负缓存会让该物品整会话显示 "?" 不可恢复；
     /// 下一周期再查即可拿到真值。已缓存的正常行不受影响。
+    /// fuelCols=true（燃油发电机页专属，spec §5.3）：行尾追加 [burnable(0/1),burnValue] 两列，
+    /// 独立缓存 _icfgFuelCache——同一 cfgId 在普通页(14 列)与本页(16 列)间不得共用缓存行。
+    /// brewCols=true（酿酒桶页专属，brew spec §5.1）：行尾追加 canBrew(0/1) 一列，
+    /// 独立缓存 _icfgBrewCache——同上分键防串形（15 列）。
     /// </summary>
-    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null)
+    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false)
     {
-        if (_icfgCache.TryGetValue(cfgId, out var row)) return row;
-        row = BuildIcfgRow(cfgId, itemDict);
-        if (row == null) return PlaceholderIcfgRow(cfgId); // 未就绪窗口：不缓存，等下周期
-        _icfgCache[cfgId] = row;
+        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : _icfgCache);
+        if (cache.TryGetValue(cfgId, out var row)) return row;
+        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols);
+        if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
+            // 终审 Minor4：尾列必须拼在行括号内（旧写法 ,0,0 落在 ] 外=非法形状，normRows 数组过滤侥幸无症状）
+            return fuelCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0,0]"
+                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]" : PlaceholderIcfgRow(cfgId));
+        cache[cfgId] = row;
         return row;
     }
 
@@ -564,6 +616,8 @@ internal static class RailData
                     "GreenhouseBuild" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_GreenhouseBuild>()?.PlayerBagOwnerId ?? 0,
                     "ToolTable" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_ToolTable>()?.PlayerBagOwnerId ?? 0,
                     "DroneHub" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_DroneHub>()?.PlayerBagOwnerId ?? 0,
+                    // 燃油发电机：BagOwnerId 是 ReactiveProperty<long>（非裸 long，dump @184723）——取 .Value
+                    "FuelGenerator" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0,
                     _ => 0,
                 };
             }
@@ -760,7 +814,7 @@ internal static class RailData
     /// 返回 null = cfgId 查不到 Config_Item（含配置表未就绪窗口）——调用方（IcfgRow）不缓存，
     /// 直接出占位行，防未就绪首包把 "?" 负缓存整会话（评审 Important 1）。
     /// </summary>
-    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict)
+    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false)
     {
         var cm = BagTable.Cm();
         if (itemDict == null) { itemDict = cm?._Config_Item_Dict; }
@@ -793,6 +847,25 @@ internal static class RailData
           .Append(',').Append(F(v1)).Append(',').Append(F(v2)).Append(',').Append(F(v3)).Append(',').Append(F(v4)).Append(',').Append(F(v5))
           .Append(',').Append(uses) /* v1.8.5④：cfgUses（交易使用折旧） */
           .Append(']');
+        /* 燃油发电机页专属尾列（spec §5.3/builder-check Q1 裁定）：burnable(0/1)+burnValue——
+           官方火苗角标/加油校验的物品级标志（dump @40395/40396），**禁止**从 Category==13 推导
+           （官方判定是物品级 Burnable，分类外的可燃物会误标）。读不到=0（与各行 try/catch 同口径）。 */
+        if (fuelCols)
+        {
+            bool burnable = false; int burnValue = 0;
+            try { burnable = ic.Burnable; } catch { }
+            try { burnValue = ic.BurnValue; } catch { }
+            sb.Remove(sb.Length - 1, 1).Append(',').Append(burnable ? 1 : 0).Append(',').Append(burnValue).Append(']');
+        }
+        /* 酿酒桶页专属尾列（brew spec §5.1，fuelCols 同款纪律）：canBrew(0/1)——发酵原料的
+           物品级标志（Config_Item.CanBrew，dump @Config_Item 列表 190 件），**禁止**从
+           Category==1 推导（官方判定是物品级 CanBrew，Burnable 先例同款）。读不到=0。 */
+        if (brewCols)
+        {
+            bool canBrew = false;
+            try { canBrew = ic.CanBrew; } catch { }
+            sb.Remove(sb.Length - 1, 1).Append(',').Append(canBrew ? 1 : 0).Append(']');
+        }
         return sb.ToString();
     }
 
@@ -1090,7 +1163,10 @@ internal static class RailData
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）
-    private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存）
+    private static volatile string _feedFailPending; // feed 失败码一次性标志（MarkFeedFail 置位，同上点位清）
+    private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存，14 列）
+    private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
+    private static readonly Dictionary<int, string> _icfgBrewCache = new(); // 酿酒桶页 15 列行（尾列 canBrew，brew spec §5.1——同上分键防串形）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>
     internal static string EscapeJs(string s)

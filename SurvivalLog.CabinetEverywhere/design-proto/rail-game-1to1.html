@@ -211,6 +211,10 @@
 #srp .sr-slot .s-badge{position:absolute;right:1px;top:1px;min-width:10px;padding:0 2px;border-radius:2px;
   background:rgba(0,0,0,.80);font-size:9.5px;line-height:12px;text-align:center;
   font-family:Consolas,monospace;white-space:nowrap;pointer-events:none}
+/* v14 酿酒桶品质角标：垫在饱腹数值正下方（同底衬同款），色随三档（劣绿/普黄/烈粉，
+   游戏 BrewPanel TIER_COLOR 同源）；仅酿酒桶页+饱腹排序+可酿物品 */
+#srp .sr-slot .s-tier{position:absolute;right:1px;top:14px;min-width:12px;padding:0 2px;border-radius:2px;
+  background:rgba(0,0,0,.80);font-size:9px;line-height:12px;text-align:center;white-space:nowrap;pointer-events:none}
 /* 无人机交易买家条：当前交易对象的品类加成（点击买家名=演示切换） */
 #srp .sr-tradeinfo{display:flex;align-items:center;gap:7px;margin-top:8px;height:26px;padding:0 9px;
   border-radius:8px;border:1px dashed rgba(240,176,60,.35);background:rgba(240,176,60,.06);
@@ -5527,8 +5531,20 @@ button{font-family:inherit;}
     { n: '草药', e: '🌿', c: '医疗', v: 15, s: 120, sat: 0, hp: 12, en: 0, mind: 0 }, { n: '绷带', e: '🩹', c: '医疗', v: 20, s: 999, sat: 0, hp: 20, en: 0, mind: 0 },
     { n: '止痛药', e: '💊', c: '医疗', v: 26, s: 999, sat: 0, hp: 35, en: 0, mind: -5 }, { n: '净水', e: '💧', c: '饮品', v: 10, s: 30, sat: 5, hp: 0, en: 2, mind: 0 },
     { n: '咖啡', e: '☕', c: '饮品', v: 25, s: 20, sat: 2, hp: 0, en: 15, mind: 5 }, { n: '茶', e: '🍵', c: '饮品', v: 14, s: 24, sat: 3, hp: 0, en: 8, mind: 12 },
-    { n: '柴火', e: '🪵', c: '燃料', v: 3, s: 999, sat: 0, hp: 0, en: 0, mind: 0 }, { n: '煤块', e: '🪨', c: '燃料', v: 6, s: 999, sat: 0, hp: 0, en: 0, mind: 0 }
+    { n: '柴火', e: '🪵', c: '燃料', v: 3, s: 999, sat: 0, hp: 0, en: 0, mind: 0 }, { n: '煤块', e: '🪨', c: '燃料', v: 6, s: 999, sat: 0, hp: 0, en: 0, mind: 0 },
+    /* v14 酿酒桶演示料：覆盖三档品质（密度=心态/饱腹 vs 0/0.5）——酸味果 -0.5 劣 /
+       野蜂蜜 1.2 烈；其余食材多为 0~0.5 普（如苹果 0.33）、茶 4.0 烈 */
+    { n: '酸味果', e: '🫐', c: '食材', v: 4, s: 30, sat: 6, hp: 0, en: 0, mind: -3 },
+    { n: '发酵浆果', e: '🫐', c: '食材', v: 9, s: 26, sat: 8, hp: 0, en: 1, mind: -4 },
+    { n: '野蜂蜜', e: '🍯', c: '食材', v: 30, s: 200, sat: 5, hp: 0, en: 0, mind: 6 },
+    { n: '糖霜花', e: '🌼', c: '食材', v: 12, s: 60, sat: 4, hp: 0, en: 0, mind: 3 }
   ];
+  /* v14 可酿造标记（原型静态近似：正式实现=Config_Item.CanBrew 实表逐件判定）——
+     食物类（食材/菜品/饮品）且饱腹>0 可入桶 */
+  for (var pi = 0; pi < POOL.length; pi++) {
+    var pit = POOL[pi];
+    if ((pit.c === '食材' || pit.c === '菜品' || pit.c === '饮品') && pit.sat > 0) pit.brew = 1;
+  }
   var TAG_GROUPS = [
     { g: '食品类', tags: ['食材', '菜品', '主食', '肉类', '蔬果', '饮品', '调味', '甜品', '需冷藏', '易腐'] },
     { g: '材料类', tags: ['材料', '工具', '零件', '燃料', '医疗', '种子', '书籍', '贵重品'] },
@@ -5564,6 +5580,19 @@ button{font-family:inherit;}
     { k: 'shelf', label: '保质期', ico: '🕐' }
   ];
   var BADGE_COLOR = { sat: '#8fc06e', hp: '#e07ab0', en: '#6fc7c9', mind: '#b08fd6', shelf: '#f0b03c', value: '#f0b03c', tvalue: '#f0b03c' };
+  /* v14 酿酒桶品质角标（作者 2026-11-07 需求）：发酵品质 = 桶内原料「心态密度」(Σ心态/Σ饱腹)
+     对两条全局阈值——< P1 劣质 / P1~P2 普通 / ≥ P2 烈性（游戏 BrewPanel.html 品质条三段同源）。
+     阈值运行时读 GameKey.GlobalSetting_Brew_TierMoodDensityP1/P2（原型用界面兜底默认 0 / 0.5）；
+     三档色直接取游戏自带 TIER_COLOR（劣绿/普黄/烈粉），与酿酒桶界面品质条一致。
+     只在酿酒桶页 + 选了饱腹排序时：格右上角 = 饱腹数值 + 品质色角标（仅可酿造物品）。 */
+  var BREW_P1 = 0, BREW_P2 = 0.5;
+  var TIER_TXT = ['劣', '普', '烈'];
+  var TIER_COLOR = ['#9dc47f', '#e8b04b', '#e0899b'];
+  function brewTier(it) { /* 单件心态密度 → 三档；不可酿/无饱腹 → -1 不标 */
+    if (!it || !it.brew || !(it.sat > 0)) return -1;
+    var d = it.mind / it.sat;
+    return d < BREW_P1 ? 0 : (d < BREW_P2 ? 1 : 2);
+  }
   /* 无人机交易：每个交易点/人物各有品类喜好 → 计算后交易价值 = 单价×数量×(1+品类加成)。
      原型内置三个演示买家，点买家条切换（正式实现由当前交易对象驱动，无切换控件） */
   var TRADES = [
@@ -5649,7 +5678,7 @@ button{font-family:inherit;}
     var n = Math.min(Math.max(6, Math.round(cells * 0.72)), 640), out = [];
     for (var i = 0; i < n; i++) {
       var b = POOL[i % POOL.length], u = (i * 7) % 9;
-      out.push({ id: i, name: b.n, emoji: b.e, cat: b.c, count: 1 + ((i * 5 + 3) % 9), value: b.v + u * 2, shelf: Math.max(2, b.s - u * 3), sat: b.sat + (u % 4), hp: b.hp, en: b.en, mind: b.mind, fav: i % 13 === 0, fresh: i % 17 === 0 });
+      out.push({ id: i, name: b.n, emoji: b.e, cat: b.c, count: 1 + ((i * 5 + 3) % 9), value: b.v + u * 2, shelf: Math.max(2, b.s - u * 3), sat: b.sat + (u % 4), hp: b.hp, en: b.en, mind: b.mind, brew: b.brew, fav: i % 13 === 0, fresh: i % 17 === 0 });
     }
     return out;
   }
@@ -5695,6 +5724,12 @@ button{font-family:inherit;}
   function sortArr(arr) {
     if (st.sort === 'official') return arr.slice().sort(function (a, b) { return a.id - b.id; });
     return arr.slice().sort(function (a, b) {
+      /* v14 酿酒桶+饱腹序（作者 2026-11-07 口径）：品质主键 烈→普→劣（不可酿 -1 垫底，
+         沿用「无值排尾」惯例），同品质内才按饱腹值高在前 */
+      if (st.scene === 'brew' && st.sort === 'sat') {
+        var ta = brewTier(a), tb = brewTier(b);
+        if (ta !== tb) return (tb - ta) * st.dir;
+      }
       var d = sortVal(b) - sortVal(a);           /* dir=1：数值高的在前 */
       if (d) return d * st.dir;
       return a.id - b.id;
@@ -5753,9 +5788,12 @@ button{font-family:inherit;}
   function slotHtml(it, cls) {
     var col = CAT_COLORS[it.cat] || '#b0a89a';
     var bd = BADGE ? badgeText(it, BADGE.k) : '';
+    /* v14：酿酒桶页 + 饱腹排序 → 可酿物品在数值角标下方再垫一枚品质色角标（劣/普/烈） */
+    var tier = (st.scene === 'brew' && BADGE && BADGE.k === 'sat') ? brewTier(it) : -1;
     return '<button type="button" class="' + cls + (it.fav ? ' fav' : '') + (st.sel === it.id ? ' selected' : '') + '" data-it="' + it.id + '" aria-label="' + esc(it.name + ' ×' + it.count) + '" style="--cat:' + col + '">' +
       '<span class="s-dot"></span><span aria-hidden="true">' + it.emoji + '</span><span class="s-cnt">' + it.count + '</span>' +
-      (bd ? '<span class="s-badge" style="color:' + BADGE.color + '">' + bd + '</span>' : (it.fresh ? '<span class="s-new"></span>' : '')) + '</button>';
+      (bd ? '<span class="s-badge" style="color:' + BADGE.color + '">' + bd + '</span>' : (it.fresh ? '<span class="s-new"></span>' : '')) +
+      (tier >= 0 ? '<span class="s-tier" style="color:' + TIER_COLOR[tier] + '">' + TIER_TXT[tier] + '</span>' : '') + '</button>';
   }
 
   /* 侧栏 DOM（每次切场景重建后重绑）。
@@ -5934,7 +5972,8 @@ button{font-family:inherit;}
       var b = e.target.closest('[data-fsort]'); if (!b) return;
       st.sort = b.getAttribute('data-fsort');
       el.srFootSortPop.hidden = true; render();
-      toast(st.sort === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(st.sort) + '」排序 · 格子右上角显示数值');
+      if (st.scene === 'brew' && st.sort === 'sat') toast('已按「饱腹度」排序 · 烈→普→劣 · 同品质按饱腹值从高到低');
+      else toast(st.sort === 'official' ? '已恢复官方默认排序' : '已按「' + fsortLabel(st.sort) + '」排序 · 格子右上角显示数值');
     };
     /* 交易买家条：点击买家名切换演示买家（品类加成→计算后价值→排序联动刷新） */
     el.srTrade.onclick = function (e) {
@@ -5967,6 +6006,7 @@ button{font-family:inherit;}
         return;
       }
       el.srHover.innerHTML = '<b>' + esc(it.name) + '</b> ×' + it.count + ' · 交易 ' + it.value + ' · 保质 ' + it.shelf + 'h · 饱食 +' + it.sat +
+        (st.scene === 'brew' && brewTier(it) >= 0 ? ' · <span style="color:' + TIER_COLOR[brewTier(it)] + '">预估酒品 ' + ['劣质', '普通', '烈性'][brewTier(it)] + '（心态密度 ' + (it.mind / it.sat).toFixed(2) + '）</span>' : '') +
         (it.src ? ' · 来自 ' + esc(it.src) : '') + ' · 官方原生：右键快转 · 高亮键批转';
     };
     el.srBody.onmouseleave = function () { el.srHover.textContent = '悬停查看物品详情'; };
@@ -6511,15 +6551,20 @@ button{font-family:inherit;}
     }
     el.srSortPopBody.innerHTML = h;
   }
-  /* 设施排序弹层（v13.7 参考图样式：图标+文字独立按钮堆叠，选中=金色） */
+  /* 设施排序弹层（v13.7 参考图样式：图标+文字独立按钮堆叠，选中=金色）。
+     v14：酿酒桶页收敛为两项——默认 / 饱腹度（其余维在酿酒场景无意义，作者 2026-11-07 令） */
+  function fsortList() {
+    if (st.scene === 'brew') return FSORTS.filter(function (s) { return s.k === 'official' || s.k === 'sat'; });
+    return FSORTS;
+  }
   function fsortLabel(k) { for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
   function renderFootSortPop() {
     if (el.srFootSortPop.hidden) return;
-    var h = '';
-    for (var i = 0; i < FSORTS.length; i++) {
-      var s = FSORTS[i];
+    var list = fsortList(), h = '';
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
       h += '<button type="button" class="sr-fsopt' + (s.k === st.sort ? ' active' : '') + '" data-fsort="' + s.k + '">' +
-        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + s.label + '</button>';
+        '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' + (st.scene === 'brew' && s.k === 'sat' ? '饱腹度' : s.label) + '</button>';
     }
     el.srFootSortBody.innerHTML = h;
   }

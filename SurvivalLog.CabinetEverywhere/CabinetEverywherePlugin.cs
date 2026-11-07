@@ -11,8 +11,9 @@ using Object = UnityEngine.Object;
 
 namespace SurvivalLog.CabinetEverywhere;
 
-/// <summary>场景视图：Food=食物标签柜+全部冰箱；Material=材料/工具标签柜（不含冰箱与未打标签柜，2026-10-19 定版）；Browser=下拉自由筛选。</summary>
-public enum ScenarioView { Food, Material, Browser }
+/// <summary>场景视图：Food=食物标签柜+全部冰箱；Material=材料/工具标签柜（不含冰箱与未打标签柜，2026-10-19 定版）；Browser=下拉自由筛选；
+/// Fuel=带「燃料」官方标签(tagId 1013，Config_FurnitureTag 实证)的柜子——2026-11-07 燃油发电机 bagtabs 页专属（spec 2026-11-06-fuelgen-cabinet-tabs）。</summary>
+public enum ScenarioView { Food, Material, Browser, Fuel }
 
 /// <summary>
 /// 储藏柜直达 + 标签筛选/场景视图（原独立 mod CabinetTagFilter 已于 2026-10-17 并回）。
@@ -69,7 +70,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
     internal static ConfigEntry<ScenarioView> ViewCooking, ViewRatCage, ViewBrewPanel, ViewDyePanel, ViewCompressor,
-                                              ViewToolTable, ViewShredder, ViewGreenhouseBuild, ViewTrade, ViewDroneHub;
+                                              ViewToolTable, ViewShredder, ViewGreenhouseBuild, ViewTrade, ViewDroneHub, ViewFuelGenerator;
+    // 燃油发电机柜子页签总开关（2026-11-07 二十一批后新增页：bagtabs 装配，spec fuelgen-cabinet-tabs）
+    internal static ConfigEntry<bool> EnableFuelGen;
 
     internal static volatile bool Rerun = true;
 
@@ -133,6 +136,11 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewGreenhouseBuild = Config.Bind("Scenario", "View_GreenhouseBuild", ScenarioView.Material, "温室工程台" + viewDesc);
         ViewTrade           = Config.Bind("Scenario", "View_Trade",           ScenarioView.Browser, "无人机交易" + viewDesc);
         ViewDroneHub        = Config.Bind("Scenario", "View_DroneHub",        ScenarioView.Browser, "调度机队（无人机站）" + viewDesc);
+        // Fuel 视图（燃料标签 1013 柜）当前仅本页消费；Browser/其他视图照常可指派（spec §5.4）
+        ViewFuelGenerator   = Config.Bind("Scenario", "View_FuelGenerator",   ScenarioView.Fuel,
+            "燃油发电机（Fuel=只显示带「燃料」标签的柜子；spec 2026-11-06-fuelgen-cabinet-tabs）" + viewDesc);
+        EnableFuelGen = Config.Bind("Access", "EnableFuelGen", true,
+            "燃油发电机界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送发电机；false=界面还原官方。");
 
         System.EventHandler reload = (object s, System.EventArgs e) => { Rerun = true; };
         IncludeFurnitureIds.SettingChanged += reload;
@@ -153,6 +161,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewGreenhouseBuild.SettingChanged += reload;
         ViewTrade.SettingChanged += reload;
         ViewDroneHub.SettingChanged += reload;
+        ViewFuelGenerator.SettingChanged += reload;
+        EnableFuelGen.SettingChanged += reload;
         DumpFurniture.SettingChanged += (object s, System.EventArgs e) => { CabinetCatalog.DumpRequested = true; };
 
         // General.Enabled=false：不启 Ticker/不装合并补丁，零日志零改写

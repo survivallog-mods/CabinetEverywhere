@@ -7,6 +7,54 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十三批（2026-11-07，酿酒桶界面 酒品品质角标 + 饱腹排序收敛）
+
+**新功能**：酿酒桶（BrewPanel）页排序菜单收敛两项（`⊞默认 / 🍗饱腹度`）；选饱腹度后物品格右上角
+显示**双层角标 = 饱腹数值 + 品质色角标**（劣绿/普黄/烈粉——游戏 BrewPanel 品质条三档同源色），
+排序规则改**品质主键：烈→普→劣→不可酿垫底，同品质内饱腹高在前**。作者底线：只动该页排序按钮/
+排序规则/角标显示三处，其余 11 界面观感与行为零变化（spec 隔离论证 + harness 对照断言）。
+
+- 品质机制（游戏侧实证，spec §2）：发酵品质 = 原料「心态密度」(Σ心态/Σ饱腹) 对两条全局阈值
+  三段（<P1 劣 / P1~P2 普 / ≥P2 烈）；单件口径 = s2/s1（RailSortMath 实例+天赋口径，与饱腹
+  角标同源）；桶内聚合公式（Σ假设）留实机一步验证（结论只进 spec，不影响代码）。
+- 契约：icfg 页专属尾列 canBrew（仅 BrewPanel 页推送，fuelCols 同纪律：**禁止**从 Category==1
+  推导——官方判定是物品级 Config_Item.CanBrew；独立缓存 _icfgBrewCache 分键防串形）+
+  ctx 直推 brewP1/brewP2（GameKey.GlobalSetting_Brew_TierMoodDensityP1/P2，try/catch 缺省
+  0/0.5=官方界面兜底；P2≤P1 时 JS 同守卫回兜底）。
+- JS：normIcfg.bw（按行宽判形恰 16 列——与 fuel 尾列 17 列页无关互斥）/ dispRows 行补 cfgId /
+  brewTierOf(row)→-1|0|1|2（排序比较器与角标共用）/ makeSortMenu keys 函数化（仅页脚实例
+  传函数，工具行 SORTS/NB 数组路径零改动）/ dispApply 比较器 brew+sat 分支（其他页逐字节
+  不变）/ 角标绘制行追加 .sr-tier span（与数值同一条下标直配链，不另起 join）。
+- harness：harness-brew-tier.cjs **27/27**（§1 契约形状+三档+阈值兜底 / §2 菜单两项+NB·Cooking
+  7 项对照 / §3 品质主键序+Cooking 纯饱腹序对照 / §4 双层角标逐件色值+重推重建+默认序清层+
+  Cooking 无品质对照）；夹具 railui-root-harness 增 __HZ_BREWP1__/P2__ 旋钮+brew 页 icfg 尾列
+  分支（14 列冻结基座补 [uses 占位,canBrew]=C# 真 16 列形状）。
+- 已知（非本批引入，基线 4b8af09 同病对账）：harness-regression 16 PASS+MaterialRack 等待超时、
+  harness-mount 26 FAIL（720px 旧宽度期望族对现行 max-content 壳的遗留失配；switch-cabinet
+  27/27 绿反证装配链健康）。
+
+### 待发版·二十二批（2026-11-07，燃油发电机界面柜子页签——bagtabs 装配模式）
+
+**新功能**：燃油发电机界面左侧背包面板页签化（背包 + 带「燃料」官方标签[1013]的柜子），点柜中燃料
+**整组直送**发电机燃料队列（与官方从背包加油完全同口径：非燃料→「只能添加燃料」、满员→「燃油槽已满」）。
+作者底线：右侧发电机面板零改动；官方左面板 DOM 只隐藏不 detach；家中无燃料标签柜时界面与原版一致。
+
+- 装配=bagtabs 新模式（SCENES.host=null 不替换宿主/无侧栏壳）：#srfgTabs（背包 pinned+‹› 滚动+
+  A/D 双绑去重）/ #srfgBody（mod 柜格复用官方格类，12 列定宽、格区限高滚动）/ #srfgWarn（官方
+  warning-box 同款观感）/ #srfgFoot（仅一键整理，所有页签都有；无一键入库）。面板宽锁死官方
+  12 列格宽、高=右面板自然高。
+- 数据/命令全复用 CERail：FuelGenerator 进场景表（icfg 本页尾列 [burnable,burnValue]，其他 12 页
+  契约形状不变）；新命令 feed{owner,item} 两跳=柜→背包→官方 FUEL_ADD（含叠并重解析：背包已有
+  同 cfg 叠时按 ItemConfigId 重找目标叠）；拒绝四路 notfuel/full/bagfull/noitem 经 ctx.feedFail
+  一次性回执。v1 只走两跳（S1 直达=官方动作认柜中物品，待实证后独立优化）。
+- cfg：[Access] EnableFuelGen（默认 true）+ [Scenario] View_FuelGenerator（默认 Fuel）。
+- 夹具/harness：fixtures/FuelGenerator.html（官方页静态保真）+ railui-root-harness 13 iframe +
+  harness-fuelgen.cjs 28 断言（含无燃料柜=原版、宽锁、键不泄漏、feedFail 四路）。
+- 教训：bagtabs 观察器纪律三条（签名守卫/拆除重建门/同值守卫）——innerHTML 串比较与 active 类
+  修正永不相等=自激环 59 万写/秒渲染器暴毙（harness 挂死根因，双根修）。
+- 已知（非本批引入，HEAD 基线即红）：harness-regression/harness-tidy 两套 TimeoutError（本批前后
+  失败集合 diff=零差异）；native-width 8/8、width-floor 13/13、fuelgen 28/28 绿。
+
 ### 待发版·二十一批（2026-11-06，材料架页签机器页黑块根修——官方 rack 行视图宿主入壳）
 
 **作者实报：材料架在工作台/无人机交易/调度机队（实测连粉碎机）页签选中后内容区整片黑，

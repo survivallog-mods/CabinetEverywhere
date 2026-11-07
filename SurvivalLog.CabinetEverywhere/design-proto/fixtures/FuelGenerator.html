@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>燃油发电机</title>
+<style>
+/* 官方 FuelGenerator.html 样式（gamekb 2026-11-05 快照原样内联；bagtabs 夹具=静态结构保真） */
+:root {
+    --bg-dark: rgba(35, 28, 24, 0.85);
+    --panel-bg: rgba(48, 40, 36, 0.95);
+    --warm-gold: #fbb034; --warm-orange: #ff9500; --warm-orange-dark: #e67e22;
+    --army-green: rgba(139, 153, 59, 0.9); --army-green-light: #a4b546;
+    --danger-red: #e05555; --text-main: #fcfcfc; --text-dark: #c0c0c0;
+    --border-light: rgba(255, 255, 255, 0.18); --border-color: rgba(255, 255, 255, 0.12);
+    --grid-bg: rgba(20, 15, 12, 0.85); --slot-border: rgba(255, 255, 255, 0.1);
+    --slot-size: 40px; --slot-gap: 6px; --grid-padding: 10px;
+}
+* { box-sizing: border-box; }
+body { background-color: transparent; color: var(--text-main); font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+    margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;
+    user-select: none; overflow: hidden; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.generator-system { display: flex; gap: 20px; position: relative;
+    background-image: radial-gradient(circle at center bottom, rgba(251, 176, 52, 0.25) 0%, transparent 65%), linear-gradient(135deg, rgba(65, 52, 45, 0.96) 0%, rgba(35, 28, 24, 0.98) 100%);
+    padding: 16px; border-radius: 12px; border: 1px solid var(--border-light);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.15); min-height: 480px; }
+.panel { background: linear-gradient(180deg, rgba(55, 48, 44, 0.85) 0%, rgba(35, 28, 25, 0.95) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 15px; display: flex; flex-direction: column;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.4), 0 4px 15px rgba(0,0,0,0.2); }
+.panel-title { font-size: 16px; font-weight: bold; color: var(--warm-gold); margin-bottom: 12px; text-transform: uppercase;
+    letter-spacing: 1px; display: flex; align-items: center; flex-shrink: 0; text-shadow: 0 0 10px rgba(251, 176, 52, 0.4); }
+.panel-title::before { content: ''; display: inline-block; width: 4px; height: 16px; background-color: var(--warm-gold);
+    margin-right: 8px; border-radius: 2px; box-shadow: 0 0 8px rgba(251, 176, 52, 0.8); }
+.panel-title .sub { color: #fff; margin-left: 6px; font-size: 14px; text-transform: none; }
+.grid-container { background-color: var(--grid-bg); padding: var(--grid-padding); border-radius: 8px; position: relative;
+    display: grid; gap: var(--slot-gap); border: 1px solid var(--border-color);
+    box-shadow: inset 0 5px 20px rgba(0,0,0,0.8); width: fit-content; }
+.slot { width: var(--slot-size); height: var(--slot-size); background-color: rgba(12, 9, 8, 0.8);
+    border: 1px solid var(--slot-border); border-radius: 4px; box-sizing: border-box; pointer-events: none;
+    transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); position: relative; }
+.item { position: absolute; z-index: 100; cursor: grab; display: flex; justify-content: center; align-items: center; font-size: 18px;
+    background: linear-gradient(135deg, rgba(70,60,55,0.95), rgba(45,38,34,0.95)); border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px; transition: filter 0.1s, transform 0.1s; box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2); }
+.item:hover { filter: brightness(1.25); z-index: 150; border-color: var(--warm-gold); box-shadow: 0 0 15px rgba(251, 176, 52, 0.5); transform: scale(1.05); }
+.item.is-fuel::before { content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.6c0 5.6-2.4 6.9-4.2 9C6 12.9 4.8 14.9 4.8 17.1c0 3.5 3.2 5.9 7.2 5.9s7.2-2.4 7.2-5.9c0-2.4-1.3-4.3-2.9-6.3-.6 2-1.8 2.8-2.8 2.2-1.2-.7-1.3-4.5-1.5-11.4z' fill='white'/></svg>"),
+                      linear-gradient(135deg, var(--warm-orange), var(--danger-red));
+    background-size: 9px 9px, 100% 100%; background-position: center, center; background-repeat: no-repeat, no-repeat;
+    border-radius: 3px; pointer-events: none; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4); }
+.item-count { position: absolute; bottom: 1px; right: 3px; font-size: 12px; font-weight: bold; color: #fff;
+    text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 6; line-height: 1; letter-spacing: 0.5px; }
+.info-bar { background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03)); border: 1px solid var(--border-color);
+    border-left: 4px solid var(--warm-gold); padding: 8px 10px; font-size: 13px; margin-bottom: 12px; border-radius: 4px;
+    font-weight: bold; box-shadow: inset 0 2px 5px rgba(0,0,0,0.3); }
+.gen-panel { width: 340px; }
+.gen-status { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 12px 14px;
+    margin-bottom: 14px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.gen-run-line { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; margin-bottom: 12px; }
+.gen-run-line .dot { width: 8px; height: 8px; border-radius: 50%; }
+.gen-run-line.off .dot { background: #555; } .gen-run-line.off { color: #999; }
+.gen-metrics { display: flex; gap: 8px; margin-bottom: 0; }
+.gen-metric { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 7px 8px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; }
+.gen-metric .k { font-size: 10px; color: #999; }
+.gen-metric .v { font-family: Consolas, "Cascadia Mono", monospace; font-size: 16px; font-weight: bold; line-height: 1; }
+.gen-metric .v .u { font-size: 10px; color: #777; font-weight: normal; margin-left: 1px; }
+.gen-metric .v.gen { color: #5a9e6f; } .gen-metric .v.fuel { color: #ff7676; }
+.gen-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;
+    letter-spacing: 1px; font-family: inherit; box-shadow: 0 4px 0 rgba(0,0,0,0.3); }
+.gen-btn.start { background: linear-gradient(180deg, var(--warm-gold), var(--warm-orange-dark)); color: #3a2a10; }
+.fuel-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.fuel-summary .avail { font-size: 12px; color: var(--text-dark); white-space: nowrap; }
+.fuel-summary .avail b { color: var(--text-main); }
+.fuel-section { margin-top: 4px; }
+.fuel-section-title { font-size: 12px; color: var(--text-dark); font-weight: bold; margin-bottom: 8px; }
+.fuel-queue { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 60px; background-color: rgba(0,0,0,0.4);
+    border: 1px dashed rgba(255,255,255,0.2); padding: 10px; border-radius: 6px; }
+.fuel-slot { width: 50px; height: 50px; background-color: rgba(20, 15, 12, 0.8); border: 1px solid var(--slot-border); border-radius: 4px;
+    display: flex; justify-content: center; align-items: center; font-size: 11px; color: #888; position: relative; overflow: hidden; flex-shrink: 0; }
+.fuel-slot.queued-item { border-color: rgba(251, 176, 52, 0.5); color: #fce1b6; cursor: pointer;
+    background: linear-gradient(to bottom, rgba(70,55,40,0.9), rgba(45,35,25,0.9)); }
+.fuel-slot-text { position: relative; z-index: 2; text-align: center; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; width: 100%; height: 100%; pointer-events: none; }
+.fuel-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+.fuel-name { font-size: 10px; line-height: 1.2; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 90%; text-shadow: 0 1px 2px #000; }
+.fuel-pct { font-size: 12px; font-weight: bold; line-height: 1; text-shadow: 0 1px 2px #000; margin-top: 2px; }
+.drag-hint { text-align: center; font-size: 11px; color: var(--text-dark); margin-top: 10px; opacity: 0.7; }
+.hint-shift { width: 0; min-width: 100%; font-size: 11px; line-height: 1.5; margin-top: 6px; color: var(--warm-gold); opacity: 0.92; }
+.warning-box { color: var(--danger-red); font-size: 13px; min-height: 18px; font-weight: bold;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8); text-align: center; margin: 8px 0; }
+.auto-box { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 9px 12px;
+    margin-bottom: 10px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.auto-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.auto-title { font-size: 12px; font-weight: bold; color: var(--text-dark); }
+.auto-box.on .auto-title { color: var(--warm-gold); }
+.switch { width: 40px; height: 21px; border-radius: 11px; background: rgba(251,176,52,0.28); border: 1px solid rgba(251,176,52,0.7);
+    position: relative; cursor: pointer; flex-shrink: 0; }
+.switch::after { content: ''; position: absolute; top: 2px; left: 22px; width: 15px; height: 15px; border-radius: 50%;
+    background: var(--warm-gold); box-shadow: 0 0 8px rgba(251,176,52,0.8); }
+.auto-body { margin-top: 9px; }
+.auto-line { font-size: 11px; color: var(--text-dark); margin-bottom: 7px; }
+.auto-line .thr { font-family: Consolas, "Cascadia Mono", monospace; font-size: 15px; font-weight: bold; color: var(--warm-gold); margin: 0 2px; }
+.auto-sub { margin-top: 7px; font-size: 10px; line-height: 1.45; color: #8e857d; }
+</style>
+</head>
+<body>
+
+<div class="generator-system" id="generatorSystem">
+
+    <div class="panel">
+        <div class="panel-title" id="bagPanelTitle">角色背包</div>
+        <div class="info-bar" id="bagInfoBar">空间：0 / 0</div>
+        <div class="grid-container" id="backpackGrid"></div>
+        <div class="hint-shift" id="shiftHint">右键 / Shift+点击 快速转移 · 点击查看详情</div>
+    </div>
+
+    <div class="panel gen-panel">
+        <div class="panel-title"><span>燃油发电机</span><span class="sub" id="generatorNameDisplay">· 中型</span></div>
+        <div class="gen-status">
+            <div class="gen-run-line off"><span class="dot"></span><span>已关机</span></div>
+            <div class="gen-metrics">
+                <div class="gen-metric"><span class="k">发电量</span><span class="v gen">+116<span class="u">/10min</span></span></div>
+                <div class="gen-metric"><span class="k">耗料</span><span class="v fuel">-600<span class="u">/10min</span></span></div>
+                <div class="gen-metric"><span class="k">总热值</span><span class="v" id="totalBurnValue">0</span></div>
+            </div>
+        </div>
+        <div class="fuel-summary"><span class="avail">可用 <b id="availText">无燃料</b></span></div>
+        <div class="fuel-section">
+            <div class="fuel-section-title">燃料槽（拖入可燃物 / 点击退回）</div>
+            <div class="fuel-queue" id="fuelQueueZone"></div>
+            <div class="warning-box" id="warningBox"></div>
+        </div>
+        <div class="auto-box on">
+            <div class="auto-head"><div class="auto-title">自动开启</div><div class="switch"></div></div>
+            <div class="auto-body">
+                <div class="auto-line">储电低于 <span class="thr">30%</span> 时自动开机</div>
+                <div class="auto-sub">蓄电池充满后自动关机，省油。</div>
+            </div>
+        </div>
+        <button class="gen-btn start">开启发电机</button>
+    </div>
+
+</div>
+
+<script>
+/* 夹具最小官方行为：① __PAGE_READY__ 上报（sourcePageId='FuelGenerator'，root harness nudge 门）；
+   ② WebUI_FuelGenerator_BagMsg 渲染（官方 UpdateBagItems/UpdateFuelItems 的静态保真——
+   bagItems→#backpackGrid（.slot 底格+.item 绝对定位+.is-fuel 火苗角标）、fuelItems→
+   #fuelQueueZone（.fuel-slot.queued-item））。bagtabs 装配只读这些 DOM，不改本脚本行为。 */
+(function () {
+  var LAST = { bagItems: [], fuelItems: [], bagCols: 12, bagRows: 6, fuelSlotCount: 8, bagOwnerId: 0 };
+  function renderBag(d) {
+    var g = document.getElementById('backpackGrid');
+    if (!g) return;
+    g.innerHTML = '';
+    g.style.gridTemplateColumns = 'repeat(' + d.bagCols + ', var(--slot-size))';
+    for (var i = 0; i < d.bagCols * d.bagRows; i++) {
+      var s = document.createElement('div'); s.className = 'slot'; g.appendChild(s);
+    }
+    (d.bagItems || []).forEach(function (it) {
+      var el = document.createElement('div');
+      el.className = 'item' + (it.burnable ? ' is-fuel' : '');
+      el.id = 'bi' + it.itemId;
+      el.style.left = (10 + it.x * 46) + 'px'; el.style.top = (10 + it.y * 46) + 'px';
+      el.style.width = (it.w * 40 + (it.w - 1) * 6) + 'px'; el.style.height = (it.h * 40 + (it.h - 1) * 6) + 'px';
+      el.title = it.name || '';
+      el.innerHTML = '<span style="pointer-events:none">' + (it.emoji || '') + '</span>' +
+        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : '');
+      g.appendChild(el);
+    });
+    document.getElementById('bagInfoBar').textContent = '空间：' + (d.bagItems || []).length + ' / ' + (d.bagCols * d.bagRows);
+  }
+  function renderFuel(d) {
+    var z = document.getElementById('fuelQueueZone');
+    if (!z) return;
+    z.innerHTML = '';
+    for (var i = 0; i < d.fuelSlotCount; i++) {
+      var s = document.createElement('div');
+      var q = (d.fuelItems || [])[i];
+      if (q) {
+        s.className = 'fuel-slot queued-item';
+        s.innerHTML = '<div class="fuel-slot-text"><span style="font-size:18px">' + (q.emoji || '') +
+          '</span><span class="fuel-name">' + (q.name || '') + '</span><span class="fuel-pct">' + (q.pct || '') + '</span></div>';
+      } else { s.className = 'fuel-slot'; s.textContent = '空'; }
+      z.appendChild(s);
+    }
+    var first = (d.fuelItems || [])[0];
+    document.getElementById('availText').textContent = first ? (first.name || '') : '无燃料';
+  }
+  function apply(d) {
+    LAST.bagCols = d.bagCols || LAST.bagCols; LAST.bagRows = d.bagRows || LAST.bagRows;
+    LAST.fuelSlotCount = d.fuelSlotCount || LAST.fuelSlotCount;
+    if (d.bagItems) LAST.bagItems = d.bagItems;
+    if (d.fuelItems) LAST.fuelItems = d.fuelItems;
+    if (d.bagOwnerId) LAST.bagOwnerId = d.bagOwnerId;
+    renderBag(LAST); renderFuel(LAST);
+  }
+  window.addEventListener('message', function (ev) {
+    var m = ev.data;
+    if (!m || m.type !== 'WebUI_FuelGenerator_BagMsg' || !m.data) return;
+    apply(m.data);
+  });
+  try { parent.postMessage({ type: '__PAGE_READY__', sourcePageId: 'FuelGenerator' }, '*'); } catch (e) { }
+  window.__FG_LAST__ = function () { return LAST; };
+})();
+</script>
+</body>
+</html>
