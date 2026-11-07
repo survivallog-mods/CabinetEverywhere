@@ -128,6 +128,73 @@ function check(name, ok, detail) {
   check('S3-official-restore', back.length === 6 && JSON.stringify(pos.map((p) => p.id).sort()) === JSON.stringify([901, 902, 903, 904, 905, 906]) &&
     pos.find((p) => p.id === 901).y > 0, JSON.stringify(pos.map((p) => ({ id: p.id, x: p.x, y: p.y }))));
 
+  /* ---- §2 菜单（Task 4）：DyePanel=默认+全部颜色（swatch 色块）；dyePal 缺席=仅默认；长板滚动；钮标签动态 ---- */
+  const menuItemsD = async () => frameEl('DyePanel').evaluate(() => {
+    document.getElementById('srFoodSort').click();
+    return [...document.querySelectorAll('#srFootSortBody button')].map((b) => b.textContent.trim());
+  });
+  const swatches = () => frameEl('DyePanel').evaluate(() =>
+    [...document.querySelectorAll('#srFootSortBody .sr-fswatch')].map((s) => getComputedStyle(s).backgroundColor));
+  let mm = await menuItemsD();
+  check('S2-menu-default-3colors', mm.length === 4 && mm[0] === '⊞默认' && mm[1] === '红' && mm[2] === '蓝' && mm[3] === '黄', JSON.stringify(mm));
+  let sw = await swatches();
+  check('S2-swatch-3-hex', sw.length === 3 && sw[0] === 'rgb(224, 85, 85)' && sw[1] === 'rgb(111, 199, 201)', JSON.stringify(sw));
+  const btnLblD = () => frameEl('DyePanel').evaluate(() => document.getElementById('srFoodSortLbl').textContent);
+  await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
+  check('S2-label-pig', (await btnLblD()) === '红', await btnLblD());
+  await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const bo = document.querySelector('[data-fsort="official"]'); if (bo) bo.click(); });
+  check('S2-label-back', (await btnLblD()) === '排序', await btnLblD());
+  /* dyePal 缺席（C# 配置未就绪窗口）：菜单仅「默认」，钮在、零报错 */
+  await page.evaluate(() => { window.__HZ_DYEPAL__ = null; });
+  await pushCtx('DyePanel');
+  mm = await menuItemsD();
+  check('S2-menu-empty-pal', mm.length === 1 && mm[0] === '⊞默认', JSON.stringify(mm));
+  const btnVisible = await frameEl('DyePanel').evaluate(() => { const b = document.getElementById('srFoodSort'); return !!b && !b.hidden; });
+  check('S2-menu-empty-btn-alive', btnVisible === true, 'btn=' + btnVisible);
+  /* 长板（20 色）：弹窗限高 + body overflow-y:auto → 可滚（实测 max-height 320px 生效） */
+  await page.evaluate(() => {
+    const pal = []; for (let i = 1; i <= 20; i++) pal.push([100 + i, '色' + i, '#e05555', 1, i]);
+    window.__HZ_DYEPAL__ = pal;
+  });
+  await pushCtx('DyePanel');
+  await page.waitForTimeout(400); /* pushCtx 后 rail 重建瞬间弹层短暂隐藏态——等装配稳定再开弹窗量滚动 */
+  const scroll = await frameEl('DyePanel').evaluate(() => {
+    const pop = document.getElementById('srFootSortPop');
+    pop.hidden = false; /* 显式置开（前置用例的 toggle 已把弹窗留在关态——click 会再关回去量到 0） */
+    const body = document.getElementById('srFootSortBody');
+    return { sh: body.scrollHeight, ch: body.clientHeight, n: body.querySelectorAll('button').length };
+  });
+  check('S2-menu-scroll', scroll.n === 21 && scroll.sh > scroll.ch, JSON.stringify(scroll));
+  await page.evaluate(() => { delete window.__HZ_DYEPAL__; });
+  await pushCtx('DyePanel');
+
+  /* ---- §4 角标（Task 4）：所排色点数右上角（该色 hex）；无该色素=不出角标（suppress，非 '-'、非置灰）；official 清层 ---- */
+  const badgesD = async () => frameEl('DyePanel').evaluate(() => {
+    const layer = document.getElementById('srBadgeLayer');
+    const out = { total: 0, byItem: {}, dims: 0 };
+    if (!layer) return out;
+    const its = [...document.querySelectorAll('.sr-gridhost .item')];
+    [...layer.querySelectorAll('i')].forEach((bi) => {
+      const bl = parseFloat(bi.style.left), bt = parseFloat(bi.style.top);
+      const m = its.find((it) => Math.abs((it.offsetLeft + it.offsetWidth) - bl) < 3 && Math.abs(it.offsetTop - bt) < 3);
+      if (m) out.byItem[m.id] = { text: bi.textContent, color: bi.style.color };
+    });
+    out.total = layer.querySelectorAll('i').length;
+    out.dims = layer.querySelectorAll('.sr-brewdim').length;
+    return out;
+  });
+  await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
+  await page.waitForTimeout(400);
+  let bd = await badgesD();
+  check('S4-badge-count3', bd.total === 3, 'total=' + bd.total);
+  check('S4-badge-905-pts5-hex', bd.byItem['905'] && bd.byItem['905'].text === '5' && bd.byItem['905'].color === 'rgb(224, 85, 85)', JSON.stringify(bd.byItem['905']));
+  check('S4-badge-901-pts2', bd.byItem['901'] && bd.byItem['901'].text === '2', JSON.stringify(bd.byItem['901']));
+  check('S4-badge-suppress-903', bd.byItem['903'] === undefined && bd.dims === 0, JSON.stringify({ b903: bd.byItem['903'], dims: bd.dims }));
+  await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const bo = document.querySelector('[data-fsort="official"]'); if (bo) bo.click(); });
+  await page.waitForTimeout(300);
+  bd = await badgesD();
+  check('S4-badge-official-clear', bd.total === 0, 'total=' + bd.total);
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));

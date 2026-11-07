@@ -226,6 +226,8 @@
 #srp .sr-fsopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
 #srp .sr-fsopt.active{color:#f0b03c}
 #srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
+/* dye-pigment-sort：色项 swatch 色块（f-ico 同位同寸，背景=该色 hex 内联；描边+投影保深浅底可辨） */
+#srp .sr-fsopt .sr-fswatch{border-radius:50%;border:1px solid rgba(255,255,255,.38);box-shadow:0 0 4px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.25)}
 /* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale）。
    v1.8.10 十三批：z-index 5→50——官方 webui-bag/Vue 格 .item 自带 z-index:10，5 被物品格
    整层盖住=「角标画了看不见」（作者实机实锤：DOM 46 个角标全在、视觉零显示；热注入 50

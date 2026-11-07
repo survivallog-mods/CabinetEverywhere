@@ -135,6 +135,21 @@
     { k: 'shelf', label: '保质期', ico: '🕐' }
   ];
   var FBCOLOR = { sat: '#8fc06e', mind: '#b08fd6', en: '#6fc7c9', hp: '#e07ab0', value: '#f0b03c', shelf: '#f0b03c', tvalue: '#f0b03c' };
+  /* dye-pigment-sort：颜色板（ctx.dyePal 页条件字段，C# tradePrefs 先例同源；缺席=配置未就绪
+     窗口→空板：菜单仅「默认」，功能不崩）。全量颜色含未解锁——未解锁色可排序可看点数，仅
+     「提取」不可（游戏规则），弹窗不特殊置灰（spec §5.4）。 */
+  function dyePal() { return (store.ctx && store.ctx.dyePal) || []; }
+  function dyePalItems() {
+    var pal = dyePal(), out = [];
+    for (var i = 0; i < pal.length; i++) if (pal[i] && pal[i][0] != null)
+      out.push({ k: 'pig:' + pal[i][0], label: String(pal[i][1] != null ? pal[i][1] : pal[i][0]), ico: '', color: pal[i][2] || '#f0b03c' });
+    return out;
+  }
+  function dyePalColor(key) { /* 'pig:<id>' → 该色 hex（角标 spec 色；查无=null 走金兜底） */
+    var id = parseInt(String(key).slice(4), 10), pal = dyePal();
+    for (var i = 0; i < pal.length; i++) if (pal[i] && pal[i][0] === id) return pal[i][2] || null;
+    return null;
+  }
   /* v14 酿酒桶品质（brew spec §2/§5.2）：发酵品质=桶内原料「心态密度」(Σ心态/Σ饱腹) 对两条
      全局阈值三段——<P1 劣质 / P1~P2 普通 / ≥P2 烈性（游戏 BrewPanel.html 品质条同源）。
      阈值=ctx.brewP1/brewP2（C# GameKey 直推；P2≤P1/缺失兜底 0/0.5=官方界面同守卫）；
@@ -1068,7 +1083,14 @@
      srGridHost 内，pointer-events:none，只读官方 .item 几何，零 addEventListener）。 */
   function isPlainScene() { return !!PLAIN_KEYS[st.scene]; }
   function isSortScene() { return !!SORT_KEYS[st.scene]; } /* v1.8.10：isFoodScene 更名（集合已非纯食品页） */
-  function fsortLabel(k) { for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
+  function fsortLabel(k) {
+    /* dye-pigment-sort：动态键 pig:<id> 查 dyePal 色名（FSORTS 静态表无此键；查无回原键串） */
+    if (String(k).indexOf('pig:') === 0) {
+      var id = parseInt(String(k).slice(4), 10), pal = dyePal();
+      for (var j = 0; j < pal.length; j++) if (pal[j] && pal[j][0] === id) return String(pal[j][1] != null ? pal[j][1] : k);
+      return k;
+    }
+    for (var i = 0; i < FSORTS.length; i++) if (FSORTS[i].k === k) return FSORTS[i].label; return k; }
   /* renderFootSortPop 已收敛 makeSortMenu 实例（menuFoot，bind 创建） */
   /* ================= 显示层排序 v2（v1.8.5 缺陷单#1：ProjectCook page.js 机制移植——模型级） =================
      两轮实机教训：数据层 sortBy（改真实 BagPos）=毁玩家布局且官方格不随改写重渲染；DOM 直写
@@ -1513,8 +1535,13 @@
         var h = '', ks = keysOf();
         for (var i = 0; i < ks.length; i++) {
           var s = ks[i], on = s.k === cfg.getKey();
+          /* dye-pigment-sort：色项带 color → 色块 swatch（无文字，f-ico 同位）；其余项 ico 文字照旧 */
+          var icoHtml = '';
+          if (cfg.ico) icoHtml = s.color
+            ? '<span class="f-ico sr-fswatch" aria-hidden="true" style="background:' + s.color + '"></span>'
+            : '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>';
           h += '<button type="button" class="' + cfg.optCls + (on ? ' active' : '') + '" ' + cfg.attr + '="' + s.k + '">' +
-            (cfg.ico ? '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>' : '') + s.label +
+            icoHtml + s.label +
             (on && cfg.tick ? '<span class="srn-tick">✓</span>' : '') + '</button>';
         }
         body.innerHTML = h;
@@ -1558,7 +1585,11 @@
      态常显价值=作者观感「残留的默认按价值排序还在生效」。收口=Trade 与其余六页完全
      统一：官方序无角标，选维才显示该维数值。 */
   function badgeSpec() {
-    if (isSortScene() && st.fsort && st.fsort !== 'official') return { k: st.fsort, color: FBCOLOR[st.fsort] || '#f0b03c' };
+    if (isSortScene() && st.fsort && st.fsort !== 'official') {
+      var c = FBCOLOR[st.fsort];
+      if (c == null && String(st.fsort).indexOf('pig:') === 0) c = dyePalColor(st.fsort); /* dye-pigment-sort：角标色=该色 hex */
+      return { k: st.fsort, color: c || '#f0b03c' };
+    }
     return null;
   }
   function badgeTextFor(it, k) { /* v1.8.5：唯一入参=dispRows 行（页面模型/契约 join 的逐叠数值）。
@@ -1568,6 +1599,8 @@
      （RailSortMath「v!=0 才落值」），v===0 分支仅为防御旧契约/mock。 */
     if (k === 'shelf') return daysText(it ? it.days : null);
     if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '-';
+    /* dye-pigment-sort：所排色点数=裸数字（不带 +/-，0/无=理论上已被角标层 suppress，此处防御） */
+    if (String(k).indexOf('pig:') === 0) { var dpt = it ? pigPointsOf(it, parseInt(String(k).slice(4), 10)) : 0; return dpt > 0 ? String(dpt) : '-'; }
     var v = it ? (k === 'sat' ? it.s1 : k === 'mind' ? it.s2 : k === 'en' ? it.s3 : k === 'hp' ? it.s4 : null) : null;
     if (v == null || v === 0) return '-';
     return v > 0 ? '+' + v : String(v);
@@ -1612,11 +1645,14 @@
         if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
         var h = '';
         var brewMode = (spec.k === 'sat' && st.scene === 'BrewPanel'); /* v14.1：brew 饱腹序专属绘制径 */
+        var dyeMode = String(spec.k).indexOf('pig:') === 0; /* dye-pigment-sort：suppress 口径——无该色素不画（非 '-' 非置灰，spec §5.3） */
+        var dyeId = dyeMode ? parseInt(String(spec.k).slice(4), 10) : 0;
         for (var k = 0; k < its.length; k++) {
           var elx = its[k];
           if (cfg.skipHide && elx.getAttribute('data-srhide')) continue; /* 被筛掉的格不标（rail 筛选态） */
           var it = cellRows.get(elx);
           if (!it && !brewMode) continue; /* brew 模式：无契约行的格也要置灰（v14.1），其余模式照旧跳过 */
+          if (dyeMode && pigPointsOf(it, dyeId) <= 0) continue; /* 无该色素/非植物：整枚 <i> 不画（suppress） */
           if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
           var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
           var x = p[0] + elx.offsetWidth + (cfg.dx || 0), y = p[1] + (cfg.dy || 0);
@@ -2033,6 +2069,8 @@
          sat 项 label 显示「饱腹度」）；其他可排序页 FSORTS 7 项原样 */
       keys: function () {
         if (st.scene === 'BrewPanel') return [FSORTS[0], { k: 'sat', label: '饱腹度', ico: '🍗' }];
+        /* dye-pigment-sort：染料桶=「默认」+全部颜色（dyePal 动态项；空板=仅默认——配置未就绪容错） */
+        if (st.scene === 'DyePanel') return [FSORTS[0]].concat(dyePalItems());
         return FSORTS;
       },
       optCls: 'sr-fsopt', attr: 'data-fsort', defLbl: '排序', ico: true, onCls: 'on',
