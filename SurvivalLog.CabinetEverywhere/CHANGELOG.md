@@ -28,6 +28,12 @@
   （backgroundImage 非 none——heater 页即证明注入规则生效）、零件无类）→ fuelgen **53/53**、
   heater **55/55**；mount 166/179（13 size 预存不变）、native-width 8/8、switch-cabinet 27/27
   复验绿。
+- **同日实机补（作者实报「发电机有角标、暖炉还没有」）——C# icfg 燃料尾列漏扩页**：
+  `BuildJson` 的 `fuelCols` 门只认 FuelGenerator（二十八批移植时 C# 六处查表扩页漏了这第七处
+  ——暖炉页 ICFG 无 burnable/burnValue 尾列 ⇒ 角标无数据源全灭，右键直送预检 `!ic.burn` 也会
+  误拒全部物品）。**mock 保真教训**：harness root-harness 的 pushCtx 当时按「应该的行为」双页
+  并枝了燃料尾列，掩掉了 C# 真身的缺口——mock 建模意图、断言照过，实机才见真章。修：
+  `fuelCols = Page=="FuelGenerator" || Page=="Heater"`（页条件分支全量复扫确认无第八处）。
 
 ### 待发版·二十八批（2026-11-07，暖炉界面柜子页签——bagtabs 族第二页同构移植）
 

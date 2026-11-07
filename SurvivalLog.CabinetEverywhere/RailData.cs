@@ -17,7 +17,7 @@ namespace SurvivalLog.CabinetEverywhere;
 ///     bag, ctn:[[ownerId,"名",kind,cap,tagId...]],
 ///     lib:[[tagId,"名",dim,order,"iconKey","color"]],
 ///     icfg:[[cfgId,"名","图标URL",tradeValue,stackLimit,catId,subCatId,"分类名",life,v1..v5,uses]]
-///         （页专属尾列：FuelGenerator +[burnable,burnValue]；BrewPanel +[canBrew]——brew spec §5.1），
+///         （页专属尾列：bagtabs 族两页 FuelGenerator/Heater +[burnable,burnValue]；BrewPanel +[canBrew]——brew spec §5.1），
 ///     items:{ "bag":[[id,cfg,count,timeLeft,x,y,w,h,flags,s1,s2,s3,s4,trade,days]], "&lt;ownerId&gt;":[...] } }
 ///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
 ///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
@@ -516,7 +516,7 @@ internal static class RailData
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);
 
         sb.Append(",\"icfg\":[");
-        bool fuelCols = sc?.Page == "FuelGenerator"; // 尾列仅本页（其他 12 页推送形状不变——spec 约束）
+        bool fuelCols = sc?.Page == "FuelGenerator" || sc?.Page == "Heater"; // 尾列仅 bagtabs 族两页（其他页推送形状不变——spec 约束；暖炉移植批补：角标/右键预检同源消费 ICFG.burn，漏此=暖炉页角标全灭+预检误拒）
         bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
         for (int i = 0; i < icfgOrder.Count; i++)
         {
@@ -887,7 +887,7 @@ internal static class RailData
           .Append(',').Append(F(v1)).Append(',').Append(F(v2)).Append(',').Append(F(v3)).Append(',').Append(F(v4)).Append(',').Append(F(v5))
           .Append(',').Append(uses) /* v1.8.5④：cfgUses（交易使用折旧） */
           .Append(']');
-        /* 燃油发电机页专属尾列（spec §5.3/builder-check Q1 裁定）：burnable(0/1)+burnValue——
+        /* bagtabs 族两页（燃油发电机/暖炉）专属尾列（spec §5.3/builder-check Q1 裁定；暖炉移植批扩页）：burnable(0/1)+burnValue——
            官方火苗角标/加油校验的物品级标志（dump @40395/40396），**禁止**从 Category==13 推导
            （官方判定是物品级 Burnable，分类外的可燃物会误标）。读不到=0（与各行 try/catch 同口径）。 */
         if (fuelCols)
