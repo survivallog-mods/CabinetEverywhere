@@ -100,9 +100,9 @@ function check(name, ok, detail) {
   await showScene('DyePanel');
   /* 页模型同 id 同 cfg（多格 905 w=2）——官方 BagMsg 直投（nudge 同路） */
   await frameEl('DyePanel').evaluate(() => {
-    const mk = (id, x, y, w, cfg) => ({ itemId: id, x: x, y: y, w: w, h: 1, emoji: '🌿', name: '植物' + id, count: 1, quality: 3 });
+    const mk = (id, x, y, w, cfg, canDye) => ({ itemId: id, x: x, y: y, w: w, h: 1, emoji: '🌿', name: '植物' + id, count: 1, quality: 3, canDye: canDye !== false });
     window.postMessage({ type: 'WebUI_Dye_BagMsg', data: { bagOwnerId: 900001, bagCols: 10, bagRows: 6,
-      bagItems: [mk(901, 0, 2, 1, 1), mk(902, 1, 2, 1, 3), mk(903, 2, 2, 1, 5), mk(904, 3, 2, 1, 4), mk(905, 4, 2, 2, 8), mk(906, 5, 2, 1, 7)] } }, '*');
+      bagItems: [mk(901, 0, 2, 1, 1), mk(902, 1, 2, 1, 3, false), mk(903, 2, 2, 1, 5), mk(904, 3, 2, 1, 4), mk(905, 4, 2, 2, 8), mk(906, 5, 2, 1, 7)] } }, '*'); /* 902=cfg3 红2点但 canDye=false（官方拒收）——报障修：不出数+沉底+置灰 */
   });
   await page.waitForTimeout(300);
 
@@ -117,7 +117,7 @@ function check(name, ok, detail) {
   await pigCall('apply("pig:3")');
   await page.waitForTimeout(200);
   pos = await gridPos();
-  check('S3-order-desc-tie-sink', JSON.stringify(pos.map((p) => p.id)) === JSON.stringify([905, 901, 902, 903, 904, 906]), JSON.stringify(pos.map((p) => p.id)));
+  check('S3-order-desc-tie-sink', JSON.stringify(pos.map((p) => p.id)) === JSON.stringify([905, 901, 902, 903, 904, 906]), JSON.stringify(pos.map((p) => p.id))); /* 902 canDye=false 沉底（保持原相对序=903/904 前） */
   check('S3-pack-multicell-nooverlap', pos[0].id === 905 && pos[0].x === 9 && pos[1].id === 901 && pos[1].x >= pos[0].x + 80,
     JSON.stringify(pos.slice(0, 2).map((p) => ({ id: p.id, x: p.x }))));
 
@@ -192,16 +192,22 @@ function check(name, ok, detail) {
       if (m) out.byItem[m.id] = { text: dp.textContent, fill: path ? path.getAttribute('fill') : null, tr: dp.style.transform };
     });
     out.iTotal = layer.querySelectorAll('i').length;
-    out.dims = layer.querySelectorAll('.sr-brewdim').length;
+    out.dims = layer.querySelectorAll('.sr-dyedim').length;
+    out.dimIds = {};
+    [...layer.querySelectorAll('.sr-dyedim')].forEach((d) => {
+      const dl = parseFloat(d.style.left), dt = parseFloat(d.style.top);
+      const m = its.find((it) => Math.abs(it.offsetLeft - dl) < 3 && Math.abs(it.offsetTop - dt) < 3);
+      if (m) out.dimIds[m.id] = 1;
+    });
     return out;
   });
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
   await page.waitForTimeout(400);
   let bd = await badgesD();
-  check('S4-badge-count3', bd.drops === 3, JSON.stringify(bd));
+  check('S4-badge-count2-candye-gate', bd.drops === 2 && bd.byItem['902'] === undefined, JSON.stringify(bd)); /* 902=canDye false 不出数（报障修） */
   check('S4-badge-905-pts5-hex', bd.byItem['905'] && bd.byItem['905'].text === '5' && bd.byItem['905'].fill === '#e05555' && bd.byItem['905'].tr.replace(/\s/g, '').indexOf('translate(-100%,-100%)') >= 0, JSON.stringify(bd.byItem['905']));
   check('S4-badge-901-pts2', bd.byItem['901'] && bd.byItem['901'].text === '2', JSON.stringify(bd.byItem['901']));
-  check('S4-badge-suppress-903', bd.byItem['903'] === undefined && bd.dims === 0, JSON.stringify({ b903: bd.byItem['903'], dims: bd.dims }));
+  check('S4-badge-dim-nonparticipants', bd.dimIds['903'] === 1 && bd.dimIds['902'] === 1 && bd.dimIds['904'] === 1 && bd.dimIds['906'] === 1 && bd.byItem['903'] === undefined, JSON.stringify(bd.dimIds)); /* 非参与者置灰（含 canDye=false 的 902） */
   check('S4-badge-no-topright-i', bd.iTotal === 0, 'iTotal=' + bd.iTotal);
   /* 官方让位守卫：官方自己画过 .dye-pts 的物品（提取当前色场景）——mod 不再画（零重叠） */
   await frameEl('DyePanel').evaluate(() => {
@@ -210,12 +216,12 @@ function check(name, ok, detail) {
   });
   await page.waitForTimeout(500); /* 重绘周期后复核（观察器/重推路都会走到） */
   bd = await badgesD();
-  check('S4-badge-official-yield', bd.drops === 2 && bd.byItem['905'] === undefined, 'drops=' + bd.drops + ' 905=' + JSON.stringify(bd.byItem['905']));
+  check('S4-badge-official-yield', bd.drops === 1 && bd.byItem['905'] === undefined && bd.dimIds['905'] === undefined, 'drops=' + bd.drops + ' 905=' + JSON.stringify(bd.byItem['905'])); /* 官方已画让位且参与者不置灰 */
   await frameEl('DyePanel').evaluate(() => { const d = document.getElementById('905'); const own = d && d.querySelector('.dye-pts'); if (own) own.remove(); });
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const bo = document.querySelector('[data-fsort="official"]'); if (bo) bo.click(); });
   await page.waitForTimeout(300);
   bd = await badgesD();
-  check('S4-badge-official-clear', bd.drops === 0 && bd.iTotal === 0, JSON.stringify(bd));
+  check('S4-badge-official-clear', bd.drops === 0 && bd.iTotal === 0 && bd.dims === 0, JSON.stringify({ drops: bd.drops, i: bd.iTotal, dims: bd.dims })); /* official 复位=层整体清（置灰同拆） */
 
   /* ---- §5 回归（Task 5）：推包重应用 / 重开复位 official / 他页菜单零污染 / 柜行 cfg 级取值 ---- */
   /* ① 推包重应用：pig:3 排序态下改契约原始位（模拟官方推包）→ 模型仍按点数序 */
