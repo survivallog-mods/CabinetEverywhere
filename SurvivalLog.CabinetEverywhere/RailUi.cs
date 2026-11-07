@@ -203,7 +203,7 @@ internal static class RailUi
             }
 
             // ==== 高度段（高度修改批 §6.1）：24 静态包逐包行数 ====
-            int hChanged = 0;
+            int hChanged = 0, shrinkPending = 0; // shrinkPending=ShrinkDrop 未竟包数（日志诚实化：终审 M1）
             var hDetail = new List<string>();
             foreach (var bagId in heightBags)
             {
@@ -221,7 +221,7 @@ internal static class RailUi
                     if (want == curH) continue;
                     // 缩高=先掉后缩（spec §8：ShrinkDrop 官方掉落编排成功才落笔；false=本轮放弃
                     // 签名不记下轮重试——位置不可得/掉落失败等，零物品损失）
-                    if (want < curH && !ShrinkDrop.Process(bagId, want)) { _sizeSig = ""; continue; }
+                    if (want < curH && !ShrinkDrop.Process(bagId, want)) { _sizeSig = ""; shrinkPending++; continue; }
                     size[1] = want;
                     hChanged++;
                     hDetail.Add(bagId + "(" + BagTable.Name(bag) + ")" + curH + "→" + want);
@@ -240,7 +240,8 @@ internal static class RailUi
             CabinetEverywherePlugin.Log.LogInfo(
                 (changed > 0
                     ? $"[CERail] SizeEngine：宽 {w} 列/高改写 {changed} 包：" + string.Join("、", detail)
-                    : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标")
+                    : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标"
+                      + (shrinkPending > 0 ? $"（另有 {shrinkPending} 包缩高待处理，每 5s 重试——见 ShrinkDrop 日志）" : ""))
                 + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
                 + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架不动；高度=15键解析(0=原生/MaxHeight夹/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
         }
@@ -360,6 +361,7 @@ internal static class RailUi
             {
                 RailData.OnWorldRebind();
                 _lastPage = null; /* 视为新开机：首个场景必推 */
+                _sizeSig = "";    /* 终审 I2：读档/切场景表重载会还原 Config_Bag——签名复位保证下一轮幂等重写（宽高同管） */
             }
 
             // 门控①：无 rail 场景不推（清 _lastPage：重开场景时视为 page 变化必推一包）
@@ -472,24 +474,6 @@ internal static class RailUi
     /// 不走此路，由 Tick 全量签名兜底（与原行为一致）。
     /// AccessTicker.Update 每帧最先段调用（RefreshCoalescer.Flush 同位）。
     /// </summary>
-    private static Il2CppSystem.Action<string> _noopCb; /* PostPageMessage 回调占位（ ExecuteJavaScript 需回调形参；空动作） */
-
-    /// <summary>向 WebView 执行一段 JS（OpSwitchBag 注入官方形状 BagMsg 用——postMessage 进
-    /// FuelGenerator iframe；与 drain/push 同通道）。主帧调用。</summary>
-    internal static void PostPageMessage(string js)
-    {
-        try
-        {
-            var web = GetWebView();
-            if (web == null) return;
-            if (_noopCb == null)
-                _noopCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
-                    new Action<string>(_ => { }));
-            web.ExecuteJavaScript(js, _noopCb);
-        }
-        catch (Exception e) { WarnOnce("postmsg", "PostPageMessage 失败: " + e.Message); }
-    }
-
     internal static void FastPoll()
     {
         if (!Enabled) return;

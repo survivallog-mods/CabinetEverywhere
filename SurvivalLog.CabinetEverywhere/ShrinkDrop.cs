@@ -71,7 +71,7 @@ internal static class ShrinkDrop
             var oc = im.OwnerCache;
             if (oc == null) return false; // OwnerCache 不可得：同"位置不可得"兜底
 
-            int ownersHit = 0, dropped = 0;
+            int ownersHit = 0, dropped = 0, skipped = 0;
             foreach (var owner in owners)
             {
                 Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
@@ -101,25 +101,32 @@ internal static class ShrinkDrop
                 {
                     long itemId = 0; int cfg = 0, cnt = 0, st = 0, tl = 0;
                     try { itemId = it.InstanceId; cfg = it.ItemConfigId; cnt = it.ItemCount; st = it.StartTime; tl = it.TimeLeft; } catch { }
-                    if (itemId <= 0 || cfg <= 0 || cnt <= 0) continue;
+                    if (itemId <= 0 || cfg <= 0 || cnt <= 0) { skipped++; continue; } // 字段读失败跳过（留包，日志汇总）
 
-                    // 先生成后移除（生成失败=不移除，物品零损失；移除异常=可能地面+包双份，WarnOnce 记账）
-                    long dropId = 0;
-                    try { dropId = dim.SpawnGroundLootItem(pos, 0.8f, cfg, cnt, st, tl, mapId, false); } catch { }
-                    if (dropId == 0)
+                    // 首选官方全保真路径（终审 I1）：DropItemFromBagAt 按 itemId 掉落=整件 ItemData
+                    // 随行（耐久/污染等实例字段保留）且原子（包内移除+地面生成一体，官方「丢弃」同路）。
+                    // 失败/不可用回退 spawn→remove 两段（保鲜保留、实例字段按官方拆除口径接受）。
+                    bool ok = false;
+                    try { ok = dim.DropItemFromBagAt(itemId, pos, mapId, out _); }
+                    catch { ok = false; }
+                    if (!ok)
                     {
-                        WarnOnce("spawn-" + cfg, $"官方掉落生成失败（物品 cfg={cfg}）——本轮放弃，下轮重试");
-                        return false;
+                        long dropId = 0;
+                        try { dropId = dim.SpawnGroundLootItem(pos, 0.8f, cfg, cnt, st, tl, mapId, false); } catch { }
+                        if (dropId == 0)
+                        {
+                            WarnOnce("spawn-" + cfg, $"官方掉落生成失败（物品 cfg={cfg}）——本轮放弃，下轮重试");
+                            LogSummary(bagId, targetH, owners.Count, ownersHit, dropped, skipped, leftBehind, aborted: true);
+                            return false;
+                        }
+                        try { im.RemoveItem(itemId); }
+                        catch (Exception e) { WarnOnce("remove-" + itemId, "掉落已生成但包内移除异常（可能地面+包双份，拾取即并）: " + e.Message); }
                     }
-                    try { im.RemoveItem(itemId); }
-                    catch (Exception e) { WarnOnce("remove-" + itemId, "掉落已生成但包内移除异常（可能地面+包双份，拾取即并）: " + e.Message); }
                     dropped++;
                 }
             }
 
-            CabinetEverywherePlugin.Log.LogInfo(
-                $"[CERail] ShrinkDrop：bag {bagId} 缩到 {targetH} 行——扫 {owners.Count} 实例（当前图 {ownersHit} 有物）、掉落 {dropped} 件于玩家脚下"
-                + (leftBehind.Count > 0 ? "；他图留包 " + leftBehind.Count + "：" + string.Join("、", leftBehind) + "（到场整理找回）" : ""));
+            LogSummary(bagId, targetH, owners.Count, ownersHit, dropped, skipped, leftBehind, aborted: false);
             return true;
         }
         catch (Exception e)
@@ -129,36 +136,62 @@ internal static class ShrinkDrop
         }
     }
 
-    /// <summary>bagId 的全部在场实例 owner：背包（链内才收）/抽屉/后备箱/门口袋合成常量 +
-    /// 全图家具（当前图收录掉落、他图留包兜底）。</summary>
+    private static void LogSummary(int bagId, int targetH, int ownersTotal, int ownersHit, int dropped, int skipped, List<string> leftBehind, bool aborted)
+    {
+        CabinetEverywherePlugin.Log.LogInfo(
+            $"[CERail] ShrinkDrop：bag {bagId} 缩到 {targetH} 行——扫 {ownersTotal} 实例（{ownersHit} 有物）、掉落 {dropped} 件于玩家脚下"
+            + (skipped > 0 ? $"；字段读失败留包 {skipped} 件" : "")
+            + (leftBehind.Count > 0 ? "；他图留包 " + leftBehind.Count + "：" + string.Join("、", leftBehind) + "（到场整理找回）" : "")
+            + (aborted ? "；**中途放弃**（前述 WarnOnce），本轮不写高" : ""));
+    }
+
+    /// <summary>bagId 的全部在场实例 owner：背包/抽屉/后备箱/门口袋合成常量（**BagCache 现值
+    /// ==bagId 才收**——终审 C1：TrunkOwnerId 的包随车型切换(1021/1022/1023)、抽屉随档位切换、
+    /// 背包随装备切换，不校验会误按别的包的目标高掉别的包的物品）+ 全图家具（当前图收录掉落、
+    /// 他图留包兜底）。</summary>
     private static List<long> OwnersOf(int bagId,
         GameCore.HotUpdate.Battle.Logic.AgentManager am, int curMap, List<string> leftBehind)
     {
         var owners = new List<long>();
+        // BagCache 现包校验器（终审 C1）：合成 owner 的包会切换（车型档位/装备/抽屉档），
+        // 必须现值==bagId 才收——DrawerTabs BagCache[owner] keyed 读同款（枚举不可靠，只 keyed 取）
+        var bagCache = RailData.ItemState()?.BagCache;
+        bool OwnsBag(long owner)
+        {
+            if (owner <= 0) return false;
+            if (bagCache == null) return false; // 缓存不可得=该合成源放弃（留包兜底，日志见 leftBehind 汇总）
+            try { return bagCache.TryGetValue(owner, out int cur) && cur == bagId; } catch { return false; }
+        }
 
-        // ① 背包：仅 bagId 在背包链内才收玩家 owner（否则会把玩家包物品错配到柜子目标高）
+        // ① 背包：仅 bagId 在背包链内且玩家当前装备包==bagId（BagCache 现值校验）
         try
         {
             if (Array.IndexOf(CabinetEverywherePlugin.BackpackBagIds, bagId) >= 0)
             {
                 long bagOwner = RailData.BagOwner();
-                if (bagOwner > 0) owners.Add(bagOwner);
+                if (OwnsBag(bagOwner)) owners.Add(bagOwner);
             }
         }
         catch { }
 
-        // ② 抽屉（DrawerOwnerId 静态常量直读——DrawerTabs:166 先例）
+        // ② 抽屉（DrawerOwnerId 静态常量直读——DrawerTabs:166 先例；档位切换由 OwnsBag 现值拦）
         if (bagId == 5010 || bagId == 5012 || bagId == 5013)
         {
-            try { owners.Add(GameCore.HotUpdate.WorkbenchDrawerConfig.DrawerOwnerId); } catch { }
+            try
+            {
+                long drawerOwner = GameCore.HotUpdate.WorkbenchDrawerConfig.DrawerOwnerId;
+                if (OwnsBag(drawerOwner)) owners.Add(drawerOwner);
+            }
+            catch { }
         }
 
-        // ③④ 后备箱+门口塑料袋（VehicleConfig 静态常量；DoorBoxBagId=1023 dump 实锤）
+        // ③④ 后备箱+门口塑料袋（VehicleConfig 静态常量；DoorBoxBagId=1023 dump 实锤；
+        // TrunkOwnerId 的包随车型 1021/1022/1023 切换——OwnsBag 现值拦，改 1021 不会误动 SUV 尾箱）
         if (bagId == 1021 || bagId == 1022 || bagId == 1023)
         {
-            try { owners.Add(GameCore.HotUpdate.VehicleConfig.TrunkOwnerId); } catch { }
-            try { owners.Add(GameCore.HotUpdate.VehicleConfig.BoxOwnerId); } catch { }
-            try { owners.Add(GameCore.HotUpdate.VehicleConfig.BoxOwnerId2); } catch { }
+            try { long o = GameCore.HotUpdate.VehicleConfig.TrunkOwnerId; if (OwnsBag(o)) owners.Add(o); } catch { }
+            try { long o = GameCore.HotUpdate.VehicleConfig.BoxOwnerId; if (OwnsBag(o)) owners.Add(o); } catch { }
+            try { long o = GameCore.HotUpdate.VehicleConfig.BoxOwnerId2; if (OwnsBag(o)) owners.Add(o); } catch { }
         }
 
         // ⑤ 家具（柜/冰箱/置物架…）：全图单遍（CabinetCatalog 同款廉价顺序：TryCast→配置查包→图判定）
