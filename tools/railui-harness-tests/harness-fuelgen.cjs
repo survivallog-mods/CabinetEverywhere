@@ -126,13 +126,29 @@ function check(name, ok, detail) {
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
   await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 3; }, null, { timeout: 8000 });
   await drain();
-  /* ⑤a 左键木柴→详情（热值/操作提示，中性色），零命令 */
+  /* ⑤a 左键木柴→detail 命令（五验收：游戏原生 ItemDetailPopup——C# OpDetail 重放官方开面板） */
   await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel').click());
   await page.waitForTimeout(120);
-  const detailSt = await F().evaluate(() => { const w = document.getElementById('srfgWarn'); return { t: w && !w.hidden ? w.textContent : '', info: w ? w.classList.contains('srfg-info') : false }; });
   d = JSON.parse(await drain());
-  check('fg:feed-leftclick-detail', d.length === 0 && /热值/.test(detailSt.t) && /右键送入发电机/.test(detailSt.t) && detailSt.info,
-    '左键=查看详情（' + detailSt.t + '，中性色=' + detailSt.info + '）且零命令：drain=' + d.length);
+  check('fg:feed-leftclick-detail', d.length === 1 && d[0].op === 'detail' && Number(d[0].owner) === 900105 && Number(d[0].item) === 921,
+    '左键=查看详情→drain detail 921（原生面板命令）：' + JSON.stringify(d));
+  /* ⑤a-b 悬浮提示（五验收：官方 #recipeTooltip 同款，名+热值，仅燃料、移出即隐） */
+  const tipF = await F().evaluate(() => {
+    const el = document.querySelector('#srfgGrid .item.is-fuel');
+    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 300, clientY: 300 }));
+    const t = document.getElementById('recipeTooltip');
+    const on = t && t.style.display === 'block' ? t.textContent : '';
+    const pos = t ? t.style.left + ',' + t.style.top : '';
+    const bad = document.querySelector('#srfgGrid .item:not(.is-fuel)');
+    if (bad) bad.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 300, clientY: 300 }));
+    const onBad = !!(t && t.style.display === 'block' && bad && /零件/.test(t.textContent));
+    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, clientX: 305, clientY: 305 }));
+    el.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
+    const hidden = !t || t.style.display === 'none';
+    return { on, pos, onBad, hidden };
+  });
+  check('fg:hover-tooltip', /木柴/.test(tipF.on) && /热值\s*600/.test(tipF.on) && tipF.onBad === false && tipF.hidden,
+    '悬浮提示（官方 #recipeTooltip）：燃料「' + tipF.on.split('\n').join(' / ') + '」@' + tipF.pos + '、非燃料无提示=' + !tipF.onBad + '、移出即隐=' + tipF.hidden);
   /* ⑤b 右键木柴→feed 921 */
   await F().evaluate(() => document.querySelector('#srfgGrid .item.is-fuel').dispatchEvent(new Event('contextmenu', { bubbles: true })));
   await page.waitForTimeout(150);

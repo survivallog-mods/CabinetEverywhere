@@ -1121,7 +1121,7 @@ internal static class RailData
 
     // ================= 基础取用 / 杂项 =================
 
-    private static GameCore.HotUpdate.ReduxUI.ReduxUISystem ReduxUi()
+    internal static GameCore.HotUpdate.ReduxUI.ReduxUISystem ReduxUi()
     {
         try
         {

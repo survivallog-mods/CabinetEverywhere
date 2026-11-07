@@ -9,6 +9,22 @@
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**五验收轮（作者反馈：右键加料 2s+ / 悬浮无提示 / 左键详情应是原生面板——截图基准=官方背包侧）**：
+⑪ **命令通道帧级化**：drain/Pump 从 0.5s Tick 提到每帧 FastPoll（drain 回调入队→下一帧 Pump
+消化=端到端≈2 帧；原路径 drain@N 帧+Pump@N+0.5s=固定 0.5~1s 量化延迟，叠加官方刷新链=实机
+2s+ 观感）。0.5s Tick 首位 Pump 保留（点完即关界面的存量命令兜底，双调用幂等）。
+⑫ **悬浮提示=官方同款**：柜签燃料物品 hover 复用页面自带 #recipeTooltip（官方样式/定位算式
+逐字：内容=物品名+热值两行、+15/zoom 跟随、**仅燃料显示**——官方 onItemHover burnValue>0 口径，
+作者截图实证「鼠标悬浮提示，只有燃料有」）；移出物品/离开格区/切页签/拆除随手收。
+⑬ **左键=游戏原生 ItemDetailPopup**：C# 新命令 detail——重放官方 Ac_ItemDetailPopup_OpenUI
+（签名经 interop 元数据 MetadataLoadContext 反射取证：SendAction(ItemId,OwnerId,ItemConfigId,
+Discount,TipsType,ShopShowHour,TimeScale,ShopConfigId,SourceFurnitureId,SourceRect×4)，
+TipsType.UseByBag=2=背包侧查看口径；官方 ITEM_CLICK 链路只认页面背包态物品、柜中物品到不了
+Unity 侧，故走 mod 命令；官方开面板动作重放先例=Ac_OpenUI/uiShow）。
+⑭ 夹具纠偏：icfg 燃料尾列 14+2 直拼=burnable 落 14 位、burnValue 丢（火苗角标靠真值碰巧亮、
+热值恒 —）——照 brew 先例补 uses 占位对齐 C# 真 17 列行。harness **46/46**（新增 detail 命令
+断言+官方 tooltip 内容/仅燃料/移出即隐断言；RED：旧 JS 2 红）。
+
 **四验收轮交互归位（作者实机反馈：柜签物品只能左键移动、右键无反应）**：
 ⑩ 柜签物品交互改**官方移动规则**（页面 hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径）：
 **右键 或 Shift+左键 = 整组送入发电机**（含预检：非燃料→「只能添加燃料」、满员→「燃油槽已满」；
@@ -65,7 +81,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **45/45**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **46/46**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。

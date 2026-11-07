@@ -319,11 +319,13 @@ window.__HZ_READY__ = function () {
     var j = JSON.parse(JSON.stringify(MOCK));
     j.ctx = ctxFor(key);
     j.rev = ++REV;
-    /* fuelgen 页：icfg 行尾补 burnable/burnValue 两列（C# BuildIcfgRow fuelCols 同形状——
-       cfg10 木柴/11 柴油=燃料，其余 [0,0]；其他页推送形状不变=契约约束在夹具侧同口径） */
+    /* fuelgen 页：icfg 行尾补 burnable/burnValue（C# BuildIcfgRow fuelCols 同形状——15 列基座
+       +2=17 列，burnable@15/burnValue@16=normIcfg 直读位；夹具基座冻结 14 列缺 uses 尾列，
+       照 brew 先例补 [uses 占位 0] 对齐。五验收纠偏：旧 14+2 直接拼=burnable 落 14 位、
+       burnValue 丢——火苗角标靠 600 真值碰巧亮、热值恒 — 的夹具侧假错） */
     if (key === 'FuelGenerator') {
       var FB = { 10: [1, 600], 11: [1, 900] };
-      j.icfg = j.icfg.map(function (r) { return r.concat(FB[r[0]] || [0, 0]); });
+      j.icfg = j.icfg.map(function (r) { var f = FB[r[0]] || [0, 0]; return r.concat([0, f[0], f[1]]); });
     } else {
       /* v14 brew 页尾列 canBrew（C# BuildIcfgRow brewCols 同形状）：夹具基座 14 列
          （冻结形状缺 uses 尾列）——补 [uses 占位 0, canBrew] 两列=C# 真推送 16 列行，

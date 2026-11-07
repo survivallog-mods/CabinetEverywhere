@@ -319,10 +319,9 @@
 .srfg-on > .grid-container::-webkit-scrollbar-thumb, #srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
 #srfgBody .item { cursor: pointer; }
 /* 警示行绝对悬浮（底行上方）：不占布局流——高度锁跨「有/无警示」两态恒定，不因弹警示跳高。
-   .srfg-info=左键查看详情态（复用同节点换中性暖色，官方 queued-item 同色系） */
+   悬浮提示（名+热值）走官方页面自带 #recipeTooltip（零自定义样式）；左键详情走游戏原生面板 */
 .srfg-warn { position: absolute; left: 15px; right: 15px; bottom: 62px; z-index: 50; pointer-events: none;
   color: #e05555; font-size: 13px; font-weight: bold; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
-.srfg-warn.srfg-info { color: #fce1b6; }
 .srfg-foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
 #srfgFoot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
 .srfg-act { background: linear-gradient(180deg, rgba(58,58,60,.9) 0%, rgba(38,38,40,.92) 100%); color: #e8dfcf;

@@ -3559,13 +3559,15 @@
       if (ev.target.closest && ev.target.closest('.srfg-tabbtn-r')) { fgScrollBy(160); }
     });
     /* 官方移动规则（四验收：左键=查看详情，右键/Shift+左键=快速转移→送发电机——官方
-       hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径；旧实现只挂左键=喂料，
-       最初交互设计错误，非后续修复轮引入）。contextmenu 吞浏览器菜单（srBody 同款）。 */
+       hint「右键 / Shift+点击 快速转移 · 点击查看详情」同口径）。五验收升级：左键详情改
+       **游戏原生 ItemDetailPopup**（C# OpDetail 重放官方开面板动作，与背包侧同面板）；
+       悬浮提示改官方 #recipeTooltip 同逻辑（名+热值，仅燃料——作者截图基准）。
+       contextmenu 吞浏览器菜单（srBody 同款）。 */
     body.addEventListener('click', function (ev) {
       var it = ev.target.closest && ev.target.closest('.item');
       if (!it || FG.current === 'bag') return;
       if (ev.shiftKey) { fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0); return; }
-      fgDetail(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0);
+      cmdOut('detail', { owner: Number(FG.current), item: +it.getAttribute('data-it') || 0 });
     });
     body.addEventListener('contextmenu', function (ev) {
       ev.preventDefault(); /* 吞浏览器默认菜单（rail srBody 同款零接线原则——本格是 mod 层，动作自持） */
@@ -3573,6 +3575,24 @@
       if (!it || FG.current === 'bag') return;
       fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0);
     });
+    /* 悬浮提示=官方 showFuelTip 同款：复用页面自带 #recipeTooltip 节点与定位算式（+15/zoom），
+       仅燃料显示（官方口径：burnValue>0 才有——作者截图实证「鼠标悬浮提示，只有燃料有」） */
+    body.addEventListener('mouseover', function (ev) {
+      var it = ev.target.closest && ev.target.closest('.item');
+      if (!it || FG.current === 'bag') { fgTipHide(); return; }
+      var ic = ICFG[+it.getAttribute('data-cfg') || 0];
+      if (!ic || !ic.burn) { fgTipHide(); return; }
+      fgTipShow([(it.title || ic.name || ''), '热值 ' + (ic.burnV || '—')].join('\n'), ev.clientX, ev.clientY);
+    });
+    body.addEventListener('mousemove', function (ev) { fgTipMove(ev.clientX, ev.clientY); });
+    body.addEventListener('mouseout', function (ev) { /* 移出物品即隐（物品内子元素间移动不打扰） */
+      var it = ev.target.closest && ev.target.closest('.item');
+      if (!it) return;
+      var to = ev.relatedTarget;
+      if (to && to.closest && to.closest('.item') === it) return;
+      fgTipHide();
+    });
+    body.addEventListener('mouseleave', function () { fgTipHide(); });
     foot.addEventListener('click', function () { cmdOut('tidy', { owner: FG.current === 'bag' ? store.bag : Number(FG.current) }); });
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
@@ -3692,6 +3712,7 @@
     var body = FG.doc.getElementById('srfgBody');
     if (FG.current === 'bag') {
       FG.sig = '';
+      fgTipHide(); /* 离开柜签：悬浮提示随手收（官方格自有官方提示，互不接手） */
       if (FG.grid.style.display) FG.grid.style.display = '';
       if (body && !body.hidden) body.hidden = true;
     } else {
@@ -3746,15 +3767,30 @@
     if (fgQueueFull()) { fgWarn('燃油槽已满'); return; }
     cmdOut('feed', { owner: Number(FG.current), item: id });
   }
-  /* 左键=查看详情（官方口径；四验收）：物品名×数量+热值+操作提示——复用 #srfgWarn 节点换
-     中性色（绝对悬浮不占布局，高锁稳定），2.6s 自隐；不可燃也给详情（右键会被预检拦=提示口径一致） */
-  function fgDetail(id, cfgId) {
-    var ic = ICFG[cfgId] || {};
-    var own = itemsOf(Number(FG.current));
-    var st = null;
-    for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
-    fgInfo((st ? (st.name || ic.name || '物品') : (ic.name || '物品')) + ' ×' + (st ? st.count : 1) +
-      (ic.burn ? ' · 热值 ' + (ic.burnV || '—') + ' · 右键送入发电机' : ' · 不可燃烧'));
+  /* 官方悬浮提示（五验收）：复用页面自带 #recipeTooltip（官方样式 position:fixed+金字边框），
+     定位算式=官方 moveTooltip 逐字（(clientX+15)/zoom——zoom=官方 _fit 写在 body.style.zoom）。
+     仅燃料显示（官方 onItemHover 口径 burnValue>0；作者截图实证「鼠标悬浮提示，只有燃料有」） */
+  function fgTipShow(text, x, y) {
+    if (!FG.doc) return;
+    var t = FG.doc.getElementById('recipeTooltip');
+    if (!t) return;
+    t.textContent = text;
+    t.style.whiteSpace = 'pre-line';
+    t.style.display = 'block';
+    fgTipMove(x, y);
+  }
+  function fgTipMove(x, y) {
+    if (!FG.doc) return;
+    var t = FG.doc.getElementById('recipeTooltip');
+    if (!t || t.style.display !== 'block') return;
+    var z = 1; try { z = parseFloat(FG.doc.body.style.zoom) || 1; } catch (e) { }
+    t.style.left = ((x + 15) / z) + 'px';
+    t.style.top = ((y + 15) / z) + 'px';
+  }
+  function fgTipHide() {
+    if (!FG.doc) return;
+    var t = FG.doc.getElementById('recipeTooltip');
+    if (t && t.style.display !== 'none') t.style.display = 'none';
   }
   function fgQueueFull() {
     var z = FG.doc.getElementById('fuelQueueZone');
@@ -3768,26 +3804,16 @@
     if (!FG.doc) return;
     var w = FG.doc.getElementById('srfgWarn');
     if (!w) return;
-    w.classList.remove('srfg-info'); /* 红色警示态（fgInfo 复用同节点换中性色） */
     w.textContent = text || '';
     w.hidden = !text;
     if (FG.warnT) { try { clearTimeout(FG.warnT); } catch (e) { } }
     if (text) FG.warnT = setTimeout(function () { try { w.hidden = true; } catch (e) { } }, 1800);
   }
-  function fgInfo(text) { /* 详情态（左键查看详情）：同节点中性暖色 + 2.6s 自隐 */
-    if (!FG.doc) return;
-    var w = FG.doc.getElementById('srfgWarn');
-    if (!w) return;
-    w.classList.add('srfg-info');
-    w.textContent = text || '';
-    w.hidden = !text;
-    if (FG.warnT) { try { clearTimeout(FG.warnT); } catch (e) { } }
-    if (text) FG.warnT = setTimeout(function () { try { w.hidden = true; } catch (e) { } }, 2600);
-  }
 
   /* 拆除=原版：三件 mod DOM 移除、.srfg-on 与宽高 inline 清除、官方格显式恢复 display */
   function fgTeardown() {
     if (!FG.doc) return;
+    fgTipHide(); /* 悬浮提示随拆收（防拆除后 tooltip 悬浮残帧） */
     ['srfgTabs', 'srfgBody', 'srfgWarn', 'srfgFoot'].forEach(function (id) {
       var el = FG.doc.getElementById(id);
       if (el && el.parentNode) { try { el.parentNode.removeChild(el); } catch (e) { } }

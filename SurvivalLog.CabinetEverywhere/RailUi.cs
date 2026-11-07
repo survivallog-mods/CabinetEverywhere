@@ -353,8 +353,27 @@ internal static class RailUi
         {
             if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
                 return;
-            if (!RailData.AnyRailSceneActive()) return;
-            if (!RailData.StructureChangedFast()) return;
+            // 帧级命令通道（五验收「右键加料 2s+」）：Pump 每帧执行（0.5s Tick 首位调用保留=点完
+            // 即关界面的存量命令兜底，双调用幂等）；drain 每帧下发（场景活跃时；回调入队后下一帧
+            // Pump 消化=端到端≈2 帧。原路径 drain@0.5s Tick + Pump@下轮 Tick=固定 0.5~1s 量化延迟）。
+            // drain() 空队列=微 JS 调用零成本（ping 通道实验实证小包恒达先例）
+            RailCommands.Pump();
+            if (RailData.AnyRailSceneActive() && RailCommands.QueueDepth < RailCommands.MaxQueued)
+            {
+                var webC = GetWebView();
+                if (webC != null)
+                {
+                    try
+                    {
+                        if (_drainCb == null)
+                            _drainCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                                new Action<string>(RailCommands.Enqueue));
+                        webC.ExecuteJavaScript("window.__CERAIL__&&window.__CERAIL__.drain()", _drainCb);
+                    }
+                    catch (Exception e) { WarnOnce("drain", "drain 回调通道不可用（命令暂不能下发）: " + e.Message); }
+                }
+            }
+            if (!RailData.AnyRailSceneActive() || !RailData.StructureChangedFast()) return;
             var web = GetWebView();
             if (web == null) return;
             var sw = System.Diagnostics.Stopwatch.StartNew();

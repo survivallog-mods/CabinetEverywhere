@@ -224,6 +224,7 @@ internal static class RailCommands
             case "putTag": OpPutTag(c); break;
             case "tidy": OpTidy(c); break;
             case "feed": OpFeed(c); break; // 燃油发电机柜中燃料直送（两跳，见 OpFeed 注释）
+            case "detail": OpDetail(c); break; // 燃油发电机柜签左键查看详情（五验收：官方 ItemDetailPopup 原生面板）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -600,6 +601,34 @@ internal static class RailCommands
         // ⑤ 第二跳：官方加油动作重放（与页面 FUEL_ADD 按钮同入口）
         GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_FuelAdd.SendAction("{\"itemId\":" + target + "}");
         VLog(c.Op, $"owner={c.Owner} item={c.Item}→bag 重解析={target} cfg={cfgId}（两跳完成）");
+    }
+
+    /// <summary>
+    /// detail{owner,item}（五验收：柜签左键=查看详情）：打开**游戏原生 ItemDetailPopup**
+    /// （作者截图基准——与官方背包侧左键同面板同数据）。官方 ITEM_CLICK 链路只认页面背包态内
+    /// 物品（柜中物品到不了 Unity 侧），故走 mod 命令重放官方开面板动作。签名经 interop 元数据
+    /// 反射取证（MetadataLoadContext dump）：SendAction(long ItemId, long OwnerId, int ItemConfigId,
+    /// float Discount, TipsType TipsType /*Default=0/Use=1/UseByBag=2/Buy=3*/, int ShopShowHour,
+    /// float TimeScale, int ShopConfigId, long SourceFurnitureId, float SourceRectX/Y/W/H)——
+    /// 背包侧查看口径=UseByBag，非商店参全 0（TimeScale=1）。
+    /// </summary>
+    private static void OpDetail(Cmd c)
+    {
+        if (!Whitelisted(c.Owner) || c.Item <= 0) return;
+        var im = RailData.ItemMgr();
+        if (im == null) { WarnOnce("detail:noim", "detail 丢弃：ItemManager 不可得"); return; }
+        var src = ItemOf(OwnerItems(im, c.Owner), c.Item);
+        if (src == null) return; /* 物品已不在：静默（详情非关键路径，与 fgItemClick 预检口径分离） */
+        int cfgId = 0; try { cfgId = src.ItemConfigId; } catch { }
+        try
+        {
+            GameCore.HotUpdate.ReduxUI.Ac_ItemDetailPopup_OpenUI.SendAction(
+                c.Item, c.Owner, cfgId, 0f,
+                GameCore.HotUpdate.TipsType.UseByBag,
+                0, 1f, 0, 0, 0f, 0f, 0f, 0f);
+            VLog(c.Op, $"item={c.Item} owner={c.Owner} cfg={cfgId}（ItemDetailPopup/UseByBag）");
+        }
+        catch (Exception e) { WarnOnce("detail:open", "ItemDetailPopup 打开异常: " + e.Message); }
     }
 
     /// <summary>
