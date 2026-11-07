@@ -239,6 +239,21 @@ function check(name, ok, detail) {
   check('S5-cook-calm', cmut === 0, 'childList mutations/800ms=' + cmut);
   await pickSort('Cooking', 'official');
 
+  /* ---- §6 v14.2 排序弹窗层叠修复（作者实机截图：弹窗被柜格图层压住）----
+     弹窗必须严格高于格区一切层：角标/置灰层 50、官方格 .item 10（实机构建更高）。
+     断言=同层叠上下文内计算 z 序：pop > badgeLayer > item（纯层叠行为，hit-test 测不出
+     pointer-events:none 层的视觉遮盖，取 z 数值序） */
+  await showScene('BrewPanel');
+  const zinfo = await frameEl('BrewPanel').evaluate(() => {
+    const pop = document.getElementById('srFootSortPop');
+    const layer = document.getElementById('srBadgeLayer');
+    const item = document.querySelector('.sr-gridhost .item');
+    const z = (el) => el ? parseInt(getComputedStyle(el).zIndex, 10) : null;
+    return { pop: z(pop), layer: z(layer), item: z(item) };
+  });
+  check('S6-pop-z-topmost', zinfo.pop > zinfo.layer && zinfo.pop > zinfo.item && zinfo.pop >= 60,
+    JSON.stringify(zinfo));
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));

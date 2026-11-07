@@ -233,7 +233,10 @@
 #srp .sr-fsort.on{color:#ffe1a0;border-color:rgba(240,176,60,.85);background:rgba(240,176,60,.14)}
 #srp .sr-fsort .sb-caret2{font-size:10px;color:#c9932f;margin-left:1px}
 /* 设施排序弹层（参考图配色/结构，尺寸对齐控件基准 26px/12px）：近黑容器+独立小圆角钮堆叠 */
-#srp .sr-popfsort{left:10px;right:auto;width:128px;top:auto;bottom:44px;max-height:320px;
+/* v14.2 排序弹窗层叠（作者实机截图实锤：弹窗被柜格图层压住）：.sr-pop 基 z=30 低于
+   角标/置灰层 50 与实机官方格层（快照 .item z=10，实机构建更高）——上弹方向恒与格区
+   重叠，提到 60=rail 内顶层（>50 角标层，>一切官方格层）。 */
+#srp .sr-popfsort{z-index:60;left:10px;right:auto;width:128px;top:auto;bottom:44px;max-height:320px;
   background:rgba(10,10,12,.94);border-color:rgba(255,255,255,.12);border-radius:10px}
 #srp .sr-popfsort .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:5px}
 #srp .sr-fsopt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;
