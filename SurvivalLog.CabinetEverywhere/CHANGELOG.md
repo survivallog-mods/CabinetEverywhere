@@ -1,4 +1,4 @@
-# 更新日志（SurvivalLog.CabinetEverywhere / 储藏柜直达）
+# 更新日志（SurvivalLog.CabinetEverywhere / 更好的储物系统——2026-11-07 v1.8.5 起正式更名，原「储藏柜直达」）
 
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
@@ -22,7 +22,7 @@
   方案」：官方 .dye-pts 类+dropSvg 原样镜像、右下锚定，官方已画让位零重叠，沉底项不画——
   右上角 mod 数值角标不用于色素）；normIcfg pig 类型判形（string 与 canBrew 数字同宽互斥）；
   `fsortLabel`/`badgeSpec` 动态色键；弹窗滚动现规则回归钉。
-- **harness**：新增 harness-dye-pig.cjs **36 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
+- **harness**：新增 harness-dye-pig.cjs **38 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
   official 复位 · §2 菜单/swatch/空板/20 色滚动 · §4 角标 suppress · §5 推包重应用/重载
   重开复位 official（iframe 重载=游戏关面板销毁帧的真实路径；showScene 切换帧存活不模拟）/
   跨页菜单隔离）；brew 35/35、fuelgen 53、heater 55 复验绿。TDD 真捕获：`_pigParsed` 初版

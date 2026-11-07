@@ -1952,7 +1952,7 @@
     var plainSc = isPlainScene();
     el.rail.classList.toggle('plain', plainSc);
     /* dye-pigment-sort（作者统一风格对版令）：染料场景挂 sr-dyepig 类——颜色菜单走舒展行
-       （railui.css .sr-dyepig 作用域：行高 36/字 12.5/图标 16，比例=参考图 0.34 文行比；
+       （railui.css .sr-dyepig 作用域：终版行高 30/字 11/图标 14——作者两轮调字令定稿；
        其他页菜单零改动） */
     el.rail.classList.toggle('sr-dyepig', st.scene === 'DyePanel');
     if (plainSc) {

@@ -1,4 +1,4 @@
-# 储藏柜直达 CabinetEverywhere（Survival Log MOD）
+# 更好的储物系统（原「储藏柜直达 CabinetEverywhere」· Survival Log MOD）
 
 > 作者 Night · 抖音 166660371 · 免费分享 · 不改存档 / 不改游戏文件
 > 版本随套件统一管理；适配游戏版本以仓库兼容说明为准。
@@ -70,7 +70,7 @@
 
 ## 六、English
 
-**Cabinet Everywhere** — Every storage cabinet becomes a container tab in crafting and trade screens, with per-screen tag filtering.
+**Better Storage System** (formerly Cabinet Everywhere) — Every storage cabinet becomes a container tab in crafting and trade screens, with per-screen tag filtering.
 
 **Features**
 - Cabinet tabs in 9 screens: workbench / drone trade / drone hub / shredder / greenhouse (tabs + auto material pulling), and cooking / rat cage / brewing / dye (tabs). All on by default.

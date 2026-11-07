@@ -1,4 +1,4 @@
-# 储藏柜直达 CabinetEverywhere（Survival Log MOD）
+# 更好的储物系统（原「储藏柜直达 CabinetEverywhere」· Survival Log MOD）
 
 > 作者 Night · 抖音 166660371 · 免费分享 · 不改存档 / 不改游戏文件
 > 版本随套件统一管理；适配游戏版本以仓库兼容说明为准。
