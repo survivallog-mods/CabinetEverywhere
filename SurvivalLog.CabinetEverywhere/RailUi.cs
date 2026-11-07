@@ -102,9 +102,17 @@ internal static class RailUi
     //     （DrawerWidthEngine 换绑方案已退役：备料格≠抽屉的误判产物，见 CHANGELOG 十八批。）
     // 直写 size[0]=目标宽——**勿回 RewriteSize 的 mult 路**：want=原值×(目标/当前宽)，重跑时
     // 当前宽=已改值 → 想要值被弹回原宽（12↔16 振荡）；v1.8.3 靠「每会话一次」掩盖了这一点。
-    // 幂等：已是目标宽零写零日志；5s 周期重扫（RefreshMeta 慢通道）——新放柜子/换档重读 ≤5s
-    // 收敛、cfg UniformBagWidth 改值当场跟进；高不变，容量=宽×高随之变；0=off（已写值不回滚）。
-    private static string _sizeSig = ""; // 目标集签名（集合/宽未变=零日志快路径；异常轮不记号下轮重试）
+    // 高度修改批（2026-11-07）起宽恒 12（cfg 键退役）；5s 周期重扫（RefreshMeta 慢通道）+
+    // 高度键 SettingChanged→SizeDirty 帧级重算；高=15 键逐包（0=原生/MaxHeight 夹/缩高走掉落闸）。
+    private static string _sizeSig = ""; // 目标集签名（集合/宽/高映射未变=零日志快路径；异常轮不记号下轮重试）
+
+    // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §6）====
+    /// <summary>柜宽恒 12（作者令「宽度固定 12 不允许修改」：Rail.UniformBagWidth 键退役，此常量单源）。</summary>
+    internal const int UniformWidth = 12;
+    /// <summary>立即生效硬验收（spec §2）：15 个高度键 SettingChanged 置脏（线程不定，禁直调 Il2Cpp）→
+    /// Tick 首行主线程帧内消费重算——改键当帧落笔，不等 5s 慢通道。</summary>
+    internal static volatile bool SizeDirty;
+    private static readonly Dictionary<int, int> _nativeH = new(); // 会话首见即原生高（0=恢复原生语义的数据源）
 
     /// <summary>工作台抽屉三档全局包（2026-11-06 终案）：5010[8×5]/5012[8×6]/5013[8×7] 升级链，
     /// 不挂任何家具（Config_Furniture 零引用实锤）、全工作台共享互通（作者实测「四台抽屉通」）。
@@ -113,9 +121,7 @@ internal static class RailUi
 
     internal static void SizeEnginePoll()
     {
-        int w;
-        try { w = CabinetEverywherePlugin.UniformBagWidth?.Value ?? 12; } catch { w = 12; }
-        if (w <= 0) return; // 0=off
+        const int w = UniformWidth; // 宽恒 12（UniformBagWidth 键退役，spec §2）
         try
         {
             var cm = BagTable.Cm();
@@ -132,7 +138,8 @@ internal static class RailUi
                 if (c.Kind == 'r') continue;
                 try { if (furns.TryGetValue(c.ConfigId, out var f) && f != null && f.BagId > 0) ids.Add(f.BagId); } catch { }
             }
-            if (ids.Count == 0) return; // 目录未就绪/家中无柜：下轮再看
+            // 高度修改批 ruling：家中无柜/目录未就绪不再整轮早退——高度名单全静态（背包/载具/抽屉/
+            // 置物架/冰箱键全在 cfg），不依赖 AllContainers；宽度段目标空=零写自然跳过。
 
             // ② 排除包 = cfg 包级 + 家中在场的排除家具所占包
             var skip = BagTable.ParseIds(CabinetEverywherePlugin.ExcludeBagIds.Value);
@@ -163,10 +170,18 @@ internal static class RailUi
                 if (!ids.Contains(bagId)) targets.Add(bagId); // 白名单独有（AllContainers 外的功能包）
             foreach (var bagId in DrawerBagIds)              // 抽屉三档（全局包，非家具——见上注⑤）
                 if (!targets.Contains(bagId)) targets.Add(bagId);
+            // 高度修改批 §6.2：24 静态包并进宽度目标集（**绕过 skip**，白名单包含优先语义同 ⑤）——
+            // 载具 1021/1022 原生宽 5/10 随批首次收 12；背包链原生 12 幂等零写。
+            var heightBags = new List<int>(HeightTargetBags());
+            foreach (var bagId in heightBags)
+                if (!targets.Contains(bagId)) targets.Add(bagId);
             targets.Sort();
             skipped.Sort(string.CompareOrdinal);
-            var sig = w + "|" + string.Join(",", targets) + "|" + string.Join(",", skipped);
-            if (sig == _sizeSig) return; // 集合与宽都未变：零日志零写
+            // 签名含高度映射（cfg 值变即重算）：bagId:want 串（want<0=不在名单占位）
+            var hmap = new List<string>();
+            foreach (var bagId in heightBags) hmap.Add(bagId + ":" + ResolveTargetHeight(bagId));
+            var sig = w + "|" + string.Join(",", targets) + "|" + string.Join(",", skipped) + "|" + string.Join(",", hmap);
+            if (sig == _sizeSig) return; // 集合/宽/高映射都未变：零日志零写
             _sizeSig = sig;
 
             int changed = 0, errs = 0;
@@ -186,14 +201,54 @@ internal static class RailUi
                 }
                 catch { errs++; }
             }
+
+            // ==== 高度段（高度修改批 §6.1）：24 静态包逐包行数 ====
+            int hChanged = 0;
+            var hDetail = new List<string>();
+            foreach (var bagId in heightBags)
+            {
+                try
+                {
+                    int tgt = ResolveTargetHeight(bagId);
+                    if (tgt < 0) continue; // 不在名单（名单静态，防御性兜底）
+                    if (!bags.TryGetValue(bagId, out var bag) || bag == null) continue;
+                    var size = bag.Size;
+                    if (size == null || size.Count < 2) continue;
+                    int curH = size[1];
+                    if (curH <= 0) continue;
+                    int nativeH = NativeHeightOf(bagId, curH);
+                    int want = tgt == 0 ? nativeH : tgt; // 0=恢复原生（会话首见缓存）
+                    if (want == curH) continue;
+                    if (want < curH)
+                    {
+                        // Task2: shrink path——先掉后缩（ShrinkDrop.Process 成功才写）；桩期=跳过+
+                        // WarnOnce+签名不记（每 5s 重试，接真实现后此分支消失）
+                        WarnOnce("shrink-stub-" + bagId,
+                            $"SizeEngine：缩高待 ShrinkDrop 接管（bag {bagId} {curH}→{want}），本轮跳过");
+                        _sizeSig = "";
+                        continue;
+                    }
+                    size[1] = want; // 升/还原直接写（缩高走上面的掉落闸）
+                    hChanged++;
+                    hDetail.Add(bagId + "(" + BagTable.Name(bag) + ")" + curH + "→" + want);
+                }
+                catch { errs++; }
+            }
+            changed += hChanged;
+            detail.AddRange(hDetail);
+
             if (errs > 0) _sizeSig = ""; // 有异常：签名不记，下轮重试（防单包偶发失败被签名门吞掉）
-            if (changed > 0) BagTable.InvalidateBagSizeIndex(cm, new List<string>());
+            if (changed > 0)
+            {
+                BagTable.InvalidateBagSizeIndex(cm, new List<string>());
+                RefreshAfterSizeWrite(); // 立即生效链（spec §2 硬验收）
+            }
             CabinetEverywherePlugin.Log.LogInfo(
                 (changed > 0
-                    ? $"[CERail] SizeEngine：柜宽统一 {w} 列——改写 {changed} 包：" + string.Join("、", detail)
-                    : $"[CERail] SizeEngine：目标 {targets.Count} 包均已 {w} 列")
+                    ? $"[CERail] SizeEngine：宽 {w} 列/高改写 {changed} 包：" + string.Join("、", detail)
+                    : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标")
                 + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                + "（目标=家中柜子+冰箱+SizeIncludeBagIds 白名单，材料架不动；排除=ExcludeBagIds+家中排除家具共包（白名单优先）；Config_Bag 内存直写，5s 幂等重扫）");
+                + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架不动；高度=15键解析(0=原生/MaxHeight夹/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
         }
         catch (Exception e)
         {
@@ -201,10 +256,87 @@ internal static class RailUi
         }
     }
 
+    /// <summary>高度段静态名单（spec §4.1）：背包链 9 + 单包键 12 + 抽屉三档 3 = 24 包（顺序即处理序）。</summary>
+    private static IEnumerable<int> HeightTargetBags()
+    {
+        foreach (var id in CabinetEverywherePlugin.BackpackBagIds) yield return id;
+        var byBag = CabinetEverywherePlugin.HeightByBag;
+        if (byBag != null)
+            foreach (var id in byBag.Keys) yield return id;
+        foreach (var id in DrawerBagIds) yield return id;
+    }
+
+    /// <summary>包的目标行数：单包键/背包链直值；抽屉三档=H/H+1/H+2（升级链递进保留，spec §7）；
+    /// 0=恢复原生；MaxHeight&gt;0 逐包/逐档夹。不在高度名单=-1（调用方跳过）。</summary>
+    private static int ResolveTargetHeight(int bagId)
+    {
+        int want;
+        try
+        {
+            if (bagId == 5010 || bagId == 5012 || bagId == 5013)
+            {
+                int h = CabinetEverywherePlugin.DrawerHeight?.Value ?? 0;
+                if (h <= 0) return 0; // 0=原生链（三档各自还原）
+                want = h + (bagId == 5012 ? 1 : bagId == 5013 ? 2 : 0);
+            }
+            else if (Array.IndexOf(CabinetEverywherePlugin.BackpackBagIds, bagId) >= 0)
+            {
+                want = CabinetEverywherePlugin.BackpackHeight?.Value ?? 0;
+            }
+            else if (CabinetEverywherePlugin.HeightByBag == null ||
+                     !CabinetEverywherePlugin.HeightByBag.TryGetValue(bagId, out var ent) || ent == null)
+            {
+                return -1;
+            }
+            else
+            {
+                want = ent.Value;
+            }
+        }
+        catch { return -1; }
+        if (want <= 0) return 0;
+        int max;
+        try { max = CabinetEverywherePlugin.MaxHeight?.Value ?? 0; } catch { max = 0; }
+        if (max > 0 && want > max) want = max;
+        return want;
+    }
+
+    /// <summary>会话首见即原生高缓存（幂等：重复执行永远按首见值还原；表重载后不重记）。</summary>
+    internal static int NativeHeightOf(int bagId, int currentH)
+    {
+        if (!_nativeH.TryGetValue(bagId, out var n) || n <= 0) { n = currentH; _nativeH[bagId] = n; }
+        return n;
+    }
+
+    /// <summary>
+    /// 尺寸改写后的立即生效链（spec §2 硬验收：不允许变形/闪烁/延迟）：
+    /// ①官方活跃页刷新 Ra_RefreshBag（重建态=重读尺寸，官方路径零闪烁——Bug3 以来验证的机制）；
+    /// ②BackpackUI 补 Ac_Item_RefreshAllBagViews（其 RefreshBag 需 Redux 对象，见 RailData.RefreshActivePage 注）；
+    /// ③mod rail：容器 cap 重算（rev 含 Cap，ComputeSig:1021 实证）+ 强制重推——侧栏/排序弹窗当帧~0.5s 跟上。
+    /// </summary>
+    private static void RefreshAfterSizeWrite()
+    {
+        try { RailData.RefreshActivePage(); } catch { }
+        try
+        {
+            if (RailData.ActivePage() == "BackpackUI")
+                GameCore.HotUpdate.ReduxUI.Ac_Item_RefreshAllBagViews.SendAction();
+        }
+        catch { }
+        try { RailData.RecomputeCaps(); RailData.ForceRepublish(); } catch { }
+    }
+
     internal static void Tick()
     {
         // cfg 门（T8）：首行判定，覆盖 bootstrap 注入/数据推送/drain/Pump 全部路径
         if (!Enabled) return;
+        // 立即生效硬验收（spec §2）：高度键 SettingChanged 置脏（线程不定禁直调 Il2Cpp）→
+        // 此处主线程帧内消费——改键当帧重算落笔+立即生效链，不等 5s 慢通道
+        if (SizeDirty)
+        {
+            SizeDirty = false;
+            SizeEnginePoll();
+        }
         try
         {
             if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)

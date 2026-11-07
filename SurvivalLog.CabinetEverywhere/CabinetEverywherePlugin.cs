@@ -60,9 +60,17 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> DumpFurniture;
     internal static ConfigEntry<bool> FilterEnable;
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
-    internal static ConfigEntry<int> UniformBagWidth; // v13.8 柜宽统一（0=off；作者拍板默认 12）
+    // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
+    // 宽度退役恒 12（Rail.UniformBagWidth 绑定删除，代码常量 RailUi.UniformWidth；老 cfg 残留值忽略）。
+    // 高度 15 键逐包/逐组，全部默认 0=恢复原生；MaxHeight 逐包/逐档夹持；缩高=越界物品官方掉落（ShrinkDrop）。
+    // SettingChanged→RailUi.SizeDirty（帧内主线程重算=立即生效硬验收，勿直调 Il2Cpp）。
+    internal static ConfigEntry<int> BackpackHeight;   // 背包链 9 包统一行数（天赋换包链必须同高，spec §7）
+    internal static ConfigEntry<int> DrawerHeight;     // 工作台抽屉基准行数：三档=H/H+1/H+2（升级链保留）
+    internal static ConfigEntry<int> MaxHeight;        // 高度防呆上限（0=不封顶自担）
+    internal static Dictionary<int, ConfigEntry<int>> HeightByBag; // 12 个单包键（置物架4+工具柜1+冰箱4+载具3）
+    internal static readonly int[] BackpackBagIds = { 1, 2, 5, 6, 7, 8, 9, 10, 11 }; // 天赋链（含 2 登山包/8 仓管初始）
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
-    // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 UniformBagWidth 统一（默认 1009 中控台）。
+    // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 12 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
     internal static ConfigEntry<int> RemoteDebugPort; // v1.8.10 八追：>0=WebView2 附加 --remote-debugging-port（断流现场 CDP 取证，默认关）
@@ -97,10 +105,36 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
         ApplyWebViewScrollbarEnv();
         ApplyRemoteDebugEnv();
-        UniformBagWidth = Config.Bind("Rail", "UniformBagWidth", 12,
-            "v13.8 作者拍板「所有柜子宽度 12 列」：开局把目录内全部柜子的 Config_Bag.Size 宽改写为该值（内存表直写/幂等/按原值记忆；0=关闭改写；高不变，容量=宽×高随之变化）。含工作台抽屉三档全局包 5010/5012/5013（宽随本值、高/档位不动）与 rail 壳宽地板（窄柜两侧留白不缩放，=0 时两者整体停用）。");
+        // ==== 高度修改批 15 键（spec §4.1 逐字；全部默认 0=恢复原生；宽度恒 12 不可改）====
+        BackpackHeight = Config.Bind("Rail", "BackpackHeight", 0,
+            "背包行数（普通背包/野外登山包/仓管背包，含天赋加行链共 9 包统一——换包逻辑要求链上同高；原生 18；0=恢复原生）。宽度恒 12。");
+        HeightByBag = new Dictionary<int, ConfigEntry<int>>
+        {
+            { 110002, Config.Bind("Rail", "Height_110002", 0, "小型置物架行数（原生 8；0=恢复原生）。宽恒 12。") },
+            { 110001, Config.Bind("Rail", "Height_110001", 0, "中型置物架行数（65 家具：中型置物架/工具柜(70006)/烧烤架等共用；原生 10；0=恢复原生）。宽恒 12。") },
+            { 110000, Config.Bind("Rail", "Height_110000", 0, "大型置物架行数（原生 10；0=恢复原生）。宽恒 12。") },
+            { 110008, Config.Bind("Rail", "Height_110008", 0, "超大型置物架行数（原生 12；0=恢复原生）。宽恒 12。") },
+            { 10007,  Config.Bind("Rail", "Height_10007",  0, "工具柜行数（家具 406；原生 7；0=恢复原生）。宽恒 12。") },
+            { 1004,   Config.Bind("Rail", "Height_1004",   0, "双门冰箱行数（12 家具共用：双门冰箱/冰柜/食堂冰箱/冷饮柜/医用冷藏柜等；原生 7；0=恢复原生）。宽恒 12。") },
+            { 115000, Config.Bind("Rail", "Height_115000", 0, "双开门冰箱行数（原生 7；0=恢复原生）。宽恒 12。") },
+            { 115001, Config.Bind("Rail", "Height_115001", 0, "冰柜行数（5 家具：冰柜/冰箱/豪华版双门冰箱等；原生 10；0=恢复原生）。宽恒 12。") },
+            { 115005, Config.Bind("Rail", "Height_115005", 0, "大容量冰柜行数（原生 10；0=恢复原生）。宽恒 12。") },
+            { 1021,   Config.Bind("Rail", "Height_1021",   0, "自行车车筐行数（原生 4；0=恢复原生）。宽恒 12。") },
+            { 1022,   Config.Bind("Rail", "Height_1022",   0, "小汽车后备箱行数（原生 8；0=恢复原生）。宽恒 12。") },
+            { 1023,   Config.Bind("Rail", "Height_1023",   0, "SUV后备箱行数（与门口塑料袋共用包——运行时指派，表无引用；原生 10；0=恢复原生）。宽恒 12。") },
+        };
+        DrawerHeight = Config.Bind("Rail", "DrawerHeight", 0,
+            "工作台抽屉基准行数：三档=H/H+1/H+2（工作台升级加行语义保留；原生链 5/6/7；0=恢复原生链）。宽恒 12。");
+        MaxHeight = Config.Bind("Rail", "MaxHeight", 50,
+            "高度防呆上限：任何高度键目标超出即夹到该值（逐包/逐档夹；0=不封顶自担——超高依赖界面纵向滚动）。");
+        // 立即生效硬验收（spec §2）：改键即置脏，RailUi.Tick 主线程帧内重算（SettingChanged 线程不定，禁直调 Il2Cpp）
+        BackpackHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
+        DrawerHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
+        MaxHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
+        foreach (var hb in HeightByBag.Values)
+            hb.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
-            "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随 UniformBagWidth 统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
+            "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随恒定 12 列统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
             "白名单注入：工作台/无人机交易/无人机站/粉碎机/温室 的柜子页签与自动取料。");
         EnableCooking = Config.Bind("Access", "EnableCooking", true, "烹饪界面注入柜子页签。");

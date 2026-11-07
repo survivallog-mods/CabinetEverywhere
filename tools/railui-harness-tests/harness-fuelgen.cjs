@@ -208,8 +208,8 @@ function check(name, ok, detail) {
   await page.waitForTimeout(120);
   const wCtn = await panelW();
   const hCtn = await F().evaluate(() => document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetHeight);
-  check('fg:width-lock-tabs', wBag === wCtn && wBag > 500 && hBag === hCtn,
-    '背包/柜页签面板宽高恒定：' + wBag + '==' + wCtn + ' 高 ' + hBag + '==' + hCtn);
+  check('fg:width-lock-tabs', wBag === wCtn && wBag > 500 && hBag === hCtn && hBag === 778,
+    '背包/柜页签面板宽高恒定：' + wBag + '==' + wCtn + ' 高 ' + hBag + '==778（等高契约地板=侧栏同款 14 格半基准）');
   /* ⑧b foot-right（实机缺陷③：整理按钮跑左——.srfg-foot 类漏挂致无 justify-content:flex-end） */
   const footStyle = await F().evaluate(() => {
     const f = document.getElementById('srfgFoot'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
@@ -260,18 +260,32 @@ function check(name, ok, detail) {
   });
   check('fg:tall-ctn-scroll', tallState.sh > tallState.ch + 20 && tallState.ovY === 'auto' && tallState.spill <= 1 && tallState.footIn <= 1 && tallState.tabsIn >= -1,
     '20 行高柜：格区内部滚动(' + tallState.sh + '>' + tallState.ch + ', ' + tallState.ovY + ')、格/底行/页签零溢出(spill=' + tallState.spill.toFixed(1) + ' foot=' + tallState.footIn.toFixed(1) + ' tabs=' + tallState.tabsIn.toFixed(1) + ')');
-  /* ⑧e bag-full-height（实机二验收「固定高度与其他界面保持一致吗」改版：高锁=官方背包格全高——
-     与 Cooking 等界面同观感：背包 18 行整幅直显不滚动、面板高由背包驱动） */
+  /* ⑧e bag-viewport-scroll（六验收：面板=816 恒定（mod 侧栏同版式），格区视窗内滚动——
+     背包 18 行>视窗(≈678px≈14 格半)=滚动态；「扩容不越界」储物体验红线） */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await page.waitForTimeout(150);
   const bagState = await F().evaluate(() => {
     const g = document.getElementById('backpackGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
-    const gen = document.querySelector('.gen-panel');
-    return { sh: g.scrollHeight, ch: g.clientHeight, lock: panel.style.height, genH: gen ? gen.offsetHeight : 0,
+    return { sh: g.scrollHeight, ch: g.clientHeight, lock: panel.style.height, panelH: panel.offsetHeight,
       spill: g.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom };
   });
-  check('fg:bag-full-height', Math.abs(bagState.sh - bagState.ch) <= 2 && !!bagState.lock && parseInt(bagState.lock) > 700 && bagState.lock === hBag + 'px' && bagState.spill <= 1,
-    '背包 18 行整幅直显(内容 ' + bagState.sh + '==可视 ' + bagState.ch + ' 不滚动)、高锁=背包全高 ' + bagState.lock + '(>gen 自然高 ' + bagState.genH + '=他界面同款)、零溢出(' + bagState.spill.toFixed(1) + 'px)');
+  check('fg:bag-viewport-scroll', bagState.sh > bagState.ch + 20 && bagState.panelH === 778 && bagState.lock === '778px' && bagState.spill <= 1,
+    '背包 18 行视窗内滚动(' + bagState.sh + '>' + bagState.ch + ')、面板 778 等高契约(lock=' + bagState.lock + ')、零溢出(' + bagState.spill.toFixed(1) + 'px)');
+  /* ⑧e-b 版式绑定不变量：发电机面板高度 ≡ 其他界面侧栏高度（同 816）——防再次走样。
+     侧栏在隐藏帧量值为 0：切 Cooking 现场量（zoom 归一），量完切回 */
+  await page.getByRole('button', { name: 'Cooking', exact: true }).click();
+  await page.waitForTimeout(700);
+  const railH = await page.evaluate(() => {
+    const d = document.getElementById('Cooking').contentDocument;
+    const rail = d && d.querySelector('#srp .sr-rail');
+    if (!rail) return -1;
+    const z = parseFloat(d.body.style.zoom) || 1;
+    return Math.round(rail.offsetHeight / z);
+  });
+  await page.getByRole('button', { name: 'FuelGenerator', exact: true }).click();
+  await page.waitForTimeout(700);
+  check('fg:panel-matches-rail', railH === 778 && bagState.panelH === 778,
+    '版式绑定：发电机面板 ' + bagState.panelH + ' ≡ 侧栏 sr-rail ' + railH + '（同 778 地板——其他界面滚动优化同源同值）');
   /* ⑧f race-late-data（真实页时序取证：官方格仅在 BagMsg 到达时首渲（refresh→initGrid），此前恒空——
      装配必须等数据、且晚到后宽/高锁取值正确。旧一次性 px 锁类缺陷的回归床） */
   await page.evaluate(() => { window.__HZ_FGNUDGE__ = false; });
@@ -289,11 +303,11 @@ function check(name, ok, detail) {
   const raceState = await F().evaluate(() => {
     const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const tabs = document.getElementById('srfgTabs');
-    return { w: panel.offsetWidth, wLock: panel.style.width, lock: panel.style.height, zoom: document.body.style.zoom || '',
+    return { w: panel.offsetWidth, wLock: panel.style.width, h: panel.offsetHeight, zoom: document.body.style.zoom || '',
       tabsVis: tabs.getBoundingClientRect().height > 0 };
   });
-  check('fg:race-late-mount-sane', raceState.w >= 598 && !raceState.wLock && !!raceState.lock && parseInt(raceState.lock) > 700 && raceState.tabsVis && (raceState.zoom === '' || parseFloat(raceState.zoom) > 0.6),
-    '数据晚到装配：宽 ' + raceState.w + '（无 inline 宽锁=' + !raceState.wLock + '）、高锁 ' + raceState.lock + '（>700=背包全高，他界面一致）、页签可见、zoom="' + raceState.zoom + '"（空或正常适配值，不再滞留半缩放）');
+  check('fg:race-late-mount-sane', raceState.w >= 598 && !raceState.wLock && Math.round(raceState.h / (parseFloat(raceState.zoom) || 1)) === 778 && raceState.tabsVis && (raceState.zoom === '' || parseFloat(raceState.zoom) > 0.6),
+    '数据晚到装配：宽 ' + raceState.w + '（无 inline 宽锁=' + !raceState.wLock + '）、面板 778 等高契约、页签可见、zoom="' + raceState.zoom + '"');
   await page.evaluate(() => { window.__HZ_FGNUDGE__ = true; });
   /* ⑧g reopen-bagheight（实机缺陷④全链复现：调高背包行数→重开→页签栏可见、格区滚动不溢出） */
   await page.evaluate(() => { window.__HZ_FGROWS__ = 24; });
@@ -315,14 +329,14 @@ function check(name, ok, detail) {
     const tabs = document.getElementById('srfgTabs'), foot = document.getElementById('srfgFoot');
     const g = document.getElementById('backpackGrid');
     const pr = panel.getBoundingClientRect(), tr = tabs.getBoundingClientRect();
-    return { w: panel.offsetWidth, h: panel.offsetHeight, lock: panel.style.height, zoom: document.body.style.zoom || '', tabsIn: tr.top >= pr.top - 1,
+    return { w: panel.offsetWidth, h: panel.offsetHeight, zoom: document.body.style.zoom || '', tabsIn: tr.top >= pr.top - 1,
       tabsVis: tr.top >= 0 && tr.bottom <= window.innerHeight, footVis: foot.getBoundingClientRect().bottom <= window.innerHeight,
       sh: g.scrollHeight, ch: g.clientHeight, spill: g.getBoundingClientRect().bottom - pr.bottom };
   });
-  check('fg:reopen-bagheight-tabs', reopenState.tabsIn && reopenState.tabsVis && reopenState.w >= 598 && !!reopenState.lock && parseInt(reopenState.lock) > 1100,
-    '24 行背包重开：页签在面板内且视口内可见(面板 ' + reopenState.w + '×' + reopenState.h + ' 高锁=' + reopenState.lock + '=背包全高随行数长、zoom="' + reopenState.zoom + '"=viewport-fit 与他界面同机制)');
-  check('fg:reopen-bagheight-contain', Math.abs(reopenState.sh - reopenState.ch) <= 2 && reopenState.spill <= 1 && reopenState.footVis,
-    '24 行背包重开：背包整幅直显(' + reopenState.sh + '==' + reopenState.ch + ')、零溢出(' + reopenState.spill.toFixed(1) + 'px)、底行在视口内');
+  check('fg:reopen-bagheight-tabs', reopenState.tabsIn && reopenState.tabsVis && reopenState.w >= 598 && Math.round(reopenState.h / (parseFloat(reopenState.zoom) || 1)) === 778,
+    '24 行背包重开：页签在面板内且视口内可见(面板 ' + reopenState.w + '×' + reopenState.h + '=778 恒定不随行数变、zoom="' + reopenState.zoom + '")');
+  check('fg:reopen-bagheight-contain', reopenState.sh > reopenState.ch + 20 && reopenState.spill <= 1 && reopenState.footVis,
+    '24 行背包重开：视窗内滚动(' + reopenState.sh + '>' + reopenState.ch + ')、零溢出(' + reopenState.spill.toFixed(1) + 'px)、底行在视口内');
   await page.evaluate(() => { window.__HZ_FGROWS__ = 18; });
   /* ⑧h root-lifecycle（实机二验收「二次打开页签栏不显示」复现床）：真实 Root.html 语义=同文档
      display:none 收起（非场景切换——ctx 不变）+ 隐藏期心跳重推 + 重开 re-nudge（BagMsg 再投）。

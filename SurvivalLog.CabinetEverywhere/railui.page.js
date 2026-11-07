@@ -3510,7 +3510,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '' };
+  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null };
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', full: '燃油槽已满', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' };
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3532,8 +3532,7 @@
     injectRailStyle(doc); /* srfg-* 样式随 railui.css 注入（本页此前无 rail=首次注入） */
     fgTeardown(); /* 跨文档重建（iframe 重载）：清旧引用 */
     FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.current = 'bag';
-    panel.classList.add('srfg-on');
-    fgLockHeight(); /* 高度锁自愈首轮（=背包格全高，他界面一致）；宽度不锁（.srfg-on min-width 结构锁，渐进渲染中间态锁不错） */
+    panel.classList.add('srfg-on'); /* 宽不锁（min-width 结构锁）；高由 fgSyncHeight 持有（778 地板+视口钳，见其注释） */
     var tabs = doc.createElement('div');
     tabs.id = 'srfgTabs'; tabs.setAttribute('data-interactive', '');
     tabs.innerHTML = '<div class="srfg-pin"><div class="srfg-tab active" data-id="bag">背包</div></div>' +
@@ -3618,25 +3617,22 @@
     var sc = FG.doc && FG.doc.getElementById('srfgScroll');
     if (sc) { try { sc.scrollLeft += dx; } catch (e) { } }
   }
-  /* 高度锁自愈（实机二验收改版：**锁=官方背包格全高——与其他界面观感一致**；旧版锁右 gen 面板
-     自然高=本页比他界面矮一截，作者质询「固定高度与其他界面保持一致吗」）。量法：只在背包页签
-     且官方格已建时取 grid.scrollHeight（18 行内容全高——面板 auto 未锁时 clientHeight==自然高）
-     + 面板内其他部分（页签/底行/内边距）=锁值；跨页签恒定（柜签更高内部滚动、更短留白钉底）。
-     同值守卫；锁变更补发 resize 促官方 createViewportFit 复测（防 zoom 滞留半缩放——旧一次性
-     锁实机教训）。柜签激活时官方格 display:none 不重量=锁不漂。 */
-  function fgLockHeight() {
-    if (!FG.doc || !FG.panel || !FG.grid) return;
-    if (FG.current !== 'bag') return;                /* 只在背包页签量（官方格是唯一权威尺） */
-    var g = FG.grid;
-    if (!g.isConnected || g.style.display === 'none' || g.children.length === 0) return;
-    var natural = g.scrollHeight;                    /* 官方背包格内容全高（他界面同款不滚动） */
-    if (natural < 200) return;                       /* 中间态防御（默认格未建/半渲染） */
-    var extra = FG.panel.offsetHeight - g.clientHeight; /* 页签+警示+底行+面板内边距（锁外部分） */
-    if (extra < 0) return;
-    var px = (natural + extra) + 'px';
+  /* 六验收（储物体验红线：扩容不越界）：面板高=**778 地板+视口钳**——与侧栏 plainSlotSync
+     （railui 官方等高契约）同数同义：778=其他界面侧栏可见基准（作者实测「14 格半」口径）。
+     不做 gen 跟随（侧栏的 sib>778 分支）：本页面板是**驱动方**——gen 面板被 flex stretch 拉到
+     与本面板等高，量 gen=自激环（实测 24 行背包时锁进 1124px 实锤）；778 下 gen(自然 ~640)
+     随 stretch 对齐=官方等高原貌。视口硬钳同八轮教训（同空间 innerHeight，webview 带缩放）。
+     格区视窗=面板内 flex:1 滚动：背包 18 行/任意高柜一律视窗内滚（超高柜=同窗滚动到底）。
+     同值守卫幂等；settle 每轮复核。 */
+  function fgSyncHeight() {
+    if (!FG.doc || !FG.panel) return;
+    var wantH = 778;
+    var vhCap = (FG.doc.defaultView && FG.doc.defaultView.innerHeight) || 0;
+    if (vhCap > 400 && wantH > vhCap) wantH = vhCap;
+    var px = wantH + 'px';
     if (FG.panel.style.height !== px) {
-      try { FG.panel.style.height = px; } catch (e) { }
-      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 促官方 _fit 复测 */
+      try { FG.panel.style.setProperty('height', px, 'important'); } catch (e) { }
+      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 促官方 _fit 复测（zoom 不滞留） */
     }
   }
   /* ‹› 端点禁用（官方 Cooking .tab-scroll-btn:disabled 同式；实机修复①：按钮常驻可见，
@@ -3661,6 +3657,7 @@
 
   function fgSettle() {
     if (!store.ctx || store.ctx.page !== 'FuelGenerator') return; /* 页守卫：他页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
+    fgSyncHeight(); /* 等高契约每轮复核（同值守卫） */
     if (!FG.doc || !FG.doc.getElementById('srfgTabs')) {
       /* 自愈回装（实机二验收「二次打开页签栏不显示」加固）：页签不在而燃料柜数据在——可能是
          空窗期瞬空拆除后残留态、或文档已换（FG.doc 陈旧）。直接找当前 bagtabs 帧走全装配
@@ -3674,7 +3671,6 @@
       }
       return;
     }
-    fgLockHeight(); /* 自愈高度锁：背包行数变化（实机「调整背包高度」）后随 settle 复核，同值守卫零观察器噪声 */
     var fuel = fgFuelCtns();
     if (!fuel.length) { fgTeardown(); return; } /* 无燃料柜=原版（Review Focus 1） */
     /* 页签行——**清单签名守卫**（勿用 innerHTML 串比较：序列化含 active 类修正，与生成串
@@ -3826,6 +3822,7 @@
     }
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.current = 'bag';
+    try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
     /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
        相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
        永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */

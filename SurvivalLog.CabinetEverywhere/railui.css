@@ -281,11 +281,11 @@
   display: flex; flex-direction: column; position: relative; /* relative=#srfgWarn 绝对定位的包含块 */
   /* 结构宽锁：12 列格全宽（slot 40×12 + gap 6×11 + 格 pad 20 + 格/面板 border 4 + 面板 pad 30）。
      官方页 CSS 变量直引（缺省兜底同值）——不测不锁，渐进渲染任何中间态都不会锁错。
-     高度锁由 JS fgLockHeight 持有：=官方背包格全高（与其他界面一致；跨页签恒定，柜签更高内部滚动） */
+     高度由 JS fgSyncHeight 等高契约持有（clamp(778, gen 面板高, 视口)——侧栏 plainSlotSync
+     同款，778 地板=其他界面「14 格半」可见基准）；格区视窗=flex:1 内部滚动（扩容不越界） */
   min-width: calc(var(--slot-size, 40px) * 12 + var(--slot-gap, 6px) * 11 + var(--grid-padding, 10px) * 2 + 34px);
 }
 .srfg-on > .panel-title, .srfg-on > .info-bar, .srfg-on > .hint-shift { display: none !important; }
-/* 官方背包格在锁定高面板内改内部滚动（官方整页 viewport-fit zoom 机制不动；两格区滚动条同款） */
 .srfg-on > .grid-container { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 /* 页签栏=官方 .bag-tabs 值 + 宽帽：官方 Cooking JS 对 .bag-tabs 显式设宽（L1714 w*15/16）防
    多页签撑宽面板——此处同意图改 CSS calc（12 列格内容宽 568：40*12+6*11+pad20+border2），

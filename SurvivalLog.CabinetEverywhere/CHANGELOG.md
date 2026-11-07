@@ -9,6 +9,17 @@
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**六验收轮（作者反馈：缺滚动条/显示高度与其他界面有差异/超高柜怎么办——多次提醒后定位真相）**：
+⑮ **对齐本 mod 自家滚动标准**：其他界面的「14 格半可见+滚动」=侧栏版式（railui.css 头部版式约束
+   +plainSlotSync 官方等高契约，778 地板）。发电机左面板改**等高契约 fgSyncHeight**：高=778 地板
+   +视口硬钳（与侧栏同数同义；不做 gen 跟随——gen 被 flex stretch 跟随本面板，量它=自激环，
+   24 行实测锁进 1124px 实锤）；格区视窗=面板内 flex:1 滚动：**背包 18 行滚动显示、柜子任意高
+   （>18 格同窗滚动到底、更短留白钉底）**——「扩容不越界」储物体验红线补齐。教训记录：我此前
+   两轮误把参考标准当官方页面行为（官方页其实无背包滚动），作者提醒多次——其他界面=本 mod
+   自身先例。harness **47/47**：新增 bag-viewport-scroll（18 行>视窗=滚动）+ **panel-matches-rail
+   版式绑定断言**（发电机面板 ≡ 侧栏 sr-rail 同 778，跨帧实测——防再走样）+ zoom 归一读高
+   （offsetHeight 在 body zoom 下被缩放，rail 实证）；RED 回滚 6 红。
+
 **五验收轮（作者反馈：右键加料 2s+ / 悬浮无提示 / 左键详情应是原生面板——截图基准=官方背包侧）**：
 ⑪ **命令通道帧级化**：drain/Pump 从 0.5s Tick 提到每帧 FastPoll（drain 回调入队→下一帧 Pump
 消化=端到端≈2 帧；原路径 drain@N 帧+Pump@N+0.5s=固定 0.5~1s 量化延迟，叠加官方刷新链=实机
@@ -81,7 +92,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **46/46**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **47/47**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。

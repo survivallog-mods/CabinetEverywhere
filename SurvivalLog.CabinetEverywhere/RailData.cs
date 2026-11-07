@@ -209,43 +209,49 @@ internal static class RailData
     /// <summary>
     /// 5s 慢通道（AccessTicker）：容器行元数据+背包容量（来自 CabinetCatalog.AllContainers
     /// 与 Config_Bag/Config_Furniture 纯配置查询）。物品行不在本通道——0.5s 快通道 BuildJson 现算。
+    /// 高度修改批（2026-11-07）顺序翻转：先 SizeEngine（改尺寸）后 RecomputeCaps（算容量）——
+    /// 改写当轮 cap 即为新尺寸，写后链（RailUi.RefreshAfterSizeWrite）同款口径。
     /// </summary>
     internal static void RefreshMeta()
     {
         try
         {
-            var cm = BagTable.Cm();
-            if (cm == null) return;
-            var furn = BagTable.FurnDict(cm);
-            var bags = BagTable.BagDict(cm);
-            var itemState = ItemState();
-
-            var list = new List<CtnMeta>();
-            foreach (var c in CabinetCatalog.AllContainers)
-            {
-                var m = new CtnMeta
-                {
-                    OwnerId = c.OwnerId,
-                    Name = NameOf(c),
-                    Kind = c.Kind,
-                    Cap = CapCells(furn, bags, itemState, c.ConfigId, c.OwnerId),
-                    TagIds = c.TagIds ?? Array.Empty<int>(),
-                };
-                list.Add(m);
-            }
-            _ctn = list;
-
-            long bagOwner = ResolveBagOwner(null);
-            _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
-
-            // v1.8.4b：柜宽统一（作者 2026-11-01 缺陷#2）移到本 5s 慢通道——HomeInstances/
-            // AllContainers 已在上方同一周期刷新，SizeEngine 按「家中在场」算目标与排除共包
             RailUi.SizeEnginePoll();
+            RecomputeCaps();
         }
         catch (Exception e)
         {
             WarnOnce("meta", "容器元数据刷新失败: " + e.Message);
         }
+    }
+
+    /// <summary>容器行 cap 重算（RefreshMeta 主体抽出；尺寸改写后立即生效链即时调用——
+    /// rev 含 Cap（ComputeSig:1021），重算+ForceRepublish=mod rail 帧级跟上，spec §2 硬验收）。</summary>
+    internal static void RecomputeCaps()
+    {
+        var cm = BagTable.Cm();
+        if (cm == null) return;
+        var furn = BagTable.FurnDict(cm);
+        var bags = BagTable.BagDict(cm);
+        var itemState = ItemState();
+
+        var list = new List<CtnMeta>();
+        foreach (var c in CabinetCatalog.AllContainers)
+        {
+            var m = new CtnMeta
+            {
+                OwnerId = c.OwnerId,
+                Name = NameOf(c),
+                Kind = c.Kind,
+                Cap = CapCells(furn, bags, itemState, c.ConfigId, c.OwnerId),
+                TagIds = c.TagIds ?? Array.Empty<int>(),
+            };
+            list.Add(m);
+        }
+        _ctn = list;
+
+        long bagOwner = ResolveBagOwner(null);
+        _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
     }
 
     /// <summary>
@@ -428,9 +434,9 @@ internal static class RailData
         sb.Append(",\"bpBag\":").Append(BpBagDyn() ? "true" : "false");
         sb.Append(",\"rackOwner\":").Append(rackOwner);
         sb.Append(",\"bagCap\":").Append(Math.Max(0, _bagCap));
-        // 壳宽地板/抽屉克隆包的目标宽直出（[Rail] UniformBagWidth；0=off 也推——JS 地板停用信号；
-        // 契约增补照 bagCap 先例：读取先行缺省 12，C# 直推）
-        sb.Append(",\"uniformWidth\":").Append(Math.Max(0, CabinetEverywherePlugin.UniformBagWidth?.Value ?? 12));
+        // 壳宽地板/抽屉克隆包的目标宽直出（高度修改批起=常量 RailUi.UniformWidth 恒 12，
+        // [Rail] UniformBagWidth 键退役；JS 契约形状不变，0=off 信号不复存在）
+        sb.Append(",\"uniformWidth\":").Append(RailUi.UniformWidth);
         // 酿酒桶品质阈值直推（brew spec §5.1，uniformWidth 先例同点位）：GameKey 运行时读，
         // try/catch 缺省 0/0.5（官方 BrewPanel.html 界面兜底同值）；所有页都带、仅 BrewPanel 消费
         float brewP1 = 0f, brewP2 = 0.5f;
