@@ -14,8 +14,9 @@
 > swatch `.sr-fswatch`；空板=仅默认=配置未就绪容错）；排序键 `pig:<colorId>` 走**专属
 > apply** `dispApplyDyePig`（`dispApplyBrewSat` 镜像，公共比较器零改动）：点数降序/
 > 并列稳定/无该色素沉底原序；icfg 染料桶页尾列 pig（string——normIcfg 类型判形与
-> canBrew 数字同宽互斥）；角标=所排色点数该色 hex，**沉底项 suppress 不画**（非 `-`
-> 非置灰，不复制 brew 置灰口径）；fsort 复位语义与其余排序页一致（重开=official）。
+> canBrew 数字同宽互斥）；徽章=**官方同款右下水滴**（官方 .dye-pts 类+dropSvg 原样镜像，作者验收令
+> 「复用官方色素显示方案」——右上角 mod 数值角标不用于色素）；沉底项不画；官方已画让位
+> 零重叠；fsort 复位语义与其余排序页一致（重开=official）。
 > 详见 docs/superpowers/specs/2026-11-07-dye-pigment-sort-design.md。
 > v13.9（v13.8 之上：**背包页 mod 按钮对**（作者缺陷单
 > #1「背包界面缺失 排序、一键入库 按钮」，原型三轮定稿）：单独背包/整理物资的背包面板

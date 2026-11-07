@@ -168,32 +168,45 @@ function check(name, ok, detail) {
   await page.evaluate(() => { delete window.__HZ_DYEPAL__; });
   await pushCtx('DyePanel');
 
-  /* ---- §4 角标（Task 4）：所排色点数右上角（该色 hex）；无该色素=不出角标（suppress，非 '-'、非置灰）；official 清层 ---- */
+  /* ---- §4 角标（作者验收令「复用官方色素显示方案」改版）：官方同款右下水滴徽章（.dye-pts 类
+     + 官方 dropSvg 原样）；无该色素=不画（suppress）；官方已画让位；右上角 <i> 数值角标不用于色素 ---- */
   const badgesD = async () => frameEl('DyePanel').evaluate(() => {
     const layer = document.getElementById('srBadgeLayer');
-    const out = { total: 0, byItem: {}, dims: 0 };
+    const out = { drops: 0, iTotal: 0, byItem: {}, dims: 0 };
     if (!layer) return out;
     const its = [...document.querySelectorAll('.sr-gridhost .item')];
-    [...layer.querySelectorAll('i')].forEach((bi) => {
-      const bl = parseFloat(bi.style.left), bt = parseFloat(bi.style.top);
-      const m = its.find((it) => Math.abs((it.offsetLeft + it.offsetWidth) - bl) < 3 && Math.abs(it.offsetTop - bt) < 3);
-      if (m) out.byItem[m.id] = { text: bi.textContent, color: bi.style.color };
+    [...layer.querySelectorAll('.dye-pts')].forEach((dp) => {
+      out.drops++;
+      const dl = parseFloat(dp.style.left), dt = parseFloat(dp.style.top);
+      const m = its.find((it) => Math.abs((it.offsetLeft + it.offsetWidth) - dl) < 3 && Math.abs((it.offsetTop + it.offsetHeight) - dt) < 3);
+      const path = dp.querySelector('.drop svg path');
+      if (m) out.byItem[m.id] = { text: dp.textContent, fill: path ? path.getAttribute('fill') : null, tr: dp.style.transform };
     });
-    out.total = layer.querySelectorAll('i').length;
+    out.iTotal = layer.querySelectorAll('i').length;
     out.dims = layer.querySelectorAll('.sr-brewdim').length;
     return out;
   });
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
   await page.waitForTimeout(400);
   let bd = await badgesD();
-  check('S4-badge-count3', bd.total === 3, 'total=' + bd.total);
-  check('S4-badge-905-pts5-hex', bd.byItem['905'] && bd.byItem['905'].text === '5' && bd.byItem['905'].color === 'rgb(224, 85, 85)', JSON.stringify(bd.byItem['905']));
+  check('S4-badge-count3', bd.drops === 3, JSON.stringify(bd));
+  check('S4-badge-905-pts5-hex', bd.byItem['905'] && bd.byItem['905'].text === '5' && bd.byItem['905'].fill === '#e05555' && bd.byItem['905'].tr.replace(/\s/g, '').indexOf('translate(-100%,-100%)') >= 0, JSON.stringify(bd.byItem['905']));
   check('S4-badge-901-pts2', bd.byItem['901'] && bd.byItem['901'].text === '2', JSON.stringify(bd.byItem['901']));
   check('S4-badge-suppress-903', bd.byItem['903'] === undefined && bd.dims === 0, JSON.stringify({ b903: bd.byItem['903'], dims: bd.dims }));
+  check('S4-badge-no-topright-i', bd.iTotal === 0, 'iTotal=' + bd.iTotal);
+  /* 官方让位守卫：官方自己画过 .dye-pts 的物品（提取当前色场景）——mod 不再画（零重叠） */
+  await frameEl('DyePanel').evaluate(() => {
+    const it = document.getElementById('905');
+    if (it && !it.querySelector('.dye-pts')) { const d = document.createElement('div'); d.className = 'dye-pts'; d.textContent = '5'; it.appendChild(d); }
+  });
+  await page.waitForTimeout(500); /* 重绘周期后复核（观察器/重推路都会走到） */
+  bd = await badgesD();
+  check('S4-badge-official-yield', bd.drops === 2 && bd.byItem['905'] === undefined, 'drops=' + bd.drops + ' 905=' + JSON.stringify(bd.byItem['905']));
+  await frameEl('DyePanel').evaluate(() => { const d = document.getElementById('905'); const own = d && d.querySelector('.dye-pts'); if (own) own.remove(); });
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const bo = document.querySelector('[data-fsort="official"]'); if (bo) bo.click(); });
   await page.waitForTimeout(300);
   bd = await badgesD();
-  check('S4-badge-official-clear', bd.total === 0, 'total=' + bd.total);
+  check('S4-badge-official-clear', bd.drops === 0 && bd.iTotal === 0, JSON.stringify(bd));
 
   /* ---- §5 回归（Task 5）：推包重应用 / 重开复位 official / 他页菜单零污染 / 柜行 cfg 级取值 ---- */
   /* ① 推包重应用：pig:3 排序态下改契约原始位（模拟官方推包）→ 模型仍按点数序 */

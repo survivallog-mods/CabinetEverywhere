@@ -1362,6 +1362,12 @@
     var m = pigMapOf(row.cfgId);
     return m ? (m[dyeId] || 0) : 0;
   }
+  /* 官方水滴 SVG 原样（DyePanel.html dropSvg @463 逐字镜像——作者验收令「复用官方色素显示
+     方案」；色值来自 dyePal hex，仍走 esc 防御） */
+  function dyeDropSvg(color) {
+    return '<span class="drop"><svg viewBox="0 0 12 16"><path d="M6 .8C4.2 3.6 1 7.4 1 10.4a5 5 0 0 0 10 0C11 7.4 7.8 3.6 6 .8Z" fill="' + esc(color) +
+      '" stroke="rgba(0,0,0,.5)" stroke-width=".8"/><path d="M3.5 10.3a2.6 2.6 0 0 0 1.7 2.5" stroke="rgba(255,255,255,.6)" stroke-width="1" fill="none" stroke-linecap="round"/></svg></span>';
+  }
   function dispApplyDyePig(D, model) {
     var dyeId = parseInt(String(D.choice).slice(4), 10); /* 'pig:<colorId>' */
     var items = model.items;
@@ -1645,17 +1651,31 @@
         if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
         var h = '';
         var brewMode = (spec.k === 'sat' && st.scene === 'BrewPanel'); /* v14.1：brew 饱腹序专属绘制径 */
-        var dyeMode = String(spec.k).indexOf('pig:') === 0; /* dye-pigment-sort：suppress 口径——无该色素不画（非 '-' 非置灰，spec §5.3） */
+        /* dye-pigment-sort（作者验收令「复用官方色素显示方案」）：所排色点数=**官方同款右下
+           水滴徽章**——官方 .dye-pts 类 + 官方 dropSvg 水滴原样（DyePanel.html @463/@196 逐字
+           镜像），不再用 mod 右上角数值角标；官方自己已画的物品（.dye-pts 在场=提取当前色
+           同款）让位跳过=零重叠；无该色素沉底不画（suppress 不变）。仅 DyePanel（他页无该 CSS）。 */
+        var dyeMode = st.scene === 'DyePanel' && String(spec.k).indexOf('pig:') === 0;
         var dyeId = dyeMode ? parseInt(String(spec.k).slice(4), 10) : 0;
+        var dyeHex = dyeMode ? (dyePalColor(spec.k) || '#f0b03c') : '';
         for (var k = 0; k < its.length; k++) {
           var elx = its[k];
           if (cfg.skipHide && elx.getAttribute('data-srhide')) continue; /* 被筛掉的格不标（rail 筛选态） */
           var it = cellRows.get(elx);
           if (!it && !brewMode) continue; /* brew 模式：无契约行的格也要置灰（v14.1），其余模式照旧跳过 */
-          if (dyeMode && pigPointsOf(it, dyeId) <= 0) continue; /* 无该色素/非植物：整枚 <i> 不画（suppress） */
           if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
           var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
           var x = p[0] + elx.offsetWidth + (cfg.dx || 0), y = p[1] + (cfg.dy || 0);
+          if (dyeMode) {
+            if (pigPointsOf(it, dyeId) <= 0) continue; /* 无该色素/非植物：不画（沉底项无数值） */
+            if (elx.querySelector('.dye-pts')) continue; /* 官方已画（提取当前色）——让位零重叠 */
+            /* 右下锚定：left/top=格右下角 + translate(-100%,-100%)（官方 .dye-pts 的 bottom:1px;
+               right:1px 是物品内锚，layer 侧算位等价复刻；bottom/right 显式清零防过约束） */
+            var x2 = p[0] + elx.offsetWidth + (cfg.dx || 0), y2 = p[1] + elx.offsetHeight + (cfg.dy || 0);
+            h += '<div class="dye-pts" style="left:' + Math.round(x2) + 'px;top:' + Math.round(y2) +
+              'px;right:auto;bottom:auto;transform:translate(-100%,-100%)">' + dyeDropSvg(dyeHex) + pigPointsOf(it, dyeId) + '</div>';
+            continue;
+          }
           /* v14.1 酿酒桶+饱腹序（brew spec §5 增补）：只有可酿物品画 <i>（数值+品质色角标，
              与数值同一条 dispRows 下标直配链（it），不另起 join；劣绿/普黄/烈粉=游戏 BrewPanel
              TIER_COLOR 同源）；不可酿（含无契约行）=置灰遮罩 .sr-brewdim 且无数值角标，

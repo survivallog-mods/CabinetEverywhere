@@ -69,7 +69,7 @@ C 内部一个子决策：**色素排序走专属 apply**（`dispApplyDyePig`，
 1. `dispRows` join（物品 id 直配，现体系）取 `cfgId` → 查 `ICFG[cfgId].pig` 解析得该色点数
 2. 排序：点数降序；null/0（无该色素、非植物）沉底保持原相对序；并列稳定
 3. `dispPack` 装填（cols×(rows+8) 余量现规则）→ 写模型 x/y → 官方自渲染
-4. 角标：makeBadgeLayer 右上角显所排色点数（`FBCOLOR` 按色号映射该色 hex）；**沉底项（无该色素/非植物）不出角标**——dispApplyBrewSat 镜像口径（suppress 而非通用维度的 `-`：混合包里植物是少数派，满屏 `-` 是噪音；本设计也不做置灰）；`official` 复位走 dispRestore
+4. 徽章（作者验收改版）：**复用官方色素显示方案**——官方 `.dye-pts` 类+官方 dropSvg 水滴原样，右下锚定显示「所排色水滴+点数」；右上角 mod 数值角标不用于色素；沉底项（无该色素/非植物）不画；官方已画 `.dye-pts` 的物品让位跳过（提取当前色与排序色同款时零重叠）；`official` 复位走 dispRestore
 
 ### 5.4 行为细节（已与作者对齐）
 
