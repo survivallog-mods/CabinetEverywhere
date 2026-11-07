@@ -267,6 +267,15 @@ function check(name, ok, detail) {
   await page.waitForTimeout(900); /* 等旧文档销毁、F() 重解析到新帧 */
   await F().waitForFunction(() => document.getElementById('srfgTabs') && document.getElementById('backpackGrid').querySelectorAll('.slot').length === 288, null, { timeout: 15000 });
   await page.waitForTimeout(500);
+  /* 三验收根因回归：重开(新文档)后柜子页签必须在（旧缺陷=tabSig 跨文档残留→滚动区永不首填） */
+  const reopenTabs = await tabIds();
+  check('fg:reopen-tablist', reopenTabs === 'bag,900105,900106,900200,900201,900202,900203,900300', '重开后页签清单完整（柜签 7 个全在）：' + reopenTabs);
+  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
+  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 2; }, null, { timeout: 8000 }).catch(() => { });
+  const reopenGrid = await F().evaluate(() => { const g = document.getElementById('srfgGrid'); return g ? g.querySelectorAll('.item').length : -1; });
+  check('fg:reopen-ctn-grid', reopenGrid === 2, '重开后点柜签 mod 格渲染（旧缺陷=FG.sig 跨文档残留→永不渲染）：items=' + reopenGrid + '（⑤ 已喂走 1=剩 2）');
+  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
+  await page.waitForTimeout(120);
   const reopenState = await F().evaluate(() => {
     const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const tabs = document.getElementById('srfgTabs'), foot = document.getElementById('srfgFoot');
@@ -299,10 +308,11 @@ function check(name, ok, detail) {
     const tr = tabs && tabs.getBoundingClientRect(), pr = panel.getBoundingClientRect();
     return { tabs: !!tabs, foot: !!foot, vis: !!tr && tr.height > 0 && tr.top >= pr.top - 1,
       cls: panel.className, zoom: document.body.style.zoom || '', lock: panel.style.height,
+      n: document.querySelectorAll('#srfgTabs .srfg-tab').length,
       tabsLeft: tabs ? tabs.getBoundingClientRect().left - pr.left : -1 };
   });
-  check('fg:reopen-samedoc-tabs', reop2.tabs && reop2.foot && reop2.vis && reop2.tabsLeft <= 17,
-    '同文档关/开（Root 真实时序）：tabs=' + reop2.tabs + ' foot=' + reop2.foot + ' vis=' + reop2.vis + ' 左起满宽(Δ=' + reop2.tabsLeft.toFixed(1) + '≤17=面板内边距) zoom="' + reop2.zoom + '" 锁=' + reop2.lock + ' cls=' + reop2.cls);
+  check('fg:reopen-samedoc-tabs', reop2.tabs && reop2.foot && reop2.vis && reop2.n === 8 && reop2.tabsLeft <= 17,
+    '同文档关/开（Root 真实时序）：柜签(8) tabs=' + reop2.tabs + ' foot=' + reop2.foot + ' vis=' + reop2.vis + ' 左起满宽(Δ=' + reop2.tabsLeft.toFixed(1) + '≤17=面板内边距) zoom="' + reop2.zoom + '" 锁=' + reop2.lock + ' cls=' + reop2.cls);
   /* ⑧h-b 重载变体（若游戏走 iframe 重载路）：hide→reload→ready→nudge */
   await page.evaluate(() => { document.getElementById('FuelGenerator').style.display = 'none'; });
   await page.waitForTimeout(200);
@@ -316,10 +326,11 @@ function check(name, ok, detail) {
     const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const tabs = document.getElementById('srfgTabs');
     const tr = tabs && tabs.getBoundingClientRect(), pr = panel.getBoundingClientRect();
-    return { tabs: !!tabs, vis: !!tr && tr.height > 0 && tr.top >= pr.top - 1, zoom: document.body.style.zoom || '' };
+    return { tabs: !!tabs, vis: !!tr && tr.height > 0 && tr.top >= pr.top - 1, zoom: document.body.style.zoom || '',
+      n: document.querySelectorAll('#srfgTabs .srfg-tab').length };
   });
-  check('fg:reopen-reload-tabs', reop3.tabs && reop3.vis && (reop3.zoom === '' || parseFloat(reop3.zoom) > 0.6),
-    '关→重载→开（重载变体）：页签栏回显可见、zoom="' + reop3.zoom + '"（空或正常适配值）');
+  check('fg:reopen-reload-tabs', reop3.tabs && reop3.vis && reop3.n === 8 && (reop3.zoom === '' || parseFloat(reop3.zoom) > 0.6),
+    '关→重载→开（重载变体）：页签栏回显可见、柜签全在(' + reop3.n + '/8)、zoom="' + reop3.zoom + '"（空或正常适配值）');
 
   /* ---- ⑨ no-fuel-cabinets（Review Focus 1：无燃料柜=原版） ---- */
   await page.evaluate(() => {

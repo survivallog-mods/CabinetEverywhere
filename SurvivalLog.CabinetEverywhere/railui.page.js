@@ -3528,7 +3528,7 @@
     var grid = doc.getElementById('backpackGrid');
     if (!panel || !grid) return;             /* 官方左面板未建：等下一轮 */
     if (grid.children.length === 0) return;  /* 官方格未渲染（页面脚本未跑/BagMsg 未到）：等下一轮（默认 6×5 先建即可装配——宽度已无一次性锁，中间态无害） */
-    if (FG.doc === doc && doc.getElementById('srfgTabs')) { fgSettle(); return; } /* 在位：数据驱动更新 */
+    if (FG.doc === doc && doc.getElementById('srfgTabs') && doc.getElementById('srfgBody') && doc.getElementById('srfgWarn') && doc.getElementById('srfgFoot')) { fgSettle(); return; } /* 在位（四件全查=防半装配快路径陷阱：装配中途异常残留时能走全量重装自愈）：数据驱动更新 */
     injectRailStyle(doc); /* srfg-* 样式随 railui.css 注入（本页此前无 rail=首次注入） */
     fgTeardown(); /* 跨文档重建（iframe 重载）：清旧引用 */
     FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.current = 'bag';
@@ -3769,6 +3769,10 @@
     }
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.current = 'bag';
+    /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
+       相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
+       永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */
+    FG.tabSig = ''; FG.sig = '';
   }
 
   function ensureMountedFrame(f) {

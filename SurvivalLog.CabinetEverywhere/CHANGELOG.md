@@ -9,6 +9,16 @@
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**三验收轮根修（作者截图定位：重开后页签栏只剩「背包」、柜签全消失）**：
+⑨ **tabSig/sig 跨文档残留**——游戏重开面板=新 iframe（Root.html 状态广播注释实锤「面板重开=新
+iframe+新 PAGE_READY」）；装配防观察器环的清单签名守卫 `FG.tabSig` 跨文档不清零，新文档首填时
+签名与旧文档相同→判「无变化」→**新文档 #srfgScroll 永不首填**（柜签消失），同病 `FG.sig` 使柜格
+永不渲染。首次打开正常（JS 状态全新）＝「只有首次打开才显示」的完整解释。修：fgTeardown 清零
+两签名缓存；快路径在位判定改四件全查（tabs/body/warn/foot 任缺=走全量重装，防半装配陷阱）。
+harness 断言补盲（此前重开只查「页签栏存在」不数柜签=漏检根因）：重开后页签清单全量+柜签可点
+渲染+两复现床柜签计数——RED 实锤旧代码重开后清单=`bag`、柜签 1/8（与实机截图一致），修复后
+**43/43** 全绿。
+
 **二验收轮追加修复（作者实机反馈三项+一项质询改版）**：
 ⑤ 页签栏居中——上轮误引官方 Cooking `.bag-tabs` 的 `align-self:center`（Cooking 收缩居中
 观感）；本页应与其他界面/原型 v6 一致=**整行左起满宽**，回退该属性。
@@ -46,7 +56,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **41/41**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **43/43**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。
