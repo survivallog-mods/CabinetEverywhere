@@ -43,29 +43,10 @@
    布局自管（官方 .backpack-container 已被 #srp 原位替换，其 flex 布局不再作用于三段）；
    三段内官方件（.bag-slot/.transfer-controls）样式走官方 CSS 原样。 */
 #srp .sr-bpduo{display:flex;flex-direction:row;align-items:flex-start;gap:18px}
-/* 整理柜三段壳（v1.8.2 v13）：#srp 内作用域容器继承官方 id=rackSystem+class=rack-system
-   ——布局（flex row/gap 18/居中）、scoped 选择器、fit 测量全走官方 CSS，此处零自绘布局。
-   左=官方 .bag-panel 原件 + 中=官方 .transfer-controls 原件（mod 三按钮 append 其尾）+
-   右=rail 壳（官方右面板进 sr-gridhost）。#srMid=mod 三按钮包裹层：display:contents
-   让子项平铺进官方容器（间隔沿用官方 gap:10）。 */
-#srp #srMid{display:contents}
-#srp .transfer-controls-spacer{height:20px;flex:none}
-#srp .category-dropdown-wrapper{position:relative}
-#srp .category-dropdown-btn{display:inline-flex;align-items:center;gap:6px}
-#srp .category-dropdown-btn::after{content:'';display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;margin-left:3px;transition:transform .2s;opacity:.9}
-#srp .category-dropdown-btn.open::after{transform:rotate(180deg)}
-#srp .category-dropdown{position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 4px);min-width:100%;background:rgba(20,24,36,.96);border:1px solid rgba(100,120,160,.35);border-radius:6px;padding:4px 0;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.5);max-height:200px;overflow-y:auto}
-#srp .category-option{padding:7px 14px;font-size:13px;color:#c8cde0;cursor:pointer;white-space:nowrap;transition:background .15s}
-#srp .category-option:hover{background:rgba(80,110,180,.35);color:#fff}
-#srp .category-empty{padding:7px 14px;font-size:13px;color:#7a7268;white-space:nowrap}
-/* 按标签放入（官方 tag-putin-btn）：CSS 照搬官方；官方放标签 SVG 图标，原型用标签色点替代 */
-#srp .tag-putin-btn{flex-direction:column;gap:3px}
-#srp .tag-putin-btn.has-ico{padding-top:6px;padding-bottom:7px}
-#srp .tag-putin-btn .putin-row{display:inline-flex;align-items:center;gap:4px}
-#srp .tag-putin-btn .putin-main{gap:8px}
-#srp .tag-putin-btn .putin-ico{display:inline-flex;gap:2px}
-#srp .tag-putin-btn .putin-more{font-size:12px;line-height:13px;opacity:.8}
-#srp .tag-putin-btn .pi-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+/* 整理柜（v1.8.2 v13 三段壳→v1.8.2.5 面板级）：布局/scoped 选择器/fit 测量全走官方 CSS，
+   此处零自绘布局。转移列=官方 .transfer-controls 原件两按钮（放入材料/全部取出）——
+   mod 三增值按钮（#srMid 包裹+spacer/category-dropdown/tag-putin fork 段）随 2026-11-07
+   作者实机对账裁决退役删除（材料架特殊，与其他柜子不一样，只有官方两按钮）。 */
 /* B 键单独背包 = 纯背包页：柜子页签栏与全库切换不显示（柜子页签在其余场景照常） */
 #srp .sr-rail.bagonly .sr-tabsrow{display:none}
 #srp .sr-rail.bagonly .sr-scope{display:none}

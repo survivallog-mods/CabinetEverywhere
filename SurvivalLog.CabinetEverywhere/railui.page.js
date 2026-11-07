@@ -64,10 +64,10 @@
    T5=▾容器菜单/✎编辑弹窗/页签拖拽 + 命令排队（无乐观刷新，等回包）——前两者 v1.8.9
        随 ▾ 全部容器按钮整链退役（页签行 100% 官方化），命令排队保留。
    T10（v1.8.2 重写）= 整理柜三段壳：mount rack 装配（官方件 reparent，见上）+
-       renderMidChips（按标签色点随 st.currentId 联动）+ bindMid（mod 三按钮
-       takeCat·putCat·putTag 命令化/分类下拉 catsOf/点外 Esc 收起）+ 快照差工具
-       （armXfer/settleXfer，T11/T12 复用）。自绘背包面板（BAGPANEL_HTML/renderBagPanel/
-       bindBagPanel 右键 put/take 单件语义）已随 v13 总纲退役删除。
+       快照差工具（settleXfer，T11/T12 复用）。自绘背包面板（BAGPANEL_HTML/renderBagPanel/
+       bindBagPanel 右键 put/take 单件语义）已随 v13 总纲退役删除；中段 mod 三增值按钮
+       （renderMidChips/bindMid/catsOf/armXfer put-take 路）随 2026-11-07 作者实机对账
+       裁决退役删除——材料架特殊，转移列只有官方两按钮「放入材料/全部取出」。
    T11= 一键入库（确认前置 + storeAll + 差量汇总 toast）；T12= 一键整理（tidy + 差量 toast +
        ctx.lastTidyFail 降级）；T9= 官方联动（forge 切换/active 跟随/postMessage 包装链/
        A→B→A 重访重绑；v1.8.2：rack 族 active=rackOwnerId、切柜走 rackOpen 命令不走 forge）；
@@ -81,9 +81,10 @@
      {op:"rackOpen",  owner}                                 整理柜跨柜：C# 重放官方
                                                              Ac_MaterialRack_Open.SendAction → 官方
                                                              state 重绑 → 行组件原生重渲染（v13）
-     {op:"takeAll",  from}  /  {op:"putAll", to}            整容器互转（中段 mod 三按钮的分类路复用）
-     {op:"takeCat",  from, cat:catId}  /  {op:"putCat", to, cat:catId}   分类互转（中段 mod 按钮）
-     {op:"putTag",   to}                                     按右侧柜标签放入（中段 mod 按钮）
+     {op:"takeAll",  from}  /  {op:"putAll", to}            整容器互转——JS 不再发出（中段 mod
+                                                             三按钮 2026-11-07 退役；C# 执行器保留无害）
+     {op:"takeCat",  from, cat:catId}  /  {op:"putCat", to, cat:catId}   分类互转——同上退役
+     {op:"putTag",   to}                                     按右侧柜标签放入——同上退役
      {op:"tidy",     owner}                                  一键整理（页脚；失败时 C# 经
                                                              ctx.lastTidyFail 一次性标志回传）
      {op:"storeAll", order:[ownerId...]}                     一键入库（页脚；order=柜子页签顺序）
@@ -191,7 +192,7 @@
        reparent，见 mount rack 分支）。stubs 沿用 v1.8.0 实证表——自愈语义：reparent 后真节点
        仍在文档（官方查询照常命中）即不建桩，任一官方件抓取失败时兜底防 TypeError。 */
     BackpackUI:      { host: '.backpack-container', family: 'backpack', bagOnly: true, duo: false, native: true, grid: '.grid-container', stubs: [] }, /* iframe id 实测 'Backpack'（ID_ALIAS 归一）。v1.8.3：**原生模式（native:true）**——不装配 rail/plainbag（ensureNativeBp 注 style#srNativeBp：高度滚动+滚动条不压格+柜侧隐负重条）；v1.8.4：加 mod 按钮对（nbMount：⇅排序▾/📦一键入库 进官方 .toolbar 行左缘，UI-SPEC §0a-4；装配判据=ctx.bpBag，取用单柜不装）。host/grid/stubs 字段保留供旧 harness mount() 直调参考。列数=官方数据原生（12 列统一待数据层拍板） */
-    MaterialRack:    { host: '.bag-panel:not(.is-storage)', family: 'rack', bagOnly: false, duo: false, plainBag: true, rackMid: true, grid: null, stubs: ['wtText', 'wtFill', 'previewLayer'] }, /* v1.8.2.5：**只替换左侧背包 .bag-panel**→简洁背包栏（plainbag）；官方转移列（2 原件+mod 3 增值按钮 append）与右侧柜子面板（普通存储取物界面=官方行组件）原样不动。宿主「替换即消亡」成立（默认 alive）。stubs=随背包面板移除的官方查询目标兜底 */
+    MaterialRack:    { host: '.bag-panel:not(.is-storage)', family: 'rack', bagOnly: false, duo: false, plainBag: true, grid: null, stubs: ['wtText', 'wtFill', 'previewLayer'] }, /* v1.8.2.5：**只替换左侧背包 .bag-panel**→简洁背包栏（plainbag）；官方转移列与右侧柜子面板（普通存储取物界面=官方行组件）原样不动。2026-11-07 作者裁决：rackMid（mod 三增值按钮 append 进转移列）退役——材料架特殊，转移列只有官方两按钮「放入材料/全部取出」。宿主「替换即消亡」成立（默认 alive）。stubs=随背包面板移除的官方查询目标兜底 */
     Cooking:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagPanelTitle', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'fridgeGuide', 'fridgeGuideBtn', 'sortBagBtn'] }, /* 文档第 1 个 .panel（@Cooking.html @881）；grid id 已从桩剔除（官方格进壳仍在文档，官方查询照常命中）。injTabs=TabInjector 注入页（C# 往官方 BagTabs 补全部柜子）：∩门对 kind 'c' 放行（见 railCtns 注释）。tabs=官方页签栏原件（v1.8.7 reparent 进 #srTabs；含 pin/滚动钮/滚动区/fridgeGuide 整件） */
     BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263）；injTabs 同 Cooking；tabs 同 Cooking */
     RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs/tabs 同 Cooking */
@@ -251,26 +252,12 @@
     '<div class="sr-popbody" id="srSortPopBody"></div></div>' +
     '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-popbody" id="srFootSortBody"></div></div>';
 
-  /* 整理柜中段 mod 增值三按钮（v1.8.2 v13 口径）：「放入材料/全部取出」两按钮=官方
-     #btnPutAll/#btnTakeAll **原件**（mount 时随官方 .transfer-controls reparent 进中段，
-     官方监听原样，不在此复刻）；本串只含 mod 三个批量按钮——◀分类取出(下拉)/
-     分类放入▶(下拉)/按标签放入+色点行，append 进官方 .transfer-controls 容器尾。
-     按钮样式=页面自带官方 .transfer-btn（MaterialRack 样式表；BackpackUI 独有类
-     category-dropdown/tag-putin/putin-row/spacer 在 railui.css fork 段）。
-     id 与旧版逐字一致（srTakeCat/srTakeCatMenu/srPutCat/srPutCatMenu/srTagPutIn/srTagChips），
-     行为 bindMid 接线（命令契约见文件头）。 */
-  var MID_EXTRA_HTML =
-    '<div class="transfer-controls-spacer"></div>' +
-    '<div class="category-dropdown-wrapper">' +
-    '<button class="transfer-btn category-dropdown-btn btn-dir-left" id="srTakeCat" type="button"><span class="btn-arrow">◀</span><span class="btn-label">分类取出</span></button>' +
-    '<div class="category-dropdown" id="srTakeCatMenu" hidden></div></div>' +
-    '<div class="category-dropdown-wrapper">' +
-    '<button class="transfer-btn category-dropdown-btn btn-dir-right" id="srPutCat" type="button"><span class="btn-label">分类放入</span><span class="btn-arrow">▶</span></button>' +
-    '<div class="category-dropdown" id="srPutCatMenu" hidden></div></div>' +
-    '<button class="transfer-btn tag-putin-btn" id="srTagPutIn" type="button" title="按右侧柜子的标签规则放入（背包中分类命中标签的物品）">' +
-    '<span class="putin-row" id="srTagChips"></span>' +
-    '<span class="putin-row putin-main"><span class="btn-label">按标签放入</span><span class="btn-arrow">▶</span></span>' +
-    '</button>';
+  /* 整理柜中段 mod 增值三按钮（MID_EXTRA_HTML：◀分类取出/分类放入▶/按标签放入，
+     v1.8.2 v13 口径 append 进官方 .transfer-controls）——2026-11-07 作者实机对账裁决
+     整链退役删除：材料架特殊，与其他柜子不一样，转移列只有官方两按钮
+     「放入材料/全部取出」（#btnPutAll/#btnTakeAll 官方原件+官方监听，mod 零改动）。
+     railui.css 的 category-dropdown/tag-putin fork 段与 bind()/mount() 的 srMid 装配
+     链同步移除（对账明细见 CHANGELOG 当批）。 */
 
   /* ================= T3 渲染层（数据契约 v4 → store/渲染） =================
      移植自 rail.js 的渲染函数区；数据源从原型假数据（POOL/CTN/ICTN）换为 setData 推来的
@@ -758,8 +745,8 @@
     var t2 = NB.doc && NB.doc.getElementById ? NB.doc.getElementById('srnToast') : null;
     if (t2) toastAt(t2, msg);
   }
-  /* 整理柜场景 toast（v1.8.2：左背包面板已官方化，无独立 sbToast 元素——统一走主侧栏 toast） */
-  function sbToast(msg) { toast(msg); }
+  /* sbToast 别名（v1.8.2 曾统一路由主侧栏 toast）随中段三按钮 2026-11-07 退役删除——
+     唯二调用方 putAllToCabinet/tagPutIn 与 settleXfer put/take 尾部同批移除 */
 
   /* ---- 快捷标签两行上限（rail.js 同款）：先加再量 srTagRow 溢出，溢出回退并拒绝 ---- */
   function tryAddQuick(t) {
@@ -820,70 +807,30 @@
      官方页签元素上重接 HTML5 dnd（身份按族取：data-owner/_ownerId/TABS 位序），
      命令通道沿用 pinOrder（C# 重排官方数组+Repush，A/D 天然跟随新序）。 ---- */
 
-  /* ================= T10 整理柜三段壳（v1.8.2 v13：壳+官方 DOM 原件） =================
-     装配在 mount()（sc.rack 分支：作用域容器 #rackSystem.rack-system + 官方左面板/
-     官方中段两按钮/mod 三按钮/官方右面板/飞层 reparent，明细见 mount 注释）。
-     本区只保留 mod 增值层的命令化：putAllToCabinet/takeAllFromCabinet（分类路 putCat/
-     takeCat）、tagPutIn（putTag）、catsOf/catMatch/catLabel——数据层转移不落地（无 ICTN
-     可变缓存），一律 cmdOut 入队，等 C# 执行后推新契约包自然重渲染；moved/stay 结果
-     toast 由快照差工具 armXfer/settleXfer 复现（命令前记快照 → 下包 setData 差量生成文案）。
-     官方两按钮（PUT_ALL/TAKE_ALL）与全部格子级动作=官方原生，本区零涉及。
-     接线经 bind() 的 el 引用表（srMid 与三按钮 id），主侧栏 render() 末尾连带 renderMidChips()。 */
+  /* ================= T10 整理柜（v1.8.2 v13：壳+官方 DOM 原件） =================
+     装配在 mount()（v1.8.2.5 起面板级：左侧背包 .bag-panel 换简洁背包栏；官方转移列与
+     右侧行组件原样，明细见 mount 注释）。
+     原 v1.8.2 的 mod 增值层（putAllToCabinet/takeAllFromCabinet/tagPutIn 分类·标签路 +
+     catsOf/catMatch/catLabel 分类工具 + armXfer/settleXfer 的 put/take 路 + bindMid 接线）
+     随 2026-11-07 作者实机对账裁决整链退役删除：材料架特殊，转移列只有官方两按钮
+     「放入材料/全部取出」，PUT_ALL/TAKE_ALL 官方原生，本区零涉及。
+     快照差工具仅存 storeAll/tidy 两路（T11/T12 活跃消费，见下）。 */
 
-  /* ---- 分类工具（rail.js catsOf/catMatch/catLabel 的契约口径版）----
-     cat 三态：null=全部 | catId 数字（=icfg.catId，即 C# takeCat/putCat 的
-     Config_Item.Category 过滤值）| 官方标签名字符串数组（putTag 语义：柜官方标签名
-     ∩ 背包物品分类名，rail.js catMatch 的 Array 分支同款）。 */
-  function catName(catId) {
-    for (var i = 0; i < store.icfg.length; i++) if (store.icfg[i].catId === catId && store.icfg[i].cat) return store.icfg[i].cat;
-    return '#' + catId;
-  }
-  function catMatch(it, cat) {
-    if (cat == null) return true;
-    if (Array.isArray(cat)) return cat.indexOf(it.cat) >= 0;
-    return it.catId === cat;
-  }
-  function catLabel(cat) { return Array.isArray(cat) ? cat.join('·') : (typeof cat === 'number' ? catName(cat) : ''); }
-  /* 分类下拉选项 = 对应容器实际存在分类（rail.js catsOf 同义）：按 icfg.catId 汇总去重
-     （首现顺序），选项 value=catId、label=catName（rail.js 选项即分类名，正式版 id/名分离
-     ——分类名经 esc 渲染、id 走 data-cat）。 */
-  function catsOf(arr) {
-    var out = [];
-    for (var i = 0; i < arr.length; i++) {
-      if (!arr[i].cat) continue; /* rail.js 同款：分类名缺失的行不入选项 */
-      var hit = false;
-      for (var j = 0; j < out.length; j++) if (out[j].id === arr[i].catId) { hit = true; break; }
-      if (!hit) out.push({ id: arr[i].catId, n: arr[i].cat });
-    }
-    return out;
-  }
-
-  /* ---- 快照差工具（共享，T11/T12 复用）----
+  /* ---- 快照差工具（共享，T11/T12 复用；2026-11-07 起 kind 只剩 storeAll/tidy——
+     put/take 路随中段三按钮退役删除）----
      命令发出前记相关 owner 的叠数/件数快照（XFER 在途恒一笔，后发覆盖前发=末次命令口径）；
      下包 setData 到达（settleXfer 在 setData 末尾、render 之后调用——rail.js「先刷后 toast」
-     同序）按差量生成结果 toast：放入方向 sbToast（左面板 toast）、取出方向 toast（主侧栏），
-     与 rail.js putAllToCabinet/takeAllFromCabinet 的 toast 元素选择一致。文案分支口径照
-     rail.js：「已放入 X N 件（cat）」「柜满剩 N 叠」「X 已满」「背包里没有命中「cat」的物品」/
-     「已取出 N 件（cat）」「背包满剩 N 叠」「背包已满」「柜子里没有cat」。
-     stay（满则整叠跳过计数）= 命令时刻命中叠数 - 快照差搬走叠数：整叠语义下精确（T7 的
-     put/putAll/putCat/putTag/takeAll/takeCat 全部整叠搬运——TryQuickMoveItems/TryMoveBagAll
+     同序）按差量生成结果 toast（主侧栏 toast；BackpackUI 原生页经 toast() 兜底路由 srnToast）。
      无半叠拆分；take 1 件的 SplitItem 拆分路径不经本工具）。 */
-  var XFER = null; /* 在途转移：{kind:'putAll'|'takeAll'|'storeAll'|'tidy', cat, tgt, cands, n, all, bag:{s,p}, ctn:{s,p}, order, snaps, owner, before}
-                      （v1.8.2：put1 随右键 mod 语义退役；putAll/takeAll 由中段分类/按标签路
-                      复用——cat 恒非 null；tidy 只带 owner/before=命令时该 owner 叠数；
-                      storeAll 带 order+全量柜 snaps） */
+  var XFER = null; /* 在途转移：{kind:'storeAll'|'tidy', order, snaps, bag:{s,p}, owner, before, t0, tMO, tSet}
+                      （2026-11-07：putAll/takeAll 路随中段三按钮退役删除——armXfer 一并移除，
+                      现仅 storeAll/tidy 两路（goStoreAll/goTidy/nbStoreAll 三处直写 XFER）；
+                      tidy 带 owner/before+三段计时戳；storeAll 带 order+全量柜 snaps） */
   function snapOwner(id) { /* ownerId → {s:叠数, p:件数}（契约原始行直读，零渲染对象开销） */
     var raw = id === store.bag ? bagArr() : (store.items[String(id)] || []);
     var s = raw.length, p = 0;
     for (var i = 0; i < raw.length; i++) p += raw[i][2] || 0;
     return { s: s, p: p };
-  }
-  function armXfer(kind, cat, n, all) {
-    var tgtId = st.currentId;
-    var src = kind === 'takeAll' ? itemsOf(tgtId) : itemsOf(store.bag);
-    var cands = 0;
-    for (var i = 0; i < src.length; i++) if (catMatch(src[i], cat)) cands++;
-    XFER = { kind: kind, cat: cat, tgt: tgtId, cands: cands, n: n || 0, all: !!all, bag: snapOwner(store.bag), ctn: snapOwner(tgtId) };
   }
   function settleXfer() {
     if (!XFER) return;
@@ -944,27 +891,8 @@
       }
       return;
     }
-    var tgt = ctnById(x.tgt);
-    if (!tgt) return; /* 柜已消失（拆了等）：无从措辞，静默 */
-    var bagNow = snapOwner(store.bag), ctnNow = snapOwner(x.tgt);
-    var label = catLabel(x.cat), suffix = x.cat != null ? '（' + label + '）' : '';
-    var movedP, movedS, stay;
-    if (x.kind === 'putAll') {
-      movedP = ctnNow.p - x.ctn.p;
-      movedS = x.bag.s - bagNow.s;
-      stay = Math.max(0, x.cands - movedS);
-      if (movedP > 0) sbToast('已放入 ' + nm(tgt) + ' ' + movedP + ' 件' + suffix + (stay ? '，柜满剩 ' + stay + ' 叠' : ''));
-      else if (stay > 0) sbToast(nm(tgt) + ' 已满');
-      else sbToast(x.cat != null ? '背包里没有命中「' + label + '」的物品' : '背包是空的');
-      return;
-    }
-    /* takeAll（rail.js takeAllFromCabinet：结果 toast 走主侧栏） */
-    movedP = bagNow.p - x.bag.p;
-    movedS = x.ctn.s - ctnNow.s;
-    stay = Math.max(0, x.cands - movedS);
-    if (movedP > 0) toast('已取出 ' + movedP + ' 件' + suffix + (stay ? '，背包满剩 ' + stay + ' 叠' : ''));
-    else if (stay > 0) toast('背包已满');
-    else toast(x.cat != null ? '柜子里没有' + label : '柜子是空的');
+    /* putAll/takeAll 差量尾部（「已放入/已取出 N 件（cat）」族文案）随中段三按钮
+       2026-11-07 退役删除——kind 只剩 storeAll/tidy，两分支各自 return 收口。 */
   }
 
   /* ================= T11 一键入库（确认前置 + storeAll + 差量汇总 toast） =================
@@ -1065,95 +993,11 @@
     try { window.postMessage({ type: ev.type, data: ev.data, sourcePageId: f.el.id }, '*'); return true; } catch (e) { return false; }
   }
 
-  /* ---- 中段「按标签放入」色点渲染（v1.8.2：renderBagPanel 随左面板官方化退役，仅存此联动）----
-     主 render() 末尾连带调用：色点随 st.currentId 联动（v12 第三连修回归点）。官方 tagId 经
-     lib 查名查色（tagColor 按名字取组色），前三+more；柜无官方标签=空串（自定义词不进色点：
-     putTag 只按官方标签路由，fix-2 裁定）。 */
-  function renderMidChips() {
-    var tp = el.srTagPutIn;
-    if (!tp || !store.ctx) return; /* 中段未装配/数据未到：不动（非 rack 场景 el.srTagPutIn=null） */
-    var tgt = ctnById(st.currentId);
-    var tags = tgt && tgt.id !== store.bag ? (tgt.tags || []) : [];
-    var names = tags.map(tagName);
-    var chips = el.srTagChips;
-    var ico = '<span class="putin-ico">' + names.slice(0, 3).map(function (t) {
-      return '<i class="pi-dot" style="background:' + tagColor(t) + '" title="' + esc(t) + '"></i>';
-    }).join('') + '</span>';
-    var more = names.length > 3 ? '<span class="putin-more">+' + (names.length - 3) + '</span>' : '';
-    chips.innerHTML = names.length ? ico + more : '';
-    tp.classList.toggle('has-ico', names.length > 0);
-    tp.title = names.length ? '按「' + names.join('·') + '」标签放入背包中的对应物品' : '右侧柜子未设置标签';
-  }
-
-  /* ---- 中列 mod 三按钮（rail.js putAllToCabinet/takeAllFromCabinet/tagPutIn 命令化，v1.8.2 收敛为分类/按标签路）----
-     空容器早退 toast 照 rail.js（数据本地即真，无命令可发）；满则整叠跳过/无命中的结果
-     文案由 settleXfer 按回推差量生成（此处只 arm 不判）。
-     命令分流（契约一字不差）：cat=catId 数字 → putCat{to,cat}/takeCat{from,cat}；
-     cat=标签名数组（tagPutIn 路径）→ putTag{to}（C# 按 to 的 GetRule 标签名集合自取，
-     负载不带标签）。cat=null 的整柜互转路（putAll/takeAll）已随官方两原件按钮退役——
-     官方 PUT_ALL/TAKE_ALL 走原生事件，不arm 不差量（官方自有反馈）。 */
-  function putAllToCabinet(cat) {
-    var tgt = ctnById(st.currentId);
-    if (!tgt || tgt.id === store.bag) return;
-    if (!bagArr().length) { sbToast('背包是空的'); return; }
-    armXfer('putAll', cat);
-    if (Array.isArray(cat)) cmdOut('putTag', { to: st.currentId });
-    else cmdOut('putCat', { to: st.currentId, cat: cat });
-  }
-  function takeAllFromCabinet(cat) {
-    var tgt = ctnById(st.currentId);
-    if (!tgt || tgt.id === store.bag) return;
-    if (!itemsOf(tgt.id).length) { toast('柜子是空的'); return; }
-    armXfer('takeAll', cat);
-    cmdOut('takeCat', { from: st.currentId, cat: cat });
-  }
-  function tagPutIn() {
-    var tgt = ctnById(st.currentId);
-    if (!tgt || tgt.id === store.bag) return;
-    /* 柜无官方标签（TagIds 空）→ toast 拒绝不发命令（rail.js 同款；自定义词不算——C#
-       putTag 按 FurnitureTagComponent.GetRule 官方标签路由，fix-2 双层裁定） */
-    var names = (tgt.tags || []).map(tagName);
-    if (!names.length) { sbToast(nm(tgt) + ' 未设置标签'); return; }
-    putAllToCabinet(names);
-  }
-
-  /* ---- 中段 mod 三按钮接线（v1.8.2：bindBagPanel 随左面板官方化退役，收敛为 bindMid）----
-     引用表（srTakeCat/srTakeCatMenu/srPutCat/srPutCatMenu/srTagPutIn/srTagChips）随 bind()
-     每帧重收；监听器只挂一次（mid 容器 __srMidBound 门=mount 生成的新容器才挂，T9 rebindFrame
-     重绑路防双挂）。官方两按钮（btnPutAll/btnTakeAll）零接线——官方监听随 reparent 原样存活。 */
-  function bindMid() {
-    var mid = el.srMid;
-    if (!mid || mid.__srMidBound) return;
-    mid.__srMidBound = true;
-    var tp = el.srTagPutIn;
-    if (tp) tp.onclick = function () { closeMidMenus(); tagPutIn(); };
-    var tc = el.srTakeCat, tcm = el.srTakeCatMenu, pc = el.srPutCat, pcm = el.srPutCatMenu;
-    /* 分类下拉（rail.js bindCat 移植）：开=重算选项（数据驱动，选项随容器内容变化）；
-       再点=收起（reopen 门）；点外/Esc 收起走 bind() 的 document 级监听（T5 已就位，
-       wrapper 内豁免防同次点击开合互搏）。选项 data-cat=catId（C# cat 字段口径），
-       label=catName；无可转移物品占位照 rail.js。 */
-    function bindCat(btn, menu, srcArr, fn) {
-      if (!btn || !menu) return;
-      btn.onclick = function () {
-        var reopen = menu.hidden;
-        closeMidMenus();
-        if (!reopen) return;
-        var cs = catsOf(srcArr());
-        menu.innerHTML = cs.length
-          ? cs.map(function (c) { return '<div class="category-option" data-cat="' + c.id + '">' + esc(c.n) + '</div>'; }).join('')
-          : '<div class="category-empty">无可转移物品</div>';
-        menu.hidden = false;
-        btn.classList.add('open');
-      };
-      menu.onclick = function (e) {
-        var o = e.target.closest('[data-cat]'); if (!o) return;
-        closeMidMenus();
-        fn(parseInt(o.getAttribute('data-cat'), 10));
-      };
-    }
-    bindCat(tc, tcm, function () { return itemsOf(st.currentId); }, function (c) { takeAllFromCabinet(c); }); /* ◀分类取出：选项=当前柜实际分类 */
-    bindCat(pc, pcm, function () { return itemsOf(store.bag); }, function (c) { putAllToCabinet(c); });      /* 分类放入▶：选项=背包实际分类 */
-  }
+  /* ---- 中段 mod 三按钮（renderMidChips/putAllToCabinet/takeAllFromCabinet/tagPutIn/bindMid
+     含内嵌 bindCat 分类下拉）——2026-11-07 作者实机对账裁决整链退役删除：材料架特殊，
+     与其他柜子不一样，转移列只有官方两按钮「放入材料/全部取出」（停用 mod 官方原样）。
+     随按钮退役：takeCat/putCat/putTag 命令 JS 侧不再发出（C# 执行器保留无害，见文件头
+     契约注）、armXfer/settleXfer 的 put/take 路与分类工具/色点联动一并移除。 ---- */
 
   /* ---- 官方格 display 层过滤（v1.8.2）----
      网格模式物品区=官方格：搜索/标签过滤只动官方 .item 的 display（零 addEventListener，
@@ -2073,9 +1917,7 @@
     }
     RENDERED_ID = st.currentId; /* T9：落地「已渲染」标记（回包门判定用） */
     saveSnap(); /* T9：活跃集即当前帧状态，渲染同步进快照（重访重绑换回的就是最新态） */
-    if (el.srMid) renderMidChips(); /* T10 中段联动（v1.8.2）：主侧栏任何渲染（切柜/筛选/
-       命令回推/active 跟随都汇于 render）连带刷「按标签放入」色点——随 st.currentId 联动
-       （v12 第三连修回归点）；非 rack 场景 el.srMid=null 自然跳过 */
+    /* T10 中段「按标签放入」色点联动（renderMidChips）随 2026-11-07 rackMid 退役移除 */
     if (isPlainScene() && el.rail) plainSlotSync(el.rail.parentElement, el.rail); /* 七轮：槽位随渲染同步（官方等高契约；ResizeObserver 兜底挂载竞态） */
   }
 
@@ -2094,10 +1936,10 @@
       'srTabs', 'srOffTabs', 'srSearch', 'srScope',
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGridHost', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
       'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody',
-      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody',
-      /* T10 中段（仅 rack 场景存在，非 rack 收集为 null，消费侧守卫；官方两按钮
-         btnPutAll/btnTakeAll 零接线——官方监听随 reparent 存活，不入引用表） */
-      'srMid', 'srTakeCat', 'srTakeCatMenu', 'srPutCat', 'srPutCatMenu', 'srTagPutIn', 'srTagChips'];
+      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody'];
+      /* T10 中段七 id（srMid/srTakeCat/srTakeCatMenu/srPutCat/srPutCatMenu/srTagPutIn/
+         srTagChips）随 2026-11-07 rackMid 退役移出引用表；官方两按钮 btnPutAll/btnTakeAll
+         恒零接线——官方监听在官方节点上原样存活，从不入引用表。 */
     el = {};
     var d = doc || document; /* mount 传入宿主文档（与 rail 同文档），直开时兜底 window 文档 */
     for (var i = 0; i < ids.length; i++) el[ids[i]] = d.getElementById(ids[i]);
@@ -2412,7 +2254,8 @@
        整理/入库；无页签/搜索/标签/排序/列表切换）；柜子侧面板与官方转移列原样不动。
        BackpackUI：容器 ready 门照旧（v-show=InfoAMsg 到达即形态已定）；dual=transfer-controls
        在场→plainbag；A 头部官方 aTabs（若有）入 #srOffTabs 槽保原生切换。
-       MaterialRack：宿主即左侧背包面板；官方转移列 append mod 三增值按钮（rackMid）。 */
+       MaterialRack：宿主即左侧背包面板；官方转移列原样（2026-11-07 作者实机对账裁决：
+       材料架特殊——转移列只有官方两按钮「放入材料/全部取出」，mod 三增值按钮 rackMid 装配退役）。 */
     var bpDual = false, bpPanel = null, bpTabs = null;
     if (sceneKey === 'BackpackUI') {
       try { if (doc.defaultView.getComputedStyle(host).display === 'none') return false; } catch (e) { }
@@ -2457,19 +2300,6 @@
       if (bpTabs) {
         var ot = rail.querySelector('#srOffTabs');
         if (ot) { try { ot.appendChild(bpTabs); ot.hidden = false; } catch (e) { } }
-      }
-    }
-    /* rack（rackMid）：mod 三增值按钮 append 进官方转移列（官方两按钮原序在前；替换宿主前
-       完成，buildStubs 时官方列已在文档不建桩——#srMid 残留先清防重） */
-    if (sc.rackMid) {
-      var midHost0 = doc.querySelector('.transfer-controls');
-      if (midHost0) {
-        var stale0 = midHost0.querySelector('#srMid');
-        if (stale0 && stale0.parentNode) stale0.parentNode.removeChild(stale0);
-        var midExtra0 = doc.createElement('div');
-        midExtra0.id = 'srMid';
-        midExtra0.innerHTML = MID_EXTRA_HTML;
-        midHost0.appendChild(midExtra0);
       }
     }
     /* railui.css 选择器全部 #srp 前缀：侧栏连一层 #srp 包裹一起原位替换宿主。每次 mount
@@ -2541,7 +2371,6 @@
       } catch (e) { }
       unlockGridSize(); /* v1.8.4c：入壳首清官方 sizeLock 的 margin 填充（后续由观察器跟清） */
     }
-    if (sc.rackMid) bindMid(); /* 中段 mod 三按钮接线（mid 容器 __srMidBound 门防重绑双挂；官方两按钮零接线） */
     /* T4 场景态随装配应用：st.scene←sceneKey（T3 评审随行项①——分场景 localStorage 键
        srp_*_<scene> 由此对齐，否则 harness 切 rack 场景会错位成上一场景/undefined）；
        applyScene 内含 PIN_KEY=''（全新侧栏 DOM 页签结构必重建——key 短路只对同一棵
@@ -3510,7 +3339,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, dragCoord: null, dragging: false, lastMouse: null, dragArm: null };
+  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, dragCoord: null, dragging: false, lastMouse: null, dragArm: null, dragPayload: null, dropNet: null };
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', full: '燃油槽已满', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' };
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3583,9 +3412,27 @@
       if (!FG.dragArm || FG.dragging) return;
       var a = FG.dragArm;
       if (Math.abs(ev.clientX - a.x) + Math.abs(ev.clientY - a.y) < 6) return; /* 起拖阈值（官方外部来源=调用方把关） */
-      FG.dragArm = null; FG.dragging = true; fgTipHide();
-      try { FG.dragCoord.beginExternalDrag(ev, { id: a.id, icon: a.icon, w: a.w, h: a.h, payload: { id: a.id, cfg: a.cfg } }); }
-      catch (e) { FG.dragging = false; }
+      FG.dragArm = null; FG.dragging = true; FG.dragPayload = { id: a.id, cfg: a.cfg }; fgTipHide();
+      var began = false;
+      try { began = FG.dragCoord.beginExternalDrag(ev, { id: a.id, icon: a.icon, w: a.w, h: a.h, payload: { id: a.id, cfg: a.cfg } }); } catch (e) { }
+      if (!began) { FG.dragging = false; FG.dragPayload = null; return; }
+      /* 放手保底（八验收「拖起来放不下去」纵深防御）：捕获相一次性 mouseup——用事件真实落点
+         路由+幽灵兜底清理+drag-over 复位。与协调器自身 stopDrag（冒泡相）双路，FG.dragging
+         幂等门保证只走一条；协调器链路被实机任何环节吞掉时本保底独立生效。 */
+      try {
+        var winD = FG.doc.defaultView;
+        FG.dropNet = function (e2) {
+          try { winD.removeEventListener('mouseup', FG.dropNet, true); } catch (e3) { }
+          FG.dropNet = null;
+          if (!FG.dragging) return;
+          FG.dragging = false;
+          var pl = FG.dragPayload; FG.dragPayload = null;
+          try { var gs = FG.doc.querySelectorAll('body > .item[data-no-sync]'); for (var k = 0; k < gs.length; k++) gs[k].remove(); } catch (e3) { } /* 幽灵兜底（stopDrag 正常时早已移除=空集） */
+          try { FG.doc.getElementById('fuelQueueZone').classList.remove('drag-over'); } catch (e3) { }
+          if (pl) fgDropRoute(pl, { x: e2.clientX, y: e2.clientY });
+        };
+        winD.addEventListener('mouseup', FG.dropNet, true);
+      } catch (e) { }
     }, { passive: true }); } catch (e) { }
     try { FG.doc.addEventListener('mouseup', function () { FG.dragArm = null; }, { passive: true }); } catch (e) { }
     body.addEventListener('contextmenu', function (ev) {
@@ -3616,7 +3463,18 @@
     foot.addEventListener('click', function () { cmdOut('tidy', { owner: FG.current === 'bag' ? store.bag : Number(FG.current) }); });
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
     fgInitDrag(); /* 七验收：柜中物品拖拽——官方协调器 beginExternalDrag 外部来源通道（见 fgInitDrag 注释） */
-    try { doc.addEventListener('mousemove', function (ev) { FG.lastMouse = { x: ev.clientX, y: ev.clientY }; }, { passive: true }); } catch (e) { } /* 落点判定用（onExternalDrop 不带坐标） */
+    try { doc.addEventListener('mousemove', function (ev) {
+      FG.lastMouse = { x: ev.clientX, y: ev.clientY }; /* 落点判定用（onExternalDrop 不带坐标） */
+      if (FG.dragging) { /* 官方同款料槽 drag-over 反馈（页面 watcher 只认它的协调器=外部拖拽无高亮） */
+        var z = FG.doc && FG.doc.getElementById('fuelQueueZone');
+        if (z) {
+          var r = z.getBoundingClientRect();
+          var ic = ICFG[FG.dragPayload ? FG.dragPayload.cfg : 0] || {};
+          var inside = ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+          z.classList.toggle('drag-over', !!(inside && ic.burn));
+        }
+      }
+    }, { passive: true }); } catch (e) { }
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
        FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
     try { doc.addEventListener('keydown', fgKey, true); } catch (e) { }
@@ -3695,14 +3553,14 @@
       };
       FG.dragCoord = w.createBagDragCoordinator([fakeBag], {
         canAcceptItem: function () { return false; },
-        onExternalDrop: function (payload) { FG.dragging = false; fgDropRoute(payload); },
+        onExternalDrop: function (payload) { if (FG.dragging) { FG.dragging = false; fgDropRoute(payload); } }, /* 幂等：dropNet 捕获相先路由过则跳过（双路只走一） */
         onDragFinished: function () { FG.dragging = false; }
       });
     } catch (e) { FG.dragCoord = null; }
   }
-  function fgDropRoute(p) {
+  function fgDropRoute(p, pos) {
     if (!FG.doc || FG.current === 'bag' || !p || !p.id) return;
-    var m = FG.lastMouse || {};
+    var m = pos || FG.lastMouse || {};
     var q = FG.doc.getElementById('fuelQueueZone');
     if (q) {
       var r = q.getBoundingClientRect();
@@ -3886,7 +3744,7 @@
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.current = 'bag';
     try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
-    FG.dragCoord = null; FG.dragging = false; FG.dragArm = null; /* 拖拽协调器随文档销毁（监听挂帧 window） */
+    FG.dragCoord = null; FG.dragging = false; FG.dragArm = null; FG.dragPayload = null; FG.dropNet = null; /* 拖拽协调器随文档销毁（监听挂帧 window） */
     /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
        相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
        永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */

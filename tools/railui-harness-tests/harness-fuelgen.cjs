@@ -183,13 +183,15 @@ function check(name, ok, detail) {
     document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + 50, clientY: r.y + 50 }));
     const ghost = !!document.querySelector('body > .item[data-no-sync]');
     document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30 }));
+    const over = document.getElementById('fuelQueueZone').classList.contains('drag-over');
     document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30, button: 0 }));
-    return { ghost: ghost, ghostGone: !document.querySelector('body > .item[data-no-sync]') };
+    return { ghost: ghost, ghostGone: !document.querySelector('body > .item[data-no-sync]'), over: over,
+      overOff: !document.getElementById('fuelQueueZone').classList.contains('drag-over') };
   });
   await page.waitForTimeout(250);
   d = JSON.parse(await drain());
-  check('fg:drag-feed', d.length === 1 && d[0].op === 'feed' && Number(d[0].owner) === 900106 && dragFeed.ghost && dragFeed.ghostGone,
-    '拖柴油→料槽=feed（官方幽灵出现+收场干净）：' + JSON.stringify(d) + ' ghost=' + dragFeed.ghost + '/' + dragFeed.ghostGone);
+  check('fg:drag-feed', d.length === 1 && d[0].op === 'feed' && Number(d[0].owner) === 900106 && dragFeed.ghost && dragFeed.ghostGone && dragFeed.over && dragFeed.overOff,
+    '拖柴油→料槽=feed（幽灵出现/收场干净/料槽 drag-over 金框亮起+松手灭）：' + JSON.stringify(d) + ' ghost=' + dragFeed.ghost + '/' + dragFeed.ghostGone + ' over=' + dragFeed.over + '/' + dragFeed.overOff);
   const dragBounce = await F().evaluate(() => {
     const el = document.querySelector('#srfgGrid .item');
     if (!el) return { ok: false };

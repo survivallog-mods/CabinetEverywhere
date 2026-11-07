@@ -335,6 +335,19 @@ const rk = await frameOf('MaterialRack').evaluate(() => {
 });
 check('rack-single:MaterialRack', rk.ok && rk.w === 720, `${rk.w}px（单侧栏，duo=T10）`);
 
+/* 2026-11-07 作者实机对账裁决回归（RED 实锤旧代码=5 按钮）：材料架转移列特殊，
+   与其他柜子不一样——只有官方两按钮「放入材料/全部取出」（#btnPutAll/#btnTakeAll），
+   mod 三增值按钮（#srMid/srTakeCat/srPutCat/srTagPutIn，rackMid 装配）不出现 */
+const rkMid = await frameOf('MaterialRack').evaluate(() => {
+  const tc = document.querySelector('.transfer-controls');
+  if (!tc) return { err: 'no .transfer-controls' };
+  const ids = Array.from(tc.querySelectorAll('button')).map((b) => b.id);
+  return { ids, cnt: ids.length, srMid: !!document.getElementById('srMid') };
+});
+check('rack-mid-official2:MaterialRack',
+  !rkMid.err && rkMid.cnt === 2 && rkMid.ids[0] === 'btnPutAll' && rkMid.ids[1] === 'btnTakeAll' && !rkMid.srMid,
+  (rkMid.err || rkMid.ids.join(',') + ' srMid=' + rkMid.srMid) + '（官方两按钮即全部）');
+
 /* ④ 宿主手动重建 → 重装配 ≤500ms（brief：观察器 500ms 内；代表 3 页——bag/tt/rack 家族） */
 for (const key of ['Cooking', 'ToolTable', 'MaterialRack']) {
   await page.evaluate((k) => window.__HZ_SHOW__(k), key);
