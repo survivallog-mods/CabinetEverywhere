@@ -91,6 +91,9 @@ if (Test-Path $srcCfg) {
     $txt = $txt -replace '(?m)^(BagIds\s*=\s).*$',     '${1}'
     $txt = $txt -replace '(?m)^(IncludeFurnitureIds\s*=\s).*$', '${1}'
     $txt = $txt -replace '(?m)^(ListOnReady\s*=\s).*$', '${1}true'
+    # 负重批（v1.8.6）：[Burden] 两键归一发布默认（防本机测试值带进发布包，如同其他键）
+    $txt = $txt -replace '(?m)^(BackpackBurden\s*=\s).*$', '${1}0'
+    $txt = $txt -replace '(?m)^(CabinetUnburden\s*=\s).*$', '${1}true'
     [System.IO.File]::WriteAllText($dstCfg, $txt, (New-Object System.Text.UTF8Encoding($false)))
 } else {
     Write-Host 'note: runtime cfg not found - packaging without preset cfg'

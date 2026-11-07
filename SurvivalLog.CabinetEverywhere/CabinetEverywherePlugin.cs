@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "1.8.5";
+    public const string Version = "1.8.6";
 
     internal static ManualLogSource Log;
 
@@ -73,6 +73,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 12 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
+    // ==== 负重批（2026-11-07 作者令：背包负重调整新增 + 原独立 mod CabinetBurden 并回）====
+    internal static ConfigEntry<int> BackpackBurden;   // 背包负重上限（公斤，0=官方原值，0~1000，写表=kg×1000）
+    internal static ConfigEntry<bool> CabinetUnburden; // 柜子负重解放：true=家具储物包负重清零；false=还原
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
     internal static ConfigEntry<int> RemoteDebugPort; // v1.8.10 八追：>0=WebView2 附加 --remote-debugging-port（断流现场 CDP 取证，默认关）
     internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
@@ -138,6 +141,14 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             hb.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
             "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随恒定 12 列统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
+        // ==== 负重批（[Burden] 区，Rail 区后 Access 区前；Burden 是 OnInit 快照→读档后对已存在容器/已穿背包生效）====
+        BackpackBurden = Config.Bind("Burden", "BackpackBurden", 0,
+            "背包负重上限（公斤）。0=官方原值；范围 0~1000，写表换算 kg×1000（游戏内部单位=克，UI 显示 Kg）。对 9 个可穿背包统一生效，天赋加成照常独立叠加；改后重新读档对已穿背包生效。");
+        CabinetUnburden = Config.Bind("Burden", "CabinetUnburden", true,
+            "柜子负重解放（原独立 mod CabinetBurden 并回）：true=储物家具包负重清零（官方无负重语义，柜子界面负重条整行隐藏）；false=恢复官方原值。名单自动发现，默认排除购物车 3/轿车 4；改后重进存档对已存在容器生效。");
+        System.EventHandler burdenReload = (object s, System.EventArgs e) => { Rerun = true; };
+        BackpackBurden.SettingChanged += burdenReload;
+        CabinetUnburden.SettingChanged += burdenReload;
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
             "白名单注入：工作台/无人机交易/无人机站/粉碎机/温室 的柜子页签与自动取料。");
         EnableCooking = Config.Bind("Access", "EnableCooking", true, "烹饪界面注入柜子页签。");
@@ -335,6 +346,7 @@ internal sealed class AccessTicker : MonoBehaviour
         if (CabinetEverywherePlugin.Enabled != null && !CabinetEverywherePlugin.Enabled.Value)
         {
             CraftSourceInjector.RemoveAll();
+            BagBurden.SyncDisabled(); // 负重批对称还原（幂等降载：还原一遍后空转，SlowTick 重新接管时再武装）
             return;
         }
 
@@ -355,6 +367,10 @@ internal sealed class AccessTicker : MonoBehaviour
                 CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 柜子名单（" + cfgIds.Count + " 条）：\n  " +
                                                     string.Join("\n  ", CabinetCatalog.DescribeAll()));
             }
+
+            // 1.5) 负重改写（背包 kg 调整 + 柜子负重解放，CabinetBurden 并回批）：
+            //     配置表幂等直写（Burden 为 OnInit 快照→改表读档后对已存在容器/已穿背包生效）
+            BagBurden.SlowTick();
 
             // 2) 白名单注入（工作台/无人机交易/无人机站/粉碎机/温室）；关=对称移除本会话
             //    注入（CraftSourceInjector.RemoveAll，幂等——含"运行中由开转关"的收敛路径）

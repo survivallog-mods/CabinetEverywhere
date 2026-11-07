@@ -3,6 +3,31 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## v1.8.6（2026-11-07，负重批——背包负重调整新增 + 原独立 mod CabinetBurden 并回；BackpackExpand/CabinetSize/CabinetBurden 三 mod 随批退役）
+
+**作者令**：本 mod 增加「背包负重调整」（公斤）与「柜子负重解放」开关（CabinetBurden 整体并回）；
+BackpackExpand/CabinetSize/CabinetBurden 三 mod 从套件退役（ModCenter 面板与套件清单/安装器同步
+移除。功能归宿：背包/柜子高度=高度修改批已覆盖；柜子负重=本批并回；背包负重=本批新增；宽度维持
+恒 12 定案不再提供）。
+
+- **[Burden] 区两键**（Rail 区后、Access 区前；两键 SettingChanged→Rerun，5s 慢拍内改表）：
+  - `BackpackBurden`（int，默认 0）：背包负重上限（公斤）。0=官方原值；0~1000，写表换算
+    kg×1000（游戏内部单位=克、UI 显示 Kg：原生 9600/12000/12480 = 9.6/12/12.5kg）。对 9 个
+    可穿背包统一生效，天赋加成照常独立叠加；改后重新读档对已穿背包生效。
+  - `CabinetUnburden`（bool，默认 true，承袭 CabinetBurden 原默认）：true=储物家具包负重
+    清零 = 官方「无负重」语义（CanAddWeight 首步 ≤0 恒可放入；界面负重条 v-if max>0 整行
+    隐藏）；false=写回原生值。名单自动发现，默认排除购物车 3/轿车 4（CabinetBurden 原默认，
+    内置不出配置键）。
+- **新文件 BagBurden.cs**（CabinetBurdenPlugin 的 BurdenRewriter 模式移植，ModShared/BagTable
+  原语）：原值快照册「入册先于一切跳过」——防写 0 后还原路径被 raw<=0 跳过吞掉（旧倍数版翻车
+  教训随迁）；家具包发现 = 扫 _Config_Furniture_Dict 全部 BagId>0（不限 FurnitureType）；
+  原生 Burden=0 的包（冰箱/置物架等）不入册、永不接管。
+- **接线**：AccessTicker 5s 慢拍新步骤 1.5（配置表幂等直写）；General.Enabled=false 对称还原
+  （BagBurden.SyncDisabled 幂等降载：还原一遍后空转，SlowTick 重新接管时再武装）。
+- 机制不变式随迁：Config_Bag.Burden 是 BagComponent.OnInit 快照——改表后需重进存档才对
+  已存在容器/已穿背包生效（新放家具立即生效）；零 Harmony 补丁、零存档写入、零物品写入。
+- harness：无 UI 改动，本批不新增 harness（dye-pig 38/brew 35/fuelgen 53/heater 55 回归绿）。
+
 ## v1.8.1（2026-11-06，作者定版——合并 main；版本号单源=作者裁定）
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。

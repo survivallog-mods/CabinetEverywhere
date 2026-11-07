@@ -267,6 +267,8 @@ max 65ms；每件完成 TryCreateItem 230~263ms。级联构成（G4/G14）：单
 | Access.ExcludeBagIds | 电器/机器槽/围栏/吊篮/门窗/床/垃圾桶等 23 项（含无人机货舱 1008/中控台 1009） | 排除整包系（非储物功能包）；只挡页签/筛选，不挡柜宽（见 Rail.SizeIncludeBagIds） |
 | Rail.UniformBagWidth | 12 | 柜宽统一（0=off，v1.8.4b SizeEngine）：家中柜子+冰箱的 Config_Bag.Size 宽内存直写为该值（高不变，容量=宽×高随之变；5s 幂等重扫；材料架不动；政策全文=RailUi.cs SizeEngine 头注）。**含工作台抽屉**（十七批 DrawerWidthEngine 换绑克隆包 99001010 跟随本值，1010 共包零触碰）**与壳宽地板**（窄柜两侧留白不缩放；=0 时两者整体停用） |
 | Rail.SizeIncludeBagIds | 1009 | 柜宽白名单（十六批）：Access 双名单挡的是页签/筛选语义，不挡宽度——白名单**包含优先于排除**，直进 SizeEngine 目标集（AllContainers 之外的功能包也收，配置级直写；默认=无人机中控台 1009；厨房电器/机器槽等槽位语义包勿加，改宽即变形） |
+| Burden.BackpackBurden | 0 | **背包负重上限（公斤，负重批 2026-11-07）**：0=官方原值；0~1000，写表=kg×1000（内部单位=克）。BackpackBagIds 9 包统一，天赋加成照常叠加；读档后对已穿背包生效（见 §13） |
+| Burden.CabinetUnburden | true | **柜子负重解放（负重批 2026-11-07，原独立 mod CabinetBurden 并回）**：true=家具储物包 Burden 清零（官方无负重语义，负重条整行隐藏）；false=写回原生。名单自动发现，内置排除购物车 3/轿车 4；读档后对已存在容器生效（见 §13） |
 | Filter.Enable | true | 标签筛选总开关：关闭后不注入筛选（场景视图一并失效，页签全部显示） |
 | Scenario.View_Cooking / View_RatCage / View_BrewPanel / View_DyePanel / View_Compressor | Food | 烹饪/老鼠笼/酿酒桶/颜料桶/口粮压制机 视图 |
 | Scenario.View_ToolTable / View_Shredder / View_GreenhouseBuild | Material | 工作台/粉碎机/温室工程台 视图 |
@@ -971,3 +973,28 @@ spec=docs/superpowers/specs/2026-11-07-bag-height-design.md；计划=docs/superp
   后 cap 重算，rev 含 Cap 实证）；JS 零改动（rows=ceil(cap/cols) 现算+srBody 纵向滚动）。
 - 名单与排除全集（86 包归类/柜子1-2-3 摘除缘由/材料架宽高全原生）见 spec §4；
   harness=harness-height.cjs（12/12）。
+
+## 13. 负重改写（BagBurden，2026-11-07——背包负重调整新增 + 原独立 mod CabinetBurden 并回）
+
+- **[Burden] 两键**：`BackpackBurden`（公斤，0=官方原值，0~1000，写表=kg×1000；9 个可穿背包
+  BackpackBagIds 统一，天赋 GetMaxBurden 加成照常独立叠加）+ `CabinetUnburden`（true=家具
+  储物包 Burden 清零/false=写回原生；默认排除 BagId 3 购物车/4 轿车——载具包走背包装备体系，
+  CabinetBurden 原默认内置不出键）。
+- **单位口径实证**：Config_Bag.Burden 为 int，内部单位=克（原生背包 9600/12000/12480 =
+  9.6/12/12.5kg）；前端 BackpackUI/Trade 直接 fmtWeight（1 位小数）+「 Kg」，不做换算——
+  面板/配置的 kg 值 ×1000 写表即此口径（CabinetBurden 旧 ×1000 倍率方案「超大数字」教训
+  反证同源）。
+- **机制随迁（CabinetBurden DESIGN 2026-10-11/10-24 反汇编实证）**：Config_Furniture 无负重
+  字段，家具负重唯一来源=Config_Bag.Burden；BagComponent.OnInit 快照 → 改表后需重进存档
+  才对已存在容器/已穿背包生效（新放家具立即生效）；清零=官方无负重分支（CanAddWeight 首步
+  GetMaxBurden()<=0 恒可放入；负重条与家具详情行 v-if max>0 整行不渲染）。全家具表仅 10 包
+  原生带负重（1001/1002/1003/1050/10009/115003/1008/1060/1014/1009）。
+- **幂等结构（旧倍数版翻车教训随迁）**：进程内首读值>0 入 Orig 册，**入册先于一切跳过**——
+  写 0 后下一轮不得被 raw<=0 跳过吞掉还原路径；原生 Burden=0 的包（冰箱/置物架等）不入册、
+  永不接管。实现在 BagBurden.cs（BagTable 原语：Cm/BagDict/FurnDict/Name）。
+- **接线**：AccessTicker 5s 慢拍新步骤 1.5（幂等直写）；General.Enabled=false →
+  BagBurden.SyncDisabled 对称还原（幂等降载：还原一遍后空转，SlowTick 重新接管时再武装）；
+  两键 SettingChanged→Rerun（5s 内改表）。
+- **退役对账（作者令 2026-11-07）**：BackpackExpand（背包宽高+负重）/CabinetSize（柜子宽高）/
+  CabinetBurden（柜子负重）三 mod 同批从套件退役——宽高归宿=§12 高度批（宽度恒 12 定案），
+  负重归宿=本节；旧 dll 同写 Config_Bag.Size/Burden 会互相覆盖，双 README 升级提示先卸载旧件。
