@@ -228,14 +228,16 @@
 #srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
 /* dye-pigment-sort：色项 swatch 色块（f-ico 同位同寸，背景=该色 hex 内联；描边+投影保深浅底可辨） */
 #srp .sr-fsopt .sr-fswatch{border-radius:50%;border:1px solid rgba(255,255,255,.38);box-shadow:0 0 4px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.25)}
-/* dye-pigment-sort（作者统一风格对版令）：染料场景颜色菜单舒展行——文行比 0.34（参考图
-   口径；现 .sr-fsopt 0.46=观感「字大」的根因）。类挂 #srRail（render 按场景），#srp 为外层
-   wrap——后代式作用域；其他页菜单零改动；壳/行/字/图标全套显式声明=对页面样式免疫。 */
-#srp .sr-dyepig .sr-popfsort{background:#1e1e22;border-color:#3a3a42;border-radius:12px}
+/* dye-pigment-sort（作者统一风格对版令+报障修）：染料场景颜色菜单舒展行。字体/字号/字重
+   **全部继承基座 .sr-fsopt**（=页脚按钮同源渲染）——报障根因：初版 font-weight:500 在微软
+   雅黑无此字重→合成粗体（观感「字体不对字太大」），胖字挤窄弹窗→换行。nowrap+弹窗按内容
+   自适应宽（max-content）双保险不换行。类挂 #srRail（render 按场景），#srp 为外层 wrap——
+   后代式作用域；其他页菜单零改动。 */
+#srp .sr-dyepig .sr-popfsort{left:10px;right:auto;width:max-content;min-width:140px;
+  background:#1e1e22;border-color:#3a3a42;border-radius:12px}
 #srp .sr-dyepig .sr-popfsort .sr-popbody{padding:8px;gap:8px}
-#srp .sr-dyepig .sr-fsopt{min-height:36px;padding:0 12px;gap:9px;border-radius:9px;
-  background:#26262b;border-color:#323238;color:#d8d8dc;font-size:12.5px;font-weight:500;
-  font-family:'Segoe UI','Microsoft YaHei',sans-serif}
+#srp .sr-dyepig .sr-fsopt{min-height:34px;padding:0 12px;gap:9px;border-radius:9px;white-space:nowrap;
+  background:#26262b;border-color:#323238;color:#d8d8dc}
 #srp .sr-dyepig .sr-fsopt:hover{color:#fff;background:#2f2f36;border-color:#4a4a54}
 #srp .sr-dyepig .sr-fsopt.active{color:#f0b03c}
 #srp .sr-dyepig .sr-fsopt .f-ico{width:16px;height:16px;font-size:14px}

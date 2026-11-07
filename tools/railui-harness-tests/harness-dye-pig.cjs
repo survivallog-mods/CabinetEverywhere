@@ -144,10 +144,10 @@ function check(name, ok, detail) {
     document.getElementById('srFootSortPop').hidden = false;
     const opt = document.querySelector('#srFootSortBody .sr-fsopt');
     const cs = getComputedStyle(opt);
-    return { h: opt.offsetHeight, fs: cs.fontSize, cls: document.getElementById('srRail').className.indexOf('sr-dyepig') >= 0 };
+    return { h: opt.offsetHeight, fs: cs.fontSize, fw: cs.fontWeight, nw: cs.whiteSpace, cls: document.getElementById('srRail').className.indexOf('sr-dyepig') >= 0 };
   });
   let ms = await menuStyle('DyePanel');
-  check('S2-style-dye-airier', ms.cls && ms.h === 36 && ms.fs === '12.5px', JSON.stringify(ms));
+  check('S2-style-dye-airier', ms.cls && ms.h === 34 && ms.fs === '12px' && ms.nw === 'nowrap' && ms.fw === '400', JSON.stringify(ms)); /* 报障修：字体/字号/字重继承基座(=页脚同源)+nowrap */
   const btnLblD = () => frameEl('DyePanel').evaluate(() => document.getElementById('srFoodSortLbl').textContent);
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
   check('S2-label-pig', (await btnLblD()) === '红', await btnLblD());
