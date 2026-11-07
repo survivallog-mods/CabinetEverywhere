@@ -169,8 +169,8 @@ function check(name, ok, detail) {
   check('S4-brew-901-strong', bd.byItem['901'] && bd.byItem['901'].tier === '烈' && bd.byItem['901'].color === TIER_RGB['烈'] && bd.byItem['901'].text.indexOf('+10') === 0, JSON.stringify(bd.byItem['901']));
   check('S4-brew-902-normal', bd.byItem['902'] && bd.byItem['902'].tier === '普' && bd.byItem['902'].color === TIER_RGB['普'], JSON.stringify(bd.byItem['902']));
   check('S4-brew-903-low', bd.byItem['903'] && bd.byItem['903'].tier === '劣' && bd.byItem['903'].color === TIER_RGB['劣'], JSON.stringify(bd.byItem['903']));
-  check('S4-brew-904-notier', bd.byItem['904'] && bd.byItem['904'].tier === null, JSON.stringify(bd.byItem['904']));
-  check('S4-brew-907-notier', bd.byItem['907'] && bd.byItem['907'].tier === null, JSON.stringify(bd.byItem['907']));
+  check('S4-brew-904-notier', bd.byItem['904'] === undefined, JSON.stringify(bd.byItem['904'])); /* v14.1 修订：不可酿→整枚 <i> 不画（置灰且无数值角标） */
+  check('S4-brew-907-notier', bd.byItem['907'] === undefined, JSON.stringify(bd.byItem['907']));
   const bd0 = JSON.stringify(bd);
   await pushCtx('BrewPanel'); /* 官方重渲染+MO 重画（50ms 防抖） */
   await page.waitForTimeout(400);
@@ -183,6 +183,60 @@ function check(name, ok, detail) {
   await pickSort('Cooking', 'sat');
   bd = await badges('Cooking');
   check('S4-cook-no-tier', bd.total > 0 && !Object.keys(bd.tiers).length, 'total=' + bd.total + ' tiers=' + JSON.stringify(bd.tiers));
+  await pickSort('Cooking', 'official');
+
+  /* ---- §5 v14.1 独立排序径 + 置灰 + 闪烁根修（作者 2026-11-07 令）----
+     ① 不可酿物品（含非食物/无饱腹/无契约行）= 置灰遮罩 .sr-brewdim 且无 <i> 数值角标
+     ② 排序径与公共比较器分离（brew 专属 apply），可酿序照旧 烈→普→劣→同品质饱腹降序
+     ③ 静止性：排序落定后官方格 800ms 零 childList 变更（自激环=悬停/点击失效+闪烁根） */
+  const brewView = async () => frameEl('BrewPanel').evaluate(() => {
+    const layer = document.getElementById('srBadgeLayer');
+    const its = [...document.querySelectorAll('.sr-gridhost .item')];
+    const bis = layer ? [...layer.querySelectorAll('i')] : [];
+    const dims = layer ? [...layer.querySelectorAll('.sr-brewdim')] : [];
+    const dimIds = dims.map((d) => {
+      const dl = parseFloat(d.style.left), dt = parseFloat(d.style.top);
+      const m = its.find((it) => Math.abs(it.offsetLeft - dl) < 3 && Math.abs(it.offsetTop - dt) < 3);
+      return m ? parseInt(m.id, 10) : null;
+    }).filter((x) => x != null).sort((a, b) => a - b);
+    const badgeIds = bis.map((bi) => {
+      const bl = parseFloat(bi.style.left), bt = parseFloat(bi.style.top);
+      const m = its.find((it) => Math.abs((it.offsetLeft + it.offsetWidth) - bl) < 3 && Math.abs(it.offsetTop - bt) < 3);
+      return m ? parseInt(m.id, 10) : null;
+    }).filter((x) => x != null).sort((a, b) => a - b);
+    return { dimIds, badgeIds, dimCount: dims.length };
+  });
+  const calmMs = async (key, containerSel, ms) => frameEl(key).evaluate(([sel, t]) => new Promise((res) => {
+    const g = document.querySelector(sel);
+    if (!g) { res(-1); return; }
+    let n = 0;
+    const mo = new MutationObserver((l) => { n += l.length; });
+    mo.observe(g, { childList: true, subtree: true });
+    setTimeout(() => { mo.disconnect(); res(n); }, t);
+  }), [containerSel, ms]);
+  await showScene('BrewPanel');
+  await pickSort('BrewPanel', 'sat');
+  let v = await brewView();
+  check('S5-brew-dim-ids', JSON.stringify(v.dimIds) === JSON.stringify([904, 906, 907, 908]), JSON.stringify(v.dimIds));
+  check('S5-brew-badge-ids', JSON.stringify(v.badgeIds) === JSON.stringify([901, 902, 903, 905]), JSON.stringify(v.badgeIds));
+  ord = await gridOrder('BrewPanel', '#bagGrid');
+  check('S5-brew-order-keep', JSON.stringify(ord) === JSON.stringify([901, 902, 905, 903, 904, 906, 907, 908]), JSON.stringify(ord));
+  await page.waitForTimeout(600); /* 落定窗口（MO 50ms 防抖尾拍） */
+  const muts = await calmMs('BrewPanel', '#bagGrid', 800);
+  check('S5-brew-calm', muts === 0, 'childList mutations/800ms=' + muts);
+  await pickSort('BrewPanel', 'official');
+  v = await brewView();
+  check('S5-brew-official-nodim', v.dimCount === 0 && v.badgeIds.length === 0, 'dim=' + v.dimCount + ' badges=' + v.badgeIds.length);
+  await showScene('Cooking');
+  await pickSort('Cooking', 'sat');
+  const ck = await frameEl('Cooking').evaluate(() => {
+    const layer = document.getElementById('srBadgeLayer');
+    return { badges: layer ? layer.querySelectorAll('i').length : 0, dims: layer ? layer.querySelectorAll('.sr-brewdim').length : 0 };
+  });
+  check('S5-cook-no-dim-all-badge', ck.badges > 0 && ck.dims === 0, JSON.stringify(ck));
+  await page.waitForTimeout(600);
+  const cmut = await calmMs('Cooking', '#backpackGrid', 800);
+  check('S5-cook-calm', cmut === 0, 'childList mutations/800ms=' + cmut);
   await pickSort('Cooking', 'official');
 
   /* 尾部：零 error */

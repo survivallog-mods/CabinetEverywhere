@@ -63,6 +63,13 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
 - 已知（非本批引入，基线 4b8af09 同病对账）：harness-regression 16 PASS+MaterialRack 等待超时、
   harness-mount 26 FAIL（720px 旧宽度期望族对现行 max-content 壳的遗留失配；switch-cabinet
   27/27 绿反证装配链健康）。
+- **v14.1 复测增补（同日）**：①排序径独立——brew 饱腹序专属 `dispApplyBrewSat`（公共比较器
+  零分支），只有可酿参与排序，不可酿（含非食物/无契约行）**置灰遮罩+无数值角标**
+  （.sr-brewdim pointer-events:none 官方交互零遮挡）；②**闪烁/悬停失效根修（公共缺陷）**：
+  dispApply grid 路径 renderItems 无条件执行→MO 回调→再渲染=50ms 级自激环（实测 brew 736
+  变更/800ms、Cooking 976），节点逐拍重建吃掉悬停/点击——改 `wrote` 门控（vue 路径同纪律），
+  修后双页 800ms 零变更。harness 增 §5（34/34：置灰 id 集/角标 id 集/序保持/静止性/官方序复原/
+  Cooking 对照）。
 
 ### 待发版·二十二批（2026-11-07，燃油发电机界面柜子页签——bagtabs 装配模式）
 

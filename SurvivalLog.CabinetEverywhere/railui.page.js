@@ -1380,6 +1380,10 @@
     if (!model) return;
     D.model = model;
     if (!D.choice || D.choice === 'official') { dispRestore(D, model); return; }
+    /* v14.1（作者 2026-11-07 令「不与公共排序规则混合」）：酿酒桶饱腹序走**专属 apply**，
+       公共比较器不再带 brew 分支（v14 的比较器内分支已拆出）；置灰/无角标语义由角标层
+       按 brewTierOf 现场判定，无附加状态。 */
+    if (D === DISP && st.scene === 'BrewPanel' && D.choice === 'sat') { dispApplyBrewSat(D, model); return; }
     var items = model.items;
     if (!items.__srReal) { /* real 快照挂 items 数组本体：先于 dispRows（join 需真实位）；
        数组被官方刷新替换=新数组无快照=自然重采（PC 判定同款） */
@@ -1391,15 +1395,7 @@
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
     var key = D.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
-    /* v14 酿酒桶+饱腹序（brew spec §3）：品质主键 烈(2)→普(1)→劣(0)→不可酿(-1) 垫底，
-       同品质内才走 s1 降序（下落原单键路径，null 沉底/稳定序照旧）。仅 BrewPanel 场景生效——
-       其他页比较器逐字节不变。 */
-    var brewSat = (key === 'sat' && st.scene === 'BrewPanel');
     pairs.sort(function (a, b) {
-      if (brewSat) {
-        var ta = brewTierOf(a.row), tb = brewTierOf(b.row);
-        if (ta !== tb) return tb - ta; /* 机器页 dir 恒 1（无方向钮，setScene 固定），高在前 */
-      }
       var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
       if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
       var d = (ka - kb) * sign; /* PC 原式 (a.k-b.k)*sign：desc=-1 高在前；shelf=+1 小在前 */
@@ -1414,9 +1410,50 @@
       if (pairs[p].it.x !== at[0]) { pairs[p].it.x = at[0]; wrote = true; }
       if (pairs[p].it.y !== at[1]) { pairs[p].it.y = at[1]; wrote = true; }
     }
-    if (model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
+    /* v14.1 闪烁根修（brew spec §5 增补；公共路径缺陷，cooking 同病 976 变更/800ms 实测）：
+       renderItems 必须 wrote 门控——旧版无条件重渲染 → MO 回调（ensureBadgeObserver）再进
+       dispApply → 再渲染 → **50ms 级自激环**：格节点逐拍重建吃掉悬停/点击（mouseenter 未完
+       节点已被替换）、视觉=不停闪烁。与 vue 路径的 wrote 门控（下行 settling）对齐。
+       官方真重渲染（BagMsg 换新数组=新快照/位置回实）仍会 wrote=true 正常跟随。 */
+    if (wrote && model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
     /* vue：响应式自动重渲染；settling=DOM 未追平窗口（MO 回调清除，角标窗口期跳过） */
     if (wrote && model.kind === 'vue') D.settling = true;
+  }
+  /* v14.1 酿酒桶饱腹序专属 apply（brew spec §5 增补）：只有可酿（bw 且 s1>0）参与排序——
+     品质主键 烈→普→劣，同品质 s1 降序，稳定键 i 收尾；不可酿（含非食物/无饱腹/无契约行）
+     全部垫后（稳定序）。置灰遮罩+无数值角标由角标层按同一 brewTierOf 判定绘制（无第二状态源）。
+     快照/装填/写位复用公共件（dispRows/dispPack），排序语义自成一体不进公共比较器。 */
+  function dispApplyBrewSat(D, model) {
+    var items = model.items;
+    if (!items.__srReal) {
+      var real = new Map();
+      for (var r0 = 0; r0 < items.length; r0++) real.set(items[r0].id, [items[r0].x || 0, items[r0].y || 0]);
+      items.__srReal = real;
+    }
+    var rows = dispRows(D, model);
+    var brew = [], rest = [];
+    for (var i = 0; i < rows.length; i++) {
+      var pr = { row: rows[i], it: items[i], i: i };
+      (brewTierOf(rows[i]) >= 0 ? brew : rest).push(pr);
+    }
+    brew.sort(function (a, b) {
+      var ta = brewTierOf(a.row), tb = brewTierOf(b.row);
+      if (ta !== tb) return tb - ta;                 /* 品质主键：烈(2)→普(1)→劣(0) */
+      var ka = a.row.s1, kb = b.row.s1;              /* 同品质：饱腹高在前（null 已被 tier=-1 排除） */
+      return ka !== kb ? (kb - ka) : (a.i - b.i);
+    });
+    rest.sort(function (a, b) { return a.i - b.i; }); /* 不可酿：原序垫后 */
+    var pairs = brew.concat(rest);
+    var packed = dispPack(pairs, model.cols, model.rows);
+    if (!packed) { dispRestore(D, model); return; }
+    var wrote = false;
+    for (var p = 0; p < pairs.length; p++) {
+      var at = packed.get(pairs[p].row.id);
+      if (!at) continue;
+      if (pairs[p].it.x !== at[0]) { pairs[p].it.x = at[0]; wrote = true; }
+      if (pairs[p].it.y !== at[1]) { pairs[p].it.y = at[1]; wrote = true; }
+    }
+    if (wrote && model.kind === 'grid') { try { model.grid.renderItems(); } catch (e) { } }
   }
   function dispRestore(D, model) {
     if (!model || !model.items || !model.items.__srReal) return;
@@ -1657,19 +1694,31 @@
         var cellRows = dispCellRows(cfg.disp || DISP, host); /* 下标直配（v1.8.5④：offset 布局坐标定位，无 rect 归一） */
         if (!cellRows) { return; } /* 配对未成：保留上一次内容（不清空——作者缺陷#3）；下一轮再画 */
         var h = '';
+        var brewMode = (spec.k === 'sat' && st.scene === 'BrewPanel'); /* v14.1：brew 饱腹序专属绘制径 */
         for (var k = 0; k < its.length; k++) {
           var elx = its[k];
           if (cfg.skipHide && elx.getAttribute('data-srhide')) continue; /* 被筛掉的格不标（rail 筛选态） */
           var it = cellRows.get(elx);
-          if (!it) continue;
+          if (!it && !brewMode) continue; /* brew 模式：无契约行的格也要置灰（v14.1），其余模式照旧跳过 */
           if (elx.offsetWidth < 2 || elx.offsetHeight < 2) continue;
           var p = offsetXY(elx, host); /* 布局坐标（悬停缩放不影响） */
           var x = p[0] + elx.offsetWidth + (cfg.dx || 0), y = p[1] + (cfg.dy || 0);
-          /* v14 酿酒桶+饱腹序：可酿物品在数值正下方垫品质色角标（brew spec §5.3——与数值同一条
-             dispRows 下标直配链（it），不另起 join；劣绿/普黄/烈粉=游戏 BrewPanel TIER_COLOR 同源） */
-          var t5 = (spec.k === 'sat' && st.scene === 'BrewPanel') ? brewTierOf(it) : -1;
-          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) +
-            (t5 >= 0 ? '<span class="sr-tier" style="color:' + TIER_COLOR[t5] + '">' + TIER_TXT[t5] + '</span>' : '') + '</i>';
+          /* v14.1 酿酒桶+饱腹序（brew spec §5 增补）：只有可酿物品画 <i>（数值+品质色角标，
+             与数值同一条 dispRows 下标直配链（it），不另起 join；劣绿/普黄/烈粉=游戏 BrewPanel
+             TIER_COLOR 同源）；不可酿（含无契约行）=置灰遮罩 .sr-brewdim 且无数值角标，
+             pointer-events:none 官方交互零遮挡 */
+          if (brewMode) {
+            var tb = it ? brewTierOf(it) : -1;
+            if (tb < 0) {
+              h += '<b class="sr-brewdim" style="left:' + Math.round(p[0]) + 'px;top:' + Math.round(p[1]) +
+                'px;width:' + Math.round(elx.offsetWidth) + 'px;height:' + Math.round(elx.offsetHeight) + 'px"></b>';
+              continue;
+            }
+            h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) +
+              '<span class="sr-tier" style="color:' + TIER_COLOR[tb] + '">' + TIER_TXT[tb] + '</span></i>';
+            continue;
+          }
+          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
         }
         if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
         if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
@@ -3659,8 +3708,8 @@
       el.style.top = (10 + it.y * 46) + 'px';
       el.style.width = (w * 40 + (w - 1) * 6) + 'px';
       el.style.height = (h * 40 + (h - 1) * 6) + 'px';
-      el.innerHTML = '<span style="pointer-events:none">' + (it.icon ? '<img src="' + it.icon + '" style="width:26px;height:26px;object-fit:contain" alt="">' : '') + '</span>' +
-        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : '');
+      el.innerHTML = (it.icon ? '<img src="' + it.icon + '" style="width:100%;height:100%;object-fit:contain;pointer-events:none;" loading="lazy" decoding="async" alt="">' : '📦') +
+        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : ''); /* 图标=官方 mapItem 同款内联（100% 填充+contain；旧 26px 定值=实机「图标压缩变小」） */
       g.appendChild(el);
     }
   }
