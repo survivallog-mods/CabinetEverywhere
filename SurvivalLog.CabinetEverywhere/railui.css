@@ -228,6 +228,18 @@
 #srp .sr-fsopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;font-size:12.5px}
 /* dye-pigment-sort：色项 swatch 色块（f-ico 同位同寸，背景=该色 hex 内联；描边+投影保深浅底可辨） */
 #srp .sr-fsopt .sr-fswatch{border-radius:50%;border:1px solid rgba(255,255,255,.38);box-shadow:0 0 4px rgba(0,0,0,.55),inset 0 1px 2px rgba(255,255,255,.25)}
+/* dye-pigment-sort（作者统一风格对版令）：染料场景颜色菜单舒展行——文行比 0.34（参考图
+   口径；现 .sr-fsopt 0.46=观感「字大」的根因）。类挂 #srRail（render 按场景），#srp 为外层
+   wrap——后代式作用域；其他页菜单零改动；壳/行/字/图标全套显式声明=对页面样式免疫。 */
+#srp .sr-dyepig .sr-popfsort{background:#1e1e22;border-color:#3a3a42;border-radius:12px}
+#srp .sr-dyepig .sr-popfsort .sr-popbody{padding:8px;gap:8px}
+#srp .sr-dyepig .sr-fsopt{min-height:36px;padding:0 12px;gap:9px;border-radius:9px;
+  background:#26262b;border-color:#323238;color:#d8d8dc;font-size:12.5px;font-weight:500;
+  font-family:'Segoe UI','Microsoft YaHei',sans-serif}
+#srp .sr-dyepig .sr-fsopt:hover{color:#fff;background:#2f2f36;border-color:#4a4a54}
+#srp .sr-dyepig .sr-fsopt.active{color:#f0b03c}
+#srp .sr-dyepig .sr-fsopt .f-ico{width:16px;height:16px;font-size:14px}
+#srp .sr-dyepig .sr-fsopt .sr-fswatch{width:14px;height:14px}
 /* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale）。
    v1.8.10 十三批：z-index 5→50——官方 webui-bag/Vue 格 .item 自带 z-index:10，5 被物品格
    整层盖住=「角标画了看不见」（作者实机实锤：DOM 46 个角标全在、视觉零显示；热注入 50

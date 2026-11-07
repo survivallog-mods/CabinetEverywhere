@@ -139,6 +139,15 @@ function check(name, ok, detail) {
   check('S2-menu-default-3colors', mm.length === 4 && mm[0] === '⊞默认' && mm[1] === '红' && mm[2] === '蓝' && mm[3] === '黄', JSON.stringify(mm));
   let sw = await swatches();
   check('S2-swatch-3-hex', sw.length === 3 && sw[0] === 'rgb(224, 85, 85)' && sw[1] === 'rgb(111, 199, 201)', JSON.stringify(sw));
+  /* 作者统一风格对版令：染料菜单舒展行（36px/12.5px/文行比≈0.35）；Cooking 照旧 26px/12px 零污染 */
+  const menuStyle = async (key) => frameEl(key).evaluate(() => {
+    document.getElementById('srFootSortPop').hidden = false;
+    const opt = document.querySelector('#srFootSortBody .sr-fsopt');
+    const cs = getComputedStyle(opt);
+    return { h: opt.offsetHeight, fs: cs.fontSize, cls: document.getElementById('srRail').className.indexOf('sr-dyepig') >= 0 };
+  });
+  let ms = await menuStyle('DyePanel');
+  check('S2-style-dye-airier', ms.cls && ms.h === 36 && ms.fs === '12.5px', JSON.stringify(ms));
   const btnLblD = () => frameEl('DyePanel').evaluate(() => document.getElementById('srFoodSortLbl').textContent);
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
   check('S2-label-pig', (await btnLblD()) === '红', await btnLblD());
@@ -244,6 +253,12 @@ function check(name, ok, detail) {
     return [...document.querySelectorAll('#srFootSortBody button')].map((b) => b.textContent.trim());
   });
   check('S5-menu-isolation-cook', cookMenu.length === 7 && cookMenu[6] === '🕐保质期', JSON.stringify(cookMenu));
+  const msCook = await frameEl('Cooking').evaluate(() => {
+    document.getElementById('srFootSortPop').hidden = false;
+    const opt = document.querySelector('#srFootSortBody .sr-fsopt');
+    return { h: opt.offsetHeight, fs: getComputedStyle(opt).fontSize, cls: document.getElementById('srRail').className.indexOf('sr-dyepig') >= 0 };
+  });
+  check('S5-style-cook-untouched', !msCook.cls && msCook.h === 26 && msCook.fs === '12px', JSON.stringify(msCook));
 
   /* ④ 柜行 cfg 级取值：items['900101']（食材柜）cfg1 行红 2 点——柜子 owner 排序的取值底座
      （端到端切柜排序=实机冒烟覆盖，见台账 Task 5 Ruling） */
