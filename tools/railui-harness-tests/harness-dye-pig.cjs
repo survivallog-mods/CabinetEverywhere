@@ -195,6 +195,48 @@ function check(name, ok, detail) {
   bd = await badgesD();
   check('S4-badge-official-clear', bd.total === 0, 'total=' + bd.total);
 
+  /* ---- §5 回归（Task 5）：推包重应用 / 重开复位 official / 他页菜单零污染 / 柜行 cfg 级取值 ---- */
+  /* ① 推包重应用：pig:3 排序态下改契约原始位（模拟官方推包）→ 模型仍按点数序 */
+  await frameEl('DyePanel').evaluate(() => { document.getElementById('srFoodSort').click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
+  await page.waitForTimeout(200);
+  const mock2 = await page.evaluate(() => window.__HZ_MOCKSET__());
+  mock2.items.bag = mock2.items.bag.map(function (r) { r[4] = 7 - r[4]; return r; }); /* 原始 x 全部翻转=推包后位移 */
+  await page.evaluate((j) => window.__HZ_MOCKSET__(j), mock2);
+  await pushCtx('DyePanel');
+  await page.waitForTimeout(400);
+  pos = await gridPos();
+  check('S5-repush-reapply', JSON.stringify(pos.map((p) => p.id)) === JSON.stringify([905, 901, 902, 903, 904, 906]), JSON.stringify(pos.map((p) => p.id)));
+
+  /* ② 重开复位：重载 iframe=真实「关掉重开」（游戏关面板销毁帧；harness showScene 切换
+     帧存活≠游戏路径，见台账）→ fsort 复位 official（v1.8.5 退役口径不复活） */
+  await page.evaluate(() => { const f = document.getElementById('DyePanel'); f.src = f.src; });
+  await page.waitForTimeout(1200);
+  await pushCtx('DyePanel');
+  await showScene('DyePanel');
+  await page.waitForTimeout(600);
+  check('S5-reopen-reset', (await btnLblD()) === '排序', 'lbl=' + await btnLblD());
+
+  /* ③ 他页菜单零污染：BrewPanel 2 项 / Cooking 7 项（v14.1 与 FSORTS 原样） */
+  await showScene('BrewPanel');
+  await pushCtx('BrewPanel');
+  const brewMenu = await frameEl('BrewPanel').evaluate(() => {
+    document.getElementById('srFoodSort').click();
+    return [...document.querySelectorAll('#srFootSortBody button')].map((b) => b.textContent.trim());
+  });
+  check('S5-menu-isolation-brew', brewMenu.length === 2 && brewMenu[1] === '🍗饱腹度', JSON.stringify(brewMenu));
+  await showScene('Cooking');
+  await pushCtx('Cooking');
+  const cookMenu = await frameEl('Cooking').evaluate(() => {
+    document.getElementById('srFoodSort').click();
+    return [...document.querySelectorAll('#srFootSortBody button')].map((b) => b.textContent.trim());
+  });
+  check('S5-menu-isolation-cook', cookMenu.length === 7 && cookMenu[6] === '🕐保质期', JSON.stringify(cookMenu));
+
+  /* ④ 柜行 cfg 级取值：items['900101']（食材柜）cfg1 行红 2 点——柜子 owner 排序的取值底座
+     （端到端切柜排序=实机冒烟覆盖，见台账 Task 5 Ruling） */
+  await pushCtx('DyePanel');
+  check('S5-ctn-row-points', await pigCall('points({cfgId:1},3)') === 2, 'got ' + await pigCall('points({cfgId:1},3)'));
+
   /* 尾部：零 error */
   check('Z-console-clean', consoleErrors.length === 0, consoleErrors.join(' | ').slice(0, 200));
   check('Z-pageerror-clean', pageErrors.length === 0, pageErrors.join(' | ').slice(0, 200));
