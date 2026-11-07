@@ -9,6 +9,23 @@
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**二验收轮追加修复（作者实机反馈三项+一项质询改版）**：
+⑤ 页签栏居中——上轮误引官方 Cooking `.bag-tabs` 的 `align-self:center`（Cooking 收缩居中
+观感）；本页应与其他界面/原型 v6 一致=**整行左起满宽**，回退该属性。
+⑥ 柜格物品图标压缩变小——mod 格图标 26px 定值内联，官方格是 **100% 填充+contain**（mapItem
+同款）；改官方同款内联，柜签图标与背包签逐像素一致。
+⑦ 二次打开页签栏不显示——harness 按 Root.html 真实时序（同文档 display 关/开+心跳重推+
+re-nudge、及重载变体）均无法复现（自愈链在）；加固：fgSettle 发现「页签不在而燃料数据在」
+时**当次 setData 即回装**（FRAMES 直查当前 bagtabs 帧走全装配，不再单等 500ms interval/
+观察器路）；若实机仍复现，看 BepInEx 控制台有无 `[CERail] bagtabs mounted: FuelGenerator`
+即可定位死在哪条路。
+⑧ 「固定高度与其他界面一致吗」——质询成立：旧锁=右 gen 面板自然高（本页比他界面矮一截、
+背包被压缩滚动）；改 **锁=官方背包格全高**（grid.scrollHeight+面板其他部分；只在背包页签
+量取、跨页签恒定、同值守卫）——背包 18 行整幅直显不滚动、与 Cooking 等界面同观感同缩放，
+柜签高于背包内部滚动、更短留白钉底；`.srfg-sys` 断 stretch 退役（不再量 gen），警示行
+`.srfg-warn` 改绝对悬浮（不占流——锁跨「有/无警示」两态恒定）；锁=面板自然高后系统高不再
+被锁改变，④ 的 zoom 滞留问题随之结构性消失。
+
 **修复（作者实机验收反馈四项，全部根因=旧静态夹具「一帧全量渲染」掩掉的时序/装配缺陷）**：
 ① ‹› 翻页按钮不显示——`is-visible` 溢出门在燃料柜少时永不显形；改**常驻可见+端点禁用**
 （官方 Cooking `.tab-scroll-btn:disabled` 同式），页签栏样式逐值对齐官方 `.bag-tabs`
@@ -29,11 +46,12 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **39/39**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
-  禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-grid-scroll 18 行滚动+非拉伸锁 /
-  race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+zoom 复位）。
-  **RED 对账**：git stash 回滚两修复文件后 7 断言红（四缺陷逐一命中+宽锁/拉伸/zoom 滞留），
-  修复后全绿。
+- harness-fuelgen **41/41**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+  禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
+  race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
+  reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。
+  **RED 对账**：首轮回滚两修复文件 7 断言红（四缺陷逐一命中+宽锁/拉伸/zoom 滞留）；二轮再回滚
+  4 断言红（gen 高锁压背包 399px 滚动=「与他界面不一致」实证）。修复后全绿。
 - 回归：brew-tier 27/27、switch-cabinet 27/27、tagfilter 15/15、width-floor 13/13、
   native-width 8/8、sbtrack 全绿（并行会话成果无扰）；mount/store-all/regression/tidy 失败
   为基线旧病（二十三批已对账记录，非本批引入）。

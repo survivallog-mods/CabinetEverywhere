@@ -275,15 +275,12 @@
      柜格/背包格超高改内部滚动，不再溢出面板外（官方拖拽 ghost 挂 body，不受滚动容器裁剪）；
    ④ 底行容器类 .srfg-foot 此前漏挂（只给了 id）→无 justify-content:flex-end=按钮跑左。 */
 .srfg-on { /* 官方左面板标记类：mod 页签在场=官方标题/空间条/提示行隐藏（元素保留在文档=官方查询仍可达） */
-  display: flex; flex-direction: column;
+  display: flex; flex-direction: column; position: relative; /* relative=#srfgWarn 绝对定位的包含块 */
   /* 结构宽锁：12 列格全宽（slot 40×12 + gap 6×11 + 格 pad 20 + 格/面板 border 4 + 面板 pad 30）。
-     官方页 CSS 变量直引（缺省兜底同值）——不测不锁，渐进渲染任何中间态都不会锁错 */
+     官方页 CSS 变量直引（缺省兜底同值）——不测不锁，渐进渲染任何中间态都不会锁错。
+     高度锁由 JS fgLockHeight 持有：=官方背包格全高（与其他界面一致；跨页签恒定，柜签更高内部滚动） */
   min-width: calc(var(--slot-size, 40px) * 12 + var(--slot-gap, 6px) * 11 + var(--grid-padding, 10px) * 2 + 34px);
 }
-/* 官方 .generator-system 默认 align-items:stretch——背包格(18 行)先渲染时会把右 gen 面板拉高，
-   高度锁量到的就是被拉伸值(实机教训：锁进 876px 而非 gen 自然高)。mod 在场期间改 flex-start=
-   各面板自然高，锁=gen 真值；左右锁后等高，视觉与官方一致。拆除时类随清（vanilla 零残留）。 */
-.srfg-sys { align-items: flex-start; }
 .srfg-on > .panel-title, .srfg-on > .info-bar, .srfg-on > .hint-shift { display: none !important; }
 /* 官方背包格在锁定高面板内改内部滚动（官方整页 viewport-fit zoom 机制不动；两格区滚动条同款） */
 .srfg-on > .grid-container { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -318,7 +315,9 @@
 .srfg-on > .grid-container::-webkit-scrollbar-track, #srfgBody .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
 .srfg-on > .grid-container::-webkit-scrollbar-thumb, #srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
 #srfgBody .item { cursor: pointer; }
-.srfg-warn { color: #e05555; font-size: 13px; min-height: 18px; font-weight: bold; text-align: center; margin: 8px 0; }
+/* 警示行绝对悬浮（底行上方）：不占布局流——高度锁跨「有/无警示」两态恒定，不因弹警示跳高 */
+.srfg-warn { position: absolute; left: 15px; right: 15px; bottom: 62px; z-index: 50; pointer-events: none;
+  color: #e05555; font-size: 13px; font-weight: bold; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.8); }
 .srfg-foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
 #srfgFoot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
 .srfg-act { background: linear-gradient(180deg, rgba(58,58,60,.9) 0%, rgba(38,38,40,.92) 100%); color: #e8dfcf;

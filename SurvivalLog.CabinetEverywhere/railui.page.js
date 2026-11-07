@@ -3533,8 +3533,7 @@
     fgTeardown(); /* 跨文档重建（iframe 重载）：清旧引用 */
     FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.current = 'bag';
     panel.classList.add('srfg-on');
-    try { panel.parentNode.classList.add('srfg-sys'); } catch (e) { } /* 断官方 stretch：防背包格先渲染把 gen 拉高→锁进拉伸值（面板=system 直接子级，选择器已保证） */
-    fgLockHeight(); /* 高度锁自愈首轮；宽度不锁（.srfg-on min-width 结构锁，渐进渲染中间态锁不错） */
+    fgLockHeight(); /* 高度锁自愈首轮（=背包格全高，他界面一致）；宽度不锁（.srfg-on min-width 结构锁，渐进渲染中间态锁不错） */
     var tabs = doc.createElement('div');
     tabs.id = 'srfgTabs'; tabs.setAttribute('data-interactive', '');
     tabs.innerHTML = '<div class="srfg-pin"><div class="srfg-tab active" data-id="bag">背包</div></div>' +
@@ -3589,22 +3588,25 @@
     var sc = FG.doc && FG.doc.getElementById('srfgScroll');
     if (sc) { try { sc.scrollLeft += dx; } catch (e) { } }
   }
-  /* 高度锁自愈：右 .gen-panel 自然高（>400=已渲染）每轮 settle 复核、同值守卫——原一次性
-     量取在官方渐进渲染竞态里会漏锁（实机教训：漏锁=#srfgBody 高度不定→柜格 max-height:100%
-     无解→溢出界面外）；gen 后续长高（自动开机框展开等）也随之更新。
-     锁变更后须补一发 resize：官方 createViewportFit 只在 BagMsg/resize 时量 .generator-system——
-     首包 BagMsg 常先于装配到达，量到的是未锁高的巨大系统→body.zoom 被压小；锁完不重量=
-     整个对话框停在半缩放（实机「重开页签栏看不见」观感）。_fit 注册了 window resize 监听，
-     派发即重测（锁后系统≈gen 高，zoom 回 1）。 */
+  /* 高度锁自愈（实机二验收改版：**锁=官方背包格全高——与其他界面观感一致**；旧版锁右 gen 面板
+     自然高=本页比他界面矮一截，作者质询「固定高度与其他界面保持一致吗」）。量法：只在背包页签
+     且官方格已建时取 grid.scrollHeight（18 行内容全高——面板 auto 未锁时 clientHeight==自然高）
+     + 面板内其他部分（页签/底行/内边距）=锁值；跨页签恒定（柜签更高内部滚动、更短留白钉底）。
+     同值守卫；锁变更补发 resize 促官方 createViewportFit 复测（防 zoom 滞留半缩放——旧一次性
+     锁实机教训）。柜签激活时官方格 display:none 不重量=锁不漂。 */
   function fgLockHeight() {
-    if (!FG.doc || !FG.panel) return;
-    var gen = FG.doc.querySelector('.gen-panel');
-    var h = gen ? gen.offsetHeight : 0;
-    if (h <= 400) return;
-    var px = h + 'px';
+    if (!FG.doc || !FG.panel || !FG.grid) return;
+    if (FG.current !== 'bag') return;                /* 只在背包页签量（官方格是唯一权威尺） */
+    var g = FG.grid;
+    if (!g.isConnected || g.style.display === 'none' || g.children.length === 0) return;
+    var natural = g.scrollHeight;                    /* 官方背包格内容全高（他界面同款不滚动） */
+    if (natural < 200) return;                       /* 中间态防御（默认格未建/半渲染） */
+    var extra = FG.panel.offsetHeight - g.clientHeight; /* 页签+警示+底行+面板内边距（锁外部分） */
+    if (extra < 0) return;
+    var px = (natural + extra) + 'px';
     if (FG.panel.style.height !== px) {
       try { FG.panel.style.height = px; } catch (e) { }
-      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 促官方 _fit 复测（zoom 复位） */
+      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 促官方 _fit 复测 */
     }
   }
   /* ‹› 端点禁用（官方 Cooking .tab-scroll-btn:disabled 同式；实机修复①：按钮常驻可见，
@@ -3629,8 +3631,20 @@
 
   function fgSettle() {
     if (!store.ctx || store.ctx.page !== 'FuelGenerator') return; /* 页守卫：他页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
-    if (!FG.doc || !FG.doc.getElementById('srfgTabs')) return;
-    fgLockHeight(); /* 自愈高度锁：官方渐进渲染晚到（gen 面板后长成）也能补锁，同值守卫零观察器噪声 */
+    if (!FG.doc || !FG.doc.getElementById('srfgTabs')) {
+      /* 自愈回装（实机二验收「二次打开页签栏不显示」加固）：页签不在而燃料柜数据在——可能是
+         空窗期瞬空拆除后残留态、或文档已换（FG.doc 陈旧）。直接找当前 bagtabs 帧走全装配
+         （ensureBagtabs 幂等：燃料空/官方格未建等门内自守；真无燃料柜=空表跳过=原版保持）。 */
+      for (var q = 0; q < FRAMES.length; q++) {
+        var fk = FRAMES[q].key;
+        if (SCENES[fk] && SCENES[fk].bagtabs && FRAMES[q].doc && FRAMES[q].doc.body) {
+          if (fgFuelCtns().length) { try { ensureBagtabs(FRAMES[q]); } catch (e) { } }
+          return;
+        }
+      }
+      return;
+    }
+    fgLockHeight(); /* 自愈高度锁：背包行数变化（实机「调整背包高度」）后随 settle 复核，同值守卫零观察器噪声 */
     var fuel = fgFuelCtns();
     if (!fuel.length) { fgTeardown(); return; } /* 无燃料柜=原版（Review Focus 1） */
     /* 页签行——**清单签名守卫**（勿用 innerHTML 串比较：序列化含 active 类修正，与生成串
@@ -3751,7 +3765,6 @@
     if (p) {
       p.classList.remove('srfg-on');
       p.style.width = ''; p.style.height = '';
-      try { if (p.parentNode && p.parentNode.classList) p.parentNode.classList.remove('srfg-sys'); } catch (e) { } /* stretch 断链随拆（vanilla 零残留） */
       try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 高锁解除=系统复高，促官方 _fit 复测（vanilla 测量恢复） */
     }
     if (FG.grid) FG.grid.style.display = '';

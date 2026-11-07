@@ -12,12 +12,13 @@
    ⑥ full-precheck：队列 8 满员→「燃油槽已满」无 drain
    ⑦ feedfail-ctx：ctx.feedFail=bagfull→「背包已满，无法转送」；=full→「燃油槽已满」；
       清零重推→警示淡出（一次性）
-   ⑧ width-lock+实机四缺陷回归（2026-11-07 修复批）：宽恒定；⑧b 整理钮右贴（缺陷③
+   ⑧ width-lock+实机四缺陷回归（2026-11-07 修复批）：宽高跨签恒定；⑧b 整理钮右贴（缺陷③
       .srfg-foot 类漏挂）；⑧c ‹› 常驻+端点禁用（缺陷① is-visible 溢出门永不显形）；
-      ⑧d 20 行高柜内部滚动零溢出（缺陷② 锁漏=#srfgBody 无定高）；⑧e 背包 18 行（真实
-      玩家袋）锁定面板内滚动；⑧f 装配竞态（默认 6×5 期装配——旧一次性 px 宽锁锁进 324px
-      =缺陷④根因，BagMsg 晚到宽不漂）；⑧g 调高背包 24 行→重开→页签可见格区滚动（缺陷④
-      全链复现）
+      ⑧d 20 行高柜内部滚动零溢出（缺陷② 锁漏=#srfgBody 无定高）；⑧e 背包 18 行整幅直显+
+      高锁=背包全高（二验收⑧：与其他界面一致——旧 gen 高锁压到 399px 滚动）；⑧f 数据晚到
+      装配（旧一次性 px 宽锁竞态=缺陷④根因）；⑧g 调高背包 24 行→重开→页签可见+锁随行数长
+      （缺陷④全链复现）；⑧h Root 真实时序同文档关/开+重载变体（二验收⑦「二次打开不显示」
+      复现床：display:none 收起+心跳重推+re-nudge）
    ⑨ no-fuel-cabinets：MOCK 摘掉燃料柜→#srfgTabs/#srfgFoot 消失、官方四件全显（Review Focus 1）
    ⑩ console-clean：全程零 error/pageerror
    夹具=官方页原样（webui_src 逐字节同源+vendor 脚本）：渐进渲染（默认 6×5 先建、BagMsg
@@ -168,10 +169,13 @@ function check(name, ok, detail) {
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await page.waitForTimeout(120);
   const wBag = await panelW();
+  const hBag = await F().evaluate(() => document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetHeight);
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
   await page.waitForTimeout(120);
   const wCtn = await panelW();
-  check('fg:width-lock-tabs', wBag === wCtn && wBag > 500, '背包/柜页签面板宽恒定：' + wBag + '==' + wCtn);
+  const hCtn = await F().evaluate(() => document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetHeight);
+  check('fg:width-lock-tabs', wBag === wCtn && wBag > 500 && hBag === hCtn,
+    '背包/柜页签面板宽高恒定：' + wBag + '==' + wCtn + ' 高 ' + hBag + '==' + hCtn);
   /* ⑧b foot-right（实机缺陷③：整理按钮跑左——.srfg-foot 类漏挂致无 justify-content:flex-end） */
   const footStyle = await F().evaluate(() => {
     const f = document.getElementById('srfgFoot'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
@@ -222,16 +226,18 @@ function check(name, ok, detail) {
   });
   check('fg:tall-ctn-scroll', tallState.sh > tallState.ch + 20 && tallState.ovY === 'auto' && tallState.spill <= 1 && tallState.footIn <= 1 && tallState.tabsIn >= -1,
     '20 行高柜：格区内部滚动(' + tallState.sh + '>' + tallState.ch + ', ' + tallState.ovY + ')、格/底行/页签零溢出(spill=' + tallState.spill.toFixed(1) + ' foot=' + tallState.footIn.toFixed(1) + ' tabs=' + tallState.tabsIn.toFixed(1) + ')');
-  /* ⑧e bag-grid-scroll（背包 18 行=真实玩家袋，锁定面板内滚动——缺陷②背包侧+缺陷④前提） */
+  /* ⑧e bag-full-height（实机二验收「固定高度与其他界面保持一致吗」改版：高锁=官方背包格全高——
+     与 Cooking 等界面同观感：背包 18 行整幅直显不滚动、面板高由背包驱动） */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await page.waitForTimeout(150);
   const bagState = await F().evaluate(() => {
     const g = document.getElementById('backpackGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
-    return { sh: g.scrollHeight, ch: g.clientHeight, ovY: getComputedStyle(g).overflowY, lock: panel.style.height,
+    const gen = document.querySelector('.gen-panel');
+    return { sh: g.scrollHeight, ch: g.clientHeight, lock: panel.style.height, genH: gen ? gen.offsetHeight : 0,
       spill: g.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom };
   });
-  check('fg:bag-grid-scroll', bagState.sh > bagState.ch + 20 && bagState.ovY === 'auto' && bagState.spill <= 1 && !!bagState.lock && parseInt(bagState.lock) < 800,
-    '背包 18 行：锁定面板(' + bagState.lock + '，<800=非拉伸值)内滚动(' + bagState.sh + '>' + bagState.ch + ')、零溢出(' + bagState.spill.toFixed(1) + 'px)');
+  check('fg:bag-full-height', Math.abs(bagState.sh - bagState.ch) <= 2 && !!bagState.lock && parseInt(bagState.lock) > 700 && bagState.lock === hBag + 'px' && bagState.spill <= 1,
+    '背包 18 行整幅直显(内容 ' + bagState.sh + '==可视 ' + bagState.ch + ' 不滚动)、高锁=背包全高 ' + bagState.lock + '(>gen 自然高 ' + bagState.genH + '=他界面同款)、零溢出(' + bagState.spill.toFixed(1) + 'px)');
   /* ⑧f race-late-data（真实页时序取证：官方格仅在 BagMsg 到达时首渲（refresh→initGrid），此前恒空——
      装配必须等数据、且晚到后宽/高锁取值正确。旧一次性 px 锁类缺陷的回归床） */
   await page.evaluate(() => { window.__HZ_FGNUDGE__ = false; });
@@ -250,10 +256,10 @@ function check(name, ok, detail) {
     const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const tabs = document.getElementById('srfgTabs');
     return { w: panel.offsetWidth, wLock: panel.style.width, lock: panel.style.height, zoom: document.body.style.zoom || '',
-      tabsVis: tabs.getBoundingClientRect().height > 0, sysCls: document.querySelector('.generator-system').className };
+      tabsVis: tabs.getBoundingClientRect().height > 0 };
   });
-  check('fg:race-late-mount-sane', raceState.w >= 598 && !raceState.wLock && !!raceState.lock && parseInt(raceState.lock) < 800 && raceState.tabsVis && /srfg-sys/.test(raceState.sysCls) && raceState.zoom === '',
-    '数据晚到装配：宽 ' + raceState.w + '（无 inline 宽锁=' + !raceState.wLock + '）、高锁 ' + raceState.lock + '（<800=非拉伸值）、页签可见、zoom 复位="' + raceState.zoom + '"、system 断 stretch(' + raceState.sysCls + ')');
+  check('fg:race-late-mount-sane', raceState.w >= 598 && !raceState.wLock && !!raceState.lock && parseInt(raceState.lock) > 700 && raceState.tabsVis && (raceState.zoom === '' || parseFloat(raceState.zoom) > 0.6),
+    '数据晚到装配：宽 ' + raceState.w + '（无 inline 宽锁=' + !raceState.wLock + '）、高锁 ' + raceState.lock + '（>700=背包全高，他界面一致）、页签可见、zoom="' + raceState.zoom + '"（空或正常适配值，不再滞留半缩放）');
   await page.evaluate(() => { window.__HZ_FGNUDGE__ = true; });
   /* ⑧g reopen-bagheight（实机缺陷④全链复现：调高背包行数→重开→页签栏可见、格区滚动不溢出） */
   await page.evaluate(() => { window.__HZ_FGROWS__ = 24; });
@@ -268,13 +274,52 @@ function check(name, ok, detail) {
     const pr = panel.getBoundingClientRect(), tr = tabs.getBoundingClientRect();
     return { w: panel.offsetWidth, h: panel.offsetHeight, lock: panel.style.height, zoom: document.body.style.zoom || '', tabsIn: tr.top >= pr.top - 1,
       tabsVis: tr.top >= 0 && tr.bottom <= window.innerHeight, footVis: foot.getBoundingClientRect().bottom <= window.innerHeight,
-      sh: g.scrollHeight, ch: g.clientHeight };
+      sh: g.scrollHeight, ch: g.clientHeight, spill: g.getBoundingClientRect().bottom - pr.bottom };
   });
-  check('fg:reopen-bagheight-tabs', reopenState.tabsIn && reopenState.tabsVis && reopenState.w >= 598 && !!reopenState.lock && reopenState.zoom === '',
-    '24 行背包重开：页签在面板内且视口内可见(面板 ' + reopenState.w + '×' + reopenState.h + ' 高锁=' + reopenState.lock + ' zoom="' + reopenState.zoom + '")');
-  check('fg:reopen-bagheight-contain', reopenState.sh > reopenState.ch && reopenState.footVis,
-    '24 行背包重开：格区内部滚动(' + reopenState.sh + '>' + reopenState.ch + ')、底行在视口内');
+  check('fg:reopen-bagheight-tabs', reopenState.tabsIn && reopenState.tabsVis && reopenState.w >= 598 && !!reopenState.lock && parseInt(reopenState.lock) > 1100,
+    '24 行背包重开：页签在面板内且视口内可见(面板 ' + reopenState.w + '×' + reopenState.h + ' 高锁=' + reopenState.lock + '=背包全高随行数长、zoom="' + reopenState.zoom + '"=viewport-fit 与他界面同机制)');
+  check('fg:reopen-bagheight-contain', Math.abs(reopenState.sh - reopenState.ch) <= 2 && reopenState.spill <= 1 && reopenState.footVis,
+    '24 行背包重开：背包整幅直显(' + reopenState.sh + '==' + reopenState.ch + ')、零溢出(' + reopenState.spill.toFixed(1) + 'px)、底行在视口内');
   await page.evaluate(() => { window.__HZ_FGROWS__ = 18; });
+  /* ⑧h root-lifecycle（实机二验收「二次打开页签栏不显示」复现床）：真实 Root.html 语义=同文档
+     display:none 收起（非场景切换——ctx 不变）+ 隐藏期心跳重推 + 重开 re-nudge（BagMsg 再投）。
+     旧 ④ 场景切换路与本路差异=ctx 是否保持 FuelGenerator。 */
+  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { document.getElementById('FuelGenerator').style.display = 'none'; window.__CERAIL__.scan(); });
+  await page.waitForTimeout(1200); /* 隐藏期：interval 扫描跑 2+ 轮（FG.active=false 路） */
+  await page.evaluate(() => { window.__HZ_PUSH__('FuelGenerator'); }); /* 心跳重推（C# ping→ForceRepublish 同效） */
+  await page.waitForTimeout(600);
+  await page.evaluate(() => { document.getElementById('FuelGenerator').style.display = 'block'; window.__CERAIL__.scan(); });
+  await page.evaluate(() => window.__HZ_NUDGE__ && window.__HZ_NUDGE__('FuelGenerator')); /* 重开 re-nudge（官方 BagMsg 再投） */
+  await page.waitForTimeout(900);
+  const reop2 = await F().evaluate(() => {
+    const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+    const tabs = document.getElementById('srfgTabs'), foot = document.getElementById('srfgFoot');
+    const tr = tabs && tabs.getBoundingClientRect(), pr = panel.getBoundingClientRect();
+    return { tabs: !!tabs, foot: !!foot, vis: !!tr && tr.height > 0 && tr.top >= pr.top - 1,
+      cls: panel.className, zoom: document.body.style.zoom || '', lock: panel.style.height,
+      tabsLeft: tabs ? tabs.getBoundingClientRect().left - pr.left : -1 };
+  });
+  check('fg:reopen-samedoc-tabs', reop2.tabs && reop2.foot && reop2.vis && reop2.tabsLeft <= 17,
+    '同文档关/开（Root 真实时序）：tabs=' + reop2.tabs + ' foot=' + reop2.foot + ' vis=' + reop2.vis + ' 左起满宽(Δ=' + reop2.tabsLeft.toFixed(1) + '≤17=面板内边距) zoom="' + reop2.zoom + '" 锁=' + reop2.lock + ' cls=' + reop2.cls);
+  /* ⑧h-b 重载变体（若游戏走 iframe 重载路）：hide→reload→ready→nudge */
+  await page.evaluate(() => { document.getElementById('FuelGenerator').style.display = 'none'; });
+  await page.waitForTimeout(200);
+  await F().evaluate(() => location.reload()).catch(() => { });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { document.getElementById('FuelGenerator').style.display = 'block'; window.__CERAIL__.scan(); });
+  await page.evaluate(() => window.__HZ_NUDGE__ && window.__HZ_NUDGE__('FuelGenerator'));
+  await F().waitForFunction(() => document.getElementById('srfgTabs'), null, { timeout: 15000 }).catch(() => { });
+  await page.waitForTimeout(400);
+  const reop3 = await F().evaluate(() => {
+    const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+    const tabs = document.getElementById('srfgTabs');
+    const tr = tabs && tabs.getBoundingClientRect(), pr = panel.getBoundingClientRect();
+    return { tabs: !!tabs, vis: !!tr && tr.height > 0 && tr.top >= pr.top - 1, zoom: document.body.style.zoom || '' };
+  });
+  check('fg:reopen-reload-tabs', reop3.tabs && reop3.vis && (reop3.zoom === '' || parseFloat(reop3.zoom) > 0.6),
+    '关→重载→开（重载变体）：页签栏回显可见、zoom="' + reop3.zoom + '"（空或正常适配值）');
 
   /* ---- ⑨ no-fuel-cabinets（Review Focus 1：无燃料柜=原版） ---- */
   await page.evaluate(() => {
