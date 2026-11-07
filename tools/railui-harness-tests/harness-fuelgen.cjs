@@ -172,9 +172,40 @@ function check(name, ok, detail) {
   d = JSON.parse(await drain());
   check('fg:feed-nonfuel-warn', warnNonFuel === '只能添加燃料' && d.length === 0, '右键零件→「只能添加燃料」且零命令：' + warnNonFuel + ' drain=' + d.length);
 
-  /* ---- ⑥ full-precheck（900105 燃料已喂尽→切 900106 柴油柜测满员门） ---- */
+  /* ⑤e 拖拽（七验收：官方协调器外部通道——幽灵跟手/落料槽=喂/拖空处=回弹零命令） */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
   await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 2; }, null, { timeout: 8000 });
+  await drain();
+  const dragFeed = await F().evaluate(() => {
+    const el = document.querySelector('#srfgGrid .item.is-fuel');
+    const r = el.getBoundingClientRect(), q = document.getElementById('fuelQueueZone').getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.x + 8, clientY: r.y + 8, button: 0 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + 50, clientY: r.y + 50 }));
+    const ghost = !!document.querySelector('body > .item[data-no-sync]');
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: q.x + 30, clientY: q.y + 30, button: 0 }));
+    return { ghost: ghost, ghostGone: !document.querySelector('body > .item[data-no-sync]') };
+  });
+  await page.waitForTimeout(250);
+  d = JSON.parse(await drain());
+  check('fg:drag-feed', d.length === 1 && d[0].op === 'feed' && Number(d[0].owner) === 900106 && dragFeed.ghost && dragFeed.ghostGone,
+    '拖柴油→料槽=feed（官方幽灵出现+收场干净）：' + JSON.stringify(d) + ' ghost=' + dragFeed.ghost + '/' + dragFeed.ghostGone);
+  const dragBounce = await F().evaluate(() => {
+    const el = document.querySelector('#srfgGrid .item');
+    if (!el) return { ok: false };
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: r.x + 8, clientY: r.y + 8, button: 0 }));
+    document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: r.x + 80, clientY: r.y + 120 }));
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 40, clientY: 40, button: 0 }));
+    return { ok: !document.querySelector('body > .item[data-no-sync]') };
+  });
+  await page.waitForTimeout(200);
+  d = JSON.parse(await drain());
+  check('fg:drag-bounce', dragBounce.ok && d.length === 0, '拖到空白处=回弹（幽灵清、零命令）：drain=' + d.length);
+
+  /* ---- ⑥ full-precheck（900105 燃料已喂尽→900106 柴油柜测满员门；⑤e 拖喂已用 1=剩 1） ---- */
+  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
+  await F().waitForFunction(() => { const g = document.getElementById('srfgGrid'); return g && g.querySelectorAll('.item').length === 1; }, null, { timeout: 8000 });
   await page.evaluate(() => {
     const q = []; for (let i = 0; i < 8; i++) q.push({ emoji: '🪵', name: '木柴', pct: '95%' });
     window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: { fuelItems: q } });

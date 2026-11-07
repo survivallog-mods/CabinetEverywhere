@@ -3510,7 +3510,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null };
+  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, dragCoord: null, dragging: false, lastMouse: null, dragArm: null };
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', full: '燃油槽已满', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' };
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3568,6 +3568,26 @@
       if (ev.shiftKey) { fgItemClick(+it.getAttribute('data-it') || 0, +it.getAttribute('data-cfg') || 0); return; }
       cmdOut('detail', { owner: Number(FG.current), item: +it.getAttribute('data-it') || 0 });
     });
+    body.addEventListener('mousedown', function (ev) {
+      if (ev.button !== 0 || !FG.dragCoord) return;
+      var it = ev.target.closest && ev.target.closest('.item');
+      if (!it || FG.current === 'bag') return;
+      var id = +it.getAttribute('data-it') || 0, cfg = +it.getAttribute('data-cfg') || 0;
+      var st = null, own = itemsOf(Number(FG.current));
+      for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
+      if (!st) return;
+      try { ev.preventDefault(); } catch (e) { } /* 原生图文拖选禁用（官方同效由协调器管袋内；外部来源自理） */
+      FG.dragArm = { x: ev.clientX, y: ev.clientY, id: id, cfg: cfg, icon: (it.querySelector('img') || {}).src || '', w: st.w || 1, h: st.h || 1 };
+    });
+    try { FG.doc.addEventListener('mousemove', function (ev) {
+      if (!FG.dragArm || FG.dragging) return;
+      var a = FG.dragArm;
+      if (Math.abs(ev.clientX - a.x) + Math.abs(ev.clientY - a.y) < 6) return; /* 起拖阈值（官方外部来源=调用方把关） */
+      FG.dragArm = null; FG.dragging = true; fgTipHide();
+      try { FG.dragCoord.beginExternalDrag(ev, { id: a.id, icon: a.icon, w: a.w, h: a.h, payload: { id: a.id, cfg: a.cfg } }); }
+      catch (e) { FG.dragging = false; }
+    }, { passive: true }); } catch (e) { }
+    try { FG.doc.addEventListener('mouseup', function () { FG.dragArm = null; }, { passive: true }); } catch (e) { }
     body.addEventListener('contextmenu', function (ev) {
       ev.preventDefault(); /* 吞浏览器默认菜单（rail srBody 同款零接线原则——本格是 mod 层，动作自持） */
       var it = ev.target.closest && ev.target.closest('.item');
@@ -3577,6 +3597,7 @@
     /* 悬浮提示=官方 showFuelTip 同款：复用页面自带 #recipeTooltip 节点与定位算式（+15/zoom），
        仅燃料显示（官方口径：burnValue>0 才有——作者截图实证「鼠标悬浮提示，只有燃料有」） */
     body.addEventListener('mouseover', function (ev) {
+      if (FG.dragging) return;
       var it = ev.target.closest && ev.target.closest('.item');
       if (!it || FG.current === 'bag') { fgTipHide(); return; }
       var ic = ICFG[+it.getAttribute('data-cfg') || 0];
@@ -3594,6 +3615,8 @@
     body.addEventListener('mouseleave', function () { fgTipHide(); });
     foot.addEventListener('click', function () { cmdOut('tidy', { owner: FG.current === 'bag' ? store.bag : Number(FG.current) }); });
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
+    fgInitDrag(); /* 七验收：柜中物品拖拽——官方协调器 beginExternalDrag 外部来源通道（见 fgInitDrag 注释） */
+    try { doc.addEventListener('mousemove', function (ev) { FG.lastMouse = { x: ev.clientX, y: ev.clientY }; }, { passive: true }); } catch (e) { } /* 落点判定用（onExternalDrop 不带坐标） */
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
        FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
     try { doc.addEventListener('keydown', fgKey, true); } catch (e) { }
@@ -3655,6 +3678,46 @@
     fgSettle();
   }
 
+  /* 七验收：柜中物品拖拽——官方材料架同通道（webui-bag 协调器 beginExternalDrag「外部来源」
+     公共 API：官方幽灵/跟手/回弹全免实现，落点只回调不动数据）。拖到燃料槽=整叠加油（与右键
+     同口径预检），拖到背包格=整叠取出（cmd take all），其余落点=回弹（官方外部拖拽口径：不乐观
+     移除，命令执行后数据回推重画）。假配置袋只为供 slotSize/gap=40/6（空袋数组时协调器 ghost
+     按 50/4 默认值=偏大）。 */
+  function fgInitDrag() {
+    try {
+      var w = FG.doc.defaultView;
+      if (!w || !w.createBagDragCoordinator) return;
+      var fakeBag = {
+        _setCallbacks: function () { }, getConfig: function () { return { slotSize: 40, gap: 6, cols: 12, rows: 15 }; },
+        _beginDragCache: function () { return null; }, _endDragCache: function () { },
+        _flushPendingRefresh: function () { }, clearHighlights: function () { },
+        markPushItems: function () { }, isMouseOver: function () { return false; }
+      };
+      FG.dragCoord = w.createBagDragCoordinator([fakeBag], {
+        canAcceptItem: function () { return false; },
+        onExternalDrop: function (payload) { FG.dragging = false; fgDropRoute(payload); },
+        onDragFinished: function () { FG.dragging = false; }
+      });
+    } catch (e) { FG.dragCoord = null; }
+  }
+  function fgDropRoute(p) {
+    if (!FG.doc || FG.current === 'bag' || !p || !p.id) return;
+    var m = FG.lastMouse || {};
+    var q = FG.doc.getElementById('fuelQueueZone');
+    if (q) {
+      var r = q.getBoundingClientRect();
+      if (m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom) { fgItemClick(p.id, p.cfg); return; }
+    }
+    var g = FG.doc.getElementById('backpackGrid');
+    if (g) {
+      var r2 = g.getBoundingClientRect();
+      if (r2.width && m.x >= r2.left && m.x <= r2.right && m.y >= r2.top && m.y <= r2.bottom) {
+        cmdOut('take', { from: Number(FG.current), ids: [p.id], all: true });
+        return;
+      }
+    }
+    /* 其余落点=回弹（数据未变=原样） */
+  }
   function fgSettle() {
     if (!store.ctx || store.ctx.page !== 'FuelGenerator') return; /* 页守卫：他页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
     fgSyncHeight(); /* 等高契约每轮复核（同值守卫） */
@@ -3823,6 +3886,7 @@
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.current = 'bag';
     try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
+    FG.dragCoord = null; FG.dragging = false; FG.dragArm = null; /* 拖拽协调器随文档销毁（监听挂帧 window） */
     /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
        相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
        永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */
