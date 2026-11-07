@@ -61,7 +61,7 @@ C 内部一个子决策：**色素排序走专属 apply**（`dispApplyDyePig`，
 
 1. **DyePanel 回归排序页**：`SORT_KEYS` 重新纳入 DyePanel → 页脚 `srFoodSort`（RAIL_HTML 中本就排最左）不再 hidden。位置=与一键整理同排、靠左，与机器页页脚 `[排序钮][格数][入库|整理]` 布局一致。
 2. **弹窗内容**：`默认`（official，复位）+ `dyePal` 全部颜色（色块 swatch + 色名；未解锁色正常可选）。BrewPanel 定制菜单项先例（`railui.page.js:1967`）同构：DyePanel 场景下 menuFoot 项=颜色列表，非 FSORTS 七键。
-3. **选色状态**：`st.fsort` 存 `"pig:<colorId>"`（五键持久化体系照常记）。
+3. **选色状态**：`st.fsort` 存 `"pig:<colorId>"`——内存态，随页装配复位（见 §5.4；fsort 持久化 v1.8.5 已退役，不复活）。
 
 ### 5.3 JS：专属排序应用（v14.1 同构）
 
@@ -69,13 +69,13 @@ C 内部一个子决策：**色素排序走专属 apply**（`dispApplyDyePig`，
 1. `dispRows` join（物品 id 直配，现体系）取 `cfgId` → 查 `ICFG[cfgId].pig` 解析得该色点数
 2. 排序：点数降序；null/0（无该色素、非植物）沉底保持原相对序；并列稳定
 3. `dispPack` 装填（cols×(rows+8) 余量现规则）→ 写模型 x/y → 官方自渲染
-4. 角标：makeBadgeLayer 右上角显所排色点数（`FBCOLOR` 按色号映射该色 hex）；`official` 复位走 dispRestore
+4. 角标：makeBadgeLayer 右上角显所排色点数（`FBCOLOR` 按色号映射该色 hex）；**沉底项（无该色素/非植物）不出角标**——dispApplyBrewSat 镜像口径（suppress 而非通用维度的 `-`：混合包里植物是少数派，满屏 `-` 是噪音；本设计也不做置灰）；`official` 复位走 dispRestore
 
 ### 5.4 行为细节（已与作者对齐）
 
 - **触发**：弹窗选色即排一次；不跟随「提取颜色」联动
 - **重应用**：官方推包/换页签（背包↔柜子）后照现体系重应用（DISP 既有 reapply 链）
-- **关面板**：状态留存（五键持久化），真实布局从未被改过——无需"还原"动作
+- **关面板/重开**：`st.fsort` 复位 `official`（applyScene 现行为，与其余六个可排序页一致）。真实布局从未被改过，重开即官方原序——无需任何"还原"动作
 - **已解锁色**：官方描边/水滴点数照常自显（官方逻辑不动）；mod 角标与之并存（位置/口径不同，互不干扰）
 - **未解锁色**：可排序可看角标，仅"提取"不可（游戏规则）；弹窗不特殊置灰
 - **配置**：不新增 cfg 键（排序钮随 DyePanel 页装配；`Access.EnableDye` 管的是柜子页签，与排序钮互不牵连——若作者要独立开关，加 `Access.EnableDyeSort` 一行的事，默认 true）
@@ -92,7 +92,7 @@ C 内部一个子决策：**色素排序走专属 apply**（`dispApplyDyePig`，
 
 1. 契约夹具：DyePanel 场景带 `pig` 尾列 + `dyePal`；选色 → 模型 x/y 按点数降序断言（含沉底稳定序、并列稳定）
 2. 官方推包（物品移动/增减）后重应用断言（id 直配 join 现口径）
-3. `official` 复位 = dispRestore 断言
+3. `official` 复位 = dispRestore 断言；**重开面板 fsort 复位 official**（applyScene 现行为回归面）；沉底项无角标断言
 4. 多格物品装填（dispPack 通用性）
 5. 按钮回归：DyePanel 页脚排序钮可见/位置最左；其他页零变化（BrewPanel/Trade 等菜单不受污染——v14.1 拆分的回归面）
 6. dump 表与附录 A 一致性对账

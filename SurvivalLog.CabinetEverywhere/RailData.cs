@@ -1254,4 +1254,136 @@ internal static class RailData
         if (!_warned.Add(key)) return;
         CabinetEverywherePlugin.Log?.LogWarning("[CERail] " + msg);
     }
+
+    // ================= 染料桶色素 spike dump（dye-pigment-sort spec §6 S1/S3；Debug.DumpDyePigments 触发一次） =================
+    // 自发现式：枚举 GameCore.HotUpdate 程序集里名字含 Dye/Pigment 的类型与字段，逐项 try/catch——
+    // 找多少打多少（找不全不是错）。产出=Task 2 的 C# 访问链 + 附录 A 数值表。
+    internal static volatile bool DyePigDumpRequested;
+
+    internal static void FlushDyePigDump()
+    {
+        if (!DyePigDumpRequested) return;
+        if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.IsInstanceCreated)
+            return; // 等进档（FlushDump 同门）：主菜单阶段配置表未挂世界
+        if (ItemDict() == null || ItemDict().Count == 0)
+            return; // 配置表未就绪：不消费标志，等下周期（FlushDump「等首份有效数据」同纪律）
+        DyePigDumpRequested = false;
+        var log = CabinetEverywherePlugin.Log;
+        log.LogInfo("[CERail] dye-pig spike dump 开始（自发现：类型普查/GameKey/ConfigManager/Config_Item 逐项容错）");
+
+        // ① 类型普查：名字含 Dye/Pigment 的类型 + 其字段/属性名（只打名字，值由②③④定向取）
+        try
+        {
+            var types = typeof(GameCore.HotUpdate.ConfigManager).Assembly.GetTypes();
+            int n = 0;
+            foreach (var t in types)
+            {
+                var fn = t.FullName ?? "";
+                if (fn.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    fn.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                n++;
+                var sb = new StringBuilder();
+                sb.Append("[CERail] dye-pig type ").Append(t.FullName);
+                try
+                {
+                    foreach (var f in t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
+                        sb.Append("\n    f ").Append(f.FieldType.Name).Append(' ').Append(f.Name).Append(f.IsStatic ? " [static]" : "");
+                    foreach (var p in t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
+                        sb.Append("\n    p ").Append(p.PropertyType.Name).Append(' ').Append(p.Name);
+                }
+                catch (Exception e) { sb.Append("  <成员枚举失败: ").Append(e.Message).Append('>'); }
+                log.LogInfo(sb.ToString());
+            }
+            log.LogInfo("[CERail] dye-pig 类型普查命中 " + n + " 个");
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig 类型普查失败: " + e.Message); }
+
+        // ② GameKey：含 Dye/Pigment 的静态属性名+值（brewP1 读取的同类）
+        try
+        {
+            foreach (var p in typeof(GameCore.HotUpdate.GameKey).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (p.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    p.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var v = "<读取失败>";
+                try { v = string.Concat(p.GetValue(null)); } catch { }
+                log.LogInfo("[CERail] dye-pig GameKey " + p.Name + " = " + v);
+            }
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig GameKey 枚举失败: " + e.Message); }
+
+        // ③ ConfigManager 实例字段：名字含 Dye/Pigment 的配置表（附 count）
+        var cm = BagTable.Cm();
+        if (cm != null)
+        {
+            try
+            {
+                foreach (var f in cm.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    if (f.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        f.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    var v = "<读取失败>";
+                    try
+                    {
+                        var o = f.GetValue(cm);
+                        if (o is System.Collections.ICollection c) v = f.FieldType.Name + " count=" + c.Count;
+                        else v = string.Concat(o);
+                    }
+                    catch { }
+                    log.LogInfo("[CERail] dye-pig ConfigManager f " + f.FieldType.Name + " " + f.Name + " = " + v);
+                }
+            }
+            catch (Exception e) { log.LogWarning("[CERail] dye-pig ConfigManager 字段枚举失败: " + e.Message); }
+        }
+        else log.LogWarning("[CERail] dye-pig ConfigManager 未就绪");
+
+        // ④ Config_Item 色素字段普查 + 全表 dump：字段名含 Pigment/Dye 的，逐 cfgId 打非空值（附录 A 数据源）
+        try
+        {
+            var dict = ItemDict();
+            if (dict == null || dict.Count == 0) { log.LogWarning("[CERail] dye-pig Config_Item 字典未就绪"); }
+            else
+            {
+                var fields = new List<System.Reflection.FieldInfo>();
+                var props = new List<System.Reflection.PropertyInfo>();
+                var cit = typeof(GameCore.HotUpdate.Config_Item);
+                foreach (var f in cit.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                    if (f.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) >= 0 || f.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) >= 0) fields.Add(f);
+                foreach (var p in cit.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                    if (p.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) >= 0 || p.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) >= 0) props.Add(p);
+                log.LogInfo("[CERail] dye-pig Config_Item 色素成员: " +
+                    string.Join(",", System.Linq.Enumerable.Select(fields, f => "f:" + f.Name + ":" + f.FieldType.Name)) + " " +
+                    string.Join(",", System.Linq.Enumerable.Select(props, p => "p:" + p.Name + ":" + p.PropertyType.Name)));
+                int rows = 0;
+                foreach (var kv in dict)
+                {
+                    var sb = new StringBuilder();
+                    foreach (var f in fields)
+                    {
+                        string s; try { s = string.Concat(f.GetValue(kv.Value)); } catch { continue; }
+                        if (!string.IsNullOrEmpty(s) && s != "0") sb.Append(' ').Append(f.Name).Append('=').Append(s);
+                    }
+                    foreach (var p in props)
+                    {
+                        string s; try { s = string.Concat(p.GetValue(kv.Value)); } catch { continue; }
+                        if (!string.IsNullOrEmpty(s) && s != "0") sb.Append(' ').Append(p.Name).Append('=').Append(s);
+                    }
+                    if (sb.Length > 0)
+                    {
+                        rows++;
+                        log.LogInfo("[CERail] dye-pig item " + kv.Key + " \"" + SafeName(kv.Value) + "\"" + sb.ToString());
+                    }
+                }
+                log.LogInfo("[CERail] dye-pig item 色素行共 " + rows + " 条（附录 A 数据源）");
+            }
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig Config_Item 普查失败: " + e.Message); }
+
+        log.LogInfo("[CERail] dye-pig spike dump 结束（Task 2 访问链/附录 A 依据）");
+    }
+
+    private static string SafeName(GameCore.HotUpdate.Config_Item ci)
+    {
+        try { return string.IsNullOrEmpty(ci?.ItemName_Local) ? (ci?.ItemName ?? "?") : ci.ItemName_Local; } catch { return "?"; }
+    }
 }
