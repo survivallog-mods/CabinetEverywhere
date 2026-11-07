@@ -273,6 +273,14 @@
    作者实报「燃料页背包/柜子滚动后无法移动、落点在上方」）。包装层=唯一 flex 子项吃满剩余高，
    格全高在内滚动=格 rect 恒全高内容矩形，官方坐标数学零改动自洽 */
 .srfg-gridscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* 燃料火苗角标（fuelgen 批作者验收件；九验收自绘格退役时断供——官方 mapItem 只加 item+品质类，
+   官方 .item.is-fuel::before 规则无类可配=死规则，mod 曾是唯一消费者）：本规则=官方
+   FuelGenerator.html 逐字拷贝（Heater 页官方无此规则=mod 补供；--warm-orange/--danger-red 两页
+   同名同值）；类由 fgBadgeFuel 按 ICFG 燃烧位在官方格渲染后补（仅 bagtabs 帧，rail 他页无类=规则惰性） */
+.item.is-fuel::before { content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.6c0 5.6-2.4 6.9-4.2 9C6 12.9 4.8 14.9 4.8 17.1c0 3.5 3.2 5.9 7.2 5.9s7.2-2.4 7.2-5.9c0-2.4-1.3-4.3-2.9-6.3-.6 2-1.8 2.8-2.8 2.2-1.2-.7-1.3-4.5-1.5-11.4z' fill='white'/></svg>"), linear-gradient(135deg, var(--warm-orange), var(--danger-red));
+  background-size: 9px 9px, 100% 100%; background-position: center, center; background-repeat: no-repeat, no-repeat;
+  border-radius: 3px; pointer-events: none; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4); }
 /* 页签栏=官方 .bag-tabs 值 + 宽帽：官方 Cooking JS 对 .bag-tabs 显式设宽（L1714 w*15/16）防
    多页签撑宽面板——此处同意图改 CSS calc（12 列格内容宽 568：40*12+6*11+pad20+border2），
    无测量的竞态面。实机回退：不加 align-self:center（官方 Cooking 的收缩居中观感）——原型 v6

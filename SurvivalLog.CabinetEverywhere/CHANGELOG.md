@@ -7,6 +7,28 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十九批（2026-11-07，燃料火苗角标断供修复——fgBadgeFuel 补类+官方规则注入）
+
+**作者实报**：「燃油发电机、暖炉界面的背包和柜子中，燃料左上角的火焰标记不显示了」。
+
+- **根因（git -S is-fuel 考古）**：火苗角标从来是 **mod 侧**的——fuelgen 批（459ba38）自绘格
+  时代 mod 渲染时写 `el.className='item is-fuel'`，官方页 CSS 的 `.item.is-fuel::before`
+  （火苗 SVG+橙红渐变）配类绘制；**九验收（5e9f973）退役自绘格改官方 #backpackGrid 后断供**
+  ——官方 webui-bag.js `mapItem` 只加 `item`+品质类、从不加 `is-fuel`（官方那条 CSS 规则在
+  官方页=死规则，mod 曾是唯一消费者）。与本日滚动器/暖炉批次无关（断供自九验收起一直在，
+  暖炉页先天无此规则=从未有过角标）。
+- **修复（bagtabs 帧内补类，官方渲染零触碰）**：①`fgBadgeFuel()`——官方格渲染后按 ICFG
+  燃烧位（icfg 尾列 burnable，fgFeedCmd 预检同源）补 `is-fuel` 类：物品 id=官方元素 id，
+  id→cfgId 走当前视图物品表（`itemsOf(bag|柜签)`，随柜签切换换源）；渲染时机=官方 BagMsg
+  异步到达→**childList 观察器**（FG.badgeMO，盯格树；只听 childList=补类写 className 不回触=
+  零自激环）+fgSettle 每轮复核双保险，**同值守卫**幅零写；拆除随拆断开。②railui.css 注入
+  官方 `.item.is-fuel::before` 规则（FuelGenerator.html **逐字拷贝**；Heater 页官方无此规则
+  =mod 补供，--warm-orange/--danger-red 两页同名同值）——rail 他页无此类=规则惰性零影响。
+- **harness**：双页孪生各 +1 断言（柜签 3 件：木柴/柴油 .is-fuel 类在+`::before` 15px 真绘制
+  （backgroundImage 非 none——heater 页即证明注入规则生效）、零件无类）→ fuelgen **53/53**、
+  heater **55/55**；mount 166/179（13 size 预存不变）、native-width 8/8、switch-cabinet 27/27
+  复验绿。
+
 ### 待发版·二十八批（2026-11-07，暖炉界面柜子页签——bagtabs 族第二页同构移植）
 
 **作者需求**：「燃油发电机界面的改造是否可以直接复用到暖炉界面，它俩界面基本完全一致」——

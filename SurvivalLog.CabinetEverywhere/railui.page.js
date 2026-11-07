@@ -3366,7 +3366,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, scroll: null, page: 'FuelGenerator', current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, pushedOwner: null };
+  var FG = { doc: null, panel: null, grid: null, scroll: null, page: 'FuelGenerator', current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, badgeMO: null, pushedOwner: null };
   /* bagtabs 页族描述符（暖炉移植批=族第二页）：页差异全表驱动——sys/right=左面板宿主选择器
      两件套（'.{sys} > .panel:not(.{right})'）；onKey=cfg 门 ctx 字段（fgOn/heaterOn，C# 页条件
      字段）；fullText=料槽满红字（各页官方 warningFuelFull 同词）。 */
@@ -3451,6 +3451,12 @@
       fgFeedCmd(id);
     });
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
+    /* 火苗角标观察器：官方 BagMsg 异步到达→官方格渲染后补类（settle 每轮复核双保险；只听 childList——补类写 className 不回触=零自激环） */
+    try {
+      if (FG.badgeMO) { try { FG.badgeMO.disconnect(); } catch (e2) { } }
+      FG.badgeMO = new MutationObserver(function () { fgBadgeFuel(); });
+      FG.badgeMO.observe(grid, { childList: true, subtree: true });
+    } catch (e) { }
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
        FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
     try { doc.addEventListener('keydown', fgKey, true); } catch (e) { }
@@ -3558,6 +3564,7 @@
         }
       }
       fgBtnState(); /* ‹› 常驻+端点禁用（原 is-visible 溢出门已退役） */
+    fgBadgeFuel(); /* 火苗角标每轮复核（ICFG/物品表随包更新；同值守卫幅零写） */
     } catch (e) { }
     /* 九验收 v2：格区恒=官方 #backpackGrid。页签 owner 变化→cmdOut switchBag（C# 直写官方
        State_Web_FuelGenerator.BagOwnerId+官方刷新动作=游戏自己按新 owner 组包推送；视图与
@@ -3581,6 +3588,26 @@
     if (!ic || !ic.burn) { fgWarn('只能添加燃料'); return; }
     if (fgQueueFull()) { fgWarn(btOf(FG.page).fullText); return; }
     cmdOut('feed', { owner: Number(FG.current), item: id });
+  }
+
+  /* 燃料火苗角标（fuelgen 批作者验收件，UI-SPEC §0b；九验收自绘格退役时断供——官方 mapItem 只加
+     item+品质类，官方 .item.is-fuel::before 规则无类可配；规则由 railui.css 逐字注入、类由本函数补）：官方格渲染后按 ICFG 燃烧位
+     补类。物品 id=官方元素 id（webui-bag renderItems el.id=item.id）；id→cfgId 走当前视图物品表（bag/柜签切换即换源，
+     与 fgFeedCmd 同源）；渲染时机=官方 BagMsg 异步到达→观察器盯格树+settle 每轮复核；同值守卫零自激。 */
+  function fgBadgeFuel() {
+    if (!FG.doc || !FG.grid) return;
+    var own = FG.current === 'bag' ? store.bag : Number(FG.current);
+    var src = itemsOf(own);
+    var burn = {};
+    for (var i = 0; i < src.length; i++) {
+      var ic = ICFG[src[i] ? src[i].cfgId : 0];
+      if (ic && ic.burn) burn[src[i].id] = true;
+    }
+    var els = FG.grid.querySelectorAll('.item');
+    for (var j = 0; j < els.length; j++) {
+      var want = !!burn[parseInt(els[j].id, 10)];
+      if (want !== els[j].classList.contains('is-fuel')) els[j].classList.toggle('is-fuel', want);
+    }
   }
 
   function fgQueueFull() {
@@ -3625,6 +3652,7 @@
     if (FG.grid) FG.grid.style.display = '';
     FG.doc = null; FG.panel = null; FG.grid = null; FG.scroll = null; FG.current = 'bag';
     try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
+    try { if (FG.badgeMO) { FG.badgeMO.disconnect(); } } catch (e) { } FG.badgeMO = null; /* 火苗角标观察器随拆 */
     FG.pushedOwner = null; /* 官方数据切换态复位 */
     /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
        相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格

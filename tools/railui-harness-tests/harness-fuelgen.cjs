@@ -87,6 +87,15 @@ function check(name, ok, detail) {
     '柜签=官方数据切换：switchBag 命令+官方格直渲 3 件（无自绘格）：' + JSON.stringify(d));
   const imgCnt = await F().evaluate(() => document.querySelectorAll('#backpackGrid .item img').length);
   check('fg:ctn-tab-icons', imgCnt === 3, '官方渲染物品图标 3/3（mapItem 官方路径）=' + imgCnt);
+  /* ②b 火苗角标（fuelgen 批作者验收件回归床：九验收自绘格退役时断供——官方 mapItem 不加 is-fuel，
+     修复=fgBadgeFuel 按 ICFG 燃烧位补类+railui.css 官方规则注入）：木柴/柴油带类且 ::before 真绘制、零件无类 */
+  const badgeSt = await F().evaluate(() => {
+    const cs = (id) => { const el = document.querySelector('#backpackGrid .item[id="' + id + '"]'); if (!el) return null;
+      const c = getComputedStyle(el, '::before'); return { cls: el.classList.contains('is-fuel'), bg: (c.backgroundImage || 'none') !== 'none', w: Math.round(parseFloat(c.width)) }; };
+    return { f1: cs(921), f2: cs(922), bad: cs(923) };
+  });
+  check('fg:fuel-badge', badgeSt.f1 && badgeSt.f1.cls && badgeSt.f1.bg && badgeSt.f1.w === 15 && badgeSt.f2 && badgeSt.f2.cls && badgeSt.f2.bg && badgeSt.bad && !badgeSt.bad.cls,
+    '火苗角标：木柴/柴油 .is-fuel+::before 15px 绘制、零件无类=' + JSON.stringify(badgeSt));
   await drain();
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await F().waitForFunction(() => { const ids = [...document.querySelectorAll('#backpackGrid .item')].map((e) => +e.id); return ids.indexOf(901) >= 0; }, null, { timeout: 8000 });
