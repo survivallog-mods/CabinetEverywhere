@@ -18,10 +18,11 @@
   GameKey/ConfigManager/Config_Item 色素全表）。
 - **JS**：`SORT_KEYS` 回归 DyePanel；菜单=「默认」+全部颜色（色块 swatch；空板=仅默认）；
   `dispApplyDyePig` 专属 apply（`dispApplyBrewSat` 镜像——点数降序/并列稳定/无该色素沉底
-  原序/dispPack 通用多格）；角标=所排色点数该色 hex，**沉底项 suppress 不出角标**（非 `-`
-  非置灰——brew 置灰口径不复制）；normIcfg pig 类型判形（string 与 canBrew 数字同宽互斥）；
+  原序/dispPack 通用多格）；**徽章=官方同款右下水滴+点数**（作者验收令「复用官方色素显示
+  方案」：官方 .dye-pts 类+dropSvg 原样镜像、右下锚定，官方已画让位零重叠，沉底项不画——
+  右上角 mod 数值角标不用于色素）；normIcfg pig 类型判形（string 与 canBrew 数字同宽互斥）；
   `fsortLabel`/`badgeSpec` 动态色键；弹窗滚动现规则回归钉。
-- **harness**：新增 harness-dye-pig.cjs **34 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
+- **harness**：新增 harness-dye-pig.cjs **36 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
   official 复位 · §2 菜单/swatch/空板/20 色滚动 · §4 角标 suppress · §5 推包重应用/重载
   重开复位 official（iframe 重载=游戏关面板销毁帧的真实路径；showScene 切换帧存活不模拟）/
   跨页菜单隔离）；brew 35/35、fuelgen 53、heater 55 复验绿。TDD 真捕获：`_pigParsed` 初版
