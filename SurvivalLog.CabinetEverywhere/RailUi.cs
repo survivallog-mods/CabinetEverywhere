@@ -219,16 +219,10 @@ internal static class RailUi
                     int nativeH = NativeHeightOf(bagId, curH);
                     int want = tgt == 0 ? nativeH : tgt; // 0=恢复原生（会话首见缓存）
                     if (want == curH) continue;
-                    if (want < curH)
-                    {
-                        // Task2: shrink path——先掉后缩（ShrinkDrop.Process 成功才写）；桩期=跳过+
-                        // WarnOnce+签名不记（每 5s 重试，接真实现后此分支消失）
-                        WarnOnce("shrink-stub-" + bagId,
-                            $"SizeEngine：缩高待 ShrinkDrop 接管（bag {bagId} {curH}→{want}），本轮跳过");
-                        _sizeSig = "";
-                        continue;
-                    }
-                    size[1] = want; // 升/还原直接写（缩高走上面的掉落闸）
+                    // 缩高=先掉后缩（spec §8：ShrinkDrop 官方掉落编排成功才落笔；false=本轮放弃
+                    // 签名不记下轮重试——位置不可得/掉落失败等，零物品损失）
+                    if (want < curH && !ShrinkDrop.Process(bagId, want)) { _sizeSig = ""; continue; }
+                    size[1] = want;
                     hChanged++;
                     hDetail.Add(bagId + "(" + BagTable.Name(bag) + ")" + curH + "→" + want);
                 }
