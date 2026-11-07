@@ -215,12 +215,24 @@ function check(name, ok, detail) {
   d = JSON.parse(await drain());
   check('fg:drag-bounce', dragBounce.ok && d.length === 0, '拖空白处=官方回弹（幽灵清、零命令）：drain=' + d.length);
 
+  /* ⑤f 游戏推送节律回归（十验收实机「柜签不停闪烁」复现床：官方周期推送 vs 视图 owner——
+     v1=失配重拉自激环；v2=官方状态直写，推送本身即当前视图数据=零命令零闪） */
+  await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900105"]'); t && t.click(); });
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length >= 1, null, { timeout: 8000 });
+  await drain();
+  for (let tick = 0; tick < 4; tick++) { /* 官方节律推送 3 拍（当前 owner）+1 拍野推送（玩家背包——v1 失配监听的闪环驱动源） */
+    await page.evaluate((fk) => window.__HZ_FAKEOFFICIALTICK__(null, fk), tick === 3 ? 900001 : 0);
+    await page.waitForTimeout(260);
+  }
+  d = JSON.parse(await drain());
+  check('fg:no-flicker-loop', d.length === 0, '官方节律推送 4 拍（当前 owner 数据）→零 switchBag 重拉（v1 自激环实证位）：drain=' + d.length);
+
   /* ---- ⑥ full-precheck（队列 8 满员→「燃油槽已满」零命令；900105 燃料已喂尽→900106） ---- */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="900106"]'); t && t.click(); });
   await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 2, null, { timeout: 8000 });
   await page.evaluate(() => {
     const q = []; for (let i = 0; i < 8; i++) q.push({ emoji: '🪵', name: '木柴', pct: '95%' });
-    window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: { fuelItems: q } });
+    window.__HZ_FAKEOFFICIALTICK__({ fuelItems: q }); /* 整包（官方口径：bagItems+fuelItems 同包；缺 bagItems=清格） */
   });
   await page.waitForTimeout(200);
   await drain();

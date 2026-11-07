@@ -3339,7 +3339,7 @@
      上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
      一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
      （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, pushedOwner: null, missN: 0, missT: 0, msgOn: null };
+  var FG = { doc: null, panel: null, grid: null, current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, pushedOwner: null };
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', full: '燃油槽已满', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' };
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3397,31 +3397,6 @@
       ev.preventDefault();
       fgFeedCmd(id);
     });
-    /* 官方 BagMsg 失配自愈：官方刷新链（feed 后 RefreshBag/开页首推等）会推「玩家背包」数据，
-       而当前柜签应显示柜子——监听帧 message，bagOwnerId ≠ 当前页签 owner 时防抖重发 switchBag
-       （官方推送闪一下背包即回柜视图；连续失配>5 次静默，防命令风暴） */
-    try {
-      var win = doc.defaultView;
-      FG.msgOn = function (ev) {
-        try {
-          var m = ev.data;
-          if (!m || m.type !== 'WebUI_FuelGenerator_BagMsg' || !m.data) return;
-          var got = m.data.bagOwnerId || 0;
-          var want = FG.current === 'bag' ? store.bag : Number(FG.current);
-          if (got === want) { FG.missN = 0; FG.pushedOwner = want; return; }
-          if (FG.missT) { try { clearTimeout(FG.missT); } catch (e) { } }
-          FG.missT = setTimeout(function () {
-            FG.missT = 0;
-            if (!FG.doc || FG.current === null) return;
-            if (FG.missN >= 5) return; /* 静默上限：C# 侧持续不可达时不再风暴 */
-            FG.missN++;
-            var w2 = FG.current === 'bag' ? store.bag : Number(FG.current);
-            cmdOut('switchBag', { owner: w2 === store.bag ? 0 : w2 });
-          }, 180);
-        } catch (e) { }
-      };
-      win.addEventListener('message', FG.msgOn);
-    } catch (e) { }
     try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
     /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
        FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
@@ -3482,7 +3457,6 @@
     var ids = fgTabIds();
     if (ids.indexOf(FG.current) < 0) FG.current = 'bag'; /* 容器已消失：回背包 */
     try { FG.grid.scrollTop = 0; } catch (e) { } /* 换容器滚动归顶 */
-    FG.missN = 0;
     fgSettle();
   }
 
@@ -3532,8 +3506,9 @@
       }
       fgBtnState(); /* ‹› 常驻+端点禁用（原 is-visible 溢出门已退役） */
     } catch (e) { }
-    /* 九验收：格区恒=官方 #backpackGrid（柜签=数据切换非换格）。页签 owner 变化→cmdOut
-       switchBag（C# 注入官方形状 BagMsg；同值守卫防重发）；失配自愈见 ensureBagtabs msgOn。 */
+    /* 九验收 v2：格区恒=官方 #backpackGrid。页签 owner 变化→cmdOut switchBag（C# 直写官方
+       State_Web_FuelGenerator.BagOwnerId+官方刷新动作=游戏自己按新 owner 组包推送；视图与
+       权威状态恒一致——失配/闪烁/移动失效结构性不存在）。同值守卫防重发。 */
     var wantOwner = FG.current === 'bag' ? store.bag : Number(FG.current);
     if (FG.pushedOwner !== wantOwner) {
       FG.pushedOwner = wantOwner;
@@ -3576,8 +3551,6 @@
   /* 拆除=原版：三件 mod DOM 移除、.srfg-on 与宽高 inline 清除、官方格显式恢复 display */
   function fgTeardown() {
     if (!FG.doc) return;
-    try { if (FG.msgOn) FG.doc.defaultView.removeEventListener('message', FG.msgOn); } catch (e) { } FG.msgOn = null; /* 失配监听随拆 */
-    try { if (FG.missT) { clearTimeout(FG.missT); } } catch (e) { } FG.missT = 0; FG.missN = 0;
     if (FG.current !== 'bag') { try { cmdOut('switchBag', { owner: 0 }); } catch (e) { } } /* 柜签在场拆除：还原官方背包视图 */
     ['srfgTabs', 'srfgWarn', 'srfgFoot'].forEach(function (id) {
       var el = FG.doc.getElementById(id);

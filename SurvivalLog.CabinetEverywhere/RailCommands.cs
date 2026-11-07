@@ -604,14 +604,13 @@ internal static class RailCommands
     }
 
     /// <summary>
-    /// switchBag{owner}（九验收架构改版，作者定调「用官方原生逻辑」）：柜签=**官方背包数据切换**——
-    /// 向 FuelGenerator iframe 注入官方形状 WebUI_FuelGenerator_BagMsg（bagOwnerId=柜子/玩家背包，
-    /// bagItems/bagCols/bagRows 与官方推送同构；物品行带 icon/name/count/burnable/burnValue——
-    /// 官方 mapItem 渲染、dropInterceptor 燃料判定、onItemHover 热值 tooltip 的消费面）。此后
-    /// 物品渲染、拖拽（含拖到燃料槽=官方 FUEL_ADD）、左键 ITEM_CLICK（原生详情面板）、悬浮热值
-    /// **全部官方代码路径**——与烹饪/酿酒界面柜子页签同机制（数据进官方格，交互零自定义）。
-    /// owner=0=玩家背包。白名单门（红线2）。物品移动（ITEM_MOVE）由官方 C# 按 BagOwnerId
-    /// （=柜子）执行=柜内拖拽整理亦原生。
+    /// switchBag{owner}（九验收 v2：**官方状态直写**——作者定调「官方原生逻辑」的正身用法）：
+    /// 写 State_Web_FuelGenerator.BagOwnerId（游戏开页时自己就设这个字段；ReactiveProperty<long>
+    /// 直写）→ 派发官方 Ac_FuelGenerator_RefreshBag → **官方 C# 按新 owner 组包推送**。柜签/
+    /// 背包从此视图=权威状态永远一致：拖拽整理（官方 ITEM_MOVE 按当前 owner=柜子执行）、拖到
+    /// 燃料槽（官方 FUEL_ADD 从柜子取）、左键详情（官方 ITEM_CLICK）、悬浮热值全部官方语义，
+    /// 且无合成数据可失配=九验收 v1 的闪烁自激环（switchBag→泵刷新→官方推背包→失配重拉）与
+    /// 背包移动失效（视图/状态分叉）结构性不存在。owner=0=玩家背包。白名单门（红线2）。
     /// </summary>
     private static void OpSwitchBag(Cmd c)
     {
@@ -623,64 +622,17 @@ internal static class RailCommands
             CabinetEverywherePlugin.Log.LogWarning($"[CERail] switchBag 丢弃：owner={owner} 不在白名单（红线2）");
             return;
         }
-        var im = RailData.ItemMgr();
-        if (im == null) return;
-        var cm = BagTable.Cm();
-        var itemDict = cm?._Config_Item_Dict;
-        int cap = owner == bag ? RailData.BagCapCells : RailData.CtnCapOf(owner);
-        int cols = 12;
-        int rows = Math.Max(5, (int)Math.Ceiling((cap <= 0 ? 60 : cap) / 12.0));
-
-        var sb = new System.Text.StringBuilder(8192);
-        sb.Append("{\"type\":\"WebUI_FuelGenerator_BagMsg\",\"data\":{\"bagOwnerId\":").Append(owner)
-          .Append(",\"bagCols\":").Append(cols).Append(",\"bagRows\":").Append(rows).Append(",\"bagItems\":[");
-        int n = 0;
-        var src = OwnerItems(im, owner);
-        if (src != null)
+        var st = RailData.FuelGenState();
+        if (st == null || st.BagOwnerId == null) { WarnOnce("switch:nost", "switchBag 丢弃：FuelGenerator 状态不可得"); return; }
+        try
         {
-            foreach (var pair in src)
-            {
-                var it = pair.Value;
-                if (it == null) continue;
-                long id = 0; int cfg = 0, count = 1, x = 0, y = 0, w = 1, h = 1;
-                try { id = it.InstanceId; } catch { }
-                if (id <= 0) continue;
-                try { cfg = it.ItemConfigId; count = it.ItemCount; } catch { }
-                try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
-                try { w = it.ItemSize.x; h = it.ItemSize.y; } catch { }
-                if (w <= 0) w = 1; if (h <= 0) h = 1;
-                string name = null, icon = null; bool burnable = false; int burnValue = 0;
-                try
-                {
-                    GameCore.HotUpdate.Config_Item ic = null;
-                    itemDict?.TryGetValue(cfg, out ic);
-                    if (ic != null)
-                    {
-                        name = string.IsNullOrEmpty(ic.ItemName_Local) ? ic.ItemName : ic.ItemName_Local;
-                        icon = ic.WebIcon;   // ICON_RULE：原样字符串
-                        burnable = ic.Burnable;
-                        burnValue = ic.BurnValue;
-                    }
-                }
-                catch { }
-                if (n > 0) sb.Append(',');
-                sb.Append("{\"itemId\":").Append(id)
-                  .Append(",\"x\":").Append(x).Append(",\"y\":").Append(y)
-                  .Append(",\"w\":").Append(w).Append(",\"h\":").Append(h)
-                  .Append(",\"count\":").Append(count)
-                  .Append(",\"name\":\"").Append(RailData.EscapeJs(name ?? "")).Append("\"")
-                  .Append(",\"icon\":\"").Append(RailData.EscapeJs(icon ?? "")).Append("\"")
-                  .Append(",\"burnable\":").Append(burnable ? "true" : "false")
-                  .Append(",\"burnValue\":").Append(burnValue)
-                  .Append('}');
-                n++;
-            }
+            long cur = st.BagOwnerId.Value;
+            if (cur == owner) return; /* 同值守卫：已在目标 owner=免命令风暴（官方刷新也免） */
+            st.BagOwnerId.Value = owner;
+            GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_RefreshBag.SendAction();
+            VLog(c.Op, "owner=" + cur + "→" + owner + "（官方状态直写+官方刷新）");
         }
-        sb.Append("]}}");
-        RailUi.PostPageMessage(
-            "(function(){var f=document.getElementById('FuelGenerator');if(f&&f.contentWindow)" +
-            "f.contentWindow.postMessage(" + sb + ",'*');})()");
-        VLog(c.Op, "owner=" + owner + " items=" + n + " rows=" + rows + "（官方 BagMsg 注入）");
+        catch (Exception e) { WarnOnce("switch:write", "BagOwnerId 直写异常: " + e.Message); }
     }
 
     /// <summary>

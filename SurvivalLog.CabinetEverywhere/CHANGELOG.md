@@ -60,6 +60,24 @@ v1.8.2 v13 曾往官方 .transfer-controls 尾部 append mod 三增值按钮（�
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**十验收轮（作者实机反馈：柜签不能动+背包也不能动+柜签不停闪烁——「你验证了吗？」）**：
+㉑ 诚实对账：九验收只验到 harness（mock 世界无游戏权威状态/官方推送节律），实机两类崩法均
+   无法在旧 mock 里存在。根因复盘：**v1 合成 BagMsg 注入只改页面视图**——①视图与游戏权威
+   状态分叉→官方 ITEM_MOVE 按游戏状态校验→背包/柜子移动全废；②switchBag 命令→泵末
+   RefreshActivePage→官方推玩家背包→失配监听重拉→再命令→再刷新=**闪烁自激环**（「匹配即
+   清零重试计数」给环无限续命）。
+㉒ **v2=官方状态直写**（烹饪页签的正身用法）：switchBag 改写
+   `State_Web_FuelGenerator.BagOwnerId`（游戏开页自己就设的官方字段，ReactiveProperty 直写）
+   + 派发官方 `Ac_FuelGenerator_RefreshBag`——**官方 C# 自己按新 owner 组包推送**。合成
+   BagMsg/PostPageMessage/失配监听全删：视图=权威状态恒一致，闪环/移动失效/推送打架结构性
+   不存在；同值守卫（owner 未变零动作）。
+㉓ harness 补 mock 缺口（这次的教训固化）：**官方推送节律模拟**（__HZ_FAKEOFFICIALTICK__：
+按当前 owner 整包推送=游戏周期刷新同构；forceOwner 参数=野推送）+ **闪环回归断言**
+（fg:no-flicker-loop：节律 3 拍+野推玩家背包 1 拍→必须零重拉命令——v1 实证 RED（drain=1），
+v2 绿）；另修官方口径实证：**BagMsg 每包必带 bagItems**（官方 handler 每包 refresh(data.
+bagItems||[])——缺省=清空背包格，v1 的 fuelItems-only 推送就是背包消失的另一路根因）。
+harness **48/48**。
+
 **九验收轮（作者定调：官方原生拖拽没问题=用法问题；参考烹饪/酿酒/背包，撤掉保底堆叠）**：
 ⑲ **架构改版：柜签=官方背包数据切换**——新增 C# 命令 `switchBag`：向 FuelGenerator iframe 注入
    官方形状 BagMsg（bagOwnerId=柜子/背包，bagItems 带 icon/name/count/burnable/burnValue——
@@ -176,7 +194,7 @@ CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMs
   12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
   是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
   `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
-- harness-fuelgen **47/47**（九验收改版后官方路径断言套件）（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+- harness-fuelgen **48/48**（九验收官方路径断言+十验收闪环回归）（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
   禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-full-height 背包整幅直显+高锁=背包全高+跨签恒定 /
   race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+锁随行数长 /
   reopen-samedoc-tabs+reopen-reload-tabs=Root 真实时序同文档关开与重载变体）。
