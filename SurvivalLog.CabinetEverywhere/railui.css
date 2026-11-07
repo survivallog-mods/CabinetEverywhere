@@ -258,37 +258,64 @@
 
 /* ================= 燃油发电机 bagtabs（srfg-*，spec 2026-11-06-fuelgen-cabinet-tabs） =================
    仅 FuelGenerator 页消费（这些 id 只在 bagtabs 装配后存在，其他页零命中零影响）。
-   视觉基准=原型 v6：页签栏克隆官方 Cooking .bag-tabs 观感、底行克隆官方 .action-btn（暖金化）、
-   mod 柜格复用官方 .grid-container/.slot/.item/.is-fuel（同文档官方样式表）。 */
+   视觉基准=官方 Cooking 页 .bag-tabs/.bag-tab/.tab-scroll-btn/.bag-toolbar 原值克隆
+   （design-proto/fixtures/Cooking.html L83-209 逐条对账）；mod 柜格复用官方
+   .grid-container/.slot/.item/.is-fuel（同文档官方样式表）。
+   实机修复批（2026-11-07 四缺陷）：
+   ① ‹› 常驻可见+端点 disabled（官方 :disabled 形态）——原 is-visible 溢出门在燃料柜少时
+     永不显形=实机「按钮没有」；
+   ② 面板宽度改结构锁 min-width（calc 官方 CSS 变量）——原一次性 px 宽锁在官方页渐进渲染
+     （默认 6×5 格先建、BagMsg 后 resize 12×N）的竞态里会锁进 6 列宽≈324px，此后 12 列格
+     横向溢出、页签栏被挤没=实机「调背包高度后重开页签栏不可见」；
+   ③ 高度锁不再一次性：JS 侧 fgSettle 每轮自愈（fgLockHeight），配下方两格区滚动规则=
+     柜格/背包格超高改内部滚动，不再溢出面板外（官方拖拽 ghost 挂 body，不受滚动容器裁剪）；
+   ④ 底行容器类 .srfg-foot 此前漏挂（只给了 id）→无 justify-content:flex-end=按钮跑左。 */
 .srfg-on { /* 官方左面板标记类：mod 页签在场=官方标题/空间条/提示行隐藏（元素保留在文档=官方查询仍可达） */
   display: flex; flex-direction: column;
+  /* 结构宽锁：12 列格全宽（slot 40×12 + gap 6×11 + 格 pad 20 + 格/面板 border 4 + 面板 pad 30）。
+     官方页 CSS 变量直引（缺省兜底同值）——不测不锁，渐进渲染任何中间态都不会锁错 */
+  min-width: calc(var(--slot-size, 40px) * 12 + var(--slot-gap, 6px) * 11 + var(--grid-padding, 10px) * 2 + 34px);
 }
+/* 官方 .generator-system 默认 align-items:stretch——背包格(18 行)先渲染时会把右 gen 面板拉高，
+   高度锁量到的就是被拉伸值(实机教训：锁进 876px 而非 gen 自然高)。mod 在场期间改 flex-start=
+   各面板自然高，锁=gen 真值；左右锁后等高，视觉与官方一致。拆除时类随清（vanilla 零残留）。 */
+.srfg-sys { align-items: flex-start; }
 .srfg-on > .panel-title, .srfg-on > .info-bar, .srfg-on > .hint-shift { display: none !important; }
-#srfgTabs { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; flex-shrink: 0; }
+/* 官方背包格在锁定高面板内改内部滚动（官方整页 viewport-fit zoom 机制不动；两格区滚动条同款） */
+.srfg-on > .grid-container { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* 页签栏=官方 .bag-tabs 原值（stretch 高度/间距 4/margin 6/居中收缩）+ 宽帽：官方 Cooking JS
+   对 .bag-tabs 显式设宽（L1714 w*15/16）防多页签撑宽面板——此处同意图改 CSS calc（12 列格
+   内容宽 568：40*12+6*11+pad20+border2），无测量的竞态面；页签少时 align-self:center 仍收缩居中 */
+#srfgTabs { display: flex; flex-wrap: nowrap; align-items: stretch; gap: 4px; margin-bottom: 6px;
+  flex-shrink: 0; min-width: 0; box-sizing: border-box; align-self: center; position: relative;
+  max-width: calc(var(--slot-size, 40px) * 12 + var(--slot-gap, 6px) * 11 + var(--grid-padding, 10px) * 2 + 2px); }
 .srfg-pin { display: flex; gap: 4px; position: relative; margin-right: 12px; flex-shrink: 0; }
-.srfg-pin::after { content: ''; position: absolute; right: -7px; top: 22%; bottom: 22%; width: 1px; background: rgba(255,255,255,.18); }
+.srfg-pin::after { content: ''; position: absolute; right: -7px; top: 22%; bottom: 22%; width: 1px; background: rgba(255,255,255,.18); pointer-events: none; }
 .srfg-tab { padding: 6px 14px; font-size: 14px; color: #c0c0c0; cursor: pointer; user-select: none;
   background: rgba(20,15,12,.55); border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
   transition: background .15s, color .15s, border-color .15s; white-space: nowrap; flex-shrink: 0; }
 .srfg-tab:hover { background: rgba(251,176,52,.12); color: #fcfcfc; border-color: rgba(251,176,52,.5); }
 .srfg-tab.active { background: linear-gradient(180deg, rgba(251,176,52,.25) 0%, rgba(251,176,52,.1) 100%);
   color: #fbb034; border-color: #fbb034; cursor: default; box-shadow: 0 0 8px rgba(251,176,52,.35) inset; }
-.srfg-scroll { flex: 1 1 0; min-width: 0; overflow-x: hidden; display: flex; gap: 4px; }
-.srfg-tabbtn { flex-shrink: 0; width: 26px; height: 33px; padding: 0; line-height: 1;
+.srfg-scroll { flex: 1 1 0; min-width: 0; overflow-x: hidden; overflow-y: visible; display: flex; gap: 4px;
+  scroll-behavior: smooth; } /* 官方 .bag-tabs-scroll 同式（smooth 平滑翻页） */
+.srfg-tabbtn { flex-shrink: 0; width: 26px; padding: 0; line-height: 1; /* 高度=stretch 随页签行 */
   background: rgba(20,15,12,.55); color: #c0c0c0; border: 1px solid rgba(255,255,255,.12); border-radius: 6px;
-  cursor: pointer; font-size: 18px; font-weight: bold; display: none; align-items: center; justify-content: center;
-  user-select: none; font-family: inherit; }
-.srfg-tabbtn.is-visible { display: flex; }
-.srfg-tabbtn:hover { background: rgba(251,176,52,.12); color: #fbb034; border-color: rgba(251,176,52,.5); }
+  cursor: pointer; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+  user-select: none; font-family: inherit; transition: background .15s, color .15s, opacity .15s; }
+.srfg-tabbtn:hover:not(:disabled) { background: rgba(251,176,52,.12); color: #fbb034; border-color: rgba(251,176,52,.5); }
+.srfg-tabbtn:disabled { opacity: .3; cursor: not-allowed; }
 #srfgBody { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
-#srfgBody .grid-container { max-height: 100%; overflow-y: auto; box-sizing: border-box;
+#srfgBody .grid-container { max-height: 100%; overflow-y: auto; box-sizing: border-box; }
+.srfg-on > .grid-container, #srfgBody .grid-container {
   scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
-#srfgBody .grid-container::-webkit-scrollbar { width: 8px; }
-#srfgBody .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
-#srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
+.srfg-on > .grid-container::-webkit-scrollbar, #srfgBody .grid-container::-webkit-scrollbar { width: 8px; }
+.srfg-on > .grid-container::-webkit-scrollbar-track, #srfgBody .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
+.srfg-on > .grid-container::-webkit-scrollbar-thumb, #srfgBody .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
 #srfgBody .item { cursor: pointer; }
 .srfg-warn { color: #e05555; font-size: 13px; min-height: 18px; font-weight: bold; text-align: center; margin: 8px 0; }
-.srfg-foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; flex-shrink: 0; }
+.srfg-foot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
+#srfgFoot { display: flex; justify-content: flex-end; align-items: center; margin-top: 10px; flex-shrink: 0; }
 .srfg-act { background: linear-gradient(180deg, rgba(58,58,60,.9) 0%, rgba(38,38,40,.92) 100%); color: #e8dfcf;
   border: 1px solid rgba(255,255,255,.18); padding: 7px 11px; border-radius: 7px; font-size: 13px; font-weight: 500;
   cursor: pointer; transition: all .2s; font-family: inherit; box-shadow: 0 3px 10px rgba(0,0,0,.3);

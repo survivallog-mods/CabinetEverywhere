@@ -70,13 +70,13 @@
 | 元素 | 处理 |
 |---|---|
 | 官方 `panel-title`「角色背包」 | 有页签时隐藏（官方 Cooking 页同款行为：tabs>1 藏标题）；无柜子时原样 |
-| 页签栏（新增，mod DOM） | 官方 Cooking `.bag-tabs` 结构与 CSS 克隆：`背包` 固定首签（pinned 槽+分隔线）+ 燃料柜页签 + `‹›`（`.tab-scroll-btn`，溢出才出现）；纯文字无圆点（v6 定稿） |
+| 页签栏（新增，mod DOM） | 官方 Cooking `.bag-tabs` 结构与 CSS 克隆：`背包` 固定首签（pinned 槽+分隔线）+ 燃料柜页签 + `‹›`（`.tab-scroll-btn`，**常驻可见+端点禁用**——实机修复①：溢出门在柜少时永不显形，官方 Cooking JS 对行设显式宽帽同意图改 CSS calc）；纯文字无圆点（v6 定稿） |
 | 官方 `#bagInfoBar` 空间条 | 有页签时隐藏；无柜子时原样 |
-| 官方 `#backpackGrid` 背包格 | **永不移除、永不解绑**；柜子页签激活时 `display:none`，切回背包页签即恢复原生（官方 BagMsg 推送照常渲染，隐藏时无副作用） |
-| 柜子格网（新增，mod DOM） | 与官方格网同几何（12 列、官方 slot 尺寸、官方 .slot/.item 观感）；行数超出限高滚动；燃料物品带官方火苗角标（.is-fuel） |
+| 官方 `#backpackGrid` 背包格 | **永不移除、永不解绑**；柜子页签激活时 `display:none`，切回背包页签即恢复原生（官方 BagMsg 推送照常渲染，隐藏时无副作用）；mod 在场时改面板内滚动（`.srfg-on > .grid-container`——18 行真实背包不撑爆对话框，官方拖拽 ghost 挂 body 不受滚动裁剪，实机修复②背包侧） |
+| 柜子格网（新增，mod DOM） | 与官方格网同几何（12 列、官方 slot 尺寸、官方 .slot/.item 观感）；行数超出限高滚动（`#srfgBody` 定高自愈锁保障，实机修复②柜侧）；燃料物品带官方火苗角标（.is-fuel） |
 | 官方 `.hint-shift` 提示行 | 有页签时隐藏（v6 作者令删）；无柜子时原样 |
-| 底行（新增，mod DOM） | 仅「一键整理」按钮（官方 BackpackUI `.action-btn` 基类暖金化，mod 在 BackpackUI 原生页同款先例）；右缘对齐、钉死面板底部 |
-| 面板尺寸锁定 | `#bagPanel` 宽=12 列格网外宽，**锁死**（实证 2026-11-06 Config_Bag：玩家背包全部 12 列×18 行=216 格，ID 1/2/5/6/7/8~11；唯一 14 列的 ID 4 是轿车后备箱非玩家背包——UI-SPEC 旧注「背包 12~15 列」与现表不符，以现表为准）；高=固定值；格网区弹性主体（短柜留白、底行钉底） |
+| 底行（新增，mod DOM） | 仅「一键整理」按钮（官方 BackpackUI `.action-btn` 基类暖金化，mod 在 BackpackUI 原生页同款先例）；右缘对齐（`.srfg-foot` 类+`justify-content:flex-end`，实机修复③类漏挂）、钉死面板底部 |
+| 面板尺寸锁定 | **结构锁，非测量锁**（实机修复④：官方页渐进渲染——格仅随首包 BagMsg 才渲染、`createViewportFit` 在 BagMsg 时量系统，一次性 px 量取时机不定会锁进中间态/漏锁）：宽=CSS `min-width: calc(var(--slot-size)×12+…)`（官方页 CSS 变量 12 列全宽；实证 2026-11-06 Config_Bag：玩家背包全部 12 列×18 行=216 格，ID 1/2/5/6/7/8~11；唯一 14 列的 ID 4 是轿车后备箱非玩家背包——UI-SPEC 旧注「背包 12~15 列」与现表不符，以现表为准）；高=右 gen 面板自然高，`fgLockHeight` 每轮 settle 自愈复核+断官方 stretch（`.srfg-sys`，防背包先渲染把 gen 拉高）+锁变更补发 resize 促官方 `_fit` 复测（防调高背包后整对话框滞留半缩放）；格网区弹性主体（短柜留白、底行钉底） |
 
 **右侧发电机面板与对话框容器：零 DOM/CSS/JS 改动。**
 

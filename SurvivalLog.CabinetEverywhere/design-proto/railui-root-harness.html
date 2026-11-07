@@ -231,6 +231,11 @@ window.__HZ_READY__ = function () {
   window.__HZ_UNIW__ = 12;
   window.__HZ_FEEDFAIL__ = ''; /* fuelgen：ctx.feedFail 测试旋钮（置码后 __HZ_PUSH__ 生效，一次性由 JS 消费侧清） */
   window.__HZ_FGON__ = true;    /* fuelgen：ctx.fgOn 旋钮（C# EnableFuelGen 的夹具侧等价物，终审 Important1） */
+  /* fuelgen 实机修复批：__HZ_FGNUDGE__=ready 即投 BagMsg 开关（false=测试手动投——复现官方页
+     渐进渲染竞态：默认 6×5 格先建、装配先于数据到达）；__HZ_FGROWS__=bagRows（真实玩家背包
+     18 行；调大重载=实机「调整背包高度后重开」复现路）。均需重载 FuelGenerator 帧后生效 */
+  window.__HZ_FGNUDGE__ = true;
+  window.__HZ_FGROWS__ = 18;
   /* v14 brew：ctx.brewP1/brewP2 测试旋钮（C# GameKey 直推字段的夹具建模；默认 0/0.5=
      官方界面兜底值；置值后 __HZ_PUSH__ 生效——P2≤P1 时 JS 应回兜底，harness §1③） */
   window.__HZ_BREWP1__ = 0;
@@ -365,6 +370,7 @@ window.__HZ_READY__ = function () {
      Trade：WebUI_Trade_BagMsg{bagCols...} → ready=true（.cols>.col v-if=ready 渲染） */
   function nudge(key) {
     try {
+      if (key === 'FuelGenerator' && window.__HZ_FGNUDGE__ === false) return; /* 竞态测试：禁自动投，由测试手动 postMessage */
       var f = frames[key];
       if (!f || !f.contentWindow) return;
       /* v1.8.2：全 12 页官方 BagMsg 真形状喂食——官方格（壳内）真渲染 .item，
@@ -379,7 +385,7 @@ window.__HZ_READY__ = function () {
       }
       var bagItems = [mk(901, 0, 30, 1), mk(902, 1, 5, 3), mk(903, 2, 40, 5), mk(904, 3, 12, 5), mk(905, 4, 3, 9), mk(906, 5, 2, 2), mk(907, 6, 6, 8), mk(908, 7, 1, 4)];
       var M = {
-        FuelGenerator: ['WebUI_FuelGenerator_BagMsg', { bagOwnerId: 900001, bagCols: 12, bagRows: 6,
+        FuelGenerator: ['WebUI_FuelGenerator_BagMsg', { bagOwnerId: 900001, bagCols: 12, bagRows: window.__HZ_FGROWS__ || 18,
           bagItems: bagItems.map(function (b) { return { itemId: b.itemId, x: b.x, y: b.y, w: 1, h: 1, emoji: '📦', name: '物品' + b.itemId, count: b.count, burnable: false }; }),
           fuelSlotCount: 8, fuelItems: [], generatorName: '中型' }],
         Cooking: ['WebUI_Cooking_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],

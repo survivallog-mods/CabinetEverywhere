@@ -210,6 +210,12 @@ function check(name, ok, detail) {
       const tabs0 = await fgv(() => [...document.querySelectorAll('#srfgTabs .srfg-tab')].map((t) => ({ id: t.getAttribute('data-id'), t: t.textContent.trim(), on: t.classList.contains('active') })));
       check('fg:tabs-bag-first', tabs0.length > 1 && tabs0[0].id === 'bag' && tabs0[0].on, `页签=[${tabs0.map((t) => t.t).join('/')}]（首签=背包 active；柜签数=${tabs0.length - 1}）`);
       check('fg:right-panel-untouched', await fgv(() => !document.querySelector('.gen-panel #srfgTabs, .gen-panel #srfgBody, .gen-panel #srfgFoot, .gen-panel .srfg-on')), '右面板零 mod 节点（作者底线）');
+      /* 二十四批修复回归（实机四缺陷）：‹›常驻+端点禁用 / 底行右贴 / 两格区滚动零溢出 /
+         锁高=gen 自然高+zoom 复位（调背包高度后重开=原缺陷④复现路） */
+      check('fg:fix-arrows', await fgv(() => { const l = document.querySelector('#srfgTabs .srfg-tabbtn-l'), r = document.querySelector('#srfgTabs .srfg-tabbtn-r'); return !!l && !!r && getComputedStyle(l).display !== 'none' && getComputedStyle(r).display !== 'none'; }), '‹› 常驻可见（缺陷①：溢出门退役）');
+      check('fg:fix-foot-right', await fgv(() => { const f = document.getElementById('srfgFoot'), p = document.querySelector('.generator-system > .panel:not(.gen-panel)'); const b = f && f.querySelector('button'); return !!b && (p.getBoundingClientRect().right - b.getBoundingClientRect().right) < 45; }), '整理钮右贴（缺陷③）');
+      check('fg:fix-scroll-lock', await fgv(() => { const p = document.querySelector('.generator-system > .panel:not(.gen-panel)'); const g = document.getElementById('srfgGrid') || document.getElementById('backpackGrid'); return !!p.style.height && parseInt(p.style.height) < 800 && g.scrollHeight > g.clientHeight && (g.getBoundingClientRect().bottom - p.getBoundingClientRect().bottom) <= 1; }), '格区内部滚动+零溢出+锁高非拉伸（缺陷②）');
+      check('fg:fix-zoom', await fgv(() => document.body.style.zoom === '' || document.body.style.zoom === '1'), 'viewport-fit zoom 复位（缺陷④：调背包高度重开不再半缩放）');
       const w0 = await fgv(() => document.querySelector('.generator-system > .panel:not(.gen-panel)').offsetWidth);
       const firstCtn = tabs0.find((t) => t.id !== 'bag');
       await fgv((id) => { document.querySelector('#srfgTabs .srfg-tab[data-id="' + id + '"]').click(); return 1; }, firstCtn.id);

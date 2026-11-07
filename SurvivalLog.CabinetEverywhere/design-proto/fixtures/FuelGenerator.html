@@ -2,205 +2,592 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>燃油发电机</title>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
 <style>
-/* 官方 FuelGenerator.html 样式（gamekb 2026-11-05 快照原样内联；bagtabs 夹具=静态结构保真） */
 :root {
     --bg-dark: rgba(35, 28, 24, 0.85);
     --panel-bg: rgba(48, 40, 36, 0.95);
-    --warm-gold: #fbb034; --warm-orange: #ff9500; --warm-orange-dark: #e67e22;
-    --army-green: rgba(139, 153, 59, 0.9); --army-green-light: #a4b546;
-    --danger-red: #e05555; --text-main: #fcfcfc; --text-dark: #c0c0c0;
-    --border-light: rgba(255, 255, 255, 0.18); --border-color: rgba(255, 255, 255, 0.12);
-    --grid-bg: rgba(20, 15, 12, 0.85); --slot-border: rgba(255, 255, 255, 0.1);
-    --slot-size: 40px; --slot-gap: 6px; --grid-padding: 10px;
+    --warm-gold: #fbb034;
+    --warm-orange: #ff9500;
+    --warm-orange-dark: #e67e22;
+    --army-green: rgba(139, 153, 59, 0.9);
+    --army-green-light: #a4b546;
+    --danger-red: #e05555;
+    --text-main: #fcfcfc;
+    --text-dark: #c0c0c0;
+    --border-light: rgba(255, 255, 255, 0.18);
+    --border-color: rgba(255, 255, 255, 0.12);
+    --grid-bg: rgba(20, 15, 12, 0.85);
+    --slot-border: rgba(255, 255, 255, 0.1);
+    --slot-size: 40px;
+    --slot-gap: 6px;
+    --grid-padding: 10px;
 }
 * { box-sizing: border-box; }
-body { background-color: transparent; color: var(--text-main); font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+body {
+    background-color: transparent; color: var(--text-main); font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
     margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;
-    user-select: none; overflow: hidden; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
-.generator-system { display: flex; gap: 20px; position: relative;
+    user-select: none; overflow: hidden; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+body::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(15, 10, 8, 0.45);
+    z-index: -1; pointer-events: none;
+}
+.generator-system {
+    display: flex; gap: 20px; position: relative;
     background-image: radial-gradient(circle at center bottom, rgba(251, 176, 52, 0.25) 0%, transparent 65%), linear-gradient(135deg, rgba(65, 52, 45, 0.96) 0%, rgba(35, 28, 24, 0.98) 100%);
     padding: 16px; border-radius: 12px; border: 1px solid var(--border-light);
-    box-shadow: 0 25px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.15); min-height: 480px; }
-.panel { background: linear-gradient(180deg, rgba(55, 48, 44, 0.85) 0%, rgba(35, 28, 25, 0.95) 100%);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.15);
+    min-height: 480px;
+}
+.panel {
+    background: linear-gradient(180deg, rgba(55, 48, 44, 0.85) 0%, rgba(35, 28, 25, 0.95) 100%);
     border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 15px; display: flex; flex-direction: column;
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.4), 0 4px 15px rgba(0,0,0,0.2); }
-.panel-title { font-size: 16px; font-weight: bold; color: var(--warm-gold); margin-bottom: 12px; text-transform: uppercase;
-    letter-spacing: 1px; display: flex; align-items: center; flex-shrink: 0; text-shadow: 0 0 10px rgba(251, 176, 52, 0.4); }
-.panel-title::before { content: ''; display: inline-block; width: 4px; height: 16px; background-color: var(--warm-gold);
-    margin-right: 8px; border-radius: 2px; box-shadow: 0 0 8px rgba(251, 176, 52, 0.8); }
-.panel-title .sub { color: #fff; margin-left: 6px; font-size: 14px; text-transform: none; }
-.grid-container { background-color: var(--grid-bg); padding: var(--grid-padding); border-radius: 8px; position: relative;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.4), 0 4px 15px rgba(0,0,0,0.2);
+}
+.panel-title {
+    font-size: 16px; font-weight: bold; color: var(--warm-gold); margin-bottom: 12px; text-transform: uppercase;
+    letter-spacing: 1px; display: flex; align-items: center; flex-shrink: 0; text-shadow: 0 0 10px rgba(251, 176, 52, 0.4);
+}
+.panel-title::before {
+    content: ''; display: inline-block; width: 4px; height: 16px; background-color: var(--warm-gold); margin-right: 8px;
+    border-radius: 2px; box-shadow: 0 0 8px rgba(251, 176, 52, 0.8);
+}
+.panel-title .sub { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.5); margin-left: 6px; font-size: 14px; text-transform: none; }
+
+.grid-container {
+    background-color: var(--grid-bg); padding: var(--grid-padding); border-radius: 8px; position: relative;
     display: grid; gap: var(--slot-gap); border: 1px solid var(--border-color);
-    box-shadow: inset 0 5px 20px rgba(0,0,0,0.8); width: fit-content; }
-.slot { width: var(--slot-size); height: var(--slot-size); background-color: rgba(12, 9, 8, 0.8);
-    border: 1px solid var(--slot-border); border-radius: 4px; box-sizing: border-box; pointer-events: none;
-    transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); position: relative; }
-.item { position: absolute; z-index: 100; cursor: grab; display: flex; justify-content: center; align-items: center; font-size: 18px;
+    box-shadow: inset 0 5px 20px rgba(0,0,0,0.8); width: fit-content;
+}
+.slot {
+    width: var(--slot-size); height: var(--slot-size); background-color: rgba(12, 9, 8, 0.8);
+    border: 1px solid var(--slot-border); border-radius: 4px; box-sizing: border-box; pointer-events: none; transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); position: relative;
+}
+.slot.valid-hover { background-color: rgba(251, 176, 52, 0.2); border-color: var(--warm-gold); box-shadow: inset 0 0 15px rgba(251, 176, 52, 0.4); }
+.slot.invalid-hover { background-color: rgba(224, 85, 85, 0.2); border-color: var(--danger-red); box-shadow: inset 0 0 15px rgba(224, 85, 85, 0.4); }
+.item {
+    position: absolute; z-index: 100; cursor: grab; display: flex; justify-content: center; align-items: center; font-size: 18px;
     background: linear-gradient(135deg, rgba(70,60,55,0.95), rgba(45,38,34,0.95)); border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 4px; transition: filter 0.1s, transform 0.1s; box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2); }
+    border-radius: 4px; transition: filter 0.1s, transform 0.1s; box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2);
+}
 .item:hover { filter: brightness(1.25); z-index: 150; border-color: var(--warm-gold); box-shadow: 0 0 15px rgba(251, 176, 52, 0.5); transform: scale(1.05); }
-.item.is-fuel::before { content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
+.item:active { cursor: grabbing; transform: scale(1); z-index: 9999; }
+.item.is-fuel::before {
+    content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.6c0 5.6-2.4 6.9-4.2 9C6 12.9 4.8 14.9 4.8 17.1c0 3.5 3.2 5.9 7.2 5.9s7.2-2.4 7.2-5.9c0-2.4-1.3-4.3-2.9-6.3-.6 2-1.8 2.8-2.8 2.2-1.2-.7-1.3-4.5-1.5-11.4z' fill='white'/></svg>"),
                       linear-gradient(135deg, var(--warm-orange), var(--danger-red));
     background-size: 9px 9px, 100% 100%; background-position: center, center; background-repeat: no-repeat, no-repeat;
-    border-radius: 3px; pointer-events: none; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4); }
-.item-count { position: absolute; bottom: 1px; right: 3px; font-size: 12px; font-weight: bold; color: #fff;
-    text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 6; line-height: 1; letter-spacing: 0.5px; }
-.info-bar { background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03)); border: 1px solid var(--border-color);
-    border-left: 4px solid var(--warm-gold); padding: 8px 10px; font-size: 13px; margin-bottom: 12px; border-radius: 4px;
-    font-weight: bold; box-shadow: inset 0 2px 5px rgba(0,0,0,0.3); }
+    border-radius: 3px; pointer-events: none; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4);
+}
+.item-count { position: absolute; bottom: 1px; right: 3px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 6; line-height: 1; letter-spacing: 0.5px; }
+.info-bar { background: linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.03)); border: 1px solid var(--border-color); border-left: 4px solid var(--warm-gold); padding: 8px 10px; font-size: 13px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; box-shadow: inset 0 2px 5px rgba(0,0,0,0.3); }
+
 .gen-panel { width: 340px; }
-.gen-status { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 12px 14px;
-    margin-bottom: 14px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+
+.gen-status { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
 .gen-run-line { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: bold; margin-bottom: 12px; }
 .gen-run-line .dot { width: 8px; height: 8px; border-radius: 50%; }
-.gen-run-line.off .dot { background: #555; } .gen-run-line.off { color: #999; }
+.gen-run-line.on  .dot { background: #5a9e6f; box-shadow: 0 0 5px #5a9e6f; animation: pulse 1.6s infinite; }
+.gen-run-line.on  { color: #5a9e6f; }
+.gen-run-line.off .dot { background: #555; }
+.gen-run-line.off { color: #999; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
+html.quality-low .gen-run-line.on .dot { animation: none; opacity: 0.7; }
 .gen-metrics { display: flex; gap: 8px; margin-bottom: 0; }
-.gen-metric { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 7px 8px; background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; }
+.gen-metric { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 7px 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; }
 .gen-metric .k { font-size: 10px; color: #999; }
 .gen-metric .v { font-family: Consolas, "Cascadia Mono", monospace; font-size: 16px; font-weight: bold; line-height: 1; }
 .gen-metric .v .u { font-size: 10px; color: #777; font-weight: normal; margin-left: 1px; }
-.gen-metric .v.gen { color: #5a9e6f; } .gen-metric .v.fuel { color: #ff7676; }
-.gen-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer;
-    letter-spacing: 1px; font-family: inherit; box-shadow: 0 4px 0 rgba(0,0,0,0.3); }
+.gen-metric .v.gen  { color: #5a9e6f; }
+.gen-metric .v.fuel { color: #ff7676; }
+.gen-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold; cursor: pointer; letter-spacing: 1px; font-family: inherit; box-shadow: 0 4px 0 rgba(0,0,0,0.3); transition: filter .15s, transform .05s; }
+.gen-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+.gen-btn.stop { background: linear-gradient(180deg, #e0654d, #b8472f); color: #fff; }
 .gen-btn.start { background: linear-gradient(180deg, var(--warm-gold), var(--warm-orange-dark)); color: #3a2a10; }
+.gen-btn:not(:disabled):hover { filter: brightness(1.12); }
+
 .fuel-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.reserve-bar { flex: 1; height: 14px; background: rgba(0,0,0,0.5); border: 1px solid var(--slot-border); border-radius: 7px; overflow: hidden; box-shadow: inset 0 1px 4px rgba(0,0,0,0.6); }
+.reserve-fill { height: 100%; background: linear-gradient(90deg, var(--warm-orange-dark), var(--warm-gold)); border-radius: 7px; box-shadow: 0 0 8px rgba(251,176,52,0.5); transition: width 0.2s linear; }
+.fuel-summary .pct { font-size: 12px; font-weight: bold; color: var(--warm-gold); min-width: 34px; }
 .fuel-summary .avail { font-size: 12px; color: var(--text-dark); white-space: nowrap; }
 .fuel-summary .avail b { color: var(--text-main); }
+
 .fuel-section { margin-top: 4px; }
 .fuel-section-title { font-size: 12px; color: var(--text-dark); font-weight: bold; margin-bottom: 8px; }
-.fuel-queue { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 60px; background-color: rgba(0,0,0,0.4);
-    border: 1px dashed rgba(255,255,255,0.2); padding: 10px; border-radius: 6px; }
-.fuel-slot { width: 50px; height: 50px; background-color: rgba(20, 15, 12, 0.8); border: 1px solid var(--slot-border); border-radius: 4px;
-    display: flex; justify-content: center; align-items: center; font-size: 11px; color: #888; position: relative; overflow: hidden; flex-shrink: 0; }
-.fuel-slot.queued-item { border-color: rgba(251, 176, 52, 0.5); color: #fce1b6; cursor: pointer;
-    background: linear-gradient(to bottom, rgba(70,55,40,0.9), rgba(45,35,25,0.9)); }
-.fuel-slot-text { position: relative; z-index: 2; text-align: center; display: flex; flex-direction: column; align-items: center;
-    justify-content: center; width: 100%; height: 100%; pointer-events: none; }
-.fuel-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+.fuel-queue { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-height: 60px; background-color: rgba(0,0,0,0.4); border: 1px dashed rgba(255,255,255,0.2); padding: 10px; border-radius: 6px; transition: all 0.2s; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.fuel-queue.drag-over { border-color: var(--warm-gold); background-color: rgba(251, 176, 52, 0.12); }
+.fuel-slot { width: 50px; height: 50px; background-color: rgba(20, 15, 12, 0.8); border: 1px solid var(--slot-border); border-radius: 4px; display: flex; justify-content: center; align-items: center; font-size: 11px; color: #888; position: relative; overflow: hidden; flex-shrink: 0; box-shadow: inset 0 2px 6px rgba(0,0,0,0.8); }
+.fuel-slot.active-burn { border-color: var(--warm-orange); box-shadow: 0 0 20px rgba(255, 149, 0, 0.6), inset 0 0 10px rgba(0,0,0,0.9); color: #fff; background-color: rgba(70, 32, 16, 0.9); }
+.fuel-slot.queued-item { border-color: rgba(251, 176, 52, 0.5); color: #fce1b6; cursor: pointer; background: linear-gradient(to bottom, rgba(70,55,40,0.9), rgba(45,35,25,0.9)); }
+.fuel-slot.queued-item:hover { filter: brightness(1.25); border-color: var(--warm-gold); }
+.fuel-slot.queued-item::after { content: '－'; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(224, 85, 85, 0.85); color: white; font-size: 28px; font-weight: bold; display: flex; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+.fuel-slot.queued-item:hover::after { opacity: 1; }
+.burn-progress-fill { position: absolute; bottom: 0; left: 0; right: 0; background: linear-gradient(to top, rgba(251, 176, 52, 0.9), rgba(255, 100, 0, 0.7)); height: 0%; z-index: 1; transition: height 0.1s linear; }
+.fuel-slot-text { position: relative; z-index: 2; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; pointer-events: none; }
+.fuel-icon { width: 24px; height: 24px; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0,0,0,0.8)); flex-shrink: 0; }
 .fuel-name { font-size: 10px; line-height: 1.2; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; width: 90%; text-shadow: 0 1px 2px #000; }
 .fuel-pct { font-size: 12px; font-weight: bold; line-height: 1; text-shadow: 0 1px 2px #000; margin-top: 2px; }
 .drag-hint { text-align: center; font-size: 11px; color: var(--text-dark); margin-top: 10px; opacity: 0.7; }
 .hint-shift { width: 0; min-width: 100%; font-size: 11px; line-height: 1.5; margin-top: 6px; color: var(--warm-gold); opacity: 0.92; }
-.warning-box { color: var(--danger-red); font-size: 13px; min-height: 18px; font-weight: bold;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8); text-align: center; margin: 8px 0; }
-.auto-box { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 9px 12px;
-    margin-bottom: 10px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+
+.warning-box { color: var(--danger-red); font-size: 13px; min-height: 18px; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.8); text-align: center; margin: 8px 0; }
+
+.auto-box { background: rgba(15,17,20,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 9px 12px; margin-bottom: 10px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
 .auto-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.auto-title { font-size: 12px; font-weight: bold; color: var(--text-dark); }
+.auto-title { font-size: 12px; font-weight: bold; color: var(--text-dark); display: flex; align-items: center; gap: 6px; }
+.auto-title .ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .7; }
 .auto-box.on .auto-title { color: var(--warm-gold); }
-.switch { width: 40px; height: 21px; border-radius: 11px; background: rgba(251,176,52,0.28); border: 1px solid rgba(251,176,52,0.7);
-    position: relative; cursor: pointer; flex-shrink: 0; }
-.switch::after { content: ''; position: absolute; top: 2px; left: 22px; width: 15px; height: 15px; border-radius: 50%;
-    background: var(--warm-gold); box-shadow: 0 0 8px rgba(251,176,52,0.8); }
-.auto-body { margin-top: 9px; }
+.auto-box.on .auto-title .ico { opacity: 1; }
+.auto-title .nb { font-weight: normal; font-size: 10px; color: #7d746c; margin-left: 2px; }
+.switch { width: 40px; height: 21px; border-radius: 11px; background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.18); position: relative; cursor: pointer; flex-shrink: 0; box-shadow: inset 0 2px 5px rgba(0,0,0,0.7); }
+.switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #8b8078; box-shadow: 0 1px 3px rgba(0,0,0,0.7); transition: transform .16s ease; }
+.auto-box.on .switch { background: rgba(251,176,52,0.28); border-color: rgba(251,176,52,0.7); box-shadow: inset 0 0 8px rgba(251,176,52,0.35); }
+.auto-box.on .switch::after { transform: translateX(19px); background: var(--warm-gold); box-shadow: 0 0 8px rgba(251,176,52,0.8); }
+.switch.disabled { opacity: .4; cursor: default; }
+.auto-body { display: none; margin-top: 9px; }
+.auto-box.on .auto-body { display: block; }
 .auto-line { font-size: 11px; color: var(--text-dark); margin-bottom: 7px; }
 .auto-line .thr { font-family: Consolas, "Cascadia Mono", monospace; font-size: 15px; font-weight: bold; color: var(--warm-gold); margin: 0 2px; }
 .auto-sub { margin-top: 7px; font-size: 10px; line-height: 1.45; color: #8e857d; }
+input[type=range].thr {
+    width: 100%; -webkit-appearance: none; appearance: none; height: 8px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--warm-orange-dark) 0%, var(--warm-gold) var(--fillpct, 30%), rgba(0,0,0,0.55) var(--fillpct, 30%));
+    border: 1px solid var(--slot-border); outline: none; box-shadow: inset 0 1px 4px rgba(0,0,0,0.6); cursor: pointer;
+}
+input[type=range].thr::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 17px; height: 17px; border-radius: 50%; background: var(--warm-gold);
+    border: 1px solid #3a2a10; box-shadow: 0 0 8px rgba(251,176,52,0.85), 0 1px 3px rgba(0,0,0,0.8); cursor: grab;
+}
+
+#recipeTooltip { position: fixed; background: rgba(30, 24, 22, 0.95); border: 1px solid rgba(251, 176, 52, 0.5); color: var(--text-main); padding: 12px; border-radius: 6px; font-size: 12px; pointer-events: none; z-index: 2000; display: none; line-height: 1.5; box-shadow: 0 8px 24px rgba(0,0,0,0.8); }
 </style>
 </head>
 <body>
 
+<div id="recipeTooltip"></div>
+
 <div class="generator-system" id="generatorSystem">
 
     <div class="panel">
-        <div class="panel-title" id="bagPanelTitle">角色背包</div>
-        <div class="info-bar" id="bagInfoBar">空间：0 / 0</div>
+        <div class="panel-title" data-i18n="bagTitle">角色背包</div>
+        <div class="info-bar" id="bagInfoBar"></div>
         <div class="grid-container" id="backpackGrid"></div>
-        <div class="hint-shift" id="shiftHint">右键 / Shift+点击 快速转移 · 点击查看详情</div>
+        <div class="hint-shift" data-i18n="shiftHint">右键 / Shift+点击 快速转移 · 点击查看详情</div>
     </div>
 
     <div class="panel gen-panel">
-        <div class="panel-title"><span>燃油发电机</span><span class="sub" id="generatorNameDisplay">· 中型</span></div>
-        <div class="gen-status">
-            <div class="gen-run-line off"><span class="dot"></span><span>已关机</span></div>
-            <div class="gen-metrics">
-                <div class="gen-metric"><span class="k">发电量</span><span class="v gen">+116<span class="u">/10min</span></span></div>
-                <div class="gen-metric"><span class="k">耗料</span><span class="v fuel">-600<span class="u">/10min</span></span></div>
-                <div class="gen-metric"><span class="k">总热值</span><span class="v" id="totalBurnValue">0</span></div>
-            </div>
-        </div>
-        <div class="fuel-summary"><span class="avail">可用 <b id="availText">无燃料</b></span></div>
-        <div class="fuel-section">
-            <div class="fuel-section-title">燃料槽（拖入可燃物 / 点击退回）</div>
-            <div class="fuel-queue" id="fuelQueueZone"></div>
-            <div class="warning-box" id="warningBox"></div>
-        </div>
-        <div class="auto-box on">
-            <div class="auto-head"><div class="auto-title">自动开启</div><div class="switch"></div></div>
-            <div class="auto-body">
-                <div class="auto-line">储电低于 <span class="thr">30%</span> 时自动开机</div>
-                <div class="auto-sub">蓄电池充满后自动关机，省油。</div>
-            </div>
-        </div>
-        <button class="gen-btn start">开启发电机</button>
-    </div>
+        <div class="panel-title"><span data-i18n="pageTitle">燃油发电机</span><span class="sub" id="generatorNameDisplay">· 型号</span></div>
 
+        <div class="gen-status">
+            <div class="gen-run-line off" id="genRunLine"><span class="dot"></span><span id="genRunText">已关机</span></div>
+            <div class="gen-metrics">
+                <div class="gen-metric"><span class="k" data-i18n="genPerTickLabel">发电量</span><span class="v gen" id="genPerTickValue">+0<span class="u">/10min</span></span></div>
+                <div class="gen-metric"><span class="k" data-i18n="fuelPerTickLabel">耗料</span><span class="v fuel" id="fuelPerTickValue">-0<span class="u">/10min</span></span></div>
+                <div class="gen-metric"><span class="k" data-i18n="totalBurnLabel">总热值</span><span class="v" id="totalBurnValue">0</span></div>
+            </div>
+        </div>
+
+        <div class="fuel-summary">
+            <span class="avail"><span data-i18n="availLabel">可用</span> <b id="availText">—</b></span>
+        </div>
+
+        <div class="fuel-section">
+            <div class="fuel-section-title" data-i18n="fuelSectionTitle">燃料槽（拖入可燃物 / 点击退回）</div>
+            <div class="fuel-queue" id="fuelQueueZone">
+                <div class="fuel-slot" id="activeFuelSlot"><div class="burn-progress-fill" id="burnFill"></div><div class="fuel-slot-text" data-i18n="fuelSlotEmpty">燃烧槽<br>(空)</div></div>
+            </div>
+            <div class="drag-hint" data-i18n="dragHint">从背包拖可燃物到料槽加燃料 · 燃烧进度随发电机消耗更新</div>
+        </div>
+
+        <div class="warning-box" id="warningBox"></div>
+
+        <div class="auto-box" id="autoBox">
+            <div class="auto-head">
+                <span class="auto-title">
+                    <svg class="ico" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5L19.5 10H13z"/></svg>
+                    <span id="autoTitleText">自动开启</span><span class="nb" id="autoNeedBattery" style="display:none">需要蓄电池</span>
+                </span>
+                <div class="switch" id="autoSwitch"></div>
+            </div>
+            <div class="auto-body">
+                <div class="auto-line" id="autoTipLine"></div>
+                <input type="range" class="thr" id="autoRange" min="10" max="90" step="10" value="30">
+                <div class="auto-sub" id="autoSubText"></div>
+            </div>
+        </div>
+
+        <button class="gen-btn start" id="powerBtn" style="margin-top:auto;">开启发电机</button>
+    </div>
 </div>
 
 <script>
-/* 夹具最小官方行为：① __PAGE_READY__ 上报（sourcePageId='FuelGenerator'，root harness nudge 门）；
-   ② WebUI_FuelGenerator_BagMsg 渲染（官方 UpdateBagItems/UpdateFuelItems 的静态保真——
-   bagItems→#backpackGrid（.slot 底格+.item 绝对定位+.is-fuel 火苗角标）、fuelItems→
-   #fuelQueueZone（.fuel-slot.queued-item））。bagtabs 装配只读这些 DOM，不改本脚本行为。 */
-(function () {
-  var LAST = { bagItems: [], fuelItems: [], bagCols: 12, bagRows: 6, fuelSlotCount: 8, bagOwnerId: 0 };
-  function renderBag(d) {
-    var g = document.getElementById('backpackGrid');
-    if (!g) return;
-    g.innerHTML = '';
-    g.style.gridTemplateColumns = 'repeat(' + d.bagCols + ', var(--slot-size))';
-    for (var i = 0; i < d.bagCols * d.bagRows; i++) {
-      var s = document.createElement('div'); s.className = 'slot'; g.appendChild(s);
-    }
-    (d.bagItems || []).forEach(function (it) {
-      var el = document.createElement('div');
-      el.className = 'item' + (it.burnable ? ' is-fuel' : '');
-      el.id = 'bi' + it.itemId;
-      el.style.left = (10 + it.x * 46) + 'px'; el.style.top = (10 + it.y * 46) + 'px';
-      el.style.width = (it.w * 40 + (it.w - 1) * 6) + 'px'; el.style.height = (it.h * 40 + (it.h - 1) * 6) + 'px';
-      el.title = it.name || '';
-      el.innerHTML = '<span style="pointer-events:none">' + (it.emoji || '') + '</span>' +
-        (it.count > 1 ? '<span class="item-count">' + it.count + '</span>' : '');
-      g.appendChild(el);
+    var core = createWebUICore('FuelGenerator');
+
+    var i18nText = {
+        bagTitle: '角色背包', pageTitle: '燃油发电机',
+        weightLabel: '负重', capacityLabel: '容量', spaceLabel: '空间',
+        runningText: '运行中', stoppedText: '已关机',
+        startBtnText: '开启发电机', stopBtnText: '关闭发电机',
+        genPerTickLabel: '发电量', fuelPerTickLabel: '耗料', totalBurnLabel: '总热值',
+        availLabel: '可用', fuelSectionTitle: '燃料槽（拖入可燃物 / 点击退回）',
+        fuelSlotEmpty: '燃烧槽<br>(空)', dragHint: '从背包拖可燃物到料槽加燃料 · 燃烧进度随发电机消耗更新',
+        fuelReturnTip: '点击退回背包', heatValueLabel: '热值',
+        noFuelText: '无燃料', availMinutesTemplate: '约 {0} 分钟',
+        warningFuelFull: '燃料槽已满！', warningFuelOnly: '仅接受可燃物品',
+        shiftHint: '右键 / Shift+点击 快速转移 · 点击查看详情',
+        autoStartTitle: '自动开启', autoStartTip: '储电低于{0}时自动开机',
+        autoStartHint: '蓄电池充满后自动关机，省油',
+        autoStartNeedBattery: '需要蓄电池'
+    };
+
+    var AUTO_TEXT_FALLBACK = {
+        autoStartTitle: i18nText.autoStartTitle,
+        autoStartTip: i18nText.autoStartTip,
+        autoStartHint: i18nText.autoStartHint,
+        autoStartNeedBattery: i18nText.autoStartNeedBattery
+    };
+    function autoText(key) { return i18nText[key] || AUTO_TEXT_FALLBACK[key]; }
+
+    var FUEL_SLOT_EMPTY_HTML = core.safeHtml(i18nText.fuelSlotEmpty);
+
+    var _fit = createViewportFit({ measureSelector: '.generator-system', margin: 48, bodyHeightProp: 'minHeight' });
+    function getUiZoom() { return _fit.getZoom(); }
+
+    var backpack = createGridBag('backpackGrid', { cols: 6, rows: 5 });
+    var genConfig = { fuelSlotCount: 3, fuelRate: 1.0 };
+
+    var dragCoord = createBagDragCoordinator([backpack], {
+        smartDrop: false,
+        canAcceptItem: function(targetBag, itemData, isFinal) { return true; },
+        onItemMove: function(data) { core.UnitySendEvent('ITEM_MOVE', data); },
+        onItemPickup: function(itemData) { core.UnitySendEvent('SFX_ITEM_PICKUP', { itemId: itemData ? itemData.id : 0 }); },
+        onItemPutback: function(itemData) { core.UnitySendEvent('SFX_ITEM_PUTBACK', { itemId: itemData ? itemData.id : 0 }); },
+        onItemClick: function(itemId, rightClick) { core.UnitySendEvent('ITEM_CLICK', { itemId: itemId, rightClick: !!rightClick }); },
+        onItemHover: function(itemId, isEnter) {
+            core.UnitySendEvent('ITEM_HOVER', { itemId: itemId, isEnter: isEnter });
+            if (!isEnter) { hideFuelTip(); return; }
+            var all = State.lastBagItems || [];
+            for (var i = 0; i < all.length; i++) {
+                if (all[i] && all[i].itemId == itemId && all[i].burnValue > 0) {
+                    showFuelTip(all[i].name, all[i].burnValue);
+                    return;
+                }
+            }
+        }
     });
-    document.getElementById('bagInfoBar').textContent = '空间：' + (d.bagItems || []).length + ' / ' + (d.bagCols * d.bagRows);
-  }
-  function renderFuel(d) {
-    var z = document.getElementById('fuelQueueZone');
-    if (!z) return;
-    z.innerHTML = '';
-    for (var i = 0; i < d.fuelSlotCount; i++) {
-      var s = document.createElement('div');
-      var q = (d.fuelItems || [])[i];
-      if (q) {
-        s.className = 'fuel-slot queued-item';
-        s.innerHTML = '<div class="fuel-slot-text"><span style="font-size:18px">' + (q.emoji || '') +
-          '</span><span class="fuel-name">' + (q.name || '') + '</span><span class="fuel-pct">' + (q.pct || '') + '</span></div>';
-      } else { s.className = 'fuel-slot'; s.textContent = '空'; }
-      z.appendChild(s);
+
+    var DOM = {
+        bagInfoBar: document.getElementById('bagInfoBar'),
+        generatorNameDisplay: document.getElementById('generatorNameDisplay'),
+        genRunLine: document.getElementById('genRunLine'),
+        genRunText: document.getElementById('genRunText'),
+        genPerTickValue: document.getElementById('genPerTickValue'),
+        fuelPerTickValue: document.getElementById('fuelPerTickValue'),
+        totalBurnValue: document.getElementById('totalBurnValue'),
+        availText: document.getElementById('availText'),
+        fuelQueueZone: document.getElementById('fuelQueueZone'),
+        activeFuelSlot: document.getElementById('activeFuelSlot'),
+        burnFill: document.getElementById('burnFill'),
+        warningBox: document.getElementById('warningBox'),
+        powerBtn: document.getElementById('powerBtn'),
+        recipeTooltip: document.getElementById('recipeTooltip'),
+        autoBox: document.getElementById('autoBox'),
+        autoSwitch: document.getElementById('autoSwitch'),
+        autoTitleText: document.getElementById('autoTitleText'),
+        autoNeedBattery: document.getElementById('autoNeedBattery'),
+        autoTipLine: document.getElementById('autoTipLine'),
+        autoRange: document.getElementById('autoRange'),
+        autoSubText: document.getElementById('autoSubText')
+    };
+
+    var State = {
+        bagCols: 6, bagRows: 5, lastBagItems: [],
+        fuelQueue: [], activeFuel: null,
+        isRunning: false,
+        autoEnabled: false, autoThreshold: 30, hasBattery: false
+    };
+
+    /* 背包信息栏 / 可用时长：数据消息和本地化消息都会触发重画，所以一律从 State 取最近一次的数据 */
+    function renderBagInfo() {
+        var data = State.lastBagMsg;
+        if (!DOM.bagInfoBar || !data) return;
+        if (data.bagWeight !== undefined && data.bagMaxWeight !== undefined) { DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.weightLabel) + ': <span style="color:var(--warm-gold)">' + data.bagWeight + '</span> / ' + data.bagMaxWeight; }
+        else if (data.bagCapacity !== undefined && data.bagMaxCapacity !== undefined) { DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.capacityLabel) + ': <span style="color:var(--warm-gold)">' + data.bagCapacity + '</span> / ' + data.bagMaxCapacity; }
+        else { var totalSlots = State.bagCols * State.bagRows; var usedSlots = backpack.getItems().length; DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.spaceLabel) + ': <span style="color:var(--warm-gold)">' + usedSlots + '</span> / ' + totalSlots; }
     }
-    var first = (d.fuelItems || [])[0];
-    document.getElementById('availText').textContent = first ? (first.name || '') : '无燃料';
-  }
-  function apply(d) {
-    LAST.bagCols = d.bagCols || LAST.bagCols; LAST.bagRows = d.bagRows || LAST.bagRows;
-    LAST.fuelSlotCount = d.fuelSlotCount || LAST.fuelSlotCount;
-    if (d.bagItems) LAST.bagItems = d.bagItems;
-    if (d.fuelItems) LAST.fuelItems = d.fuelItems;
-    if (d.bagOwnerId) LAST.bagOwnerId = d.bagOwnerId;
-    renderBag(LAST); renderFuel(LAST);
-  }
-  window.addEventListener('message', function (ev) {
-    var m = ev.data;
-    if (!m || m.type !== 'WebUI_FuelGenerator_BagMsg' || !m.data) return;
-    apply(m.data);
-  });
-  try { parent.postMessage({ type: '__PAGE_READY__', sourcePageId: 'FuelGenerator' }, '*'); } catch (e) { }
-  window.__FG_LAST__ = function () { return LAST; };
+
+    function renderAvail() {
+        if (!DOM.availText || State.availMinutes === undefined) return;
+        var hasFuel = (State.activeFuel !== null) || (State.fuelQueue.length > 0);
+        if (!hasFuel || State.availMinutes <= 0) DOM.availText.textContent = (!hasFuel ? i18nText.noFuelText : '—');
+        else DOM.availText.textContent = i18nText.availMinutesTemplate.replace('{0}', Math.round(State.availMinutes));
+    }
+
+    core.registerHandlers({
+        'WebUI_FuelGenerator_BagMsg': function(data) {
+            backpack.setOwnerId(data.bagOwnerId || 0);
+            State.lastBagItems = data.bagItems || [];
+
+            if (data.bagCols !== undefined) { State.bagCols = data.bagCols; if (data.bagRows !== undefined) State.bagRows = data.bagRows; backpack.resize(State.bagCols, State.bagRows); }
+            var fuelSlotChanged = false;
+            if (data.fuelSlotCount !== undefined && genConfig.fuelSlotCount !== data.fuelSlotCount) { genConfig.fuelSlotCount = data.fuelSlotCount; fuelSlotChanged = true; }
+            if (data.fuelRate !== undefined) genConfig.fuelRate = data.fuelRate;
+
+            if (data.generatorName !== undefined && DOM.generatorNameDisplay) {
+                DOM.generatorNameDisplay.textContent = data.generatorName ? ('· ' + data.generatorName) : '';
+            }
+
+            backpack.refresh(data.bagItems || []);
+            _fit.apply();
+
+            State.lastBagMsg = data;
+            renderBagInfo();
+
+            if (data.fuelItems) {
+                State.fuelQueue = []; State.activeFuel = null;
+                data.fuelItems.forEach(function(fi, idx) {
+                    var item = { id: fi.configId, name: fi.name, icon: fi.icon, fuelValue: fi.burnValue, count: fi.count, burnProgress: fi.burnProgress || 0 };
+                    if (idx === 0) { State.activeFuel = { item: item, burnProgress: item.burnProgress }; }
+                    else { State.fuelQueue.push(item); }
+                });
+                renderFuelArea();
+            } else if (fuelSlotChanged) {
+                renderFuelArea();
+            }
+        },
+        'WebUI_FuelGenerator_StateMsg': function(data) {
+            if (!data) return;
+            if (data.isRunning !== undefined) {
+                State.isRunning = !!data.isRunning;
+                if (DOM.genRunLine) { DOM.genRunLine.classList.toggle('on', State.isRunning); DOM.genRunLine.classList.toggle('off', !State.isRunning); }
+                if (DOM.genRunText) DOM.genRunText.textContent = State.isRunning ? i18nText.runningText : i18nText.stoppedText;
+                if (DOM.powerBtn) {
+                    if (State.isRunning) { DOM.powerBtn.classList.remove('start'); DOM.powerBtn.classList.add('stop'); DOM.powerBtn.textContent = i18nText.stopBtnText; }
+                    else { DOM.powerBtn.classList.remove('stop'); DOM.powerBtn.classList.add('start'); DOM.powerBtn.textContent = i18nText.startBtnText; }
+                }
+            }
+            if (data.genPerTick !== undefined && DOM.genPerTickValue) {
+                DOM.genPerTickValue.innerHTML = '+' + data.genPerTick + '<span class="u">/10min</span>';
+            }
+            if (data.fuelPerTick !== undefined && DOM.fuelPerTickValue) {
+                DOM.fuelPerTickValue.innerHTML = '-' + data.fuelPerTick + '<span class="u">/10min</span>';
+            }
+            if (data.totalBurnValue !== undefined && DOM.totalBurnValue) {
+                DOM.totalBurnValue.textContent = Math.round(data.totalBurnValue);
+            }
+            if (data.availMinutes !== undefined) {
+                State.availMinutes = data.availMinutes;
+                renderAvail();
+            }
+            if (data.hasBattery !== undefined) State.hasBattery = !!data.hasBattery;
+            if (data.autoStartEnabled !== undefined) State.autoEnabled = !!data.autoStartEnabled;
+            if (!_thrDragging && data.autoStartThreshold !== undefined && data.autoStartThreshold > 0) {
+                State.autoThreshold = Math.round(data.autoStartThreshold * 100);
+            }
+            renderAutoStart();
+        },
+        'WebUI_FuelGenerator_LocalizationMsg': function(data) {
+            if (!data) return;
+            Object.assign(i18nText, data);
+            if (data.bagTitle) core.i18n.updateText('[data-i18n="bagTitle"]', data.bagTitle);
+            if (data.pageTitle) core.i18n.updateText('[data-i18n="pageTitle"]', data.pageTitle);
+            if (data.genPerTickLabel) core.i18n.updateText('[data-i18n="genPerTickLabel"]', data.genPerTickLabel);
+            if (data.fuelPerTickLabel) core.i18n.updateText('[data-i18n="fuelPerTickLabel"]', data.fuelPerTickLabel);
+            if (data.totalBurnLabel) core.i18n.updateText('[data-i18n="totalBurnLabel"]', data.totalBurnLabel);
+            if (data.availLabel) core.i18n.updateText('[data-i18n="availLabel"]', data.availLabel);
+            if (data.fuelSectionTitle) core.i18n.updateText('[data-i18n="fuelSectionTitle"]', data.fuelSectionTitle);
+            if (data.dragHint) core.i18n.updateText('[data-i18n="dragHint"]', data.dragHint);
+            if (data.shiftHint) core.i18n.updateText('[data-i18n="shiftHint"]', data.shiftHint);
+            if (data.fuelSlotEmpty) {
+                FUEL_SLOT_EMPTY_HTML = core.safeHtml(data.fuelSlotEmpty);
+                var fseDom = document.querySelector('[data-i18n="fuelSlotEmpty"]');
+                if (fseDom && !State.activeFuel) fseDom.innerHTML = FUEL_SLOT_EMPTY_HTML;
+            }
+            if (DOM.genRunText) DOM.genRunText.textContent = State.isRunning ? i18nText.runningText : i18nText.stoppedText;
+            if (DOM.powerBtn) DOM.powerBtn.textContent = State.isRunning ? i18nText.stopBtnText : i18nText.startBtnText;
+            /* 页面就绪时先回放积压的背包 / 状态消息、后下发文案：那两条已经用中文兜底画过一遍，
+               之后背包和燃料不变就不会再收到，必须在这里用新文案重画 */
+            renderBagInfo();
+            renderAvail();
+            renderAutoStart();
+        }
+    });
+
+
+    var _thrDragging = false;
+
+    function renderAutoStart() {
+        if (!DOM.autoBox) return;
+        var on = State.autoEnabled;
+        DOM.autoBox.classList.toggle('on', on);
+        DOM.autoSwitch.classList.toggle('disabled', !State.hasBattery && !State.autoEnabled);
+        DOM.autoTitleText.textContent = autoText('autoStartTitle');
+        DOM.autoNeedBattery.textContent = autoText('autoStartNeedBattery');
+        DOM.autoNeedBattery.style.display = State.hasBattery ? 'none' : 'inline';
+
+        DOM.autoRange.value = State.autoThreshold;
+        DOM.autoRange.style.setProperty('--fillpct', ((State.autoThreshold - 10) / 80 * 100) + '%');
+
+        DOM.autoTipLine.innerHTML = core.escapeHtml(autoText('autoStartTip'))
+            .replace('{0}', '<span class="thr">' + State.autoThreshold + '%</span>');
+        DOM.autoSubText.textContent = autoText('autoStartHint');
+    }
+
+    function sendAutoStart() {
+        core.UnitySendEvent('SET_AUTO_START', { enabled: State.autoEnabled, threshold: State.autoThreshold / 100 });
+    }
+
+    DOM.autoSwitch.addEventListener('click', function () {
+        if (!State.hasBattery && !State.autoEnabled) return;
+        State.autoEnabled = !State.autoEnabled;
+        renderAutoStart();
+        sendAutoStart();
+    });
+    DOM.autoRange.addEventListener('pointerdown', function () { _thrDragging = true; });
+    DOM.autoRange.addEventListener('pointerup', function () { _thrDragging = false; });
+    DOM.autoRange.addEventListener('pointercancel', function () { _thrDragging = false; });
+    window.addEventListener('blur', function () { _thrDragging = false; });
+    DOM.autoRange.addEventListener('input', function () { State.autoThreshold = +this.value; renderAutoStart(); });
+    DOM.autoRange.addEventListener('change', function () {
+        _thrDragging = false;
+        State.autoThreshold = +this.value;
+        renderAutoStart();
+        sendAutoStart();
+    });
+
+    function getActiveRemainPct() {
+        if (!State.activeFuel) return 0;
+        var p = Math.max(0, Math.min(1, State.activeFuel.burnProgress || 0));
+        return (1 - p) * 100;
+    }
+
+    function updateFuelText() {
+        var activeText = DOM.activeFuelSlot.querySelector('.fuel-slot-text');
+        if (activeText && State.activeFuel) { var item = State.activeFuel.item; activeText.innerHTML = (item.icon ? '<img src="' + item.icon + '" class="fuel-icon">' : '') + '<div class="fuel-pct">' + Math.round(getActiveRemainPct()) + '%</div>'; }
+    }
+
+    function renderFuelArea() {
+        var children = Array.from(DOM.fuelQueueZone.children); children.forEach(function(child) { if (child.id !== 'activeFuelSlot') child.remove(); });
+        var activeText = DOM.activeFuelSlot.querySelector('.fuel-slot-text');
+        if (State.activeFuel) {
+            DOM.activeFuelSlot.classList.add('active-burn');
+            updateFuelText(); DOM.burnFill.style.height = getActiveRemainPct() + '%';
+        } else {
+            DOM.activeFuelSlot.classList.remove('active-burn'); activeText.innerHTML = FUEL_SLOT_EMPTY_HTML; DOM.burnFill.style.height = '0%';
+        }
+        var maxQueueRender = Math.max((genConfig.fuelSlotCount || 3) - 1, 0);
+        for (var i = 0; i < maxQueueRender; i++) {
+            var slot = document.createElement('div'); slot.className = 'fuel-slot';
+            if (i < State.fuelQueue.length) {
+                var qItem = State.fuelQueue[i]; slot.classList.add('queued-item');
+                slot.innerHTML = '<div class="fuel-slot-text">' + (qItem.icon ? '<img src="' + qItem.icon + '" class="fuel-icon">' : '') + '<div class="fuel-name">' + core.escapeHtml(qItem.name) + '</div></div>';
+                (function(idx, item) {
+                    slot.addEventListener('mouseenter', function() { showFuelTip(item.name, item.fuelValue || 0, i18nText.fuelReturnTip); });
+                    slot.addEventListener('mouseleave', hideFuelTip);
+                    slot.onclick = function() { returnFuelToBackpack(idx); };
+                })(i, qItem);
+            }
+            DOM.fuelQueueZone.appendChild(slot);
+        }
+    }
+
+    function returnFuelToBackpack(queueIndex) {
+        var slotIndex = queueIndex + (State.activeFuel ? 1 : 0); core.UnitySendEvent('FUEL_RETURN', { slotIndex: slotIndex });
+    }
+
+    dragCoord.setDropInterceptor(function(itemData, mouseX, mouseY) {
+        var rect = DOM.fuelQueueZone.getBoundingClientRect();
+        if (!(mouseX >= rect.left && mouseX <= rect.right && mouseY >= rect.top && mouseY <= rect.bottom)) {
+            // 底板内（面板、面板间空隙、格子周边的标签和留白）一律回弹；拖出底板才丢地上，口径同 ToolTable / Cooking
+            var root = document.getElementById('generatorSystem');
+            var box = root && root.getBoundingClientRect();
+            if (box && mouseX >= box.left && mouseX <= box.right && mouseY >= box.top && mouseY <= box.bottom) return 'reject';
+            return false;
+        }
+        if (itemData._raw && itemData._raw.burnable) {
+            if ((State.activeFuel ? 1 : 0) + State.fuelQueue.length >= genConfig.fuelSlotCount) { showWarning(i18nText.warningFuelFull); return 'reject'; }
+            core.UnitySendEvent('FUEL_ADD', { itemId: parseInt(itemData.id) }); return true;
+        }
+        showWarning(i18nText.warningFuelOnly); return 'reject';
+    });
+
+    var _fuelMousePos = null, _fuelRafId = 0, _fuelZoneRect = null, _wasDraggingForFuel = false;
+    document.addEventListener('mousemove', function(e) {
+        _fuelMousePos = { x: e.clientX, y: e.clientY };
+        if (_fuelRafId) return;
+        _fuelRafId = requestAnimationFrame(function() {
+            _fuelRafId = 0;
+            var dragging = dragCoord.isDragging();
+            if (!dragging) {
+                if (_wasDraggingForFuel) { DOM.fuelQueueZone.classList.remove('drag-over'); _wasDraggingForFuel = false; _fuelZoneRect = null; }
+                return;
+            }
+            if (!_wasDraggingForFuel) { _fuelZoneRect = DOM.fuelQueueZone.getBoundingClientRect(); _wasDraggingForFuel = true; }
+            var item = dragCoord.getDraggedItem(), pos = _fuelMousePos, rect = _fuelZoneRect;
+            var inside = pos && rect && pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
+            DOM.fuelQueueZone.classList.toggle('drag-over', inside && item && item._raw && item._raw.burnable);
+        });
+    });
+
+    var _heatTipLastMouse = { x: 0, y: 0 };
+    var _heatTipRafId = 0;
+    document.addEventListener('mousemove', function(e) {
+        _heatTipLastMouse.x = e.clientX; _heatTipLastMouse.y = e.clientY;
+        if (_heatTipRafId) return;
+        _heatTipRafId = requestAnimationFrame(function () {
+            _heatTipRafId = 0;
+            if (DOM.recipeTooltip.style.display === 'block') { moveTooltip({ clientX: _heatTipLastMouse.x, clientY: _heatTipLastMouse.y }); }
+        });
+    });
+    function moveTooltip(e) { var z = getUiZoom(); DOM.recipeTooltip.style.left = ((e.clientX + 15) / z) + 'px'; DOM.recipeTooltip.style.top = ((e.clientY + 15) / z) + 'px'; }
+    function showFuelTip(name, burnValue, extra) {
+        var lines = [];
+        if (name) lines.push(name);
+        lines.push(i18nText.heatValueLabel + ' ' + burnValue);
+        if (extra) lines.push(extra);
+        DOM.recipeTooltip.textContent = lines.join('\n');
+        DOM.recipeTooltip.style.whiteSpace = 'pre-line';
+        DOM.recipeTooltip.style.display = 'block';
+        moveTooltip({ clientX: _heatTipLastMouse.x, clientY: _heatTipLastMouse.y });
+    }
+    function hideFuelTip() { DOM.recipeTooltip.style.display = 'none'; }
+
+    function showWarning(msg) { DOM.warningBox.textContent = msg; setTimeout(function() { DOM.warningBox.textContent = ''; }, 3000); }
+
+    DOM.powerBtn.addEventListener('click', function() { core.UnitySendEvent('TOGGLE_POWER'); });
+
+    document.body.addEventListener('click', function(e) { if (e.target === document.body) core.UnitySendEvent('CLOSE'); });
+
+    DOM.activeFuelSlot.addEventListener('mouseenter', function() {
+        if (State.activeFuel && State.activeFuel.item) {
+            var it = State.activeFuel.item;
+            showFuelTip(it.name, it.fuelValue || 0);
+        }
+    });
+    DOM.activeFuelSlot.addEventListener('mouseleave', hideFuelTip);
+
+    renderFuelArea();
+    renderAutoStart();
+    core.notifyReady();
+
+</script>
+<!-- harness bridge（fuelgen 实机修复批 2026-11-07）：官方页整体原样（webui-core/webui-bag 经
+     serve.cjs 三级解析回源 vendor 快照，本文件与 webui_src 逐字节同源）。本桥只补两件事：
+     ① 测试遥测 id——官方 .panel-title[data-i18n=bagTitle]/.hint-shift 无 id，root harness
+        既有断言选择器（#bagPanelTitle/#shiftHint）兼容；
+     ② 无——__PAGE_READY__ 走官方 core.notifyReady() 真路（rAF×2+150ms 兜底），BagMsg/
+        StateMsg 全走官方 handler：createGridBag 渐进渲染（默认 6×5 先建、BagMsg 到后 resize
+        12×N）+ createViewportFit 缩放。旧夹具「一帧全量渲染 + 自绘最小 handler」掩掉了
+        装配竞态与滚动/溢出问题（实机四缺陷全数漏检），本页=真实时序真实布局。 -->
+<script>
+(function () {
+  var t = document.querySelector('.panel-title[data-i18n="bagTitle"]'); if (t) t.id = 'bagPanelTitle';
+  var h = document.querySelector('.hint-shift'); if (h) h.id = 'shiftHint';
 })();
 </script>
 </body>

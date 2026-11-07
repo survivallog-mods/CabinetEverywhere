@@ -7,6 +7,37 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
+
+**修复（作者实机验收反馈四项，全部根因=旧静态夹具「一帧全量渲染」掩掉的时序/装配缺陷）**：
+① ‹› 翻页按钮不显示——`is-visible` 溢出门在燃料柜少时永不显形；改**常驻可见+端点禁用**
+（官方 Cooking `.tab-scroll-btn:disabled` 同式），页签栏样式逐值对齐官方 `.bag-tabs`
+（stretch/margin 6/居中收缩/smooth 滚动）。② 高柜无滚动条、格区溢出界面外——旧一次性高度锁
+在官方渐进渲染竞态里漏锁（`#srfgBody` 无定高→`max-height:100%` 无解）；改 **fgLockHeight
+每轮 settle 自愈复核**（同值守卫防观察器环）+ `.srfg-on > .grid-container` 官方背包格同入
+滚动（18 行真实背包在锁定面板内滚，官方拖拽 ghost 挂 body 不受滚动容器裁剪）。③ 一键整理
+按钮跑左——JS 只挂 id 未挂 `.srfg-foot` 类，无 `justify-content:flex-end`；补类+双选择器兜底。
+④ 调整背包高度后重开页签栏不可见——两重根因：一次性 **px 宽锁**量进官方渐进渲染中间态
+（官方格仅随首包 BagMsg 才渲染，量取时机不定）→ 改 **CSS min-width 结构锁**（calc 官方页
+CSS 变量 12 列全宽，不测不锁）；官方 `createViewportFit` 在 BagMsg 时量 `.generator-system`
+（早于装配）→ 调高背包后整对话框被压到 ~0.78 缩放且不复原——装配锁高/拆除时**补发 resize**
+促官方 `_fit` 复测（zoom 复位 1）。另断官方 `align-items:stretch`（`.srfg-sys`，随拆随清）
+防背包格先渲染把右 gen 面板拉高、高度锁量进拉伸值。
+
+- 夹具重建：`fixtures/FuelGenerator.html` = **webui_src 官方页逐字节原样**（webui-core/webui-bag
+  经 serve.cjs 三级解析回源 vendor 快照）+ 3 行遥测 id 桥——官方渐进渲染（格空→BagMsg 首渲
+  12×N）、`createViewportFit` 缩放、`backpack.resize` 全为真实时序；旧自绘最小 handler 夹具
+  是四缺陷全数漏检的根因。root harness 增 `__HZ_FGNUDGE__`（ready 自动投 BagMsg 开关）/
+  `__HZ_FGROWS__`（背包行数=实机「调整背包高度」旋钮）。
+- harness-fuelgen **39/39**（31 旧断言全绿 + 新增：foot-right 右贴 / arrows-always 常驻+端点
+  禁用 / tall-ctn-scroll 20 行高柜内部滚动零溢出 / bag-grid-scroll 18 行滚动+非拉伸锁 /
+  race-empty-wait+late-mount-sane 数据晚到装配 / reopen-bagheight 24 行重开页签可见+zoom 复位）。
+  **RED 对账**：git stash 回滚两修复文件后 7 断言红（四缺陷逐一命中+宽锁/拉伸/zoom 滞留），
+  修复后全绿。
+- 回归：brew-tier 27/27、switch-cabinet 27/27、tagfilter 15/15、width-floor 13/13、
+  native-width 8/8、sbtrack 全绿（并行会话成果无扰）；mount/store-all/regression/tidy 失败
+  为基线旧病（二十三批已对账记录，非本批引入）。
+
 ### 待发版·二十三批（2026-11-07，酿酒桶界面 酒品品质角标 + 饱腹排序收敛）
 
 **新功能**：酿酒桶（BrewPanel）页排序菜单收敛两项（`⊞默认 / 🍗饱腹度`）；选饱腹度后物品格右上角
