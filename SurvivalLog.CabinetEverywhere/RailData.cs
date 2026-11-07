@@ -518,10 +518,11 @@ internal static class RailData
         sb.Append(",\"icfg\":[");
         bool fuelCols = sc?.Page == "FuelGenerator" || sc?.Page == "Heater"; // 尾列仅 bagtabs 族两页（其他页推送形状不变——spec 约束；暖炉移植批补：角标/右键预检同源消费 ICFG.burn，漏此=暖炉页角标全灭+预检误拒）
         bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
+        bool dyeCols = sc?.Page == "DyePanel";       // 染料桶页专属尾列 pig 串（dye-pigment-sort spec §5.1，同约束；JS normIcfg 按类型判形与 canBrew 数字同宽互斥）
         for (int i = 0; i < icfgOrder.Count; i++)
         {
             if (i > 0) sb.Append(',');
-            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols));
+            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols, dyeCols));
         }
         sb.Append(']');
 
@@ -577,16 +578,20 @@ internal static class RailData
     /// 独立缓存 _icfgFuelCache——同一 cfgId 在普通页(14 列)与本页(16 列)间不得共用缓存行。
     /// brewCols=true（酿酒桶页专属，brew spec §5.1）：行尾追加 canBrew(0/1) 一列，
     /// 独立缓存 _icfgBrewCache——同上分键防串形（15 列）。
+    /// dyeCols=true（染料桶页专属，dye-pigment-sort spec §5.1）：行尾追加 pig 打包串一列
+    /// （"[[colorId,points],…]"，无色素="[]"；JS normIcfg 按类型判形——与 canBrew 数字同宽互斥），
+    /// 独立缓存 _icfgDyeCache——同上分键防串形。
     /// </summary>
-    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false)
+    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
     {
-        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : _icfgCache);
+        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : (dyeCols ? _icfgDyeCache : _icfgCache));
         if (cache.TryGetValue(cfgId, out var row)) return row;
-        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols);
+        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols, dyeCols);
         if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
             // 终审 Minor4：尾列必须拼在行括号内（旧写法 ,0,0 落在 ] 外=非法形状，normRows 数组过滤侥幸无症状）
             return fuelCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0,0]"
-                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]" : PlaceholderIcfgRow(cfgId));
+                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]"
+                : (dyeCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",\"[]\"]" : PlaceholderIcfgRow(cfgId)));
         cache[cfgId] = row;
         return row;
     }
@@ -854,7 +859,7 @@ internal static class RailData
     /// 返回 null = cfgId 查不到 Config_Item（含配置表未就绪窗口）——调用方（IcfgRow）不缓存，
     /// 直接出占位行，防未就绪首包把 "?" 负缓存整会话（评审 Important 1）。
     /// </summary>
-    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false)
+    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
     {
         var cm = BagTable.Cm();
         if (itemDict == null) { itemDict = cm?._Config_Item_Dict; }
@@ -906,7 +911,27 @@ internal static class RailData
             try { canBrew = ic.CanBrew; } catch { }
             sb.Remove(sb.Length - 1, 1).Append(',').Append(canBrew ? 1 : 0).Append(']');
         }
+        /* 染料桶页专属尾列（dye-pigment-sort spec §5.1，fuelCols/brewCols 同款纪律）：pig=植物
+           全颜色点数打包串 "[[colorId,points],…]"（含未解锁色；无色素/读不到="[]"）。
+           形态无关读取（spike dump 实证后定稿访问链），缓存键=cfgId 每会话一次。 */
+        if (dyeCols)
+        {
+            sb.Remove(sb.Length - 1, 1).Append(",\"").Append(EscapeJs(DyePigOf(ic))).Append("\"]");
+        }
         return sb.ToString();
+    }
+
+    /// <summary>Config_Item → pig 打包串 "[[colorId,points],…]"（spike 待实证：访问链与底层形态
+    /// 由 Debug.DumpDyePigments dump 定稿；本存根先保证契约形状通路，dump 落地后替换读取体）。</summary>
+    private static string DyePigOf(GameCore.HotUpdate.Config_Item ic)
+    {
+        if (ic == null) return "[]";
+        try
+        {
+            // TODO(dye-pig spike): 实证后替换——候选：Config_Item.Pigments 字段 / PigmentsJson 串
+            return "[]";
+        }
+        catch { return "[]"; }
     }
 
     /// <summary>
@@ -1216,6 +1241,7 @@ internal static class RailData
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存，14 列）
     private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
     private static readonly Dictionary<int, string> _icfgBrewCache = new(); // 酿酒桶页 15 列行（尾列 canBrew，brew spec §5.1——同上分键防串形）
+    private static readonly Dictionary<int, string> _icfgDyeCache = new(); // 染料桶页行（尾列 pig 打包串，dye-pigment-sort spec §5.1——同上分键防串形）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>
     internal static string EscapeJs(string s)
