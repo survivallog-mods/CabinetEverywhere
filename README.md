@@ -1,4 +1,4 @@
-# 储藏柜直达 CabinetEverywhere（Survival Log MOD）
+# 更好的储物系统（原「储藏柜直达 CabinetEverywhere」· Survival Log MOD）
 
 > 作者 Night · 抖音 166660371 · 免费分享 · 不改存档 / 不改游戏文件
 > 版本随套件统一管理；适配游戏版本以仓库兼容说明为准。
@@ -15,6 +15,7 @@
 - **批量制作不卡**：工作台按当前视图收窄取料与扫描范围（所见即所取料范围），并对袋刷新做帧合并——柜子再多，批量制作也不因页签变多而卡顿。
 - **默认排除功能容器**：自制工具台、载具（购物车/自行车/汽车等）、染料桶、材料堆、厨房电器、无人机货舱/中控台等非储物容器不会混进页签；追加/排除名单可在配置里自定义。
 - **燃油发电机界面柜子页签（2026-11-07 起）**：左侧背包面板页签化（背包+带「燃料」标签的柜子），点柜中燃料整组直送发电机（与官方从背包加油同口径）；无燃料标签柜时该界面与原版一致。详见 DESIGN.md §11。
+- **染料桶色素排序（2026-11-07 起）**：页脚排序钮回归（v1.8.10 撤钮重设计定案）——弹窗列全部颜色（含未解锁），选色即按该色色素点数做显示层排序（官方同款水滴点数徽章+沉底），不动真实摆放、重开面板恢复官方序；植物×颜色点数表随本批验收文档落地。
 
 ## 三、安全与还原
 
@@ -63,12 +64,13 @@
 | Debug.Verbose | false | 输出每条明细日志 |
 | Debug.ListOnReady | true | 启动时在日志列出发现的全部柜子名单（首次核对用，可关） |
 | Debug.DumpFurniture | false | 排查"新柜子不生效"用：置 true 后（约 5 秒内生效）在日志列出家中全部带储物格家具明细，平时关 |
+| Debug.DumpDyePigments | false | 染料桶排序 spike 用：置 true 重启进档后一次性在日志 dump 全部 Dye/Pigment 类型、GameKey 与植物色素全表，取完关 |
 
 视图取值：**Food**=食物标签柜 + 全部冰箱；**Material**=材料/工具标签柜（不含冰箱与未打标签柜，通信设备等无标签容器要看请切 Browser 选「其他」）；**Browser**=下拉自由筛选。
 
 ## 六、English
 
-**Cabinet Everywhere** — Every storage cabinet becomes a container tab in crafting and trade screens, with per-screen tag filtering.
+**Better Storage System** (formerly Cabinet Everywhere) — Every storage cabinet becomes a container tab in crafting and trade screens, with per-screen tag filtering.
 
 **Features**
 - Cabinet tabs in 9 screens: workbench / drone trade / drone hub / shredder / greenhouse (tabs + auto material pulling), and cooking / rat cage / brewing / dye (tabs). All on by default.

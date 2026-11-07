@@ -1,4 +1,4 @@
-# SurvivalLog.CabinetEverywhere — 储藏柜直达（含场景视图/标签筛选）
+# SurvivalLog.CabinetEverywhere — 更好的储物系统（原「储藏柜直达」；含场景视图/标签筛选）
 
 ## 功能
 让普通储物类家具（储物柜/橱柜/金属柜/收纳架/保险箱等）出现在制作类界面的容器页签里，和工具柜同等待遇：

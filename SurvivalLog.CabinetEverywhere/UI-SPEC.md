@@ -9,6 +9,15 @@
 > 同屏各自独立排序；装配判据改**页面 Vue 真源**（`bagA/bagB.ownerId` 白名单柜判定，
 > 兜底=chips→bpBag→保守袋侧）——旧 ctx.bpBag 快照滞后的「开取用柜左下角排序钮闪一下
 > 就没了」竞态根治；材料架（行组件无网格）不做，见 §0a-4/§0a-5）。
+> **三十批增补（2026-11-07，染料桶色素排序）**：DyePanel 回归 `SORT_KEYS`（v1.8.10 撤钮
+> 重设计定案）——页脚 `srFoodSort` 菜单=「默认」+全部颜色（`ctx.dyePal` 动态项，色块
+> swatch `.sr-fswatch`；空板=仅默认=配置未就绪容错）；排序键 `pig:<colorId>` 走**专属
+> apply** `dispApplyDyePig`（`dispApplyBrewSat` 镜像，公共比较器零改动）：点数降序/
+> 并列稳定/无该色素沉底原序；icfg 染料桶页尾列 pig（string——normIcfg 类型判形与
+> canBrew 数字同宽互斥）；徽章=**官方同款右下水滴**（官方 .dye-pts 类+dropSvg 原样镜像，作者验收令
+> 「复用官方色素显示方案」——右上角 mod 数值角标不用于色素）；沉底项不画；官方已画让位
+> 零重叠；fsort 复位语义与其余排序页一致（重开=official）。
+> 详见 docs/superpowers/specs/2026-11-07-dye-pigment-sort-design.md。
 > v13.9（v13.8 之上：**背包页 mod 按钮对**（作者缺陷单
 > #1「背包界面缺失 排序、一键入库 按钮」，原型三轮定稿）：单独背包/整理物资的背包面板
 > 官方 `.toolbar` 行**左缘**插入 `⇅ 排序 ▾`（7 项 FSORTS 弹层→`sortBy{owner:bag}` 数据层

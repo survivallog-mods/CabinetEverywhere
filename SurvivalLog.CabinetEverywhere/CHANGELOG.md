@@ -1,4 +1,4 @@
-# 更新日志（SurvivalLog.CabinetEverywhere / 储藏柜直达）
+# 更新日志（SurvivalLog.CabinetEverywhere / 更好的储物系统——2026-11-07 v1.8.5 起正式更名，原「储藏柜直达」）
 
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
@@ -6,6 +6,30 @@
 ## v1.8.1（2026-11-06，作者定版——合并 main；版本号单源=作者裁定）
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
+
+### 待发版·三十批（2026-11-07，染料桶色素排序——排序钮回归（v1.8.10 撤钮重设计定案））
+
+**设计**：docs/superpowers/specs/2026-11-07-dye-pigment-sort-design.md（DISP 显示层排序=
+全 mod 排序钮同构；零真实移动/零命令下发/关面板即还原）。
+
+- **C# 契约**：icfg 染料桶页专属尾列 `pig`（`"[[色号,点数],…]"` 全颜色含未解锁；分键缓存
+  `_icfgDyeCache` 防串形，fuelCols/brewCols 同款纪律）+ `ctx.dyePal` 页条件颜色板
+  （tradePrefs 先例同源）；`Debug.DumpDyePigments` 一次性 spike dump（自发现：类型普查/
+  GameKey/ConfigManager/Config_Item 色素全表）。
+- **JS**：`SORT_KEYS` 回归 DyePanel；菜单=「默认」+全部颜色（色块 swatch；空板=仅默认）；
+  `dispApplyDyePig` 专属 apply（`dispApplyBrewSat` 镜像——点数降序/并列稳定/无该色素沉底
+  原序/dispPack 通用多格）；**徽章=官方同款右下水滴+点数**（作者验收令「复用官方色素显示
+  方案」：官方 .dye-pts 类+dropSvg 原样镜像、右下锚定，官方已画让位零重叠，沉底项不画——
+  右上角 mod 数值角标不用于色素）；normIcfg pig 类型判形（string 与 canBrew 数字同宽互斥）；
+  `fsortLabel`/`badgeSpec` 动态色键；弹窗滚动现规则回归钉。
+- **harness**：新增 harness-dye-pig.cjs **38 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
+  official 复位 · §2 菜单/swatch/空板/20 色滚动 · §4 角标 suppress · §5 推包重应用/重载
+  重开复位 official（iframe 重载=游戏关面板销毁帧的真实路径；showScene 切换帧存活不模拟）/
+  跨页菜单隔离）；brew 35/35、fuelgen 53、heater 55 复验绿。TDD 真捕获：`_pigParsed` 初版
+  按 cfgId 缓存→pig 串变更不重解析，改按串缓存键。
+- **预存（与本批无关）**：harness-regression 3 失败（root:confirm-text/delta-toast/
+  bag-grid-leftover，入库文案流）在 pristine main（page.js+harness 双回退验证）同样失败，
+  待另行排查。
 
 ### 待发版·二十九批（2026-11-07，燃料火苗角标断供修复——fgBadgeFuel 补类+官方规则注入）
 

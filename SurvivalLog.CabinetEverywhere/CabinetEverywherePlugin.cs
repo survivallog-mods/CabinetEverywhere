@@ -39,8 +39,8 @@ public enum ScenarioView { Food, Material, Browser, Fuel }
 public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
-    public const string Name = "CabinetEverywhere";
-    public const string Version = "1.8.1";
+    public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
+    public const string Version = "1.8.5";
 
     internal static ManualLogSource Log;
 
@@ -58,6 +58,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> Verbose;
     internal static ConfigEntry<bool> ListOnReady;
     internal static ConfigEntry<bool> DumpFurniture;
+    internal static ConfigEntry<bool> DumpDyePigments; // 染料桶排序 spike（dye-pigment-sort spec §6）：一次性自发现 dump
     internal static ConfigEntry<bool> FilterEnable;
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
@@ -155,6 +156,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             "配置表就绪时在日志列出发现的全部柜子家具名单（首次核对用，可关）。");
         DumpFurniture = Config.Bind("Debug", "DumpFurniture", false,
             "置 true 后在日志列出家中全部带包家具明细：owner/配置/名称/锁定态/是否入选。排查'新柜子不生效'用，平时关。注意：cfg 改动需重启游戏生效（BepInEx 不监听 cfg 文件外部修改——2026-11-05 八追实测游戏内改 cfg 不生效，旧注「5 秒内生效」有误）。");
+        DumpDyePigments = Config.Bind("Debug", "DumpDyePigments", false,
+            "染料桶排序 spike：置 true 后进档在日志 dump 全部 Dye/Pigment 相关类型、GameKey 与 Config_Item 色素全表（植物×颜色点数）。一次性，取完关。cfg 改动需重启游戏生效。");
         FilterEnable = Config.Bind("Filter", "Enable", true,
             "标签筛选总开关：关闭后不注入筛选（场景视图也一并失效，容器页签全部显示）。");
         FilterEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
@@ -206,6 +209,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewHeater.SettingChanged += reload;
         EnableHeater.SettingChanged += reload;
         DumpFurniture.SettingChanged += (object s, System.EventArgs e) => { CabinetCatalog.DumpRequested = true; };
+        DumpDyePigments.SettingChanged += (object s, System.EventArgs e) => { RailData.DyePigDumpRequested = true; };
 
         // General.Enabled=false：不启 Ticker/不装合并补丁，零日志零改写
         //（白名单本会话从未注入，无需移除；运行中关闭由 AccessTicker 首行门处理）
@@ -214,6 +218,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         if (!ClassInjector.IsTypeRegisteredInIl2Cpp<AccessTicker>())
             ClassInjector.RegisterTypeInIl2Cpp<AccessTicker>();
         if (DumpFurniture.Value) CabinetCatalog.DumpRequested = true; // cfg 启动即 true 也生效（进档后 dump 一次）
+        if (DumpDyePigments.Value) RailData.DyePigDumpRequested = true; // 同上（重启路：SettingChanged 不覆盖文件加载）
         var go = new GameObject("CabinetEverywhere.Ticker");
         Object.DontDestroyOnLoad(go);
         go.AddComponent<AccessTicker>();
@@ -362,6 +367,7 @@ internal sealed class AccessTicker : MonoBehaviour
             //    AllContainers（全容器+标签，筛选用）+ HomeInstances（柜子子集，直达注入用）
             CabinetCatalog.RefreshHomeInstances();
             CabinetCatalog.FlushDump();
+            RailData.FlushDyePigDump(); // 染料桶 spike：同门同节律（进档后一次性；flag 消费自复位）
 
             // 4) 筛选：JS 注入/喂标签数据（容器枚举已并入上面的统一扫描）
             if (CabinetEverywherePlugin.FilterEnable.Value)

@@ -485,6 +485,15 @@ internal static class RailData
         //（仅本页带出=页条件字段先例同 fgOn/tradePrefs）
         if (sc?.Page == "Heater")
             sb.Append(",\"heaterOn\":").Append(CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
+        // dyePal（染料桶色素排序批）：颜色板页条件字段——DyePaletteRules.PanelDyeItems（官方面板
+        // 序，全颜色含未解锁）+ PanelDyeHex（平行 hex）+ 染料物品本地化名（ItemDict）。spike v3
+        // 实证：ColorCount=8（20363-20370），名称走染料物品自身（ColorShowKeys=StateXX 非显示名）。
+        // 板未就绪（配置空）→ 整字段不下发（JS 空板=菜单仅「默认」，dye-pigment-sort spec §5.1.2）。
+        if (sc?.Page == "DyePanel")
+        {
+            var pal = DyePalJson();
+            if (!string.IsNullOrEmpty(pal)) sb.Append(",\"dyePal\":").Append(pal);
+        }
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
 
@@ -518,10 +527,11 @@ internal static class RailData
         sb.Append(",\"icfg\":[");
         bool fuelCols = sc?.Page == "FuelGenerator" || sc?.Page == "Heater"; // 尾列仅 bagtabs 族两页（其他页推送形状不变——spec 约束；暖炉移植批补：角标/右键预检同源消费 ICFG.burn，漏此=暖炉页角标全灭+预检误拒）
         bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
+        bool dyeCols = sc?.Page == "DyePanel";       // 染料桶页专属尾列 pig 串（dye-pigment-sort spec §5.1，同约束；JS normIcfg 按类型判形与 canBrew 数字同宽互斥）
         for (int i = 0; i < icfgOrder.Count; i++)
         {
             if (i > 0) sb.Append(',');
-            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols));
+            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols, dyeCols));
         }
         sb.Append(']');
 
@@ -577,16 +587,20 @@ internal static class RailData
     /// 独立缓存 _icfgFuelCache——同一 cfgId 在普通页(14 列)与本页(16 列)间不得共用缓存行。
     /// brewCols=true（酿酒桶页专属，brew spec §5.1）：行尾追加 canBrew(0/1) 一列，
     /// 独立缓存 _icfgBrewCache——同上分键防串形（15 列）。
+    /// dyeCols=true（染料桶页专属，dye-pigment-sort spec §5.1）：行尾追加 pig 打包串一列
+    /// （"[[colorId,points],…]"，无色素="[]"；JS normIcfg 按类型判形——与 canBrew 数字同宽互斥），
+    /// 独立缓存 _icfgDyeCache——同上分键防串形。
     /// </summary>
-    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false)
+    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
     {
-        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : _icfgCache);
+        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : (dyeCols ? _icfgDyeCache : _icfgCache));
         if (cache.TryGetValue(cfgId, out var row)) return row;
-        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols);
+        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols, dyeCols);
         if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
             // 终审 Minor4：尾列必须拼在行括号内（旧写法 ,0,0 落在 ] 外=非法形状，normRows 数组过滤侥幸无症状）
             return fuelCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0,0]"
-                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]" : PlaceholderIcfgRow(cfgId));
+                : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]"
+                : (dyeCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",\"[]\"]" : PlaceholderIcfgRow(cfgId)));
         cache[cfgId] = row;
         return row;
     }
@@ -854,7 +868,7 @@ internal static class RailData
     /// 返回 null = cfgId 查不到 Config_Item（含配置表未就绪窗口）——调用方（IcfgRow）不缓存，
     /// 直接出占位行，防未就绪首包把 "?" 负缓存整会话（评审 Important 1）。
     /// </summary>
-    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false)
+    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
     {
         var cm = BagTable.Cm();
         if (itemDict == null) { itemDict = cm?._Config_Item_Dict; }
@@ -906,7 +920,76 @@ internal static class RailData
             try { canBrew = ic.CanBrew; } catch { }
             sb.Remove(sb.Length - 1, 1).Append(',').Append(canBrew ? 1 : 0).Append(']');
         }
+        /* 染料桶页专属尾列（dye-pigment-sort spec §5.1，fuelCols/brewCols 同款纪律）：pig=植物
+           全颜色点数打包串 "[[dyeItemId,points],…]"（含未解锁色；无色素/读不到="[]"）。
+           数据源=_Config_PlantPigment_Dict 聚合索引（spike v3 实证）；行缓存=_icfgDyeCache。 */
+        if (dyeCols)
+        {
+            sb.Remove(sb.Length - 1, 1).Append(",\"").Append(EscapeJs(DyePigOf(cfgId))).Append("\"]");
+        }
         return sb.ToString();
+    }
+
+    /// <summary>cfgId → pig 打包串 "[[dyeItemId,points],…]"（dye-pigment-sort spec §5.1）。
+    /// 数据源=ConfigManager._Config_PlantPigment_Dict（spike v3 实证 66 行：ItemId/DyeItemId/
+    /// Points，全颜色含未解锁）；按 ItemId 聚合懒建索引，配置未就绪返 "[]" 下周期再试（不锁死）。</summary>
+    private static Dictionary<int, string> _dyePigIdx;
+
+    private static string DyePigOf(int cfgId)
+    {
+        try
+        {
+            if (_dyePigIdx == null)
+            {
+                var pd = BagTable.Cm()?._Config_PlantPigment_Dict;
+                if (pd == null || pd.Count == 0) return "[]"; // 未就绪窗口：等下周期（占位/空串均可被 JS 容错）
+                var agg = new Dictionary<int, StringBuilder>();
+                foreach (var kv in pd)
+                {
+                    var r = kv.Value;
+                    if (r == null) continue;
+                    int item, dye, pts;
+                    try { item = r.ItemId; dye = r.DyeItemId; pts = r.Points; } catch { continue; }
+                    if (!agg.TryGetValue(item, out var sb)) agg[item] = sb = new StringBuilder();
+                    sb.Append(sb.Length > 0 ? ",[" : "[").Append(dye).Append(',').Append(pts).Append(']');
+                }
+                var idx = new Dictionary<int, string>(agg.Count);
+                foreach (var a in agg) idx[a.Key] = "[" + a.Value.ToString() + "]";
+                _dyePigIdx = idx;
+            }
+            return _dyePigIdx.TryGetValue(cfgId, out var s) ? s : "[]";
+        }
+        catch { return "[]"; }
+    }
+
+    /// <summary>dyePal 页条件字段 JSON（[[dyeItemId,"名","#hex",1,order]…]；空串=板未就绪不下发）。
+    /// 序=DyePaletteRules.PanelDyeItems（官方面板序）；名=染料物品 ItemName_Local/ItemName
+    /// （spike v3 实证 ColorShowKeys=StateXX 非显示名，名称必须走染料物品本体）。</summary>
+    private static string DyePalJson()
+    {
+        try
+        {
+            var ids = new List<int>();
+            foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeItems) ids.Add(e);
+            var hexes = new List<string>();
+            foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeHex) hexes.Add(e);
+            if (ids.Count == 0 || hexes.Count != ids.Count) return "";
+            var dict = ItemDict();
+            if (dict == null || dict.Count == 0) return "";
+            var sb = new StringBuilder("[");
+            for (var i = 0; i < ids.Count; i++)
+            {
+                string name = null;
+                try { dict.TryGetValue(ids[i], out var dic); name = string.IsNullOrEmpty(dic?.ItemName_Local) ? dic?.ItemName : dic.ItemName_Local; } catch { }
+                if (i > 0) sb.Append(',');
+                sb.Append('[').Append(ids[i])
+                  .Append(",\"").Append(EscapeJs(name ?? ids[i].ToString())).Append('"')
+                  .Append(",\"").Append(EscapeJs(hexes[i] ?? "")).Append('"')
+                  .Append(",1,").Append(i + 1).Append(']');
+            }
+            return sb.Append(']').ToString();
+        }
+        catch { return ""; }
     }
 
     /// <summary>
@@ -1216,6 +1299,7 @@ internal static class RailData
     private static readonly Dictionary<int, string> _icfgCache = new(); // cfgId → 行字符串（懒缓存，14 列）
     private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
     private static readonly Dictionary<int, string> _icfgBrewCache = new(); // 酿酒桶页 15 列行（尾列 canBrew，brew spec §5.1——同上分键防串形）
+    private static readonly Dictionary<int, string> _icfgDyeCache = new(); // 染料桶页行（尾列 pig 打包串，dye-pigment-sort spec §5.1——同上分键防串形）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>
     internal static string EscapeJs(string s)
@@ -1253,5 +1337,172 @@ internal static class RailData
     {
         if (!_warned.Add(key)) return;
         CabinetEverywherePlugin.Log?.LogWarning("[CERail] " + msg);
+    }
+
+    // ================= 染料桶色素 spike dump（dye-pigment-sort spec §6 S1/S3；Debug.DumpDyePigments 触发一次） =================
+    // 自发现式：枚举 GameCore.HotUpdate 程序集里名字含 Dye/Pigment 的类型与字段，逐项 try/catch——
+    // 找多少打多少（找不全不是错）。产出=Task 2 的 C# 访问链 + 附录 A 数值表。
+    internal static volatile bool DyePigDumpRequested;
+
+    internal static void FlushDyePigDump()
+    {
+        if (!DyePigDumpRequested) return;
+        if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.IsInstanceCreated)
+            return; // 等进档（FlushDump 同门）：主菜单阶段配置表未挂世界
+        if (ItemDict() == null || ItemDict().Count == 0)
+            return; // 配置表未就绪：不消费标志，等下周期（FlushDump「等首份有效数据」同纪律）
+        DyePigDumpRequested = false;
+        var log = CabinetEverywherePlugin.Log;
+        log.LogInfo("[CERail] dye-pig spike dump 开始（自发现：类型普查/GameKey/ConfigManager/Config_Item 逐项容错）");
+
+        // ① 类型普查：名字含 Dye/Pigment 的类型 + 其字段/属性名（只打名字，值由②③④定向取）
+        try
+        {
+            var types = typeof(GameCore.HotUpdate.ConfigManager).Assembly.GetTypes();
+            int n = 0;
+            foreach (var t in types)
+            {
+                var fn = t.FullName ?? "";
+                if (fn.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    fn.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                n++;
+                var sb = new StringBuilder();
+                sb.Append("[CERail] dye-pig type ").Append(t.FullName);
+                try
+                {
+                    foreach (var f in t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
+                        sb.Append("\n    f ").Append(f.FieldType.Name).Append(' ').Append(f.Name).Append(f.IsStatic ? " [static]" : "");
+                    foreach (var p in t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
+                        sb.Append("\n    p ").Append(p.PropertyType.Name).Append(' ').Append(p.Name);
+                }
+                catch (Exception e) { sb.Append("  <成员枚举失败: ").Append(e.Message).Append('>'); }
+                log.LogInfo(sb.ToString());
+            }
+            log.LogInfo("[CERail] dye-pig 类型普查命中 " + n + " 个");
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig 类型普查失败: " + e.Message); }
+
+        // ② GameKey：含 Dye/Pigment 的静态属性名+值（brewP1 读取的同类）
+        try
+        {
+            foreach (var p in typeof(GameCore.HotUpdate.GameKey).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            {
+                if (p.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                    p.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                var v = "<读取失败>";
+                try { v = string.Concat(p.GetValue(null)); } catch { }
+                log.LogInfo("[CERail] dye-pig GameKey " + p.Name + " = " + v);
+            }
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig GameKey 枚举失败: " + e.Message); }
+
+        // ③-v2 ConfigManager：Il2CppInterop 把 il2cpp 字段暴露成**属性**（一轮 GetFields 空手教训）——
+        //    GetProperties 扫名字含 Dye/Pigment/Plant 的表属性，dict/list 打 count，并定向枚举 PlantPigment 表
+        var cm = BagTable.Cm();
+        if (cm != null)
+        {
+            object pigTable = null; System.Reflection.PropertyInfo pigProp = null; // v3 起 typed 路负责取值——反射仅留属性名普查（表类型对账）
+            try
+            {
+                foreach (var p in cm.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    var n = p.Name;
+                    if (n.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        n.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0 &&
+                        n.IndexOf("Plant", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    log.LogInfo("[CERail] dye-pig ConfigManager p " + p.PropertyType.Name + " " + n);
+                }
+            }
+            catch (Exception e) { log.LogWarning("[CERail] dye-pig ConfigManager 属性枚举失败: " + e.Message); }
+        }
+        else log.LogWarning("[CERail] dye-pig ConfigManager 未就绪");
+
+        // ⑤-v3 色板与色素表：**typed 直读**（v2 反射枚举 Il2Cpp 集合两路空——interop 只保证 typed
+        //    路可用；_Config_Item_Dict typed foreach 先例实证）。逐块独立 try/catch，坏一块不影响其余。
+        try
+        {
+            var sbA = new StringBuilder();
+            sbA.Append("ColorCount=").Append(GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorCount);
+            try { sbA.Append(" ColorDyeIds=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorDyeIds) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorDyeIds 失败: ").Append(e2.Message).Append('>'); }
+            try { sbA.Append(" ColorHex=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorHex) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorHex 失败: ").Append(e2.Message).Append('>'); }
+            try { sbA.Append(" ColorShowKeys=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorShowKeys) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorShowKeys 失败: ").Append(e2.Message).Append('>'); }
+            log.LogInfo("[CERail] dye-pig DyeConfig " + sbA.ToString());
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig DyeConfig typed 读取失败: " + e.Message); }
+        try
+        {
+            var sbB = new StringBuilder();
+            sbB.Append("PaletteSize=").Append(GameCore.HotUpdate.DyePaletteRules.PaletteSize).Append(" NoDye=").Append(GameCore.HotUpdate.DyePaletteRules.NoDye);
+            try { sbB.Append(" SlotToDyeItem=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.SlotToDyeItem) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <SlotToDyeItem 失败: ").Append(e2.Message).Append('>'); }
+            try { sbB.Append(" PanelDyeItems=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeItems) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <PanelDyeItems 失败: ").Append(e2.Message).Append('>'); }
+            try { sbB.Append(" PanelDyeHex=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeHex) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <PanelDyeHex 失败: ").Append(e2.Message).Append('>'); }
+            log.LogInfo("[CERail] dye-pig DyePaletteRules " + sbB.ToString());
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig DyePaletteRules typed 读取失败: " + e.Message); }
+        // PlantPigment 表 typed 全行（附录 A 数据源）：ID/Source/ItemId/DyeItemId/Points/MainKey
+        try
+        {
+            var pd = BagTable.Cm()?._Config_PlantPigment_Dict;
+            if (pd == null || pd.Count == 0) log.LogWarning("[CERail] dye-pig PlantPigment 表未就绪（null/空）");
+            else
+            {
+                var sbC = new StringBuilder("[CERail] dye-pig PlantPigment 表 ").Append(pd.Count).Append(" 行：\n");
+                foreach (var kv in pd)
+                {
+                    var r = kv.Value;
+                    if (r == null) continue;
+                    try { sbC.Append("  ID=").Append(r.ID).Append(" item=").Append(r.ItemId).Append(" dye=").Append(r.DyeItemId).Append(" pts=").Append(r.Points).Append(" src=\"").Append(r.Source).Append("\"\n"); }
+                    catch (Exception e2) { sbC.Append("  <行读失败: ").Append(e2.Message).Append(">\n"); }
+                }
+                log.LogInfo(sbC.Append("（附录 A 数据源）").ToString());
+            }
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig PlantPigment typed 枚举失败: " + e.Message); }
+        // _plantPigmentsByItem typed（运行期索引，核对与配置表一致性 + 行集合形状）
+        try
+        {
+            var it = BagTable.Cm()?._plantPigmentsByItem;
+            if (it == null) log.LogWarning("[CERail] dye-pig _plantPigmentsByItem null");
+            else
+            {
+                var sbD = new StringBuilder("[CERail] dye-pig _plantPigmentsByItem：\n");
+                int n = 0;
+                foreach (var kv in it)
+                {
+                    n++;
+                    var val = kv.Value;
+                    try { sbD.Append("  item ").Append(kv.Key).Append(" → ").Append(val == null ? "null" : val.ToString()).Append('\n'); }
+                    catch (Exception e2) { sbD.Append("  item ").Append(kv.Key).Append(" → <读失败: ").Append(e2.Message).Append(">\n"); }
+                }
+                log.LogInfo(sbD.Append("共 ").Append(n).Append(" 键").ToString());
+            }
+        }
+        catch (Exception e) { log.LogWarning("[CERail] dye-pig _plantPigmentsByItem typed 读取失败: " + e.Message); }
+
+        log.LogInfo("[CERail] dye-pig spike dump 结束（Task 2 访问链/附录 A 依据）");
+    }
+
+    private static string SafeName(GameCore.HotUpdate.Config_Item ci)
+    {
+        try { return string.IsNullOrEmpty(ci?.ItemName_Local) ? (ci?.ItemName ?? "?") : ci.ItemName_Local; } catch { return "?"; }
+    }
+
+    /// <summary>dump 辅助：集合/可枚举 → "[a,b,…]"（限长 4000），标量 → 字符串。Il2Cpp 包装不实现
+    /// System 侧接口时返回类型名（候选资格不受影响——枚举走 ④ 双路）。</summary>
+    private static string StrOfCollection(object o, string typeName)
+    {
+        try
+        {
+            if (o is System.Collections.ICollection c) return typeName + " count=" + c.Count;
+            if (o is System.Collections.IEnumerable en && !(o is string))
+            {
+                var sb = new StringBuilder(typeName).Append(" [");
+                int k = 0;
+                foreach (var e in en) { if (sb.Length > 4000) { sb.Append(",…"); break; } if (k++ > 0) sb.Append(','); sb.Append(string.Concat(e)); }
+                return sb.Append(']').ToString();
+            }
+            return string.Concat(o);
+        }
+        catch { return "<读取失败>"; }
     }
 }
