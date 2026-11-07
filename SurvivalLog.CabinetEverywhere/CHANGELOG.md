@@ -60,6 +60,14 @@ v1.8.2 v13 曾往官方 .transfer-controls 尾部 append mod 三增值按钮（�
 
 ### 待发版·二十四批（2026-11-07，燃油发电机 bagtabs 实机四缺陷修复——夹具换真实官方页）
 
+**十一验收轮（作者实机反馈：切到柜签后切不回背包，界面停在柜内容）**：
+㉔ **背包 owner 解析链污染**——switchBag v2 把柜子 id 写进 State_Web_FuelGenerator.BagOwnerId，
+   而 ResolveBagOwner 第①优先级恰是读这个字段：切到置物架后「切回背包」(owner=0) 解析出**柜子
+   id**→OpSwitchBag 同值守卫短路→界面停在柜；且契约 items.bag 会被同源污染成柜内容。修：
+   解析链 FG case 加**容器 id 排斥**（CtnGuard：IsKnownCtn 视同未读到，回落会话缓存/PlayerId
+   正路；玩家背包 id 与柜子 id 空间天然不同——不落缓存防污染）。mock 同步 C# 解析链保真
+   （状态字段+容器排斥+会话缓存三级），fg:bag-tab-restore 升格为本 bug 回归床。48/48。
+
 **十验收轮（作者实机反馈：柜签不能动+背包也不能动+柜签不停闪烁——「你验证了吗？」）**：
 ㉑ 诚实对账：九验收只验到 harness（mock 世界无游戏权威状态/官方推送节律），实机两类崩法均
    无法在旧 mock 里存在。根因复盘：**v1 合成 BagMsg 注入只改页面视图**——①视图与游戏权威

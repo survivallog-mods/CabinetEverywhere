@@ -606,6 +606,7 @@ internal static class RailData
         if (rus == null) return _bagOwner;
         if (sc == null) sc = ActiveScene();
 
+        long CtnGuard(long x) => RailData.IsKnownCtn(x) ? 0 : x; /* 柜子 id 视同未读到（回落②③） */
         if (sc != null && sc.ReadsPlayerBagOwner)
         {
             long v = 0;
@@ -622,8 +623,10 @@ internal static class RailData
                     "GreenhouseBuild" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_GreenhouseBuild>()?.PlayerBagOwnerId ?? 0,
                     "ToolTable" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_ToolTable>()?.PlayerBagOwnerId ?? 0,
                     "DroneHub" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_DroneHub>()?.PlayerBagOwnerId ?? 0,
-                    // 燃油发电机：BagOwnerId 是 ReactiveProperty<long>（非裸 long，dump @184723）——取 .Value
-                    "FuelGenerator" => raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0,
+                    // 燃油发电机：BagOwnerId 是 ReactiveProperty<long>（非裸 long，dump @184723）——取 .Value。
+                    // 十一验收守卫：switchBag v2 会把柜子 id 写进该字段（官方状态直写）——柜子 id
+                    // 不是玩家背包：拒用且不落会话缓存（防污染），回落缓存/PlayerId 正路。
+                    "FuelGenerator" => CtnGuard(raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0),
                     _ => 0,
                 };
             }
@@ -919,6 +922,15 @@ internal static class RailData
 
     /// <summary>背包 ownerId（RailCommands 白名单/转移方向用；三级兜底同 ResolveBagOwner）。</summary>
     internal static long BagOwner() => ResolveBagOwner(null);
+    /// <summary>是否白名单容器 owner（switchBag v2 会把柜子 id 写进 State_Web_FuelGenerator.
+    /// BagOwnerId——背包解析链须排斥容器 id，玩家背包 id 与柜子 id 空间天然不同）。</summary>
+    internal static bool IsKnownCtn(long owner)
+    {
+        var list = _ctn;
+        if (list == null) return false;
+        for (int i = 0; i < list.Count; i++) if (list[i].OwnerId == owner) return true;
+        return false;
+    }
 
     /// <summary>BattleLogicWorld 实例（RailCommands 取 AgentManager/组件用；未建= null）。</summary>
     internal static GameCore.HotUpdate.Battle.Logic.BattleLogicWorld World() => LogicWorld();

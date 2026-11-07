@@ -86,7 +86,8 @@ window.__HZ_READY__ = function () {
   var FGQ = [];     /* fuelgen：燃料队列 mock 态（feed 命令执行后入列；夹具 BagMsg fuelItems 驱动 DOM） */
   window.__HZ_FGQ__ = function () { return FGQ.slice(); };
   /* fuelgen 九验收：官方通道事件捕获 + 当前官方视图 owner（switchBag mock 的 C# 保真态机） */
-  var FGVIEW = { owner: 0 };
+  var FGVIEW = { owner: 0 }; /* 模拟 State_Web_FuelGenerator.BagOwnerId（switchBag v2 直写目标） */
+  var FGSESS = { bag: 0 }; /* 模拟 RailData._bagOwner 会话缓存（ResolveBagOwner 第②级） */
   window.__HZ_FGVIEW__ = function () { return FGVIEW.owner; };
   /* mock 官方节律推送（十验收闪烁复现床）：按 FGVIEW.owner 组包官方形状 BagMsg——与游戏
      自己的周期推送（燃料刻度等）同构：永远带「当前状态 owner」的数据 */
@@ -236,7 +237,14 @@ window.__HZ_READY__ = function () {
          按燃料表（pushCtx 同源表） */
       var owner = Number(payload.owner) || 0;
       var j = JSON.parse(JSON.stringify(MOCK));
-      if (owner === 0) owner = MOCK.bag;
+      if (owner === 0) {
+        /* C# ResolveBagOwner 保真：①FG 状态字段（容器 id 排斥——十一验收守卫）→②会话缓存→③PlayerId */
+        var st = FGVIEW.owner;
+        var isCtn = MOCK.ctn.some(function (c) { return c[0] === st; });
+        if (st > 0 && !isCtn) { FGSESS.bag = st; owner = st; }
+        else if (FGSESS.bag > 0) owner = FGSESS.bag;
+        else owner = MOCK.bag;
+      }
       var srcArr = owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(owner)] || []);
       var icfgMap = {};
       for (var ii = 0; ii < j.icfg.length; ii++) icfgMap[j.icfg[ii][0]] = j.icfg[ii];
@@ -251,7 +259,8 @@ window.__HZ_READY__ = function () {
         return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2],
           name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] };
       });
-      FGVIEW.owner = owner;
+      FGVIEW.owner = owner; /* =C# st.BagOwnerId.Value 直写 */
+      if (owner === MOCK.bag) FGSESS.bag = owner; /* 官方刷新后背包解析会话缓存归真 */
       window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data:
         { bagOwnerId: owner, bagCols: 12, bagRows: rows, bagItems: bagItems } });
       log('mock C# switchBag→官方 BagMsg（owner=' + owner + ' items=' + bagItems.length + ' rows=' + rows + '）');
