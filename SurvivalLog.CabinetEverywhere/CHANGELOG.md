@@ -7,6 +7,32 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十六批（2026-11-07，背包/柜子高度修改——宽度退役恒 12，缩高物品官方掉落）
+
+- **spec**：docs/superpowers/specs/2026-11-07-bag-height-design.md；**计划**：docs/superpowers/plans/2026-11-07-bag-height.md。
+- **24 包高度逐包可调，15 个 [Rail] 键全进 ModCenter 面板（全部默认 0=恢复原生）**：
+  背包链 9 包统一（BackpackHeight，天赋换包链同高兼容）；置物架四档+工具柜、冰箱四包、
+  载具三包逐包独立（作者令「冰箱、载具怎么能统一高度，分开」）；工作台抽屉基准高
+  DrawerHeight→三档 H/H+1/H+2（升级加行语义保留）；MaxHeight=50 防呆逐档夹（0=不封顶）。
+- **宽度退役恒 12**：Rail.UniformBagWidth 键删除（老 cfg 残留值忽略），常量 RailUi.UniformWidth；
+  24 高度包全部并进宽度目标集（载具 1021/1022 原生宽 5/10 随批首收 12，绕过 ExcludeBagIds
+  白名单包含优先语义）。
+- **缩高掉落流 ShrinkDrop（作者拍板「放不下的直接掉地上，官方已有案例」）**：
+  官方编排 `DropItemManager.SpawnGroundLootItem`+`ItemManager.RemoveItem`（拆除掉落同款先例，
+  保鲜随身、地面物进存档；mod 零直接写 Data_Item）；实例源=背包/抽屉/后备箱/门口袋合成
+  owner 常量（`VehicleConfig.TrunkOwnerId/BoxOwnerId`、`DoorBoxBagId=1023` dump 实锤）+全图
+  家具（当前图掉落玩家脚下、他图留包日志兜底=到场整理找回）；先掉后缩，生成失败本轮放弃
+  零物品损失。
+- **立即生效硬验收（作者令「不允许界面变形、闪烁、延迟生效」）**：15 键 SettingChanged→
+  SizeDirty 帧级主线程消费；写后链=Ra_RefreshBag 官方页刷新+BackpackUI 补
+  Ac_Item_RefreshAllBagViews+容器 cap 重算（RefreshMeta 顺序翻转为先改尺寸后算容量）强推。
+- 签名门扩双维（宽|高映射|目标集|排除集）；家中无柜不再整轮早退（高度名单静态）。
+- **harness**：harness-height.cjs 五查 12/12（18/50 行侧栏行数重算+官方格 12×18/12×50+纵向
+  滚动+燃油发电机高背包 12×50 面板不越界+零错）；width-floor 复跑 13/13。
+  harness-regression 现存 3 FAIL+超时为预存红（干净 HEAD 与工作树逐字一致，源出燃油发电机
+  线，与本批无关——本批零被伺服文件改动）。
+- ModCenter：Meta.cs 面板 15 条（ModCenter 仓 ed7ba80）。
+
 ### 待发版·二十五批（2026-11-07，材料架转移列操作按钮归位官方——mod 三增值按钮整链退役）
 
 **作者实机对账裁决（停用 mod 官方截图实锤）**：材料架特殊，与其他柜子不一样——转移列

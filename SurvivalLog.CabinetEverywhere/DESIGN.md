@@ -950,3 +950,23 @@ spec=docs/superpowers/specs/2026-11-06-fuelgen-cabinet-tabs-design.md（视觉�
 - **icfg 本页尾列**：ctx.page=="FuelGenerator" 时 icfg 行尾加 [burnable,burnValue]（其他 12 页形状不变；禁止按 Category 推导）。
 - **cfg**：[Access] EnableFuelGen（默认 true，对称拆装）+ [Scenario] View_FuelGenerator（默认 Fuel）。
 - **教训（bagtabs 装配纪律）**：①观察器写循环必须用"签名守卫"（innerHTML 串比较与 active 类修正永不相等=59 万写/秒自激环、渲染器暴毙）；②拆除态重建门（无燃料柜时 ensureBagtabs 不得再建，否则拆建乒乓）；③同值写守卫（className/style/hidden 写前比对）。
+
+## 12. 背包/柜子高度修改（Bag Height Engine，2026-11-07）
+
+spec=docs/superpowers/specs/2026-11-07-bag-height-design.md；计划=docs/superpowers/plans/2026-11-07-bag-height.md。
+
+- **24 包高度逐包可调**（背包链 9 统一/置物架四档+工具柜/冰箱四包/载具三包逐包/抽屉链
+  H·H+1·H+2），15 个 [Rail] 键全进 ModCenter 面板，默认 0=恢复原生（会话首见原生高缓存）；
+  MaxHeight=50 逐档夹。宽度退役恒 12（UniformBagWidth 键删，常量 RailUi.UniformWidth；
+  24 包并进宽度目标集，载具 1021/1022 首收 12）。
+- **缩高掉落 ShrinkDrop**：越界物品（BagPos.y+ItemSize.y>目标高）经官方
+  SpawnGroundLootItem+RemoveItem 掉落玩家脚下（保鲜随身/进存档/零直接写 Data_Item）；
+  实例源=合成 owner 常量（WorkbenchDrawerConfig.DrawerOwnerId、VehicleConfig.TrunkOwnerId/
+  BoxOwnerId·BoxOwnerId2——DoorBoxBagId=1023 运行时指派实锤）+agentList 全图家具（当前图
+  掉落、他图留包=到场整理找回）；先掉后缩、生成失败本轮放弃下轮重试。
+- **立即生效链（硬验收：不变形/闪烁/延迟）**：SettingChanged→RailUi.SizeDirty→Tick 帧级
+  消费；写后=RefreshActivePage（Ra_RefreshBag 官方页重建）+BackpackUI 补
+  Ac_Item_RefreshAllBagViews+RecomputeCaps/ForceRepublish（RefreshMeta 顺序翻转：先 SizeEngine
+  后 cap 重算，rev 含 Cap 实证）；JS 零改动（rows=ceil(cap/cols) 现算+srBody 纵向滚动）。
+- 名单与排除全集（86 包归类/柜子1-2-3 摘除缘由/材料架宽高全原生）见 spec §4；
+  harness=harness-height.cjs（12/12）。
