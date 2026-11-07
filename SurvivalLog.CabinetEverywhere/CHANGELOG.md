@@ -7,6 +7,29 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·三十批（2026-11-07，染料桶色素排序——排序钮回归（v1.8.10 撤钮重设计定案））
+
+**设计**：docs/superpowers/specs/2026-11-07-dye-pigment-sort-design.md（DISP 显示层排序=
+全 mod 排序钮同构；零真实移动/零命令下发/关面板即还原）。
+
+- **C# 契约**：icfg 染料桶页专属尾列 `pig`（`"[[色号,点数],…]"` 全颜色含未解锁；分键缓存
+  `_icfgDyeCache` 防串形，fuelCols/brewCols 同款纪律）+ `ctx.dyePal` 页条件颜色板
+  （tradePrefs 先例同源）；`Debug.DumpDyePigments` 一次性 spike dump（自发现：类型普查/
+  GameKey/ConfigManager/Config_Item 色素全表）。
+- **JS**：`SORT_KEYS` 回归 DyePanel；菜单=「默认」+全部颜色（色块 swatch；空板=仅默认）；
+  `dispApplyDyePig` 专属 apply（`dispApplyBrewSat` 镜像——点数降序/并列稳定/无该色素沉底
+  原序/dispPack 通用多格）；角标=所排色点数该色 hex，**沉底项 suppress 不出角标**（非 `-`
+  非置灰——brew 置灰口径不复制）；normIcfg pig 类型判形（string 与 canBrew 数字同宽互斥）；
+  `fsortLabel`/`badgeSpec` 动态色键；弹窗滚动现规则回归钉。
+- **harness**：新增 harness-dye-pig.cjs **34 断言**（§1 契约/判形/畸形容错 · §3 排序/多格/
+  official 复位 · §2 菜单/swatch/空板/20 色滚动 · §4 角标 suppress · §5 推包重应用/重载
+  重开复位 official（iframe 重载=游戏关面板销毁帧的真实路径；showScene 切换帧存活不模拟）/
+  跨页菜单隔离）；brew 35/35、fuelgen 53、heater 55 复验绿。TDD 真捕获：`_pigParsed` 初版
+  按 cfgId 缓存→pig 串变更不重解析，改按串缓存键。
+- **预存（与本批无关）**：harness-regression 3 失败（root:confirm-text/delta-toast/
+  bag-grid-leftover，入库文案流）在 pristine main（page.js+harness 双回退验证）同样失败，
+  待另行排查。
+
 ### 待发版·二十九批（2026-11-07，燃料火苗角标断供修复——fgBadgeFuel 补类+官方规则注入）
 
 **作者实报**：「燃油发电机、暖炉界面的背包和柜子中，燃料左上角的火焰标记不显示了」。
