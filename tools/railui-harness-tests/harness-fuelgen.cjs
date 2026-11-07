@@ -296,7 +296,9 @@ function check(name, ok, detail) {
   });
   check('fg:width-lock-overflow', wMany === wBag && arrows.n === 7 && arrows.l !== 'none' && arrows.r !== 'none' && arrows.dl === true && arrows.dr === false,
     '6 燃料柜页签：‹›常驻(' + arrows.l + '/' + arrows.r + ') 左禁右活(' + arrows.dl + '/' + arrows.dr + ')、宽不变 ' + wMany + '==' + wBag + ' tabs=' + arrows.n);
-  /* ⑧d tall-ctn-scroll（实机缺陷②：高柜无滚动=溢出界面外——#srfgBody 需定高+overflow，锁漏=溢出） */
+  /* ⑧d tall-ctn-scroll（实机缺陷②：高柜无滚动=溢出界面外——#srfgBody 需定高+overflow，锁漏=溢出）。
+     v1.8.14 口径：滚动器=mod 包装层 #srfgGridScroll（.srfg-gridscroll），官方 #backpackGrid 全高在内滚
+     ——格本体 rect 恒=全高内容矩形（webui-bag 拖拽坐标基准，格自滚=落点偏上病根）。 */
   await page.evaluate(() => {
     const m = JSON.parse(JSON.stringify(window.__HZ_MOCKSET__()));
     m.ctn.push([900300, '高燃料柜', 'c', 240, 1013]); /* 12 列 ×20 行，远超锁定面板高 */
@@ -306,26 +308,91 @@ function check(name, ok, detail) {
   await F().waitForFunction(() => { const g = document.getElementById('backpackGrid'); return g && g.querySelectorAll('.slot').length === 240; }, null, { timeout: 8000 });
   await page.waitForTimeout(150);
   const tallState = await F().evaluate(() => {
-    const g = document.getElementById('backpackGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+    const g = document.getElementById('backpackGrid'), w = document.getElementById('srfgGridScroll'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const foot = document.getElementById('srfgFoot'), tabs = document.getElementById('srfgTabs');
-    return { sh: g.scrollHeight, ch: g.clientHeight, ovY: getComputedStyle(g).overflowY,
-      spill: g.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom,
+    return { wSh: w ? w.scrollHeight : 0, wCh: w ? w.clientHeight : 0, wOvY: w ? getComputedStyle(w).overflowY : '(missing)',
+      gH: g.getBoundingClientRect().height, gOvY: getComputedStyle(g).overflowY,
+      spill: (w || g).getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom,
       footIn: foot.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom,
       tabsIn: tabs.getBoundingClientRect().top - panel.getBoundingClientRect().top };
   });
-  check('fg:tall-ctn-scroll', tallState.sh > tallState.ch + 20 && tallState.ovY === 'auto' && tallState.spill <= 1 && tallState.footIn <= 1 && tallState.tabsIn >= -1,
-    '20 行高柜：格区内部滚动(' + tallState.sh + '>' + tallState.ch + ', ' + tallState.ovY + ')、格/底行/页签零溢出(spill=' + tallState.spill.toFixed(1) + ' foot=' + tallState.footIn.toFixed(1) + ' tabs=' + tallState.tabsIn.toFixed(1) + ')');
+  check('fg:tall-ctn-scroll', tallState.wSh > tallState.wCh + 20 && tallState.wOvY === 'auto' && tallState.spill <= 1 && tallState.footIn <= 1 && tallState.tabsIn >= -1,
+    '20 行高柜：包装层内部滚动(' + tallState.wSh + '>' + tallState.wCh + ', ' + tallState.wOvY + ')、视窗/底行/页签零溢出(spill=' + tallState.spill.toFixed(1) + ' foot=' + tallState.footIn.toFixed(1) + ' tabs=' + tallState.tabsIn.toFixed(1) + ')');
+  check('fg:grid-not-scroller', tallState.gOvY === 'visible' && tallState.gH > 20 * 40 /* 20 行×slot40 全高 rect */,
+    '官方格非滚动器(overflow-y=' + tallState.gOvY + ') rect 全高=' + tallState.gH.toFixed(0) + 'px（v1.8.14：拖拽坐标基准=格 rect 行 0 对齐）');
+  /* ⑧d-b scroll-drag-landing（v1.8.14 作者实报「燃料页侧栏背包/柜子滚动后无法移动物品、落地位置不对」）：
+     直投官方形状 BagMsg（900300 高柜，物品 931@y14/932@y11——mock items 空柜，直投不扰 mock 态），
+     包装层滚到底后合成事件真拖两例（webui-bag 协调器=官方代码路径）：松手格 rect 现取（stopDrag
+     rect=null 现量）——旧实现（格自滚）rect=裁剪窗，落点 y 恒少 scrollTop/step 行=偏上/被拒。 */
+  await drain();
+  await page.evaluate(() => {
+    window.__SD_IM__ = [];
+    window.addEventListener('message', (ev) => { if (ev.data && ev.data.type === 'ITEM_MOVE') window.__SD_IM__.push(ev.data.data); });
+    document.getElementById('FuelGenerator').contentWindow.postMessage({ type: 'WebUI_FuelGenerator_BagMsg', data: {
+      bagOwnerId: 900300, bagCols: 12, bagRows: 20,
+      bagItems: [
+        { itemId: 931, x: 4, y: 14, w: 1, h: 1, emoji: '📦', name: '物品931', count: 2, burnable: true },
+        { itemId: 932, x: 2, y: 11, w: 1, h: 1, emoji: '📦', name: '物品932', count: 2, burnable: true }
+      ],
+      fuelSlotCount: 8, fuelItems: [], generatorName: '中型' } }, '*');
+  });
+  await F().waitForFunction(() => document.querySelectorAll('#backpackGrid .item').length === 2, null, { timeout: 8000 });
+  const scA = await F().evaluate(() => {
+    const w = document.getElementById('srfgGridScroll');
+    if (!w) return { ok: false };
+    w.scrollTop = w.scrollHeight - w.clientHeight;
+    return { ok: true, top: w.scrollTop, max: w.scrollHeight - w.clientHeight };
+  });
+  check('fg:scroll-drag-scrolled', scA.ok && scA.top === scA.max && scA.max > 200,
+    scA.ok ? '包装层滚到底 scrollTop=' + scA.top + '/' + scA.max + '（20 行>视窗≈640，测试有效性）' : '#srfgGridScroll 缺失');
+  async function fgDrag(itemId, col, row) {
+    const r = await F().evaluate((id) => {
+      const el = document.querySelector('#backpackGrid .item[id="' + id + '"]');
+      if (!el) return null;
+      const ir = el.getBoundingClientRect();
+      return { x: ir.left + ir.width / 2, y: ir.top + ir.height / 2 };
+    }, itemId);
+    if (!r) return;
+    const t = await F().evaluate((c) => {
+      const g = document.getElementById('backpackGrid');
+      const s = g.querySelectorAll('.slot')[c.row * 12 + c.col];
+      const sr = s.getBoundingClientRect();
+      return { x: sr.left + sr.width / 2, y: sr.top + sr.height / 2 };
+    }, { col, row });
+    const fired = await F().evaluate((a) => new Promise((res) => {
+      const el = document.querySelector('#backpackGrid .item[id="' + a.id + '"]');
+      if (!el) { res(false); return; }
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: a.p.x, clientY: a.p.y, button: 0 }));
+      document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: a.p.x + 30, clientY: a.p.y + 30 }));
+      setTimeout(() => { /* 官方幽灵提升走 rAF：等两帧（同 ⑤d dragFeed 节奏） */
+        document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: a.q.x, clientY: a.q.y }));
+        setTimeout(() => {
+          document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: a.q.x, clientY: a.q.y, button: 0 }));
+          setTimeout(() => res(true), 60);
+        }, 160); /* 快速移动只标脏：等 100ms idle 补算 hover 再松手 */
+      }, 90);
+    }), { id: itemId, p: r, q: t });
+    return fired;
+  }
+  const okA = await fgDrag(931, 7, 13);
+  const imA = await page.evaluate(() => window.__SD_IM__.splice(0));
+  check('fg:scroll-drag-landing', okA && imA.length === 1 && imA[0].x === 7 && imA[0].y === 13 && Number(imA[0].itemId) === 931,
+    (okA ? '' : '拖拽未达；') + (imA.length ? 'ITEM_MOVE={itemId:' + imA[0].itemId + ',x:' + imA[0].x + ',y:' + imA[0].y + '}（期望 931/7/13——滚动态落点=光标格）' : '零 ITEM_MOVE（旧病：滚动态落点被判占用/出界=「无法移动物品」）'));
+  const okB = await fgDrag(932, 9, 10);
+  const imB = await page.evaluate(() => window.__SD_IM__.splice(0));
+  check('fg:scroll-drag-landing2', okB && imB.length === 1 && imB[0].x === 9 && imB[0].y === 10 && Number(imB[0].itemId) === 932,
+    (okB ? '' : '拖拽未达；') + (imB.length ? 'ITEM_MOVE={itemId:' + imB[0].itemId + ',x:' + imB[0].x + ',y:' + imB[0].y + '}（期望 932/9/10）' : '零 ITEM_MOVE'));
   /* ⑧e bag-viewport-scroll（六验收：面板=816 恒定（mod 侧栏同版式），格区视窗内滚动——
      背包 18 行>视窗(≈678px≈14 格半)=滚动态；「扩容不越界」储物体验红线） */
   await F().evaluate(() => { const t = document.querySelector('#srfgTabs .srfg-tab[data-id="bag"]'); t && t.click(); });
   await page.waitForTimeout(150);
   const bagState = await F().evaluate(() => {
-    const g = document.getElementById('backpackGrid'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
-    return { sh: g.scrollHeight, ch: g.clientHeight, lock: panel.style.height, panelH: panel.offsetHeight,
-      spill: g.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom };
+    const w = document.getElementById('srfgGridScroll'), panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+    return { sh: w ? w.scrollHeight : 0, ch: w ? w.clientHeight : 0, lock: panel.style.height, panelH: panel.offsetHeight,
+      spill: (w || document.getElementById('backpackGrid')).getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom };
   });
   check('fg:bag-viewport-scroll', bagState.sh > bagState.ch + 20 && bagState.panelH === 778 && bagState.lock === '778px' && bagState.spill <= 1,
-    '背包 18 行视窗内滚动(' + bagState.sh + '>' + bagState.ch + ')、面板 778 等高契约(lock=' + bagState.lock + ')、零溢出(' + bagState.spill.toFixed(1) + 'px)');
+    '背包 18 行视窗内滚动(包装层 ' + bagState.sh + '>' + bagState.ch + ')、面板 778 等高契约(lock=' + bagState.lock + ')、零溢出(' + bagState.spill.toFixed(1) + 'px)');
   /* ⑧e-b 版式绑定不变量：发电机面板高度 ≡ 其他界面侧栏高度（同 816）——防再次走样。
      侧栏在隐藏帧量值为 0：切 Cooking 现场量（zoom 归一），量完切回 */
   await page.getByRole('button', { name: 'Cooking', exact: true }).click();
@@ -382,16 +449,16 @@ function check(name, ok, detail) {
   const reopenState = await F().evaluate(() => {
     const panel = document.querySelector('.generator-system > .panel:not(.gen-panel)');
     const tabs = document.getElementById('srfgTabs'), foot = document.getElementById('srfgFoot');
-    const g = document.getElementById('backpackGrid');
+    const w = document.getElementById('srfgGridScroll');
     const pr = panel.getBoundingClientRect(), tr = tabs.getBoundingClientRect();
     return { w: panel.offsetWidth, h: panel.offsetHeight, zoom: document.body.style.zoom || '', tabsIn: tr.top >= pr.top - 1,
       tabsVis: tr.top >= 0 && tr.bottom <= window.innerHeight, footVis: foot.getBoundingClientRect().bottom <= window.innerHeight,
-      sh: g.scrollHeight, ch: g.clientHeight, spill: g.getBoundingClientRect().bottom - pr.bottom };
+      sh: w ? w.scrollHeight : 0, ch: w ? w.clientHeight : 0, spill: (w || document.getElementById('backpackGrid')).getBoundingClientRect().bottom - pr.bottom };
   });
   check('fg:reopen-bagheight-tabs', reopenState.tabsIn && reopenState.tabsVis && reopenState.w >= 598 && Math.round(reopenState.h / (parseFloat(reopenState.zoom) || 1)) === 778,
     '24 行背包重开：页签在面板内且视口内可见(面板 ' + reopenState.w + '×' + reopenState.h + '=778 恒定不随行数变、zoom="' + reopenState.zoom + '")');
   check('fg:reopen-bagheight-contain', reopenState.sh > reopenState.ch + 20 && reopenState.spill <= 1 && reopenState.footVis,
-    '24 行背包重开：视窗内滚动(' + reopenState.sh + '>' + reopenState.ch + ')、零溢出(' + reopenState.spill.toFixed(1) + 'px)、底行在视口内');
+    '24 行背包重开：视窗内滚动(包装层 ' + reopenState.sh + '>' + reopenState.ch + ')、零溢出(' + reopenState.spill.toFixed(1) + 'px)、底行在视口内');
   await page.evaluate(() => { window.__HZ_FGROWS__ = 18; });
   /* ⑧h root-lifecycle（实机二验收「二次打开页签栏不显示」复现床）：真实 Root.html 语义=同文档
      display:none 收起（非场景切换——ctx 不变）+ 隐藏期心跳重推 + 重开 re-nudge（BagMsg 再投）。
@@ -442,9 +509,10 @@ function check(name, ok, detail) {
     window.__HZ_MOCKSET__(m); window.__HZ_PUSH__('FuelGenerator');
   });
   await page.waitForTimeout(900);
-  check('fg:no-fuel-teardown', !(await fhas('#srfgTabs')) && !(await fhas('#srfgFoot')) && !(await fhas('#srfgGrid')), '页签栏/底行/mod 格全部拆除');
-  check('fg:no-fuel-official-back', (await fdisp('#bagPanelTitle')) !== 'none' && (await fdisp('#bagInfoBar')) !== 'none' && (await fdisp('#shiftHint')) !== 'none' && (await fdisp('#backpackGrid')) === 'grid',
-    '官方 title/info-bar/hint/grid 四件全显');
+  check('fg:no-fuel-teardown', !(await fhas('#srfgTabs')) && !(await fhas('#srfgFoot')) && !(await fhas('#srfgGrid')) && !(await fhas('#srfgGridScroll')), '页签栏/底行/mod 格/滚动包装层全部拆除');
+  check('fg:no-fuel-official-back', (await fdisp('#bagPanelTitle')) !== 'none' && (await fdisp('#bagInfoBar')) !== 'none' && (await fdisp('#shiftHint')) !== 'none' && (await fdisp('#backpackGrid')) === 'grid'
+    && (await F().evaluate(() => { const g = document.getElementById('backpackGrid'); return !!g && !!g.closest('.panel') && g.parentElement.classList.contains('panel'); })),
+    '官方 title/info-bar/hint/grid 四件全显+格拆包回面板直子（v1.8.14 拆包还原=DOM 序原版）');
 
   /* ---- ⑩b cfg 开关（终审 Important1：EnableFuelGen 经 ctx.fgOn 全链生效） ---- */
   await page.evaluate(() => {

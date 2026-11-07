@@ -950,6 +950,7 @@ spec=docs/superpowers/specs/2026-11-06-fuelgen-cabinet-tabs-design.md（视觉�
 - **icfg 本页尾列**：ctx.page=="FuelGenerator" 时 icfg 行尾加 [burnable,burnValue]（其他 12 页形状不变；禁止按 Category 推导）。
 - **cfg**：[Access] EnableFuelGen（默认 true，对称拆装）+ [Scenario] View_FuelGenerator（默认 Fuel）。
 - **教训（bagtabs 装配纪律）**：①观察器写循环必须用"签名守卫"（innerHTML 串比较与 active 类修正永不相等=59 万写/秒自激环、渲染器暴毙）；②拆除态重建门（无燃料柜时 ensureBagtabs 不得再建，否则拆建乒乓）；③同值写守卫（className/style/hidden 写前比对）。
+- **暖炉同构扩页（2026-11-07 暖炉移植批，bagtabs 族第二页）**：游戏侧 State_Web_Heater/Ac_Heater_*/Heater.html 与燃油发电机逐件镜像（BagOwnerId 同 ReactiveProperty<long>）——mod 侧零新机制：C# SceneDef/HeaterState/RefreshActivePage/ResolveBagOwner（CtnGuard 同款）/ctx.heaterOn/ScenarioViewOf 六处查表扩页，OpSwitchBag/OpFeed 按 ActivePage 派发（Ac_Heater_RefreshBag/Ac_Heater_FuelAdd）；JS SCENES.Heater + BAGTABS 页描述符（宿主选择器 .heater-system/.heater-panel、cfg 门 heaterOn、满员文案炉膛已满）；CSS 零改动。cfg=[Access] EnableHeater（独立开关）+[Scenario] View_Heater（默认 Fuel）。harness-heater 54/54（fuelgen 孪生）。
 
 ## 12. 背包/柜子高度修改（Bag Height Engine，2026-11-07）
 

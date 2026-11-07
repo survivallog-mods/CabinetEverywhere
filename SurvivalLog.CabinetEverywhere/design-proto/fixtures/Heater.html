@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>暖炉</title>
+<script src="../../webui-core.js"></script>
+<script src="../../webui-bag.js"></script>
+<style>
+:root {
+    --panel-bg: rgba(48, 40, 36, 0.95);
+    --warm-gold: #fbb034;
+    --warm-orange: #ff9500;
+    --warm-orange-dark: #e67e22;
+    --danger-red: #e05555;
+    --text-main: #f0f0f0;
+    --text-dark: #c0c0c0;
+    --border-light: rgba(255, 255, 255, 0.18);
+    --border-color: rgba(255, 255, 255, 0.12);
+    --grid-bg: rgba(20, 15, 12, 0.85);
+    --slot-border: rgba(255, 255, 255, 0.1);
+    --slot-size: 40px;
+    --slot-gap: 6px;
+    --grid-padding: 10px;
+}
+* { box-sizing: border-box; }
+body {
+    background-color: transparent; color: var(--text-main); font-family: 'Segoe UI', "Microsoft YaHei", sans-serif;
+    margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh;
+    user-select: none; overflow: hidden; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+}
+body::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(15, 10, 8, 0.45);
+    z-index: -1; pointer-events: none;
+}
+
+/* ============ 面板骨架（与 FuelGenerator 同一套令牌） ============ */
+.heater-system {
+    display: flex; gap: 20px; position: relative;
+    background-image: radial-gradient(circle at center bottom, rgba(251, 176, 52, 0.25) 0%, transparent 65%),
+                      linear-gradient(135deg, rgba(65, 52, 45, 0.96) 0%, rgba(35, 28, 24, 0.98) 100%);
+    padding: 16px; border-radius: 12px; border: 1px solid var(--border-light);
+    box-shadow: 0 25px 60px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.15);
+    min-height: 480px;
+}
+.panel {
+    background: linear-gradient(180deg, rgba(55, 48, 44, 0.85) 0%, rgba(35, 28, 25, 0.95) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 15px; display: flex; flex-direction: column;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.4), 0 4px 15px rgba(0,0,0,0.2);
+}
+.panel-title {
+    font-size: 16px; font-weight: bold; color: var(--warm-gold); margin-bottom: 12px;
+    letter-spacing: 1px; display: flex; align-items: center; flex-shrink: 0; text-shadow: 0 0 10px rgba(251, 176, 52, 0.4);
+}
+.panel-title::before {
+    content: ''; display: inline-block; width: 4px; height: 16px; background-color: var(--warm-gold); margin-right: 8px;
+    border-radius: 2px; box-shadow: 0 0 8px rgba(251, 176, 52, 0.8);
+}
+.panel-title .sub { color: #fff; margin-left: 6px; font-size: 14px; font-weight: normal; }
+
+/* 背包（完全沿用 FuelGenerator 原样） */
+.info-bar { font-size: 12px; color: var(--text-dark); margin-bottom: 8px; }
+.grid-container {
+    display: grid; gap: var(--slot-gap); background-color: var(--grid-bg); padding: var(--grid-padding);
+    border-radius: 6px; border: 1px solid rgba(255,255,255,0.07); position: relative;
+}
+.slot {
+    width: var(--slot-size); height: var(--slot-size); background-color: rgba(12, 9, 8, 0.8);
+    border: 1px solid var(--slot-border); border-radius: 4px; box-sizing: border-box; pointer-events: none;
+    transition: all 0.2s; box-shadow: inset 0 2px 4px rgba(0,0,0,0.6); position: relative;
+}
+.slot.valid-hover { background-color: rgba(251, 176, 52, 0.2); border-color: var(--warm-gold); box-shadow: inset 0 0 15px rgba(251, 176, 52, 0.4); }
+.slot.invalid-hover { background-color: rgba(224, 85, 85, 0.2); border-color: var(--danger-red); box-shadow: inset 0 0 15px rgba(224, 85, 85, 0.4); }
+.item {
+    position: absolute; z-index: 100; cursor: grab; display: flex; justify-content: center; align-items: center; font-size: 18px;
+    background: linear-gradient(135deg, rgba(70,60,55,0.95), rgba(45,38,34,0.95)); border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px; transition: filter 0.1s, transform 0.1s; box-shadow: 0 4px 10px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2);
+}
+.item:hover { filter: brightness(1.25); z-index: 150; border-color: var(--warm-gold); box-shadow: 0 0 15px rgba(251, 176, 52, 0.5); transform: scale(1.05); }
+.item:active { cursor: grabbing; transform: scale(1); z-index: 9999; }
+.item-count { position: absolute; bottom: 1px; right: 3px; font-size: 12px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,0.9); pointer-events: none; z-index: 6; line-height: 1; letter-spacing: 0.5px; }
+.hint-shift { text-align: center; font-size: 11px; color: var(--text-dark); margin-top: 10px; opacity: 0.7; }
+
+/* ============ 右栏 ============ */
+.heater-panel { width: 302px; }
+
+/* ---------- ① 上：炉体（实体铸铁，形制按 P_Appliance_00145 的 FBX 顶点解析） ---------- */
+/* 内部坐标系保持 272x206（SVG viewBox 与叠加层 1:1 对齐），整块 scale 到 78% → 显示约 212x161。
+   ⚠ 不要改成逐元素改 px —— blur 与圆角不跟着缩，火膛会显糙。 */
+.stove-stage { position: relative; width: 272px; height: 206px; flex-shrink: 0;
+    transform: scale(.78); transform-origin: 50% 0; margin: 0 auto -33px; }
+.stove-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* 地面光池：静态渐变，只呼吸 opacity */
+.pool { position: absolute; left: 50%; bottom: 2px; width: 250px; height: 52px; margin-left: -125px; z-index: 0;
+    background: radial-gradient(ellipse at 50% 62%, rgba(255,150,40,.34) 0%, rgba(255,110,20,.12) 44%, transparent 72%);
+    animation: pool-breathe 3.4s ease-in-out infinite; }
+@keyframes pool-breathe { 0%,100% { opacity:.78 } 50% { opacity:1 } }
+.cold .pool { display: none; }
+
+/* 炉门火膛：静态渐变盘 + 两片跳动柔光（只动 transform/opacity） */
+.door-well { position: absolute; left: 114px; top: 110px; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; z-index: 2;
+    background: radial-gradient(ellipse 62% 46% at 50% 80%, #ffe7ad 0%, #ff9c2c 24%, #cf4d0c 50%, #5e1c05 74%, #160904 96%); }
+.cold .door-well { background: radial-gradient(ellipse 58% 40% at 50% 82%, #5a2a17 0%, #2e160d 52%, #130906 88%); }
+.flick { position: absolute; border-radius: 50%; filter: blur(5px); transform-origin: 50% 100%; will-change: transform, opacity; }
+.flick.a { left: 50%; bottom: 2px; width: 30px; height: 22px; margin-left: -15px;
+    background: radial-gradient(ellipse at 50% 84%, rgba(255,252,228,.95) 0%, rgba(255,196,92,.5) 44%, transparent 78%);
+    animation: flick-a 1.35s ease-in-out infinite; }
+.flick.b { left: 22%; bottom: 1px; width: 19px; height: 16px;
+    background: radial-gradient(ellipse at 50% 86%, rgba(255,222,140,.8) 0%, transparent 76%);
+    animation: flick-b 1.95s ease-in-out infinite; }
+@keyframes flick-a { 0%,100% { transform:scale(1,1); opacity:.9 } 34% { transform:scale(.88,1.26); opacity:1 } 68% { transform:scale(1.1,.85); opacity:.82 } }
+@keyframes flick-b { 0%,100% { transform:scale(1,1) translateX(0); opacity:.7 } 44% { transform:scale(.85,1.3) translateX(4px); opacity:.95 } 76% { transform:scale(1.14,.82) translateX(-3px); opacity:.6 } }
+.cold .flick { display: none; }
+
+/* 炉门竖栅：压在火膛上 */
+.grate { position: absolute; left: 114px; top: 110px; width: 44px; height: 44px; z-index: 3; pointer-events: none; }
+.grate i { position: absolute; top: 12px; height: 27px; width: 3.5px; border-radius: 1px;
+    background: linear-gradient(180deg, #2a2320, #0d0a08); }
+.grate i:nth-child(1) { left: 16px } .grate i:nth-child(2) { left: 25px }
+
+/* Low 档静态化：保留火光与光池，停掉跳动（规范 webui-effects-performance.md）。
+   ⚠ 判据是 documentElement 上的 .quality-low 类（webui-core 收到 __QUALITY_TIER__ 后加），
+     全项目统一这一种；写成 data-perf 之类的自造属性等于这三条规则永不生效。 */
+html.quality-low .flick { animation: none; opacity: .86; }
+html.quality-low .pool { animation: none; opacity: .85; }
+html.quality-low .run-line .dot { animation: none; opacity: 1; }
+
+/* ---------- ② 中：状态 + 三格读数 ---------- */
+.heat-status { background: rgba(15,17,20,0.95); border: 1px solid var(--border-color); border-radius: 8px;
+    padding: 12px 14px; margin-bottom: 10px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.run-line { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: bold; margin-bottom: 10px; color: var(--warm-orange); }
+.run-line .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warm-orange); animation: dot-pulse 1.6s ease-in-out infinite; }
+@keyframes dot-pulse { 0%,100% { opacity:.5; transform:scale(1) } 50% { opacity:1; transform:scale(1.3) } }
+.run-line.off { color: #8d8781; }
+.run-line.off .dot { background: #4d4844; animation: none; opacity: 1; }
+.heat-metrics { display: flex; gap: 8px; }
+.heat-metric { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 7px 8px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; }
+.heat-metric .k { font-size: 10px; color: #999; }
+.heat-metric .v { font-family: Consolas, "Cascadia Mono", monospace; font-size: 16px; font-weight: bold; line-height: 1; color: var(--text-main); }
+.heat-metric .v .u { font-size: 10px; color: #777; font-weight: normal; margin-left: 1px; }
+.heat-metric .v.heat { color: var(--warm-gold); }
+.heat-metric .v.fuel { color: #ff7676; }
+.heat-metric .v.off { color: #6f6862; }
+
+.fuel-summary { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.fuel-summary .avail { font-size: 12px; color: var(--text-dark); white-space: nowrap; }
+.fuel-summary .avail b { color: var(--text-main); }
+
+/* ---------- ③ 下：投料口（复用 FuelGenerator 的 .fuel-* 一套） ---------- */
+.fuel-section { margin-top: 4px; }
+.fuel-section-title { font-size: 12px; color: var(--text-dark); font-weight: bold; margin-bottom: 8px; display: flex; align-items: center; }
+.fuel-section-title .cap { margin-left: auto; font-family: Consolas, monospace; color: var(--warm-gold); font-weight: normal; }
+.fuel-queue { display: grid; grid-template-columns: repeat(4, 50px); gap: 10px; justify-content: center;
+    background-color: rgba(0,0,0,0.4); border: 1px dashed rgba(255,255,255,0.2); padding: 10px; border-radius: 6px;
+    transition: border-color 0.2s, background-color 0.2s; box-shadow: inset 0 2px 8px rgba(0,0,0,0.5); }
+.fuel-queue.drag-over { border-color: var(--warm-gold); background-color: rgba(251, 176, 52, 0.12); }
+.fuel-slot { width: 50px; height: 50px; background-color: rgba(20, 15, 12, 0.8); border: 1px solid var(--slot-border);
+    border-radius: 4px; display: flex; justify-content: center; align-items: center; font-size: 11px; color: #888;
+    position: relative; overflow: hidden; flex-shrink: 0; box-shadow: inset 0 2px 6px rgba(0,0,0,0.8); }
+.fuel-slot.active-burn { border-color: var(--warm-orange); color: #fff; background-color: rgba(70, 32, 16, 0.9);
+    box-shadow: 0 0 20px rgba(255, 149, 0, 0.6), inset 0 0 10px rgba(0,0,0,0.9); }
+.fuel-slot.queued-item { border-color: rgba(251, 176, 52, 0.5); color: #fce1b6; cursor: pointer;
+    background: linear-gradient(to bottom, rgba(70,55,40,0.9), rgba(45,35,25,0.9)); }
+.fuel-slot.queued-item:hover { filter: brightness(1.25); border-color: var(--warm-gold); }
+.fuel-slot.queued-item::after { content: '－'; position: absolute; inset: 0; background: rgba(224, 85, 85, 0.85);
+    color: white; font-size: 28px; font-weight: bold; display: flex; justify-content: center; align-items: center;
+    opacity: 0; transition: opacity 0.2s; z-index: 10; }
+.fuel-slot.queued-item:hover::after { opacity: 1; }
+.burn-progress-fill { position: absolute; left: 0; bottom: 0; width: 100%; z-index: 1;
+    background: linear-gradient(180deg, rgba(255,149,0,0.42), rgba(255,90,10,0.62)); }
+.fuel-slot-text { position: relative; z-index: 2; text-align: center; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; width: 100%; height: 100%; pointer-events: none; }
+.fuel-icon { width: 26px; height: 26px; object-fit: contain; }
+.fuel-name { font-size: 9px; line-height: 1.1; margin-top: 1px; }
+.fuel-pct { font-size: 10px; color: var(--warm-gold); font-family: Consolas, monospace; }
+.drag-hint { text-align: center; font-size: 11px; color: var(--text-dark); margin-top: 10px; opacity: 0.7; line-height: 1.5; }
+
+.heat-btn { width: 100%; padding: 10px; border: none; border-radius: 6px; font-size: 14px; font-weight: bold;
+    cursor: pointer; letter-spacing: 1px; font-family: inherit; box-shadow: 0 4px 0 rgba(0,0,0,0.3);
+    transition: filter .15s, transform .05s; margin-top: 12px; }
+.heat-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.3); }
+.heat-btn.stop { background: linear-gradient(180deg, #e0654d, #b8472f); color: #fff; }
+.heat-btn.start { background: linear-gradient(180deg, var(--warm-gold), var(--warm-orange-dark)); color: #3a2a10; }
+.heat-btn:hover { filter: brightness(1.12); }
+
+.warning-box { text-align: center; font-size: 12px; color: var(--danger-red); min-height: 18px; margin-top: 6px; }
+.fuel-tooltip { position: fixed; display: none; background: rgba(15, 12, 10, 0.96); border: 1px solid var(--warm-gold);
+    border-radius: 5px; padding: 6px 10px; font-size: 12px; color: var(--text-main); pointer-events: none; z-index: 999;
+    white-space: pre-line; }
+</style>
+</head>
+<body>
+
+<div class="heater-system" id="heaterSystem">
+
+    <div class="panel">
+        <div class="panel-title" data-i18n="bagTitle">角色背包</div>
+        <div class="info-bar" id="bagInfoBar"></div>
+        <div class="grid-container" id="backpackGrid"></div>
+        <div class="hint-shift" data-i18n="shiftHint">右键 / Shift+点击 快速转移 · 点击查看详情</div>
+    </div>
+
+    <div class="panel heater-panel">
+        <div class="panel-title"><span data-i18n="pageTitle">暖炉</span></div>
+
+        <!-- ① 炉体 -->
+        <div class="stove-stage" id="stoveStage">
+            <div class="pool"></div>
+            <svg viewBox="0 0 272 206" aria-hidden="true">
+                <defs>
+                    <linearGradient id="hIron" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0" stop-color="#0f0c0a"/><stop offset=".1" stop-color="#372c25"/>
+                        <stop offset=".3" stop-color="#221b17"/><stop offset=".62" stop-color="#171210"/>
+                        <stop offset=".86" stop-color="#2f251f"/><stop offset="1" stop-color="#100d0b"/>
+                    </linearGradient>
+                    <linearGradient id="hPipe" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0" stop-color="#120f0d"/><stop offset=".26" stop-color="#332a24"/>
+                        <stop offset=".6" stop-color="#1b1613"/><stop offset="1" stop-color="#100d0b"/>
+                    </linearGradient>
+                    <linearGradient id="hBand" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#3d3129"/><stop offset=".5" stop-color="#221b16"/><stop offset="1" stop-color="#100c0a"/>
+                    </linearGradient>
+                </defs>
+                <!-- 烟囱：直上出画（读作已接到屋顶）+ 接口箍 + 炉顶盖 -->
+                <rect x="127" y="-4" width="18" height="58" fill="url(#hPipe)"/>
+                <rect x="123" y="47" width="26" height="8" rx="2" fill="url(#hBand)" stroke="rgba(0,0,0,.5)" stroke-width=".8"/>
+                <rect x="107" y="57" width="58" height="8" rx="3" fill="url(#hBand)" stroke="rgba(0,0,0,.5)" stroke-width=".9"/>
+                <!-- 锥形炉身（宽高比≈1.33:1） -->
+                <path d="M108 65 L164 65 C173 99 190 142 206 166 L66 166 C82 142 99 99 108 65 Z"
+                      fill="url(#hIron)" stroke="#0a0806" stroke-width="1.2"/>
+                <path d="M108 65 C99 99 82 142 66 166" fill="none" stroke="rgba(214,206,196,.15)" stroke-width="2"/>
+                <path d="M164 65 C173 99 190 142 206 166" fill="none" stroke="rgba(255,168,86,.26)" stroke-width="2"/>
+                <!-- 铁皮接缝 -->
+                <path d="M99 103 C124 108 150 108 173 103" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="2.2"/>
+                <path d="M99 101.4 C124 106.4 150 106.4 173 101.4" fill="none" stroke="rgba(238,226,210,.10)" stroke-width="1.2"/>
+                <!-- 炉门法兰 + 铆钉圈 + 内凹暗腔 -->
+                <circle cx="136" cy="132" r="27" fill="none" stroke="rgba(255,255,255,.085)" stroke-width="3.4"/>
+                <circle cx="136" cy="132" r="27" fill="none" stroke="rgba(0,0,0,.55)" stroke-width="1"/>
+                <circle cx="136" cy="132" r="23" fill="#0d0a08"/>
+                <g fill="rgba(228,214,198,.34)">
+                    <circle cx="136" cy="105" r="1.6"/><circle cx="155" cy="113" r="1.6"/><circle cx="163" cy="132" r="1.6"/>
+                    <circle cx="155" cy="151" r="1.6"/><circle cx="136" cy="159" r="1.6"/><circle cx="117" cy="151" r="1.6"/>
+                    <circle cx="109" cy="132" r="1.6"/><circle cx="117" cy="113" r="1.6"/>
+                </g>
+                <rect x="163" y="126" width="5" height="12" rx="2.5" fill="rgba(206,192,176,.34)"/>
+                <!-- 底沿 + 三条腿（后一 + 前二）+ 落地影 -->
+                <path d="M66 166 L206 166" stroke="rgba(0,0,0,.6)" stroke-width="3"/>
+                <path d="M70 163.6 L202 163.6" stroke="rgba(232,220,204,.10)" stroke-width="1.4"/>
+                <path d="M136 164 L136 187" fill="none" stroke="#120e0c" stroke-width="5" stroke-linecap="round"/>
+                <path d="M84 165 L70 190 M188 165 L202 190" fill="none" stroke="#17120f" stroke-width="7" stroke-linecap="round"/>
+                <path d="M84 165 L70 190 M188 165 L202 190" fill="none" stroke="rgba(226,214,200,.11)" stroke-width="1.6" stroke-linecap="round"/>
+                <ellipse cx="136" cy="192" rx="76" ry="6.5" fill="rgba(0,0,0,.5)"/>
+            </svg>
+            <div class="door-well"><div class="flick a"></div><div class="flick b"></div></div>
+            <div class="grate"><i></i><i></i></div>
+        </div>
+
+        <!-- ② 状态 + 读数 -->
+        <div class="heat-status">
+            <div class="run-line off" id="runLine"><span class="dot"></span><span id="runText">已熄灭</span></div>
+            <div class="heat-metrics">
+                <div class="heat-metric"><span class="k" data-i18n="heatOutputLabel">供暖</span><span class="v heat" id="heatOutputValue">—</span></div>
+                <div class="heat-metric"><span class="k" data-i18n="fuelPerTickLabel">耗料</span><span class="v fuel" id="fuelPerTickValue">—</span></div>
+                <div class="heat-metric"><span class="k" data-i18n="availLabel">可燃烧</span><span class="v" id="availText">—</span></div>
+            </div>
+        </div>
+        <div class="fuel-summary"><span class="avail"><span data-i18n="totalBurnLabel">存料</span> <b id="totalBurnValue">0</b></span></div>
+
+        <!-- ③ 投料口 -->
+        <div class="fuel-section">
+            <div class="fuel-section-title"><span data-i18n="fuelSectionTitle">燃料槽（拖入可燃物 / 点击退回）</span><span class="cap" id="fuelCap">0 / 0</span></div>
+            <div class="fuel-queue" id="fuelQueueZone"></div>
+            <div class="drag-hint" data-i18n="dragHint">从背包拖可燃物到料槽 · 第 1 格正在烧 · 熄火后未烧完的原样退回背包</div>
+        </div>
+
+        <div class="warning-box" id="warningBox"></div>
+        <button class="heat-btn start" id="toggleBtn">点　火</button>
+    </div>
+</div>
+
+<div class="fuel-tooltip" id="fuelTooltip" data-no-sync></div>
+
+<script>
+    var core = createWebUICore('Heater');
+
+    /* 中文兜底表：新增 loc key 尚未入 ConstantText / Main.json 时，C# 侧回传空串，前端用这里的默认值。
+       (C# 一律走 ToConstantTextOrEmpty，就是为了不把裸 key 顶到屏幕上) */
+    var i18nText = {
+        bagTitle: '角色背包', pageTitle: '暖炉',
+        weightLabel: '负重', capacityLabel: '容量', spaceLabel: '空间',
+        burningText: '燃烧中', extinguishedText: '已熄灭',
+        igniteBtnText: '点　火', extinguishBtnText: '熄　火',
+        heatOutputLabel: '供暖', fuelPerTickLabel: '耗料', availLabel: '可燃烧', totalBurnLabel: '存料',
+        fuelSectionTitle: '燃料槽（拖入可燃物 / 点击退回）',
+        fuelSlotEmpty: '', dragHint: '从背包拖可燃物到料槽 · 第 1 格正在烧 · 熄火后未烧完的原样退回背包',
+        fuelReturnTip: '点击退回背包', heatValueLabel: '热值',
+        noFuelText: '无燃料', availMinutesTemplate: '约 {0} 分钟',
+        warningFuelFull: '炉膛已满！', warningFuelOnly: '仅接受可燃物品',
+        shiftHint: '右键 / Shift+点击 快速转移 · 点击查看详情'
+    };
+
+    var _fit = createViewportFit({ measureSelector: '.heater-system', margin: 48, bodyHeightProp: 'minHeight' });
+    function getUiZoom() { return _fit.getZoom(); }
+
+    var backpack = createGridBag('backpackGrid', { cols: 6, rows: 5 });
+    var heaterConfig = { fuelSlotCount: 8, fuelRate: 0 };
+
+    var dragCoord = createBagDragCoordinator([backpack], {
+        smartDrop: false,
+        canAcceptItem: function () { return true; },
+        onItemMove: function (data) { core.UnitySendEvent('ITEM_MOVE', data); },
+        onItemPickup: function (itemData) { core.UnitySendEvent('SFX_ITEM_PICKUP', { itemId: itemData ? itemData.id : 0 }); },
+        onItemPutback: function (itemData) { core.UnitySendEvent('SFX_ITEM_PUTBACK', { itemId: itemData ? itemData.id : 0 }); },
+        onItemClick: function (itemId, rightClick) { core.UnitySendEvent('ITEM_CLICK', { itemId: itemId, rightClick: !!rightClick }); },
+        onItemHover: function (itemId, isEnter) {
+            core.UnitySendEvent('ITEM_HOVER', { itemId: itemId, isEnter: isEnter });
+            if (!isEnter) { hideFuelTip(); return; }
+            var all = State.lastBagItems || [];
+            for (var i = 0; i < all.length; i++) {
+                if (all[i] && all[i].itemId == itemId && all[i].burnValue > 0) { showFuelTip(all[i].name, all[i].burnValue); return; }
+            }
+        }
+    });
+
+    var DOM = {
+        bagInfoBar: document.getElementById('bagInfoBar'),
+        stoveStage: document.getElementById('stoveStage'),
+        runLine: document.getElementById('runLine'),
+        runText: document.getElementById('runText'),
+        heatOutputValue: document.getElementById('heatOutputValue'),
+        fuelPerTickValue: document.getElementById('fuelPerTickValue'),
+        availText: document.getElementById('availText'),
+        totalBurnValue: document.getElementById('totalBurnValue'),
+        fuelCap: document.getElementById('fuelCap'),
+        fuelQueueZone: document.getElementById('fuelQueueZone'),
+        warningBox: document.getElementById('warningBox'),
+        toggleBtn: document.getElementById('toggleBtn'),
+        fuelTooltip: document.getElementById('fuelTooltip')
+    };
+
+    var State = {
+        bagCols: 6, bagRows: 5, lastBagItems: [],
+        fuelSlots: [],          /* 逻辑侧料槽原样：下标即 slotIndex，0 号是正在烧的那格 */
+        isRunning: false
+    };
+
+    /* 背包信息栏 / 可燃烧时长：数据消息和本地化消息都会触发重画，所以一律从 State 取最近一次的数据 */
+    function renderBagInfo() {
+        var data = State.lastBagMsg;
+        if (!DOM.bagInfoBar || !data) return;
+        if (data.bagWeight !== undefined && data.bagMaxWeight !== undefined) {
+            DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.weightLabel) + ': <span style="color:var(--warm-gold)">' + data.bagWeight + '</span> / ' + data.bagMaxWeight;
+        } else if (data.bagCapacity !== undefined && data.bagMaxCapacity !== undefined) {
+            DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.capacityLabel) + ': <span style="color:var(--warm-gold)">' + data.bagCapacity + '</span> / ' + data.bagMaxCapacity;
+        } else {
+            var totalSlots = State.bagCols * State.bagRows;
+            DOM.bagInfoBar.innerHTML = core.escapeHtml(i18nText.spaceLabel) + ': <span style="color:var(--warm-gold)">' + backpack.getItems().length + '</span> / ' + totalSlots;
+        }
+    }
+
+    function renderAvail() {
+        if (!DOM.availText || State.availMinutes === undefined) return;
+        var hasFuel = State.fuelSlots.length > 0;
+        var minutes = State.availMinutes;
+        if (!hasFuel || minutes <= 0) {
+            DOM.availText.textContent = hasFuel ? '—' : i18nText.noFuelText;
+        } else if (minutes >= 60) {
+            /* ⚠ 满料暖炉能烧几天（一桶柴油 48000 燃烧值 ÷ FuelRate 50 ≈ 6.7 天 ≈ 9650 游戏分钟），
+               照发电机那样用「约 N 分钟」会出四五位数，直接把三格读数行顶成三行高。
+               ≥1 小时改用小时数 + 单位后缀，且不引入新 loc key。 */
+            DOM.availText.innerHTML = Math.round(minutes / 60) + '<span class="u">h</span>';
+        } else {
+            DOM.availText.textContent = i18nText.availMinutesTemplate.replace('{0}', Math.round(minutes));
+        }
+    }
+
+    core.registerHandlers({
+        'WebUI_Heater_BagMsg': function (data) {
+            backpack.setOwnerId(data.bagOwnerId || 0);
+            State.lastBagItems = data.bagItems || [];
+
+            if (data.bagCols !== undefined) {
+                State.bagCols = data.bagCols;
+                if (data.bagRows !== undefined) State.bagRows = data.bagRows;
+                backpack.resize(State.bagCols, State.bagRows);
+            }
+            var slotChanged = false;
+            if (data.fuelSlotCount !== undefined && heaterConfig.fuelSlotCount !== data.fuelSlotCount) {
+                heaterConfig.fuelSlotCount = data.fuelSlotCount; slotChanged = true;
+            }
+            if (data.fuelRate !== undefined) heaterConfig.fuelRate = data.fuelRate;
+            /* heaterName 不上屏：暖炉只有一个型号，标题写死「暖炉」即可，
+               再拼一次名字会变成「暖炉 · 暖炉」(发电机那边有大中小三型才需要副标题) */
+
+            backpack.refresh(data.bagItems || []);
+            _fit.apply();
+
+            State.lastBagMsg = data;
+            renderBagInfo();
+
+            if (data.fuelItems) {
+                State.fuelSlots = data.fuelItems.map(function (fi) {
+                    return { id: fi.configId, name: fi.name, icon: fi.icon, fuelValue: fi.burnValue, count: fi.count, burnProgress: fi.burnProgress || 0 };
+                });
+                renderFuelArea();
+            } else if (slotChanged) {
+                renderFuelArea();
+            }
+        },
+
+        'WebUI_Heater_StateMsg': function (data) {
+            if (!data) return;
+            if (data.isRunning !== undefined) {
+                State.isRunning = !!data.isRunning;
+                /* 炉体两态靠根容器的 .cold 类切换：火膛转暗红余温、火苗与地面光池撤掉 */
+                if (DOM.stoveStage) DOM.stoveStage.classList.toggle('cold', !State.isRunning);
+                if (DOM.runLine) DOM.runLine.classList.toggle('off', !State.isRunning);
+                if (DOM.runText) DOM.runText.textContent = State.isRunning ? i18nText.burningText : i18nText.extinguishedText;
+                if (DOM.toggleBtn) {
+                    DOM.toggleBtn.classList.toggle('stop', State.isRunning);
+                    DOM.toggleBtn.classList.toggle('start', !State.isRunning);
+                    DOM.toggleBtn.textContent = State.isRunning ? i18nText.extinguishBtnText : i18nText.igniteBtnText;
+                }
+            }
+            /* 取暖值：熄火时不显示数字——炉子没烧就没有取暖值，显示 +1 会让玩家以为放着就生效 */
+            if (data.heatOutput !== undefined && DOM.heatOutputValue) {
+                if (State.isRunning && data.heatOutput > 0) {
+                    DOM.heatOutputValue.textContent = '+' + data.heatOutput;
+                    DOM.heatOutputValue.classList.remove('off');
+                } else {
+                    DOM.heatOutputValue.textContent = '—';
+                    DOM.heatOutputValue.classList.add('off');
+                }
+            }
+            if (data.fuelPerTick !== undefined && DOM.fuelPerTickValue) {
+                if (State.isRunning && data.fuelPerTick > 0) {
+                    DOM.fuelPerTickValue.innerHTML = '-' + data.fuelPerTick + '<span class="u">/10min</span>';
+                    DOM.fuelPerTickValue.classList.remove('off');
+                } else {
+                    DOM.fuelPerTickValue.textContent = '—';
+                    DOM.fuelPerTickValue.classList.add('off');
+                }
+            }
+            if (data.totalBurnValue !== undefined && DOM.totalBurnValue) {
+                DOM.totalBurnValue.textContent = Math.round(data.totalBurnValue);
+            }
+            if (data.availMinutes !== undefined) {
+                State.availMinutes = data.availMinutes;
+                renderAvail();
+            }
+        },
+
+        'WebUI_Heater_LocalizationMsg': function (data) {
+            if (!data) return;
+            /* C# 侧缺词条时回传空串 → 不能整包 Object.assign，否则把中文兜底洗成空白。逐字段只取非空值。 */
+            for (var k in data) { if (data[k]) i18nText[k] = data[k]; }
+            [ 'bagTitle', 'pageTitle', 'heatOutputLabel', 'fuelPerTickLabel', 'availLabel',
+              'totalBurnLabel', 'fuelSectionTitle', 'dragHint', 'shiftHint' ].forEach(function (k) {
+                if (data[k]) core.i18n.updateText('[data-i18n="' + k + '"]', data[k]);
+            });
+            if (DOM.runText) DOM.runText.textContent = State.isRunning ? i18nText.burningText : i18nText.extinguishedText;
+            if (DOM.toggleBtn) DOM.toggleBtn.textContent = State.isRunning ? i18nText.extinguishBtnText : i18nText.igniteBtnText;
+            /* 页面就绪时先回放积压的背包 / 状态消息、后下发文案：那两条已经用中文兜底画过一遍，
+               之后背包和燃料不变就不会再收到，必须在这里用新文案重画 */
+            renderBagInfo();
+            renderAvail();
+        }
+    });
+
+    /* ───────── 投料口渲染 ───────── */
+    function remainPct(slot) {
+        var p = Math.max(0, Math.min(1, slot.burnProgress || 0));
+        return (1 - p) * 100;
+    }
+
+    function renderFuelArea() {
+        DOM.fuelQueueZone.innerHTML = '';
+        var total = heaterConfig.fuelSlotCount || 0;
+        if (DOM.fuelCap) DOM.fuelCap.textContent = State.fuelSlots.length + ' / ' + total;
+
+        for (var i = 0; i < total; i++) {
+            var slot = document.createElement('div');
+            slot.className = 'fuel-slot';
+            var item = State.fuelSlots[i];
+            if (item) {
+                var isActive = (i === 0);
+                var inner = (item.icon ? '<img src="' + item.icon + '" class="fuel-icon">' : '');
+                if (isActive) {
+                    /* 0 号格 = 正在烧：橙边 + 底部剩余量填充 + 百分比。
+                       ⚠ 不给退回入口：退料按快照原样还包，允许退半烧的那格 = 白刷燃料。 */
+                    slot.classList.add('active-burn');
+                    var fill = document.createElement('div');
+                    fill.className = 'burn-progress-fill';
+                    fill.style.height = remainPct(item) + '%';
+                    slot.appendChild(fill);
+                    inner += '<div class="fuel-pct">' + Math.round(remainPct(item)) + '%</div>';
+                } else {
+                    slot.classList.add('queued-item');
+                    inner += '<div class="fuel-name">' + core.escapeHtml(item.name) + '</div>';
+                }
+                var text = document.createElement('div');
+                text.className = 'fuel-slot-text';
+                text.innerHTML = inner;
+                slot.appendChild(text);
+                (function (idx, it, active) {
+                    slot.addEventListener('mouseenter', function () {
+                        showFuelTip(it.name, it.fuelValue || 0, active ? null : i18nText.fuelReturnTip);
+                    });
+                    slot.addEventListener('mouseleave', hideFuelTip);
+                    if (!active) slot.onclick = function () { core.UnitySendEvent('FUEL_RETURN', { slotIndex: idx }); };
+                })(i, item, isActive);
+            }
+            DOM.fuelQueueZone.appendChild(slot);
+        }
+    }
+
+    /* ───────── 拖入投料 ───────── */
+    dragCoord.setDropInterceptor(function (itemData, mouseX, mouseY) {
+        var rect = DOM.fuelQueueZone.getBoundingClientRect();
+        if (!(mouseX >= rect.left && mouseX <= rect.right && mouseY >= rect.top && mouseY <= rect.bottom)) {
+            // 底板内（面板、面板间空隙、格子周边的标签和留白）一律回弹；拖出底板才丢地上，口径同 ToolTable / Cooking
+            var root = document.getElementById('heaterSystem');
+            var box = root && root.getBoundingClientRect();
+            if (box && mouseX >= box.left && mouseX <= box.right && mouseY >= box.top && mouseY <= box.bottom) return 'reject';
+            return false;
+        }
+        if (itemData._raw && itemData._raw.burnable) {
+            if (State.fuelSlots.length >= heaterConfig.fuelSlotCount) { showWarning(i18nText.warningFuelFull); return 'reject'; }
+            core.UnitySendEvent('FUEL_ADD', { itemId: parseInt(itemData.id) });
+            return true;
+        }
+        showWarning(i18nText.warningFuelOnly);
+        return 'reject';
+    });
+
+    /* 拖拽高亮：mousemove 走 rAF 节流 + 缓存 rect，不在热路径里反复 getBoundingClientRect */
+    var _fuelMousePos = null, _fuelRafId = 0, _fuelZoneRect = null, _wasDraggingForFuel = false;
+    document.addEventListener('mousemove', function (e) {
+        _fuelMousePos = { x: e.clientX, y: e.clientY };
+        if (_fuelRafId) return;
+        _fuelRafId = requestAnimationFrame(function () {
+            _fuelRafId = 0;
+            if (!dragCoord.isDragging()) {
+                if (_wasDraggingForFuel) { DOM.fuelQueueZone.classList.remove('drag-over'); _wasDraggingForFuel = false; _fuelZoneRect = null; }
+                return;
+            }
+            if (!_wasDraggingForFuel) { _fuelZoneRect = DOM.fuelQueueZone.getBoundingClientRect(); _wasDraggingForFuel = true; }
+            var item = dragCoord.getDraggedItem(), pos = _fuelMousePos, rect = _fuelZoneRect;
+            var inside = pos && rect && pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
+            DOM.fuelQueueZone.classList.toggle('drag-over', inside && item && item._raw && item._raw.burnable);
+        });
+    });
+
+    /* ───────── tooltip ───────── */
+    var _tipMouse = { x: 0, y: 0 }, _tipRafId = 0;
+    document.addEventListener('mousemove', function (e) {
+        _tipMouse.x = e.clientX; _tipMouse.y = e.clientY;
+        if (_tipRafId) return;
+        _tipRafId = requestAnimationFrame(function () {
+            _tipRafId = 0;
+            if (DOM.fuelTooltip.style.display === 'block') moveTooltip(_tipMouse.x, _tipMouse.y);
+        });
+    });
+    function moveTooltip(x, y) {
+        var z = getUiZoom();
+        DOM.fuelTooltip.style.left = ((x + 15) / z) + 'px';
+        DOM.fuelTooltip.style.top = ((y + 15) / z) + 'px';
+    }
+    function showFuelTip(name, burnValue, extra) {
+        var lines = [];
+        if (name) lines.push(name);
+        lines.push(i18nText.heatValueLabel + ' ' + burnValue);
+        if (extra) lines.push(extra);
+        DOM.fuelTooltip.textContent = lines.join('\n');
+        DOM.fuelTooltip.style.display = 'block';
+        moveTooltip(_tipMouse.x, _tipMouse.y);
+    }
+    function hideFuelTip() { DOM.fuelTooltip.style.display = 'none'; }
+
+    function showWarning(msg) {
+        DOM.warningBox.textContent = msg;
+        setTimeout(function () { DOM.warningBox.textContent = ''; }, 3000);
+    }
+
+    DOM.toggleBtn.addEventListener('click', function () { core.UnitySendEvent('TOGGLE'); });
+
+    /* 点空白关面板。🚨 必须带 mousedown 守卫：click 的 target 是「按下」与「松开」的最近公共祖先，
+       拖一个被吞掉 mousedown 的物品会让面板凭空关掉。 */
+    function isBlankTarget(t) { return !!t && t === document.body; }
+    var _blankMouseDown = false;
+    document.addEventListener('mousedown', function (e) { _blankMouseDown = isBlankTarget(e.target); }, true);
+    document.body.addEventListener('click', function (e) {
+        if (!_blankMouseDown) return;
+        if (isBlankTarget(e.target)) core.UnitySendEvent('CLOSE', {});
+    });
+
+    renderFuelArea();
+    core.notifyReady();
+</script>
+<!-- harness bridge（heater 暖炉移植批 2026-11-07）：官方页整体原样（与 FuelGenerator 夹具同式，
+     webui_src 快照逐字节同源+vendor 脚本）。本桥只补测试遥测 id——官方 .panel-title[data-i18n=
+     bagTitle]/.hint-shift 无 id，root harness 既有断言选择器（#bagPanelTitle/#shiftHint）兼容。
+     __PAGE_READY__ 走官方 core.notifyReady() 真路，BagMsg/StateMsg 全走官方 handler
+     （createGridBag 渐进渲染+createViewportFit 缩放真实时序）。 -->
+<script>
+(function () {
+  var t = document.querySelector('.panel-title[data-i18n="bagTitle"]'); if (t) t.id = 'bagPanelTitle';
+  var h = document.querySelector('.hint-shift'); if (h) h.id = 'shiftHint';
+})();
+</script>
+</body>
+</html>

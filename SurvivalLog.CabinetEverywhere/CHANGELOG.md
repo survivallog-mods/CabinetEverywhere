@@ -7,6 +7,101 @@
 
 以下待发版批次（多会话并行：十三~二十批）随本版一并发布。
 
+### 待发版·二十八批（2026-11-07，暖炉界面柜子页签——bagtabs 族第二页同构移植）
+
+**作者需求**：「燃油发电机界面的改造是否可以直接复用到暖炉界面，它俩界面基本完全一致」——
+实证结论：可以，游戏侧是 1:1 镜像；mod 侧查表扩页零新机制。
+
+- **游戏侧实证（移植依据，HotUpdate.dll 元数据+双页源码逐项对比）**：`State_Web_Heater` 与
+  `State_Web_FuelGenerator` 字段级镜像（`BagOwnerId` 同 `ReactiveProperty<Int64>` 直写目标、
+  BagCols/Rows/FuelSlotCount/FuelItems 同名同型）；动作族 `Ac_Heater_RefreshBag/FuelAdd/
+  FuelReturn/ItemClick` 同载荷（FUEL_ADD 同 `{itemId}`）；Heater.html 左面板 DOM 契约同名
+  （`.heater-system>.panel:not(.heater-panel)` 宿主、#backpackGrid/#fuelQueueZone/.fuel-slot/
+  .panel-title/.info-bar/.hint-shift）；页面 JS `createGridBag`+`createBagDragCoordinator` 的
+  ITEM_MOVE/ITEM_CLICK/FUEL_ADD 事件逐字同形——九~十一验收的 switchBag v2 官方状态直写/
+  CtnGuard 柜子 id 排斥/闪环根除语义结构性继承。
+- **C# 查表扩页六处**：SceneDef 加 Heater 行（family 'ht'）+ `HeaterState()`（GetStateByUI 同
+  路径）+ RefreshActivePage case（Ac_Heater_RefreshBag）+ ResolveBagOwner case（.Value 直读+
+  十一验收 CtnGuard 同款）+ ctx 页条件字段 `heaterOn`（fgOn 同款消费链）+ ScenarioViewOf case；
+  OpSwitchBag/OpFeed 按 `ActivePage()` 派发（直写 State_Web_Heater.BagOwnerId / 容量校验读
+  FuelSlotCount+FuelItems / 第二跳 Ac_Heater_FuelAdd，default=燃油发电机保形）。
+- **JS 页描述符 BAGTABS（本批唯一新机制点，~10 行）**：SCENES.Heater 行（bagtabs 族第二页）+
+  页差异全表驱动——宿主选择器两件套（`.heater-system`/`.heater-panel`）、cfg 门 onKey
+  （heaterOn）、满员文案（「炉膛已满」=页官方 warningFuelFull 同词）；ensureBagtabs/
+  fgSettle/fgTeardown/fgFeedCmd 的硬编码 'FuelGenerator' 与选择器泛化为描述符取值，
+  fuelgen 行为零改动；CSS 零改动（.srfg-on 族选择器两页通用）。feedFail 的 full 文案走
+  描述符（燃油槽/炉膛页异），notfuel/bagfull/noitem 两页同词。
+- **cfg**：[Access] `EnableHeater`（默认 true，独立开关不联动 EnableFuelGen——页级开关先例
+  同构）+ [Scenario] `View_Heater`（默认 Fuel=燃料标签柜视角，与发电机同语义）。
+- **harness**：root harness bagtabs mock 按页分流（HTVIEW 独立官方状态模拟 State_Web_Heater、
+  switchBag/feed/官方节律 tick 按 current 页派发——C# ActivePage 保真）+ `fixtures/Heater.html`
+  （官方页逐字节原样+遥测桥，tooltip 元素 id 页异 #fuelTooltip 已适配）+ `harness-heater.cjs`
+  孪生（fuelgen 断言集逐路对齐+⑫暖炉特有：右炉体面板零改动/fuelCap 官方读数随 BagMsg 刷新/
+  料槽 8 格官打）→ **54/54**；合流复验 fuelgen 52/52、switch-cabinet 27/27、height 12/12、
+  width-floor 13/13、tagfilter-gate 15/15、brew-tier 35/35、native-width 8/8、
+  native-scroll-drag 14/14、sbtrack 全绿；mount 166/179（13 size 预存逐条不变）；
+  regression/store-all/tidy 超时点同预存（176/73/86 行）。
+- **与二十七批二报合流**：本批 Heater 帧入 SCENE_KEYS 后暴露 bagtabs 多页共存键死穴
+  （FG.active 单实例被隐帧覆盖），二报已代修（可见帧赢/隐帧仅本页才翻 false）并在本批
+  harness-heater 上回验——两批同树，缺一不可分。
+- **实机校准点（移交作者，T8 式）**：①Heater 页 iframe id 是否恰为 'Heater'（SCENES 键直配，
+  首装日志 `bagtabs mounted: Heater` 为准）；②State_Web_Heater.BagOwnerId 直写副作用面与
+  FuelGenerator 同（预期同——同构 ReactiveProperty，实机一验）。
+
+### 待发版·二十七批（2026-11-07，原生背包+燃油发电机/暖炉 bagtabs 滚动后拖拽修复——滚动器上收，官方坐标数学零改动）
+
+**作者实报**：「背包界面通过滚动条滚动到下方后，无法移动物品，拖拽移动物品的落地位置不对」
+（截图实锤：绿色落点预览比目标高约 7 行）。
+
+- **根因**：v1.8.3 原生模式 CSS 把 `.grid-container` **自己**变成滚动器
+  （max-height:560+overflow-y:scroll）——而官方 BackpackUI 页（Vue）拖拽坐标基准恰是该元素
+  rect：onMouseDown 缓存 `gridRefs[side].getBoundingClientRect()`，滚动后 rect=裁剪窗顶（行 0
+  实际在 rect.top−scrollTop 上方），updateHover 落点 `ny=round((cursorY−offsetY−rect.top−PAD)
+  /CELL)` 恒少 `scrollTop/CELL` 行 ⇒ DRAG_ITEM y 整段偏上（=截图绿框在上方）；目标行被误判
+  占用 ⇒ 放不下回弹（=「无法移动物品」）。官方代码无过——官方背包从不滚动，滚动是本 mod
+  注入的，注错了元素。
+- **修复（纯 CSS 迁移，官方代码/监听/数据零触碰）**：滚动四规则（max-height+overflow+
+  gutter+content-box+padding-right 滚动槽在官方 inline 宽之外口径不变）从 `.grid-container`
+  迁到**官方父层 `.grid-wrapper`**（宽=max-content+margin:auto 居中=槽仍贴格，篮子固定宽面板
+  同）——格 rect 恢复全高内容矩形（行 0 恒在 rect.top），官方坐标数学零改动自洽。与壳侧
+  机器页 sr-body 祖先滚动同案（该路 webui-bag.js getGridCoordinates 一直正确的原因）。
+- **配套**：nbMount 恒显指示轨 srnSbTrack 改绑 `.grid-wrapper`（滚动事件/scrollTop 在新滚动器
+  上，绑格本体恒 0=thumb 钉死满长）；`style#srNativeBp` 注入体版本 data-uw '0'→'2'（旧注入体
+  活页一次重写换新，harness-native-width 活迁移路同测）。
+- **harness**：新增 harness-native-scroll-drag.cjs——10×16 高袋滚到底（scrollTop=336=6 行）
+  **真鼠标**拖拽两例：(4,14)→(7,13) 与 (2,11)→(9,10)，断言 DRAG_ITEM x/y=光标格、悬停期
+  .drag-highlight 客户区=目标格、格 rect 全高 896、格本体非滚动器、thumb translateY>0。
+  **RED 实证旧病**（还原旧 CSS：格 rect 560 裁剪窗/highlight(0,0)/两拖拽零 DRAG_ITEM=「无法
+  移动物品」复现）→修复后 **14/14**；native-width 8/8（断言随迁：data-uw='2'+活迁移升 v2）；
+  mount 166/179（native-rules 断言收紧=滚动器必 .grid-wrapper 且格本体无 overflow-y:scroll；
+  13 个 size 旧口径 FAIL 逐条不变=预存）；height 12/12、fuelgen 48/48、switch-cabinet 27/27、
+  sbtrack/width-floor/tagfilter-gate/brew-tier 全绿；regression/store-all/tidy 超时点与干净
+  HEAD 逐字一致（预存红，与本批无关）。
+- **已知边界（与官方一致，不另造机制）**：拖拽**途中**滚轮再滚动，落点按起拖时缓存的 rect
+  计算=偏移起拖后滚动量（官方页 rect 只在 onMouseDown 缓存一次，官方背包原生无滚动故从未
+  处理；本修复后静态滚动态已正确，途中滚动误差从「全量 scrollTop」收窄为「途中增量」）。
+
+**同日二报（作者实报「打开燃油发电机界面的侧栏，背包和柜子界面也有这个问题」）——bagtabs
+族同病同修（v1.8.14）**：
+
+- **根因同形**：bagtabs 页（燃油发电机/暖炉）官方 `#backpackGrid`（webui-bag.js 格）被
+  railui.css `.srfg-on > .grid-container{flex:1;overflow-y:auto}` 变成自滚滚动器，而
+  webui-bag `getGridCoordinates`/`isMouseOver`/松手落点全按**格 rect 顶=行 0** 对齐——滚动后
+  rect=裁剪窗，ITEM_MOVE x/y 恒少 `scrollTop/step` 行（同 BackpackUI 病，页不同款）。
+- **修复（mod 包装层，官方代码/监听零触碰）**：ensureBagtabs 把官方格包进 mod
+  `#srfgGridScroll.srfg-gridscroll`（railui.css 唯一 flex:1+overflow 子项，滚动槽 thin 样式随迁），
+  格全高在内滚=格 rect 恒全高内容矩形；fgSwitch 换签归顶改写包装层 scrollTop；fgTeardown
+  拆包还原（格回面板直子=DOM 序原版，harness 断言拆包不变量）。暖炉页（bagtabs 族第二页，
+  同一 ensureBagtabs）同享修复。
+- **顺带根除 bagtabs 多页共存键死穴**：`FG.active` 单实例被**任意** bagtabs 帧无条件覆盖
+  （暖炉帧入列后，DOM 序后到的隐帧每轮扫描把燃油发电机可见页翻成 false=A/D 键全灭；暖炉
+  自身因排末位幸免）——改**可见帧赢/隐帧仅本页（FG.page）才翻 false**，帧移除复位同款守卫。
+- **harness**：harness-fuelgen 三处滚动断言改量包装层（tall-ctn/bag-viewport/reopen-bagheight）
+  +新增 4 断言（格非滚动器+rect 全高 936/滚到底有效性/滚动态两例拖拽 **ITEM_MOVE={x:7,y:13}**
+  **{x:9,y:10}**=光标格/拆除含包装层+格回面板直子）→ **52/52**；harness-heater 54/54（暖炉
+  孪生含同款滚动态拖拽断言）；native-scroll-drag 14/14、native-width 8/8、height 12/12、
+  sbtrack 全绿；mount 166/179（13 个 size 旧口径 FAIL=预存逐条不变）。
+
 ### 待发版·二十六批（2026-11-07，背包/柜子高度修改——宽度退役恒 12，缩高物品官方掉落）
 
 - **spec**：docs/superpowers/specs/2026-11-07-bag-height-design.md；**计划**：docs/superpowers/plans/2026-11-07-bag-height.md。

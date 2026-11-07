@@ -76,6 +76,13 @@ internal static class RailData
            ReadsPlayerBagOwner=true：本页取 State_Web_FuelGenerator.BagOwnerId（ReactiveProperty<long>，
            读 .Value——与别家裸 long 不同，ResolveBagOwner 该 case 单列）。 */
         new SceneDef{ Page="FuelGenerator",   Family="fg",      ReadsPlayerBagOwner=true, UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)) },
+        /* 暖炉 bagtabs 页（2026-11-07，暖炉移植批=bagtabs 族第二页）：游戏侧与燃油发电机**逐件镜像**——
+           State_Web_Heater.BagOwnerId（同为 ReactiveProperty<long>）+ Ac_Heater_RefreshBag/
+           FuelAdd/FuelReturn/ItemClick 同载荷动作族 + Heater.html 左面板 DOM 契约同名
+           （#backpackGrid/#fuelQueueZone/.fuel-slot/.panel-title/.info-bar/.hint-shift）。
+           mod 侧零新机制：JS SCENES.Heater.bagtabs 同一ensureBagtabs 装配（BAGTABS 页描述符指路），
+           ResolveBagOwner 该 case 同款 .Value 直读+十一验收 CtnGuard。 */
+        new SceneDef{ Page="Heater",          Family="ht",      ReadsPlayerBagOwner=true, UiType=Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Heater)) },
     };
 
     // ================= 公共入口 =================
@@ -131,6 +138,8 @@ internal static class RailData
                 case "DroneHub": GameCore.HotUpdate.ReduxUI.Ac_DroneHub_RefreshBag.SendAction(); break;
                 // 燃油发电机：feed 两跳后官方背包格/燃料槽重渲染（spec §5.3 收尾）
                 case "FuelGenerator": GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_RefreshBag.SendAction(); break;
+                // 暖炉（bagtabs 族第二页）：feed 两跳后官方背包格/料槽重渲染（Ac_Heater_RefreshBag 同名族）
+                case "Heater": GameCore.HotUpdate.ReduxUI.Ac_Heater_RefreshBag.SendAction(); break;
             }
         }
         catch (Exception e) { /* 刷新失败无害：下一周期数据门自然补 */ }
@@ -364,6 +373,20 @@ internal static class RailData
         catch { return null; }
     }
 
+    /// <summary>暖炉 Redux 状态（暖炉移植批=bagtabs 族第二页；State_Web_Heater 与 FuelGenerator
+    /// 字段级同构：BagOwnerId/FuelSlotCount/FuelItems——OpFeed 容量校验+OpSwitchBag 直写目标）。
+    /// 不可得=null。</summary>
+    internal static GameCore.HotUpdate.ReduxUI.State_Web_Heater HeaterState()
+    {
+        try
+        {
+            var rus = ReduxUi();
+            return rus?.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Heater)))
+                ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Heater>();
+        }
+        catch { return null; }
+    }
+
     /// <summary>
     /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
     /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
@@ -386,6 +409,7 @@ internal static class RailData
                 case "Trade": v = CabinetEverywherePlugin.ViewTrade?.Value ?? v; break;
                 case "DroneHub": v = CabinetEverywherePlugin.ViewDroneHub?.Value ?? v; break;
                 case "FuelGenerator": v = CabinetEverywherePlugin.ViewFuelGenerator?.Value ?? v; break;
+                case "Heater": v = CabinetEverywherePlugin.ViewHeater?.Value ?? v; break; /* 暖炉（bagtabs 族）：View_Heater 绑定默认 Fuel=与发电机同视角 */
             }
         }
         catch { }
@@ -457,6 +481,10 @@ internal static class RailData
         //（spec §5.4 对称拆装；仅本页带出=tradePrefs 页条件字段先例）
         if (sc?.Page == "FuelGenerator")
             sb.Append(",\"fgOn\":").Append(CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
+        // heaterOn（暖炉移植批）：EnableHeater 的契约消费链同 fgOn——false=JS fgFuelCtns 空表=拆除态=原版
+        //（仅本页带出=页条件字段先例同 fgOn/tradePrefs）
+        if (sc?.Page == "Heater")
+            sb.Append(",\"heaterOn\":").Append(CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
 
@@ -627,6 +655,9 @@ internal static class RailData
                     // 十一验收守卫：switchBag v2 会把柜子 id 写进该字段（官方状态直写）——柜子 id
                     // 不是玩家背包：拒用且不落会话缓存（防污染），回落缓存/PlayerId 正路。
                     "FuelGenerator" => CtnGuard(raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0),
+                    // 暖炉（bagtabs 族第二页）：State_Web_Heater.BagOwnerId 同为 ReactiveProperty<long>——
+                    // .Value 直读+十一验收 CtnGuard 同款（switchBag 直写的柜子 id 同样拒用防污染）。
+                    "Heater" => CtnGuard(raw?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Heater>()?.BagOwnerId?.Value ?? 0),
                     _ => 0,
                 };
             }

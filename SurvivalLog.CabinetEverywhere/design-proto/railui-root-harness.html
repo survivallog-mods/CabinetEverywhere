@@ -85,34 +85,42 @@ window.__HZ_READY__ = function () {
   var TAKE_SEQ = 0; /* take 搬运新叠 logicId 序列（950000+seq，终审建议-4 take mock 用） */
   var FGQ = [];     /* fuelgen：燃料队列 mock 态（feed 命令执行后入列；夹具 BagMsg fuelItems 驱动 DOM） */
   window.__HZ_FGQ__ = function () { return FGQ.slice(); };
-  /* fuelgen 九验收：官方通道事件捕获 + 当前官方视图 owner（switchBag mock 的 C# 保真态机） */
+  /* fuelgen 九验收：官方通道事件捕获 + 当前官方视图 owner（switchBag mock 的 C# 保真态机）。
+     暖炉移植批=bagtabs 族第二页：HTVIEW 模拟 State_Web_Heater.BagOwnerId（两页官方状态各自
+     独立，C# 按 ActivePage 派发——mock 侧同构分流）；BAGTABS 页注册表（页→视图态/消息名）驱动 */
   var FGVIEW = { owner: 0 }; /* 模拟 State_Web_FuelGenerator.BagOwnerId（switchBag v2 直写目标） */
+  var HTVIEW = { owner: 0 }; /* 模拟 State_Web_Heater.BagOwnerId（暖炉页 switchBag v2 直写目标） */
   var FGSESS = { bag: 0 }; /* 模拟 RailData._bagOwner 会话缓存（ResolveBagOwner 第②级） */
   window.__HZ_FGVIEW__ = function () { return FGVIEW.owner; };
-  /* mock 官方节律推送（十验收闪烁复现床）：按 FGVIEW.owner 组包官方形状 BagMsg——与游戏
+  window.__HZ_HTVIEW__ = function () { return HTVIEW.owner; };
+  function btView(page) { return page === 'Heater' ? HTVIEW : FGVIEW; }
+  function btMsg(page) { return page === 'Heater' ? 'WebUI_Heater_BagMsg' : 'WebUI_FuelGenerator_BagMsg'; }
+  /* mock 官方节律推送（十验收闪烁复现床）：按页视图 owner 组包官方形状 BagMsg——与游戏
      自己的周期推送（燃料刻度等）同构：永远带「当前状态 owner」的数据 */
-  window.__HZ_FAKEOFFICIALTICK__ = function (extra, forceOwner) { /* extra 并包字段；forceOwner=模拟野推送（如他路刷新带玩家背包——v1 失配监听的闪环驱动源） */
+  window.__HZ_FAKEOFFICIALTICK__ = function (extra, forceOwner, page) { /* extra 并包字段；forceOwner=模拟野推送（如他路刷新带玩家背包——v1 失配监听的闪环驱动源）；page=bagtabs 页（默认 FuelGenerator，暖炉传 'Heater'） */
+    page = page || 'FuelGenerator';
     var j = JSON.parse(JSON.stringify(MOCK));
-    var owner = forceOwner || FGVIEW.owner || MOCK.bag;
+    var owner = forceOwner || btView(page).owner || MOCK.bag;
     var srcArr = owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(owner)] || []);
     var icfgMap = {};
     for (var k = 0; k < j.icfg.length; k++) icfgMap[j.icfg[k][0]] = j.icfg[k];
     var FBT = { 10: [1, 600], 11: [1, 900] };
     var payload = { bagOwnerId: owner, bagItems: srcArr.map(function (r) { var ic = icfgMap[r[1]] || []; var fb = FBT[r[1]] || [0, 0]; return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2], name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] }; }) };
     if (extra) for (var k2 in extra) payload[k2] = extra[k2];
-    window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data: payload });
+    window.__HZ_POST__(page, { type: btMsg(page), data: payload });
   };
   var FGADDS = [], FGCLICKS = [];
   window.__HZ_FGADDS__ = function () { return FGADDS.slice(); };
   window.__HZ_FGCLICKS__ = function () { return FGCLICKS.slice(); };
   window.addEventListener('message', function (ev) {
     var m = ev.data;
-    if (!m || !m.type || m.sourcePageId !== 'FuelGenerator') return;
+    if (!m || !m.type || (m.sourcePageId !== 'FuelGenerator' && m.sourcePageId !== 'Heater')) return;
     if (m.type === 'FUEL_ADD') {
-      /* 官方 C# 保真应用：按页面 bagOwnerId（=FGVIEW）取走该物品→燃料队列+整包回推 */
+      /* 官方 C# 保真应用：按页面 bagOwnerId（=该页 VIEW 态）取走该物品→燃料队列+整包回推
+         （bagtabs 族两页同路：R.cmd switchBag 按 current 页分流组包） */
       FGADDS.push(m.data || {});
       var fid = Number(m.data && m.data.itemId) || 0;
-      var fown = FGVIEW.owner || MOCK.bag;
+      var fown = btView(m.sourcePageId).owner || MOCK.bag;
       var farr = fown === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(fown)] || []);
       var fidx = -1; for (var fi = 0; fi < farr.length; fi++) if (farr[fi][0] === fid) { fidx = fi; break; }
       if (fidx >= 0) {
@@ -120,7 +128,7 @@ window.__HZ_READY__ = function () {
         var fnm = ''; for (var fk = 0; fk < MOCK.icfg.length; fk++) if (MOCK.icfg[fk][0] === frow[1]) fnm = MOCK.icfg[fk][1];
         FGQ.push({ emoji: frow[1] === 10 ? '🪵' : '⛽', name: fnm, pct: '95%' });
         R.cmd('switchBag', { owner: fown === MOCK.bag ? 0 : fown }); /* 整包回推（视图+fuelItems 同 mock switchBag 口径） */
-        pushCtx('FuelGenerator');
+        pushCtx(m.sourcePageId);
       }
     }
     if (m.type === 'ITEM_CLICK') FGCLICKS.push(m.data || {});
@@ -236,10 +244,12 @@ window.__HZ_READY__ = function () {
          的推送同源同拍）。bagItems 行=mapItem/dropInterceptor/hover 消费面；burnable/burnValue
          按燃料表（pushCtx 同源表） */
       var owner = Number(payload.owner) || 0;
+      var pageSB = current || 'FuelGenerator'; /* mock C# ActivePage() 派发（bagtabs 族两页；cmd 只自当前场景帧发） */
+      var V = btView(pageSB);
       var j = JSON.parse(JSON.stringify(MOCK));
       if (owner === 0) {
-        /* C# ResolveBagOwner 保真：①FG 状态字段（容器 id 排斥——十一验收守卫）→②会话缓存→③PlayerId */
-        var st = FGVIEW.owner;
+        /* C# ResolveBagOwner 保真：①页状态字段（容器 id 排斥——十一验收守卫）→②会话缓存→③PlayerId */
+        var st = V.owner;
         var isCtn = MOCK.ctn.some(function (c) { return c[0] === st; });
         if (st > 0 && !isCtn) { FGSESS.bag = st; owner = st; }
         else if (FGSESS.bag > 0) owner = FGSESS.bag;
@@ -259,15 +269,16 @@ window.__HZ_READY__ = function () {
         return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2],
           name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] };
       });
-      FGVIEW.owner = owner; /* =C# st.BagOwnerId.Value 直写 */
+      V.owner = owner; /* =C# 该页 st.BagOwnerId.Value 直写（FGVIEW/HTVIEW 各自独立态） */
       if (owner === MOCK.bag) FGSESS.bag = owner; /* 官方刷新后背包解析会话缓存归真 */
-      window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data:
+      window.__HZ_POST__(pageSB, { type: btMsg(pageSB), data:
         { bagOwnerId: owner, bagCols: 12, bagRows: rows, bagItems: bagItems } });
-      log('mock C# switchBag→官方 BagMsg（owner=' + owner + ' items=' + bagItems.length + ' rows=' + rows + '）');
+      log('mock C# switchBag→官方 BagMsg（' + pageSB + ' owner=' + owner + ' items=' + bagItems.length + ' rows=' + rows + '）');
     }
     if (op === 'feed' && payload && payload.owner != null && payload.item) {
-      /* mock C# OpFeed 两跳保真（fuelgen spec）：柜中物品移除→燃料队列+1；队列 DOM 由夹具
-         BagMsg fuelItems 驱动——回发官方消息（data 只带 fuelItems，夹具 LAST 合并语义）+pushCtx */
+      /* mock C# OpFeed 两跳保真（fuelgen spec；bagtabs 族按 current 页分流）：柜中物品移除→
+         燃料队列+1；队列 DOM 由夹具 BagMsg fuelItems 驱动——回发官方消息（data 只带
+         fuelItems，夹具 LAST 合并语义）+pushCtx */
       var fsrcF = MOCK.items[String(payload.owner)] || [];
       var fiF = -1; for (var fjF = 0; fjF < fsrcF.length; fjF++) if (fsrcF[fjF][0] === payload.item) { fiF = fjF; break; }
       if (fiF >= 0) {
@@ -278,13 +289,14 @@ window.__HZ_READY__ = function () {
         /* 回推带当前视图 bag 数据（官方 C# feed 后整包重推=同构；缺 bagOwnerId/bagItems 会
            清格+owner 归 0=JS 失配自愈再拉柜视图——多一跳闪，mock 侧按官方整包口径给全） */
         (function () {
-          var owner = FGVIEW.owner || MOCK.bag;
+          var pageFD = current || 'FuelGenerator';
+          var owner = btView(pageFD).owner || MOCK.bag;
           var srcArr = owner === MOCK.bag ? MOCK.items.bag : (MOCK.items[String(owner)] || []);
           var jf = JSON.parse(JSON.stringify(MOCK));
           var icfgMap = {};
           for (var k = 0; k < jf.icfg.length; k++) icfgMap[jf.icfg[k][0]] = jf.icfg[k];
           var FBF2 = { 10: [1, 600], 11: [1, 900] };
-          window.__HZ_POST__('FuelGenerator', { type: 'WebUI_FuelGenerator_BagMsg', data:
+          window.__HZ_POST__(pageFD, { type: btMsg(pageFD), data:
             { bagOwnerId: owner, bagItems: srcArr.map(function (r) { var ic = icfgMap[r[1]] || []; var fb = FBF2[r[1]] || [0, 0]; return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2], name: ic[1] || '', icon: ic[2] || '', burnable: !!fb[0], burnValue: fb[1] }; }),
               fuelItems: FGQ.slice() } });
         })();
@@ -311,18 +323,23 @@ window.__HZ_READY__ = function () {
     Cooking: { family: 'bag' }, BrewPanel: { family: 'bag' }, RatCage: { family: 'bag' }, DyePanel: { family: 'bag' },
     Compressor: { family: 'cart0' }, Shredder: { family: 'cart' }, GreenhouseBuild: { family: 'cart' },
     ToolTable: { family: 'tt' }, Trade: { family: 'trade' }, DroneHub: { family: 'bag' },
-    FuelGenerator: { family: 'fg' } /* bagtabs 页（fuelgen spec）：ctx.view='fuel' 固定 */
+    FuelGenerator: { family: 'fg' }, /* bagtabs 页（fuelgen spec）：ctx.view='fuel' 固定 */
+    Heater: { family: 'ht' } /* bagtabs 族第二页（暖炉移植批）：ctx.view='fuel' 同视角 */
   };
   /* ctx.uniformWidth 测试旋钮（harness-width-floor 用）：C# [Rail] UniformBagWidth 直出的
      契约字段在夹具侧的建模——默认 12，测试改 window.__HZ_UNIW__ 后 __HZ_PUSH__ 重推生效 */
   window.__HZ_UNIW__ = 12;
   window.__HZ_FEEDFAIL__ = ''; /* fuelgen：ctx.feedFail 测试旋钮（置码后 __HZ_PUSH__ 生效，一次性由 JS 消费侧清） */
   window.__HZ_FGON__ = true;    /* fuelgen：ctx.fgOn 旋钮（C# EnableFuelGen 的夹具侧等价物，终审 Important1） */
+  window.__HZ_HTON__ = true;    /* heater：ctx.heaterOn 旋钮（C# EnableHeater 的夹具侧等价物，fgOn 同款） */
   /* fuelgen 实机修复批：__HZ_FGNUDGE__=ready 即投 BagMsg 开关（false=测试手动投——复现官方页
      渐进渲染竞态：默认 6×5 格先建、装配先于数据到达）；__HZ_FGROWS__=bagRows（真实玩家背包
-     18 行；调大重载=实机「调整背包高度后重开」复现路）。均需重载 FuelGenerator 帧后生效 */
+     18 行；调大重载=实机「调整背包高度后重开」复现路）。均需重载 FuelGenerator 帧后生效。
+     暖炉同款旋钮 __HZ_HTNUDGE__/__HZ_HTROWS__（暖炉移植批，重载 Heater 帧后生效） */
   window.__HZ_FGNUDGE__ = true;
   window.__HZ_FGROWS__ = 18;
+  window.__HZ_HTNUDGE__ = true;
+  window.__HZ_HTROWS__ = 18;
   /* v14 brew：ctx.brewP1/brewP2 测试旋钮（C# GameKey 直推字段的夹具建模；默认 0/0.5=
      官方界面兜底值；置值后 __HZ_PUSH__ 生效——P2≤P1 时 JS 应回兜底，harness §1③） */
   window.__HZ_BREWP1__ = 0;
@@ -336,6 +353,7 @@ window.__HZ_READY__ = function () {
       brewP1: window.__HZ_BREWP1__, brewP2: window.__HZ_BREWP2__
     };
     if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.fgOn = window.__HZ_FGON__ !== false; }
+    if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.heaterOn = window.__HZ_HTON__ !== false; }
     return ctx;
   }
   var MOCK = {
@@ -410,7 +428,7 @@ window.__HZ_READY__ = function () {
        +2=17 列，burnable@15/burnValue@16=normIcfg 直读位；夹具基座冻结 14 列缺 uses 尾列，
        照 brew 先例补 [uses 占位 0] 对齐。五验收纠偏：旧 14+2 直接拼=burnable 落 14 位、
        burnValue 丢——火苗角标靠 600 真值碰巧亮、热值恒 — 的夹具侧假错） */
-    if (key === 'FuelGenerator') {
+    if (key === 'FuelGenerator' || key === 'Heater') { /* bagtabs 族两页同源燃料尾列（暖炉移植批起并枝） */
       var FB = { 10: [1, 600], 11: [1, 900] };
       j.icfg = j.icfg.map(function (r) { var f = FB[r[0]] || [0, 0]; return r.concat([0, f[0], f[1]]); });
     } else {
@@ -432,7 +450,7 @@ window.__HZ_READY__ = function () {
   /* ---- 12 iframe 建（SCENES 键=iframe id，fixture 文件同名；Trade 模板=TradeUI.html 拷贝）----
      全部隐藏建、后台预备；场景切换=纯 display 切换 + 投喂数据（Root hidePage/loadPage 语义）。 */
   var SCENE_KEYS = ['BackpackUI', 'MaterialRack', 'Cooking', 'BrewPanel', 'RatCage', 'DyePanel',
-    'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade', 'DroneHub', 'FuelGenerator'];
+    'Compressor', 'Shredder', 'GreenhouseBuild', 'ToolTable', 'Trade', 'DroneHub', 'FuelGenerator', 'Heater'];
   var cont = document.getElementById('iframe-container');
   var frames = {}, btns = {};
   var bar = document.getElementById('hzScenes');
@@ -460,6 +478,7 @@ window.__HZ_READY__ = function () {
   function nudge(key) {
     try {
       if (key === 'FuelGenerator' && window.__HZ_FGNUDGE__ === false) return; /* 竞态测试：禁自动投，由测试手动 postMessage */
+      if (key === 'Heater' && window.__HZ_HTNUDGE__ === false) return; /* 暖炉同款竞态旋钮 */
       var f = frames[key];
       if (!f || !f.contentWindow) return;
       /* v1.8.2：全 12 页官方 BagMsg 真形状喂食——官方格（壳内）真渲染 .item，
@@ -477,6 +496,11 @@ window.__HZ_READY__ = function () {
         FuelGenerator: ['WebUI_FuelGenerator_BagMsg', { bagOwnerId: 900001, bagCols: 12, bagRows: window.__HZ_FGROWS__ || 18,
           bagItems: bagItems.map(function (b) { return { itemId: b.itemId, x: b.x, y: b.y, w: 1, h: 1, emoji: '📦', name: '物品' + b.itemId, count: b.count, burnable: false }; }),
           fuelSlotCount: 8, fuelItems: [], generatorName: '中型' }],
+        /* 暖炉（bagtabs 族第二页）：官方 BagMsg 真形状（fuelSlotCount 默认 8 料槽+FuelRate 50——
+           与游戏 Heater.html 兜底同值；heaterName 官方页不上屏缺省） */
+        Heater: ['WebUI_Heater_BagMsg', { bagOwnerId: 900001, bagCols: 12, bagRows: window.__HZ_HTROWS__ || 18,
+          bagItems: bagItems.map(function (b) { return { itemId: b.itemId, x: b.x, y: b.y, w: 1, h: 1, emoji: '📦', name: '物品' + b.itemId, count: b.count, burnable: false }; }),
+          fuelSlotCount: 8, fuelRate: 50, fuelItems: [] }],
         Cooking: ['WebUI_Cooking_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems, workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] }],
         BrewPanel: ['WebUI_Brew_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],
         RatCage: ['WebUI_RatCage_BagMsg', { bagOwnerId: 900001, bagCols: 10, bagRows: 6, bagItems: bagItems }],

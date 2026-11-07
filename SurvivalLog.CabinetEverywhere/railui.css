@@ -267,7 +267,12 @@
   min-width: calc(var(--slot-size, 40px) * 12 + var(--slot-gap, 6px) * 11 + var(--grid-padding, 10px) * 2 + 34px);
 }
 .srfg-on > .panel-title, .srfg-on > .info-bar, .srfg-on > .hint-shift { display: none !important; }
-.srfg-on > .grid-container { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+/* 格区滚动视窗：滚动器=mod 包装层 .srfg-gridscroll（ensureBagtabs 把官方 #backpackGrid 包进去），
+   **不再让 .grid-container 自己滚**——webui-bag getGridCoordinates/官方落点全按格 rect 顶=行 0
+   对齐，格自滚=rect 变裁剪窗 → 滚动后拖拽落点整段偏上/被拒（v1.8.14，BackpackUI v1.8.13 同案；
+   作者实报「燃料页背包/柜子滚动后无法移动、落点在上方」）。包装层=唯一 flex 子项吃满剩余高，
+   格全高在内滚动=格 rect 恒全高内容矩形，官方坐标数学零改动自洽 */
+.srfg-gridscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 /* 页签栏=官方 .bag-tabs 值 + 宽帽：官方 Cooking JS 对 .bag-tabs 显式设宽（L1714 w*15/16）防
    多页签撑宽面板——此处同意图改 CSS calc（12 列格内容宽 568：40*12+6*11+pad20+border2），
    无测量的竞态面。实机回退：不加 align-self:center（官方 Cooking 的收缩居中观感）——原型 v6
@@ -291,10 +296,10 @@
   user-select: none; font-family: inherit; transition: background .15s, color .15s, opacity .15s; }
 .srfg-tabbtn:hover:not(:disabled) { background: rgba(251,176,52,.12); color: #fbb034; border-color: rgba(251,176,52,.5); }
 .srfg-tabbtn:disabled { opacity: .3; cursor: not-allowed; }
-.srfg-on > .grid-container { scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
-.srfg-on > .grid-container::-webkit-scrollbar { width: 8px; }
-.srfg-on > .grid-container::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
-.srfg-on > .grid-container::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
+.srfg-gridscroll { scrollbar-width: thin; scrollbar-color: #6b5b46 #14100c; }
+.srfg-gridscroll::-webkit-scrollbar { width: 8px; }
+.srfg-gridscroll::-webkit-scrollbar-track { background: #14100c; border-radius: 4px; }
+.srfg-gridscroll::-webkit-scrollbar-thumb { background: #6b5b46; border-radius: 4px; }
 /* 警示行绝对悬浮（底行上方）：不占布局流——高度锁跨「有/无警示」两态恒定，不因弹警示跳高。
    悬浮提示（名+热值）走官方页面自带 #recipeTooltip（零自定义样式）；左键详情走游戏原生面板 */
 .srfg-warn { position: absolute; left: 15px; right: 15px; bottom: 62px; z-index: 50; pointer-events: none;

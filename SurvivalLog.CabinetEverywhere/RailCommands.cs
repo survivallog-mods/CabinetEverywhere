@@ -557,10 +557,18 @@ internal static class RailCommands
         bool burnable = false; try { burnable = ic != null && ic.Burnable; } catch { }
         if (!burnable) { RailData.MarkFeedFail("notfuel"); return; }
 
-        // ② 燃料槽容量权威校验（State_Web_FuelGenerator 直读；读不到=放行交官方 Reducer 兜底）
-        var st = RailData.FuelGenState();
+        // ② 燃料槽容量权威校验（bagtabs 族按页取 state 直读；读不到=放行交官方 Reducer 兜底）
         int slots = 0, queued = 0;
-        try { slots = st?.FuelSlotCount?.Value ?? 0; queued = st?.FuelItems?.Count ?? 0; } catch { }
+        if (RailData.ActivePage() == "Heater")
+        {
+            var stH = RailData.HeaterState();
+            try { slots = stH?.FuelSlotCount?.Value ?? 0; queued = stH?.FuelItems?.Count ?? 0; } catch { }
+        }
+        else
+        {
+            var st = RailData.FuelGenState();
+            try { slots = st?.FuelSlotCount?.Value ?? 0; queued = st?.FuelItems?.Count ?? 0; } catch { }
+        }
         if (slots > 0 && queued >= slots) { RailData.MarkFeedFail("full"); return; }
 
         // ③ 第一跳：柜→背包（整叠，silent=不弹官方 toast——结果经数据回推自渲染）
@@ -598,8 +606,12 @@ internal static class RailCommands
         }
         if (target <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 重解析失败（背包无目标叠）"); return; }
 
-        // ⑤ 第二跳：官方加油动作重放（与页面 FUEL_ADD 按钮同入口）
-        GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_FuelAdd.SendAction("{\"itemId\":" + target + "}");
+        // ⑤ 第二跳：官方加油动作重放（与页面 FUEL_ADD 按钮同入口；bagtabs 族按页派发——
+        // Ac_Heater_FuelAdd/Ac_FuelGenerator_FuelAdd 同载荷 {itemId}）
+        if (RailData.ActivePage() == "Heater")
+            GameCore.HotUpdate.ReduxUI.Ac_Heater_FuelAdd.SendAction("{\"itemId\":" + target + "}");
+        else
+            GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_FuelAdd.SendAction("{\"itemId\":" + target + "}");
         VLog(c.Op, $"owner={c.Owner} item={c.Item}→bag 重解析={target} cfg={cfgId}（两跳完成）");
     }
 
@@ -620,6 +632,24 @@ internal static class RailCommands
         else if (!Whitelisted(owner))
         {
             CabinetEverywherePlugin.Log.LogWarning($"[CERail] switchBag 丢弃：owner={owner} 不在白名单（红线2）");
+            return;
+        }
+        /* bagtabs 族按页派发（暖炉移植批）：State_Web_Heater 与 State_Web_FuelGenerator 同构
+           （BagOwnerId 同 ReactiveProperty<long> + Ac_Heater_RefreshBag 同名动作族）——官方状态
+           直写语义两页一致；default=首发页燃油发电机。 */
+        if (RailData.ActivePage() == "Heater")
+        {
+            var stH = RailData.HeaterState();
+            if (stH == null || stH.BagOwnerId == null) { WarnOnce("switch:nost", "switchBag 丢弃：Heater 状态不可得"); return; }
+            try
+            {
+                long cur = stH.BagOwnerId.Value;
+                if (cur == owner) return; /* 同值守卫：已在目标 owner=免命令风暴（官方刷新也免） */
+                stH.BagOwnerId.Value = owner;
+                GameCore.HotUpdate.ReduxUI.Ac_Heater_RefreshBag.SendAction();
+                VLog(c.Op, "owner=" + cur + "→" + owner + "（官方状态直写+官方刷新）");
+            }
+            catch (Exception e) { WarnOnce("switch:write", "BagOwnerId 直写异常(Heater): " + e.Message); }
             return;
         }
         var st = RailData.FuelGenState();

@@ -84,7 +84,8 @@ for (const key of SCENE_KEYS) {
       const css = st ? st.textContent || '' : '';
       return {
         nativeCss: !!st,
-        scroll: /max-height:560px/.test(css) && /scrollbar-gutter:stable/.test(css),
+        scroll: /\.grid-wrapper\{[^}]*max-height:560px/.test(css) && /scrollbar-gutter:stable/.test(css),
+        scrollOnWrapper: /\.grid-wrapper\{[^}]*overflow-y:scroll/.test(css) && !/\.grid-container\{[^}]*overflow-y:scroll/.test(css),
         noCover: /box-sizing:content-box;padding-right:12px/.test(css),
         weightHide: /\.bag-panel\.is-storage \.weight-section\{display:none/.test(css),
         noRail: !document.getElementById('srRail'),
@@ -93,8 +94,8 @@ for (const key of SCENE_KEYS) {
     });
     check('native-mounted:BackpackUI', nr.nativeCss && nr.noRail && nr.noWrap,
       `srNativeBp=${nr.nativeCss} 无rail=${nr.noRail} 无#srp=${nr.noWrap}（官方页整页原生）`);
-    check('native-rules:BackpackUI', nr.scroll && nr.noCover && nr.weightHide,
-      `高度滚动=${nr.scroll} 滚动条不压格=${nr.noCover} 柜侧隐负重=${nr.weightHide}`);
+    check('native-rules:BackpackUI', nr.scroll && nr.noCover && nr.weightHide && nr.scrollOnWrapper,
+      `高度滚动=${nr.scroll} 滚动器=.grid-wrapper=${nr.scrollOnWrapper} 滚动条不压格=${nr.noCover} 柜侧隐负重=${nr.weightHide}（v1.8.13：格本体非滚动器=官方拖拽坐标自洽）`);
     continue;
   }
   const f = await waitRail(key);

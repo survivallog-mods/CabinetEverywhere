@@ -117,6 +117,8 @@
 **观察器纪律（本模式铁律）**：所有 DOM 写必须签名/同值守卫——innerHTML 串比较与 active 类修正
 永不相等=自激环（59 万写/秒渲染器暴毙）；拆除态不得重建（无燃料柜门）。
 
+**暖炉同构扩页（2026-11-07 暖炉移植批）**：SCENES.Heater 为第 14 个装配场景（bagtabs 族第二页）——同一 ensureBagtabs 四件装配，页差异全走 JS BAGTABS 页描述符：宿主选择器 .heater-system > .panel:not(.heater-panel)、cfg 门 ctx.heaterOn（Access.EnableHeater）、满员文案「炉膛已满」（页官方 warningFuelFull 同词）。右侧炉体面板（炉门火舆 SVG/点火钮/供暖读数）零改动；官方 tooltip 元素 id 页异（#fuelTooltip，发电机=#recipeTooltip）。视觉规范与 §0b 逐条同款。
+
 ## 0. 动作保真红线（总纲，2026-10-31 作者总裁决）
 
 **本 mod 的职责 = 重构储物系统的布局与导航（壳），不重造储物系统（物品格）。**

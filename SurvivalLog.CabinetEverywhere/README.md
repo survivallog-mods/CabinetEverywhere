@@ -15,6 +15,7 @@
 - **批量制作不卡**：工作台按当前视图收窄取料与扫描范围（所见即所取料范围），并对袋刷新做帧合并——柜子再多，批量制作也不因页签变多而卡顿。
 - **默认排除功能容器**：自制工具台、载具（购物车/自行车/汽车等）、染料桶、材料堆、厨房电器、无人机货舱/中控台等非储物容器不会混进页签；追加/排除名单可在配置里自定义。
 - **燃油发电机界面柜子页签（2026-11-07 起）**：左侧背包面板页签化（背包+带「燃料」标签的柜子），点柜中燃料整组直送发电机（与官方从背包加油同口径）；无燃料标签柜时该界面与原版一致。详见 DESIGN.md §11。
+- **暖炉界面柜子页签（2026-11-07 起）**：与燃油发电机同构移植（bagtabs 族第二页）——左侧背包面板页签化（背包+燃料标签柜），右键柜中燃料整组直送暖炉；右侧炉体面板零改动，无燃料柜时与原版一致。独立开关 EnableHeater。
 
 ## 三、安全与还原
 
@@ -44,6 +45,8 @@
 | Access.EnableRatCage | true | 老鼠笼界面注入柜子页签 |
 | Access.EnableBrew | true | 酿酒桶界面注入柜子页签 |
 | Access.EnableDye | true | 颜料桶界面注入柜子页签 |
+| Access.EnableFuelGen | true | 燃油发电机界面柜子页签（背包+燃料标签柜，右键整组直送发电机）；false=还原官方 |
+| Access.EnableHeater | true | 暖炉界面柜子页签（与燃油发电机同构独立开关；右键整组直送暖炉）；false=还原官方 |
 | Access.IncludeFurnitureIds | （空） | 追加的家具 ConfigId（逗号分隔，强制加入） |
 | Rail.BackpackHeight | `0` | **高度修改（2026-11-07 起）**：背包行数——普通/登山/仓管背包共 9 包统一（原生 18）；0=恢复原生；改值当帧生效。宽度恒 12 不可改（原 UniformBagWidth 键退役，老 cfg 残留值忽略） |
 | Rail.Height_110002 / 110001 / 110000 / 110008 | `0` | 小/中/大/超大型置物架行数（原生 8/10/10/12）；0=恢复原生 |
@@ -66,6 +69,8 @@
 | Scenario.View_GreenhouseBuild | Material | 温室工程台界面视图 |
 | Scenario.View_Trade | Browser | 无人机交易界面视图 |
 | Scenario.View_DroneHub | Browser | 调度机队（无人机站）界面视图 |
+| Scenario.View_FuelGenerator | Fuel | 燃油发电机界面视图 |
+| Scenario.View_Heater | Fuel | 暖炉界面视图（与发电机同视角） |
 | Debug.Verbose | false | 输出每条明细日志 |
 | Debug.ListOnReady | true | 启动时在日志列出发现的全部柜子名单（首次核对用，可关） |
 | Debug.DumpFurniture | false | 排查"新柜子不生效"用：置 true 后（约 5 秒内生效）在日志列出家中全部带储物格家具明细，平时关 |

@@ -78,9 +78,11 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
     internal static ConfigEntry<ScenarioView> ViewCooking, ViewRatCage, ViewBrewPanel, ViewDyePanel, ViewCompressor,
-                                              ViewToolTable, ViewShredder, ViewGreenhouseBuild, ViewTrade, ViewDroneHub, ViewFuelGenerator;
+                                              ViewToolTable, ViewShredder, ViewGreenhouseBuild, ViewTrade, ViewDroneHub, ViewFuelGenerator, ViewHeater;
     // 燃油发电机柜子页签总开关（2026-11-07 二十一批后新增页：bagtabs 装配，spec fuelgen-cabinet-tabs）
     internal static ConfigEntry<bool> EnableFuelGen;
+    // 暖炉柜子页签总开关（暖炉移植批=bagtabs 族第二页：与 EnableFuelGen 同构独立开关，不联动）
+    internal static ConfigEntry<bool> EnableHeater;
 
     internal static volatile bool Rerun = true;
 
@@ -175,6 +177,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             "燃油发电机（Fuel=只显示带「燃料」标签的柜子；spec 2026-11-06-fuelgen-cabinet-tabs）" + viewDesc);
         EnableFuelGen = Config.Bind("Access", "EnableFuelGen", true,
             "燃油发电机界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送发电机；false=界面还原官方。");
+        // 暖炉（bagtabs 族第二页，暖炉移植批 2026-11-07）：Fuel 视图默认与发电机同视角（烧火同语义）
+        ViewHeater          = Config.Bind("Scenario", "View_Heater",          ScenarioView.Fuel, "暖炉" + viewDesc);
+        EnableHeater = Config.Bind("Access", "EnableHeater", true,
+            "暖炉界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送暖炉；false=界面还原官方（与燃油发电机同构、独立开关）。");
 
         System.EventHandler reload = (object s, System.EventArgs e) => { Rerun = true; };
         IncludeFurnitureIds.SettingChanged += reload;
@@ -197,6 +203,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewDroneHub.SettingChanged += reload;
         ViewFuelGenerator.SettingChanged += reload;
         EnableFuelGen.SettingChanged += reload;
+        ViewHeater.SettingChanged += reload;
+        EnableHeater.SettingChanged += reload;
         DumpFurniture.SettingChanged += (object s, System.EventArgs e) => { CabinetCatalog.DumpRequested = true; };
 
         // General.Enabled=false：不启 Ticker/不装合并补丁，零日志零改写
