@@ -233,15 +233,15 @@
    雅黑无此字重→合成粗体（观感「字体不对字太大」），胖字挤窄弹窗→换行。nowrap+弹窗按内容
    自适应宽（max-content）双保险不换行。类挂 #srRail（render 按场景），#srp 为外层 wrap——
    后代式作用域；其他页菜单零改动。 */
-#srp .sr-dyepig .sr-popfsort{left:10px;right:auto;width:max-content;min-width:140px;
+#srp .sr-dyepig .sr-popfsort{left:10px;right:auto;width:max-content;min-width:120px;
   background:#1e1e22;border-color:#3a3a42;border-radius:12px}
-#srp .sr-dyepig .sr-popfsort .sr-popbody{padding:8px;gap:8px}
-#srp .sr-dyepig .sr-fsopt{min-height:34px;padding:0 12px;gap:9px;border-radius:9px;white-space:nowrap;
-  background:#26262b;border-color:#323238;color:#d8d8dc}
+#srp .sr-dyepig .sr-popfsort .sr-popbody{padding:6px;gap:5px}
+#srp .sr-dyepig .sr-fsopt{min-height:30px;padding:0 10px;gap:7px;border-radius:8px;white-space:nowrap;
+  background:#26262b;border-color:#323238;color:#d8d8dc;font-size:11px} /* 作者调字令：再小一号(12→11)+间距收紧(行距8→5/内距12→10/行高34→30) */
 #srp .sr-dyepig .sr-fsopt:hover{color:#fff;background:#2f2f36;border-color:#4a4a54}
 #srp .sr-dyepig .sr-fsopt.active{color:#f0b03c}
-#srp .sr-dyepig .sr-fsopt .f-ico{width:16px;height:16px;font-size:14px}
-#srp .sr-dyepig .sr-fsopt .sr-fswatch{width:14px;height:14px}
+#srp .sr-dyepig .sr-fsopt .f-ico{width:14px;height:14px;font-size:12.5px}
+#srp .sr-dyepig .sr-fsopt .sr-fswatch{width:12px;height:12px}
 /* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale）。
    v1.8.10 十三批：z-index 5→50——官方 webui-bag/Vue 格 .item 自带 z-index:10，5 被物品格
    整层盖住=「角标画了看不见」（作者实机实锤：DOM 46 个角标全在、视觉零显示；热注入 50

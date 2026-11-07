@@ -147,7 +147,7 @@ function check(name, ok, detail) {
     return { h: opt.offsetHeight, fs: cs.fontSize, fw: cs.fontWeight, nw: cs.whiteSpace, cls: document.getElementById('srRail').className.indexOf('sr-dyepig') >= 0 };
   });
   let ms = await menuStyle('DyePanel');
-  check('S2-style-dye-airier', ms.cls && ms.h === 34 && ms.fs === '12px' && ms.nw === 'nowrap' && ms.fw === '400', JSON.stringify(ms)); /* 报障修：字体/字号/字重继承基座(=页脚同源)+nowrap */
+  check('S2-style-dye-airier', ms.cls && ms.h === 30 && ms.fs === '11px' && ms.nw === 'nowrap' && ms.fw === '400', JSON.stringify(ms)); /* 作者调字令：11px/30行高+nowrap */
   const btnLblD = () => frameEl('DyePanel').evaluate(() => document.getElementById('srFoodSortLbl').textContent);
   await frameEl('DyePanel').evaluate(() => { document.getElementById("srFoodSort").click(); const b3 = document.querySelector('[data-fsort="pig:3"]'); if (b3) b3.click(); });
   check('S2-label-pig', (await btnLblD()) === '红', await btnLblD());
