@@ -3,7 +3,7 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
-## v1.9.1（2026-11-08，筛选下拉回归批（含实机批改五轮）+ 交易页「回应求助」柜子页签补挂批）
+## v1.9.2（2026-11-08，交易页「回应求助」柜子页签补挂批 v2——根因修正收口）
 
 **作者实报（2026-11-08）**：无人机交易 **回应求助** 页面没有显示储物柜的页签栏（正常交易页
 有——同一 TradeUI，差异只在入口路）。
@@ -16,17 +16,35 @@
   SwitchTradeToDispatchAsync 特意「等 UI 关净→开页→逐帧等挂载→才请求」=官方自己知道该时序）；
   选人（PickRosterCore）只切 phase 进派送态，全程无重发 → 柜子页签在该路永不出现。正常终端
   交易路时序无此竞态=页签齐全——故「正常交易有、回应求助没有」。
-- **修法（TradeTabs.cs，DrawerTabs 同页同款先例）**：TradeUI 激活期间对 State_Web_TradeUI.BagTabs
-  做 Ensure——HomeInstances（=白名单同源柜子集）里缺页签的逐台尾插 BagTabEntry POCO（视图
-  View_Trade 谓词+筛选下拉 sel 同 TabGate 单一口径；cols/rows live 读 BagCache→Config_Bag.Size
-  =官方快照宽度问题的同源自愈口径）。FastPoll 开页翻转短窗每帧抢跑（治开页闪「先背包后柜子」）
-  +0.5s 轮询覆盖 roster→pick 页中重建（官方重建即清补挂条目，≤0.5s 收敛=抽屉页签既有节奏）。
-  正常交易路官方原生已含全部白名单柜=零动作幂等；重开界面即还原官方（纯视图层，零配置/存档写）。
-  门=General.Enabled + EnableCraftSource（交易柜子页签本就是白名单族特性，cfg 原句「白名单注入：
-  工作台/无人机交易/…的柜子页签」——本补是同一承诺在回应求助页兑现）。语义边界同抽屉页签：
-  页签=手动搬运，回应求助装货本就全手动。
-- 待实机验收：电台接求助单→回应求助→选人后背包区页签栏应出现柜子页签（+工作台抽屉），
-  切柜取物装无人机正常；正常终端交易页无回归。
+- **修法 v2（TradeTabs.cs 走官方源名单 + railui.page.js 脱文档宿主兜底；v1 状态层直挂已证伪）**：
+  - **v1 教训（CDP 在机取证定谳）**：向 BagTabs 列表尾插+Repush（DrawerTabs 同款）**页面零反应**——
+    页面消费的唯一数据源是 `[WebBind_String("_BagMsg","bagTabsJson")] BagTabsJson`（ReactiveProperty，
+    dump@223099）；BagTabs 列表只是 reducer 工作集，RebuildBagTabs(0x2D56860) 手搓 StringBuilder
+    重序列化 json 才推送，MarkAllMsgDirty 只会把 msg 里旧字符串原样重发。实测 C# 列表已含 23 柜
+    +抽屉、页面 tabs=1（仅背包）。（同病根提醒：DrawerTabs 交易页抽屉页签/TabGate.PollTrade 列表级
+    修剪重排/FixStaleTradeSizes 宽度自愈——全是列表级写=交易页零渲染，历来「工作正常」实为原生
+    路径恰好自足；后续批另修。）
+  - **C#（TradeTabs.Ensure 重写）**：HomeInstances（=白名单同源柜子集，View_Trade 谓词+筛选 sel
+    同 TabGate 单一口径过滤）缺席柜子逐台造 TradeContainerInfo{OwnerId/FurnitureConfigId} 追加进
+    **State.Containers（RA_SetContainerTabs 的 0xF8 源名单字段）**，有增量即直调游戏自家
+    `Ac_TradeUI_SetContainerTabs.SendAction(合并表)`——官方 reducer 全链自跑（Containers 落位 →
+    RebuildBagTabs 原生重建列表+json+推送、命名/尺寸全官方口径 → phase=trade 再 Refresh）。开页
+    翻转短窗 FastPoll 抢跑（C# 帧级触发早于 iframe 装载=首渲染即带柜子页签）+0.5s 轮询覆盖 state
+    重建；派发 0.5s 节流防队列连打。后续官方重建（切页签等）都从 Containers 读=补挂柜子零闪烁
+    原生存活；正常交易路官方已在=零动作幂等；纯 UI 态写（零配置/存档写），重开界面即还原官方。
+  - **rail JS（ensureTabsInSlot 脱文档宿主兜底）**：另一半个根因——CERail 替换背包列宿主后
+    （#srp 原位替换），Vue 后到的 tabs>1 会在**脱文档的原宿主**里建 .bag-tabs，doc 域查询永远
+    miss=页签槽死空（本会话首开若走回应求助路则**整会话交易页都没页签**——正常交易页也躺枪的
+    机理）。修=mount 缓存被替换宿主（DEADHOST，RACKEL 同款纪律），ensureTabsInSlot doc 域 miss
+    时从脱文档宿主取件搬进 #srTabs 槽（Vue 按引用继续 patch=mount 期 reparent 同语义；宿主
+    复活/换文档守卫让位 doc 查询路）。
+  - 门=General.Enabled + EnableCraftSource（交易柜子页签本就是白名单族特性，cfg 原句「白名单注入：
+    工作台/无人机交易/…的柜子页签」——本补是同一承诺在回应求助页兑现）。语义边界同抽屉页签：
+    页签=手动搬运，回应求助装货本就全手动。
+- 待实机验收：电台接求助单→回应求助→选人后背包区页签栏应出现柜子页签，切柜取物装无人机正常；
+  同一会话内再开正常终端交易页页签齐全；筛选下拉+视图语义无回归。
+
+## v1.9.1（2026-11-08，筛选下拉回归批（含实机批改五轮）+ 交易页「回应求助」柜子页签补挂批 v1——v1 已被上节 v1.9.2 根因修正取代）
 
 **作者令（2026-11-08）**：v1.7.0 做过「筛选页签栏显示哪些标签的柜子」的筛选按钮，后面版本
 升级时丢了——加回来，放到交易/调度机队界面，挨着这版的排序按钮。**实机批改三条（同日）**：

@@ -2689,6 +2689,7 @@
        官方原样）；其余场景换宿主本体 */
     var replaceTarget = bpPanel || host;
     replaceTarget.parentNode.replaceChild(wrap, replaceTarget);
+    DEADHOST[sceneKey] = replaceTarget; /* 回应求助批：脱文档宿主存档——后建 v-if 件兜底取件用（见 ensureTabsInSlot） */
     /* v1.8.7 核心还原：官方页签栏 DOM 原件挂进壳的 #srTabs 槽（取代销毁+建桩）——
        官方页面 JS 按 id/class 渲染页签（getElementById/querySelector 与位置无关，同文档
        照常命中），pin 槽/滚动按钮/active 类/locked 态全部官方原生；A/D 步进（C# 侧
@@ -2786,6 +2787,9 @@
      hasActive 字段清单照抄：{bagOwnerId, bagOwnerKey, activeLeftTab, activeTab}。 */
   var TABS = {}; /* sceneKey → extractTabs 归一化页签数组缓存（String|null[]；tt/cart 索引族解 active/forge 对位用） */
   var RACKEL = {}; /* 二十一批：sceneKey → 官方 rack 行视图宿主（mount 解析存档；ensureRackInSlot 对账入槽）。材料架页签激活时官方藏格显行视图——宿主必须随官方格一起进壳，否则「格被藏+行视图不可见」=内容区整片黑 */
+  var DEADHOST = {}; /* 回应求助批（2026-11-08）：sceneKey → 被 #srp 替换下来的官方宿主原件（脱文档，
+     Vue 仍按引用在其上 patch）。v-if 件（Trade .bag-tabs）在 mount 期缺席、后到的数据把它建进
+     脱文档宿主时，doc 域查询永远 miss——ensureTabsInSlot 以本表兜底取件（rack 批 RACKEL 同款纪律）。 */
 
   /* ---- extractTabs（tagfilter 原样移植：*_BagMsg → 页签 owner 数组，含 null 占位维持对齐）---- */
   function normOwner(t) {
@@ -3809,6 +3813,16 @@
       var t = sc.tabs.charAt(0) === '#'
         ? doc.getElementById(sc.tabs.slice(1))
         : doc.querySelector(sc.tabs);
+      if (!t) {
+        /* 回应求助批（2026-11-08）：doc 域 miss 且宿主已替换——v-if 件（Trade .bag-tabs：
+           bag.tabs.length>1 才建）晚到数据把它建进了**脱文档的原宿主**里，永远查不到。
+           DEADHOST 兜底取件搬进槽（Vue 按元素引用继续 patch=mount 期 reparent 同语义）。
+           守卫：宿主已复活（回文档）/换文档（iframe 重载）都让位上面的 doc 查询路。 */
+        var dh = DEADHOST[f.key];
+        if (dh && !dh.isConnected && dh.ownerDocument === doc) {
+          try { t = dh.querySelector(sc.tabs) || null; } catch (e) { t = null; }
+        }
+      }
       if (t && t !== slot) { slot.appendChild(t); bindTabDrag(t, f.key); scrollActiveTabIntoView(slot); }
     } catch (e) { }
   }

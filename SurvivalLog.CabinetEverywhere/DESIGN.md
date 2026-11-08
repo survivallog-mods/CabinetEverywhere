@@ -109,14 +109,19 @@
   互通），宽度入 SizeEngine 目标集直写（RailUi.DrawerBagIds）；备料格（1010 家具包）9 配置退场
   页签；抽屉另补进 交易/粉碎机 页签（DrawerTabs.cs 视图层注入）。**十七批的换绑方案已整体退役**
   （误判：把工具台家具的备料包当抽屉——详见 CHANGELOG 十八批）。
-- **交易页「回应求助」柜子页签补挂（2026-11-08，TradeTabs.cs）**：电台回应求助路（OnBtOpenTradeRosterUI）
-  开页建全新 state 后**同帧**发 3049 容器收集请求，晚到即丢（对照：官方另一条派送路
-  SwitchTradeToDispatchAsync 特意等 UI 挂载后才请求）；选人只切 phase 无重发 → 柜子页签在该路
-  永不出现（正常终端交易路时序无竞态=页签齐全，故「正常有、回应求助没有」；RVA 取证全录
-  TradeTabs.cs 头注）。修=TradeUI 激活期间对 State_Web_TradeUI.BagTabs 做 Ensure（DrawerTabs
-  同页同款 POCO 尾插）：HomeInstances 缺页签逐台补（View_Trade 谓词+筛选 sel 同 TabGate 单一口径，
-  尺寸 live 读 BagCache→Config_Bag.Size）；正常路原生已在=零动作幂等；门=General+EnableCraftSource
-  （交易柜子页签本就是白名单族特性）；FastPoll 翻转短窗+0.5s 轮询覆盖 roster→pick 页中重建。
+- **交易页「回应求助」柜子页签补挂（2026-11-08，TradeTabs.cs v2 + railui.page.js 兜底）**：双根因。
+  ①电台回应求助路（OnBtOpenTradeRosterUI）开页建全新 state 后**同帧**发 3049 容器收集请求，
+  晚到即丢（对照：官方另一条派送路 SwitchTradeToDispatchAsync 特意等 UI 挂载后才请求）；选人
+  只切 phase 无重发 → 该路 Containers 源名单恒空（正常终端交易路时序无竞态=页签齐全；RVA 全录
+  TradeTabs.cs 头注）。②页面只消费 BagTabsJson ReactiveProperty（WebBind 直绑 _BagMsg；BagTabs
+  列表是 reducer 工作集，改列表页面零感知=列表级写全废，DrawerTabs/TabGate.PollTrade/FixStale-
+  TradeSizes 在交易页的列表级写同病）+CERail 替换背包列宿主后 Vue 晚建 .bag-tabs 落**脱文档宿主**
+  =doc 查询 miss 页签槽死空（会话首开走求助路则整会话交易页无页签）。修=TradeTabs.Ensure 走
+  **官方源名单**：HomeInstances 缺席柜子（View_Trade 谓词+sel 同 TabGate 口径）造 TradeContainerInfo
+  进 State.Containers，直调 `Ac_TradeUI_SetContainerTabs.SendAction(合并表)` 让官方 reducer 全链
+  自跑（RebuildBagTabs 原生重建列表+json+推送）；FastPoll 开页翻转抢跑+0.5s 轮询+派发节流；
+  正常路原生已在=零动作幂等；门=General+EnableCraftSource。rail 侧 ensureTabsInSlot 增 DEADHOST
+  （被替换宿主缓存，RACKEL 同款）脱文档取件兜底。
 - ~~**工作台抽屉换绑（十七批，2026-11-06，已退役）**~~：抽屉与柜子宽度不齐=切页签缩放变形；抽屉的包 1010
   与染料桶原料槽(66196)/纸箱(307-309)/工具台桌共包，直改即染料桶变形——DrawerWidthEngine
   （RailUi.cs，与 SizeEngine 并列、同 [Rail] Enable 门、同 cfg UniformBagWidth）给自制工具台

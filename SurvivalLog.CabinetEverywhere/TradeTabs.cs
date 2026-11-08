@@ -1,35 +1,46 @@
 using System;
 using System.Collections.Generic;
+using GameCore.HotUpdate;
 using GameCore.HotUpdate.ReduxUI;
 
 namespace SurvivalLog.CabinetEverywhere;
 
 /// <summary>
-/// 交易页柜子页签状态层补挂（2026-11-08 作者实报：无人机交易「回应求助」页不显示储物柜页签栏）。
+/// 交易页柜子页签补挂 v2（2026-11-08 作者实报：无人机交易「回应求助」页不显示储物柜页签栏；
+/// v1 状态层直挂已证伪——见下）。
 ///
-/// 根因（gamekb 2026-11-05_26454866 反汇编取证，RVA 全档内）：
-/// - 交易页柜子页签原生收集链 = LogicAdapter.OnBtOpenXXX → NotifyGlobal(3049
-///   TradeContainerTabsRequest) → ItemManager.OnTradeContainerTabsRequest(0x2790DC0)
-///   → CollectTradeContainers(0x2776C50，白名单 IsCraftSource 过滤——mod 白名单注入本在生效)
-///   → NotifyGlobal(3050 Ready) → LogicAdapter → Ac_TradeUI_SetContainerTabs →
-///   RA_SetContainerTabs(0x2D55B80) 写 state 容器名单 + RebuildBagTabs(0x2D56860)。
-/// - 电台回应求助路（LogicAdapter.OnBtOpenTradeRosterUI 0x2A66A50）：Ac_TradeUI_OpenRoster
-///   建全新 state（OpenRosterCore 0x2D4FD40 只 RebuildBagTabs=背包单页签）后**同帧**发 3049
-///   收集请求——该请求在 TradeUI WebView 挂载完成前到达，容器页签晚到即丢（对照：另一条
-///   派送路 SwitchTradeToDispatchAsync 0x2A923D0 特意 等 UI 关净→Ac_OpenUI→逐帧等挂载
-///   →才 RequestTradeContainerTabs=官方自己知道该时序）；选人（PickRosterCore 0x2D52270）
-///   只切 phase 进 disp 态，全程无任何重发收集的路径 → 柜子页签在回应求助页永不出现。
-///   正常交易路（终端直开）时序无此竞态 → 页签齐全——故「正常交易有、回应求助没有」。
-/// - 旁证（作者 11-08 实机 LogOutput）：Trade 常开期间 DrawerTabs「交易页签已补」反复出现
-///   =官方在 roster/pick 等节点反复重建 BagTabs，mod 侧补挂条目随之被清再补=既有收敛节奏。
+/// 官方数据流（gamekb 2026-11-05_26454866 反汇编取证，RVA 全档内）：
+/// - 页面消费的唯一数据源 = State_Web_TradeUI 的各 ReactiveProperty（WebBind 属性直绑
+///   _BagMsg 字段——dump@223099 `[WebBind_String("_BagMsg","bagTabsJson")] BagTabsJson`）；
+///   **BagTabs（List&lt;BagTabEntry&gt;）只是 reducer 工作集，改它页面永远看不见**。
+/// - 柜子页签链：LogicAdapter.OnBtOpenXXX → NotifyGlobal(3049) → ItemManager.
+///   OnTradeContainerTabsRequest(0x2790DC0) → CollectTradeContainers(0x2776C50) →
+///   Ac_TradeUI_SetContainerTabs.SendAction(list) → RA_SetContainerTabs(0x2D55B80)：
+///   **state.Containers(0xF8)=action.Containers** → RebuildBagTabs(0x2D56860) 从
+///   Containers+背包 重建 BagTabs 列表**并手搓 StringBuilder 重序列化 BagTabsJson**
+///   （RP 变更→WebBind 推送 JS）→ phase=='trade' 则 Refresh。
+/// - 电台回应求助路（OnBtOpenTradeRosterUI 0x2A66A50）在 TradeUI WebView 挂载完成前
+///   **同帧**发 3049 收集请求，晚到/丢弃不定（对照：官方另一条派送路 SwitchTradeToDispatchAsync
+///   0x2A923D0 特意 等 UI 关净→Ac_OpenUI→逐帧等挂载→才请求=官方自己知道该时序）；选人
+///   （PickRosterCore 0x2D52270）只切 phase，无重发 → 该路容器页签出现与否全看竞态。
+///   正常终端交易路时序无竞态=页签稳定——故「正常交易有、回应求助没有（或时有时无）」。
 ///
-/// 修法（DrawerTabs 同页同款先例——工作台抽屉页签即本页 List&lt;BagTabEntry&gt; POCO 尾插）：
-/// TradeUI 激活期间对 BagTabs 做 Ensure——HomeInstances（=白名单同源柜子集）里缺页签的
-/// 逐台补挂（视图/筛选谓词同 TabGate 单一事实源；正常交易路官方原生已在=零动作幂等）。
-/// 纯视图层状态追加：零配置写、零存档写、重开界面即消（TabInjector/DrawerTabs 同生命周期）。
-/// 门=General.Enabled + EnableCraftSource（交易页柜子页签本就是白名单族特性，cfg 描述原句
-/// 「白名单注入：工作台/无人机交易/…的柜子页签与自动取料」——本补是同一承诺在回应求助页兑现）。
-/// 语义边界（与抽屉页签同）：页签=手动搬运；回应求助装货本就全手动，无自动货源语义缺口。
+/// v1 教训（本类首版，已整体替换）：向 BagTabs 列表尾插 BagTabEntry+Repush（DrawerTabs 同款）
+/// ——列表变更不触发 BagTabsJson 重序列化，MarkAllMsgDirty 只会把 msg 里**旧字符串**原样重发，
+/// 页面永远渲染旧页签集。CDP 实测（16:38 在机）：C# 列表已含 23 柜+抽屉，页面 tabs=1（仅背包）。
+/// （同病根提醒：DrawerTabs 交易页抽屉页签 / TabGate.PollTrade 视图修剪与序重排 / FixStaleTradeSizes
+///   宽度自愈——全是列表级写=交易页零渲染，历来「工作正常」实为原生路径恰好自足；后续批另修。）
+///
+/// v2 修法=**走官方源名单**：Ensure 缺席柜子进 State.Containers（List&lt;TradeContainerInfo&gt;
+/// {OwnerId/FurnitureConfigId/IsFridge/Pinned} 平字段 POCO），然后直调游戏自家
+/// Ac_TradeUI_SetContainerTabs.SendAction(合并表)——官方 reducer 全链自跑：Containers 落位 →
+/// RebuildBagTabs 原生重建列表+json+推送（命名走官方 ToConstantText、尺寸走官方 Config 快照）、
+/// phase=trade 再 Refresh。与晚到的官方收集动作互为幂等（整表替换+本类 have 判重），后续任何
+/// 官方重建（切页签/RefreshBag）都从 Containers 读=**补挂柜子在 state 生命周期内原生存活、零闪烁**；
+/// state 重建（每次开页）后本类 ≤0.5s 再补。注入集=HomeInstances（白名单同源柜子集）按
+/// View_Trade 谓词+筛选 sel（v1.9.2）过滤——与页面可见性口径一致，防「我补它剪」震荡。
+/// 门=General.Enabled + EnableCraftSource（交易柜子页签本就是白名单族特性，cfg 原句「白名单注入：
+/// 工作台/无人机交易/…的柜子页签」）。纯 UI 态写（零配置/存档写），重开界面即还原官方。
 /// </summary>
 internal static class TradeTabs
 {
@@ -42,10 +53,11 @@ internal static class TradeTabs
     }
     private static void Log(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.TradeTabs] " + msg);
 
-    // ---- FastPoll（DrawerTabs.FastOne 同款纪律：开界面短窗每帧抢跑，抢在官方首推序列化前
-    //      落地=治开页闪「先背包后柜子」；稳态零动作，重活归 0.5s 轮询） ----
+    // ---- FastPoll（DrawerTabs.FastOne 同款纪律：开界面短窗每帧抢跑，抢在首推/选人重建前落地；
+    //      Ensure 内置 0.5s 派发节流防队列连打） ----
     private sealed class FlipWin { public bool WasActive; public int Frames; }
     private static FlipWin _flip = new();
+    private static DateTime _lastDispatch = DateTime.MinValue;
 
     /// <summary>每帧（AccessTicker，DrawerTabs.FastPoll 旁）：TradeUI 翻转短窗内每帧 Ensure（幂等）。</summary>
     internal static void FastPoll()
@@ -69,8 +81,7 @@ internal static class TradeTabs
         }
     }
 
-    /// <summary>0.5s 轮询（AccessTicker 快通道，DrawerTabs.PollAll 之后）：覆盖 roster→pick 等
-    /// 页中重建（官方重建即清补挂条目，≤0.5s 收敛=抽屉页签既有节奏）。</summary>
+    /// <summary>0.5s 轮询（AccessTicker 快通道）：覆盖 state 重建（每次开页 Containers 清零）后的补挂。</summary>
     internal static void PollAll()
     {
         if (CabinetEverywherePlugin.Enabled != null && !CabinetEverywherePlugin.Enabled.Value) return;
@@ -95,60 +106,31 @@ internal static class TradeTabs
         try { return rus.IsUIActive(t); } catch { return false; }
     }
 
-    private static State_Data_Item StateItem(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
-    {
-        try
-        {
-            var dataTree = rus?.reduxStoreLayer?.dataTree;
-            GameCore.HotUpdate.ReduxUI.BaseReduxState raw = null;
-            dataTree?.TryGetValue(Il2CppInterop.Runtime.Il2CppType.From(typeof(State_Data_Item)), out raw);
-            return raw?.TryCast<State_Data_Item>();
-        }
-        catch { return null; }
-    }
-
-    /// <summary>柜子 live 尺寸（owner→BagCache→Config_Bag.Size——FixStaleTradeSizes 同源；
-    /// 读不到=袋未注册，本轮跳过下轮再看（宁缺不错尺寸，官方数组未含它时本也显示不出））。</summary>
-    private static bool SizeOf(Il2CppSystem.Collections.Generic.Dictionary<long, int> bagCache,
-        Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Bag> bags, long owner, out int cols, out int rows)
-    {
-        cols = rows = 0;
-        try
-        {
-            int cfgId = 0;
-            if (bagCache == null || bags == null) return false;
-            if (!bagCache.TryGetValue(owner, out cfgId) || cfgId == 0) return false;
-            if (!bags.TryGetValue(cfgId, out var b) || b?.Size == null || b.Size.Count < 2) return false;
-            cols = b.Size[0]; rows = b.Size[1];
-            return cols > 0 && rows > 0;
-        }
-        catch { return false; }
-    }
-
     /// <summary>
-    /// Ensure 主体：HomeInstances 缺页签的柜子逐台尾插 BagTabEntry（DrawerTabs.EnsureTrade 同构：
-    /// owner/name/fridge/player/cols/rows/rack/rackCfg/pin 平字段）。注入集按 View_Trade 视图谓词
-    /// +（若在用）筛选下拉 sel 过滤——与 TabGate.PollTrade 收窄口径一致，防「我补它剪」震荡。
-    /// 正常交易路官方原生已含全部白名单柜=have 全命中零动作；回应求助路补齐后页签栏即现
-    /// （TradeUI.html bag-tabs v-if="bag.tabs.length>1"）。
+    /// Ensure 主体：HomeInstances 缺席柜子（视图+sel 过滤后）逐台造 TradeContainerInfo 追加进
+    /// Containers（null=官方收集未到过，直接新建整表），有增量则 Ac_TradeUI_SetContainerTabs.
+    /// SendAction(合并表) 走官方 reducer 全链（reducer 会把本表整表赋回 state.Containers——
+    /// 传活实例自赋值无害）。派发后 0.5s 节流窗：reducer 入队到落位有帧差，窗内不重复派发
+    /// （have 判重随后接管=稳态零派发）。
     /// </summary>
     private static void Ensure(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
     {
-        var tabs = rus.GetStateByUI(TradeType)?.TryCast<State_Web_TradeUI>()?.BagTabs;
-        if (tabs == null || tabs.Count == 0) return; // 官方首推未就绪：不猜（DrawerTabs「官方首推后再补」同纪律）
-
-        var have = new HashSet<long>();
-        for (int i = 0; i < tabs.Count; i++)
-        {
-            try { var t = tabs[i]; if (t != null && t.owner != 0) have.Add(t.owner); } catch { }
-        }
+        var st = rus.GetStateByUI(TradeType)?.TryCast<State_Web_TradeUI>();
+        if (st == null) return;
 
         string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewTrade);
         var ctx = TabGate.TagCtx.Build();
-        TabGate.LoadFilters().TryGetValue("trade", out var sel); /* v1.9.1 筛选下拉选中（在用则同步收窄注入集） */
+        TabGate.LoadFilters().TryGetValue("trade", out var sel); /* v1.9.2 筛选下拉选中（在用则同步收窄注入集） */
 
-        var bagCache = StateItem(rus)?.BagCache;
-        var bags = SurvivalLog.ModShared.BagTable.BagDict(SurvivalLog.ModShared.BagTable.Cm());
+        var containers = st.Containers;
+        var have = new HashSet<long>();
+        if (containers != null)
+        {
+            for (int i = 0; i < containers.Count; i++)
+            {
+                try { var t = containers[i]; if (t != null && t.OwnerId != 0) have.Add(t.OwnerId); } catch { }
+            }
+        }
 
         int added = 0;
         var names = new List<string>();
@@ -156,30 +138,33 @@ internal static class TradeTabs
         {
             if (have.Contains(c.OwnerId)) continue;
             if (TabGate.Judge(c.OwnerId, view, ctx, sel) == TabGate.Verdict.Remove) continue;
-            if (!SizeOf(bagCache, bags, c.OwnerId, out var cols, out var rows))
-            {
-                WarnOnce("size_" + c.OwnerId, $"柜子 {c.Name}(0x{c.OwnerId:X}) 尺寸未就绪，本轮跳过（下轮再看）");
-                continue;
-            }
             try
             {
-                tabs.Add(new State_Web_TradeUI.BagTabEntry
+                if (containers == null) containers = new Il2CppSystem.Collections.Generic.List<TradeContainerInfo>();
+                containers.Add(new TradeContainerInfo
                 {
-                    owner = c.OwnerId, name = c.Name, fridge = false, player = false,
-                    cols = cols, rows = rows, rack = false, rackCfg = 0, pin = false,
+                    OwnerId = c.OwnerId, FurnitureConfigId = c.ConfigId, IsFridge = false, Pinned = false,
                 });
                 added++;
                 names.Add($"{c.Name}({c.OwnerId})");
             }
             catch (Exception e)
             {
-                WarnOnce("add_" + c.OwnerId, $"交易页柜子页签补挂失败 ownerId={c.OwnerId}: {e.Message}");
+                WarnOnce("add_" + c.OwnerId, $"交易页容器名单补挂失败 ownerId={c.OwnerId}: {e.Message}");
             }
         }
-        if (added > 0)
+        if (added == 0) return;
+        if ((DateTime.UtcNow - _lastDispatch).TotalSeconds < 0.5) return; /* 派发节流：队列落位帧差窗 */
+
+        try
         {
-            Log($"交易页柜子页签已补 {added} 个：{string.Join("、", names)}（回应求助路官方收集缺位，状态层补挂；正常交易路=原生已在零动作）");
-            TabInjector.Repush(rus, TradeType);
+            _lastDispatch = DateTime.UtcNow;
+            Ac_TradeUI_SetContainerTabs.SendAction(containers);
+            Log($"交易页容器名单已补 {added} 台：{string.Join("、", names)}——官方 SetContainerTabs 全链重建页签（回应求助路收集竞态补挂；正常交易路=官方已在零动作）");
+        }
+        catch (Exception e)
+        {
+            WarnOnce("send", "Ac_TradeUI_SetContainerTabs.SendAction 异常: " + e.Message);
         }
     }
 }
