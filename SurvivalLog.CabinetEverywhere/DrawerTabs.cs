@@ -81,7 +81,9 @@ internal static class DrawerTabs
     private static void ActTrade(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
     {
         var owner = FindDrawerOwner(rus);
-        if (owner != 0) EnsureTrade(rus, owner);
+        /* v1.9.1 批改二轮①：抽屉归类=材料（作者裁定）——筛选态非材料分类不补挂（TabGate
+           .DrawerVisibleFor 与剪枝同口径单一事实源，防「它剪我补」振荡） */
+        if (owner != 0 && TabGate.DrawerVisibleFor("trade")) EnsureTrade(rus, owner);
         FixStaleTradeSizes(rus);
     }
 
@@ -94,7 +96,7 @@ internal static class DrawerTabs
     private static void ActDroneHub(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
     {
         var owner = FindDrawerOwner(rus);
-        if (owner != 0) EnsureDroneHub(rus, owner);
+        if (owner != 0 && TabGate.DrawerVisibleFor("dronehub")) EnsureDroneHub(rus, owner); /* 批改二轮①：抽屉归类门同 ActTrade */
     }
 
     /// <summary>0.5s 轮询（AccessTicker 快通道，TabInjector.PollAll 之后）。门：General + EnableCraftSource（两页属白名单族）。
@@ -120,11 +122,11 @@ internal static class DrawerTabs
 
             if (tradeActive)
             {
-                if (owner != 0) EnsureTrade(rus, owner);
+                if (owner != 0 && TabGate.DrawerVisibleFor("trade")) EnsureTrade(rus, owner); /* 批改二轮①：抽屉归类门（材料类外不补） */
                 FixStaleTradeSizes(rus); // 首开快照竞态自愈（与抽屉页签无关，交易页常驻保健）
             }
             if (owner != 0 && shredActive) EnsureShredder(rus, owner);
-            if (owner != 0 && droneActive) EnsureDroneHub(rus, owner);
+            if (owner != 0 && droneActive && TabGate.DrawerVisibleFor("dronehub")) EnsureDroneHub(rus, owner);
         }
         catch (Exception e)
         {

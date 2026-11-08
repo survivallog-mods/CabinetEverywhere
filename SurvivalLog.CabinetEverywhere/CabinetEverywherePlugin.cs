@@ -350,6 +350,8 @@ internal sealed class AccessTicker : MonoBehaviour
             // 二十批：开界面短窗每帧抢跑——视图修剪+抽屉页签随官方数组建成那帧落地（治开页闪全量）
             TabGate.FastPoll();
             DrawerTabs.FastPoll();
+            // 交易页柜子页签补挂（回应求助路官方收集缺位，TradeTabs 头注释反汇编取证）
+            TradeTabs.FastPoll();
             Tick(Time.deltaTime);
         }
         catch { /* 单帧异常不终止轮询 */ }
@@ -420,6 +422,8 @@ internal sealed class AccessTicker : MonoBehaviour
         // 十八批：抽屉页签（交易/粉碎机）——全局抽屉包补进两页页签（DrawerTabs 内自带
         // General/EnableCraftSource 门；owner=WorkbenchDrawerConfig 常量直读）
         DrawerTabs.PollAll();
+        // 交易页柜子页签补挂（回应求助路官方收集缺位——覆盖 roster→pick 页中重建；TradeTabs 头注释）
+        TradeTabs.PollAll();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
         // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：

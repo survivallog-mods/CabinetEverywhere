@@ -89,7 +89,8 @@ internal static class RailCommands
         public bool All;
         public long From, To, Owner, Cat, Item;
         public string Name;
-        public string Key; // uiShow/uiClose/pinOrder 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP；v1.8.9：setFilter 同批退役）
+        public string Key; // uiShow/uiClose/pinOrder/setFilter 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP）
+        public string Sel; // v1.9.1：setFilter 筛选选中（"0"=全部柜子/"other"=未打标签/tagId）
         public List<long> Ids = new();
         public List<long> Tags = new();
         public List<long> Order = new();
@@ -147,6 +148,7 @@ internal static class RailCommands
         c.Item = Lng(o, "item");
         if (o.TryGetValue("name", out var nm) && nm is string s) c.Name = s;
         if (o.TryGetValue("key", out var ky) && ky is string ks) c.Key = ks;
+        if (o.TryGetValue("sel", out var sl) && sl is string ss) c.Sel = ss;
         c.Ids = Lngs(o, "ids");
         c.Tags = Lngs(o, "tags");
         c.Order = Lngs(o, "order");
@@ -190,7 +192,7 @@ internal static class RailCommands
             {
                 try { Execute(c); }
                 catch (Exception e) { WarnOnce("exec:" + c.Op, "命令 " + c.Op + " 执行异常: " + e.Message); }
-                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush）
+                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder" && c.Op != "setFilter"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush；setFilter=选中落库走 TabGate/Pruner 下轮对账）
                 executed++;
             }
             if (executed > 0)
@@ -232,6 +234,7 @@ internal static class RailCommands
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
+            case "setFilter": OpSetFilter(c); break; // v1.9.1 筛选下拉：选中落库（TabGate 下轮按选中收窄可见集）
             case "ping": OpPing(c); break; // v1.8.10 十三批四追：心跳自愈；六追后升级为通道对照实验（微包回执）：ExecuteJavaScript 大包（62KB 契约）实测零达而 drain（33B）恒达——长度丢弃假说验证
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
@@ -855,6 +858,23 @@ internal static class RailCommands
         if (ids.Count == 0) return;
         TabInjector.SavePinOrder(pageKey, ids);
         VLog(c.Op, $"page={pageKey} ids={ids.Count} dropped={dropped}（0.5s 轮询重排官方数组序）");
+    }
+
+    /// <summary>v1.9.1 筛选下拉：选中（批改后 sel 域={"0"=全部/"food"=食物域/"other"=其他/官方 tagId}）落
+    /// cerail_filter.json；sel 过 TabGate.SelValid 白名单（官方标签表），非法整条丢弃。
+    /// 调用点：JS 页脚下拉 pickFilterSel（用户选择）+ applyScene 开页自愈上报（非缺省值）。</summary>
+    private static void OpSetFilter(Cmd c)
+    {
+        string pageKey = TabInjector.PageKeyOfScene(c.Key);
+        if (pageKey == null) { WarnOnce("setFilter:page", "setFilter 丢弃：未知页 key=" + c.Key); return; }
+        var sel = c.Sel ?? "0";
+        if (!TabGate.SelValid(sel, out var normalized))
+        {
+            WarnOnce("setFilter:sel", $"setFilter 丢弃：sel={sel} 非白名单（0/other/官方 tagId）");
+            return;
+        }
+        TabGate.SaveFilter(pageKey, normalized);
+        VLog(c.Op, $"page={pageKey} sel={normalized}（下轮对账收窄可见集）");
     }
 
     /// <summary>rename{owner,name}：mod 侧持久化 cerail_names.json（≤8 字截断；空名=删除覆盖回契约名）。</summary>

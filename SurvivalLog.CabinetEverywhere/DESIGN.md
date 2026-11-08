@@ -109,6 +109,14 @@
   互通），宽度入 SizeEngine 目标集直写（RailUi.DrawerBagIds）；备料格（1010 家具包）9 配置退场
   页签；抽屉另补进 交易/粉碎机 页签（DrawerTabs.cs 视图层注入）。**十七批的换绑方案已整体退役**
   （误判：把工具台家具的备料包当抽屉——详见 CHANGELOG 十八批）。
+- **交易页「回应求助」柜子页签补挂（2026-11-08，TradeTabs.cs）**：电台回应求助路（OnBtOpenTradeRosterUI）
+  开页建全新 state 后**同帧**发 3049 容器收集请求，晚到即丢（对照：官方另一条派送路
+  SwitchTradeToDispatchAsync 特意等 UI 挂载后才请求）；选人只切 phase 无重发 → 柜子页签在该路
+  永不出现（正常终端交易路时序无竞态=页签齐全，故「正常有、回应求助没有」；RVA 取证全录
+  TradeTabs.cs 头注）。修=TradeUI 激活期间对 State_Web_TradeUI.BagTabs 做 Ensure（DrawerTabs
+  同页同款 POCO 尾插）：HomeInstances 缺页签逐台补（View_Trade 谓词+筛选 sel 同 TabGate 单一口径，
+  尺寸 live 读 BagCache→Config_Bag.Size）；正常路原生已在=零动作幂等；门=General+EnableCraftSource
+  （交易柜子页签本就是白名单族特性）；FastPoll 翻转短窗+0.5s 轮询覆盖 roster→pick 页中重建。
 - ~~**工作台抽屉换绑（十七批，2026-11-06，已退役）**~~：抽屉与柜子宽度不齐=切页签缩放变形；抽屉的包 1010
   与染料桶原料槽(66196)/纸箱(307-309)/工具台桌共包，直改即染料桶变形——DrawerWidthEngine
   （RailUi.cs，与 SizeEngine 并列、同 [Rail] Enable 门、同 cfg UniformBagWidth）给自制工具台

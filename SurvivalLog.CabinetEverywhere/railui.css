@@ -79,7 +79,8 @@
 #srp .sr-tabsrow{display:flex;align-items:center;gap:6px;margin-top:8px;min-width:0}
 #srp .sr-tabslot{flex:1 1 0;min-width:0;overflow:visible}
 #srp .sr-tabslot>.bag-tabs,#srp .sr-tabslot>.left-tabs{margin:0 !important}
-/* v1.8.9：T4 Browser 下拉（.sr-fsel/.sr-fselpop/.sr-fselopt）样式随按钮整链退役 */
+/* v1.8.9：T4 Browser 下拉（.sr-fsel/.sr-fselpop）样式随按钮整链退役；
+   v1.9.1 筛选回归=页脚新钮三件（.sr-ftag/.sr-popfsel/.sr-fselopt，见页脚排序弹层区） */
 #srp .sr-searchrow{display:flex;align-items:center;gap:6px;margin-top:8px}
 #srp .sr-search{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;border-radius:8px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.26);color:#a89f92}
 #srp .sr-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#ece5d8;font-size:12px}
@@ -262,6 +263,29 @@
 #srp .sr-dyepig .sr-fsopt.active{color:#f0b03c}
 #srp .sr-dyepig .sr-fsopt .f-ico{width:14px;height:14px;font-size:12.5px}
 #srp .sr-dyepig .sr-fsopt .sr-fswatch{width:12px;height:12px}
+/* ══ v1.9.1 筛选下拉（批改：两页 Trade 无人机交易/DroneHub 调度机队 页脚排序钮旁；
+   v1.8.7 T4 状态层筛选回归；工作台撤钮=作者令）══ 钮=.sr-fsort 同款暗金系（当前分类
+   官方 SVG 图标+文案，选中态 .on 金）；弹层/选项=.sr-popfsort/.sr-fsopt 同款近黑容器+
+   小圆角钮堆叠；选项行=官方标签 SVG（fill:currentColor 由 span 内联色控色，子路径自带
+   fill 不动）+类名+✓ 选中标记（v1.7.0 样式完全迁移）；左缘=JS anchorFselPop 开合时按
+   按钮 offsetLeft 链锚定（CSS left:10px 仅兜底） */
+#srp .sr-ftag{gap:5px;padding:0 10px;background:#1a1a1e;border-color:rgba(240,176,60,.45);color:#f0b03c}
+#srp .sr-ftag:hover{color:#ffe1a0;border-color:rgba(240,176,60,.68);background:#1a1a1e}
+#srp .sr-ftag.on{color:#ffe1a0;border-color:rgba(240,176,60,.85);background:rgba(240,176,60,.14)}
+#srp .sr-ftag .sb-caret2{font-size:10px;color:#c9932f;margin-left:1px}
+#srp .sr-ftag-ico{width:13px;height:13px;flex:0 0 auto}
+#srp .sr-ftag-ico svg{width:13px;height:13px;fill:currentColor}
+#srp .sr-popfsel{z-index:60;left:10px;right:auto;width:max-content;min-width:128px;max-width:230px;top:auto;bottom:44px;max-height:320px;
+  background:rgba(10,10,12,.94);border-color:rgba(255,255,255,.12);border-radius:10px}
+#srp .sr-popfsel .sr-popbody{padding:6px;display:flex;flex-direction:column;gap:5px}
+#srp .sr-fselopt{display:flex;align-items:center;gap:7px;width:100%;min-height:26px;padding:0 10px;
+  border-radius:7px;border:1px solid #3d3d44;background:#26262b;color:#e8e8e8;font-size:12px;
+  text-align:left;cursor:pointer;font-family:inherit;white-space:nowrap}
+#srp .sr-fselopt:hover{color:#fff;border-color:rgba(255,255,255,.30)}
+#srp .sr-fselopt.active{color:#f0b03c}
+#srp .sr-fselopt .f-ico{flex:0 0 auto;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center}
+#srp .sr-fselopt .f-ico svg{width:14px;height:14px;fill:currentColor;display:block}
+#srp .sr-fsel-tick{margin-left:auto;flex:0 0 auto;color:#f0b03c;font-size:11px}
 /* 数值角标 overlay（壳层 #srBadgeLayer 挂 srGridHost 内，零官方触碰）：右上角、缩放无关（坐标已除 scale）。
    v1.8.10 十三批：z-index 5→50——官方 webui-bag/Vue 格 .item 自带 z-index:10，5 被物品格
    整层盖住=「角标画了看不见」（作者实机实锤：DOM 46 个角标全在、视觉零显示；热注入 50

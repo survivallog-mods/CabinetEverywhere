@@ -254,7 +254,8 @@ internal static class ToolTablePruner
     }
 
     /// <summary>与 tagfilter.page.js viewAllows 同语义：Browser 全留；Material=材料/工具标签+材料架；
-    /// Food=食物域(dim1-4)。ownerId 不在容器表（背包/抽屉/未知）→ 留（JS 对 undefined 同样放行）。</summary>
+    /// Food=食物域(dim1-4)。ownerId 不在容器表（背包/抽屉/未知）→ 留（JS 对 undefined 同样放行）。
+    /// v1.9.1 批改：筛选下拉撤出工作台（作者令「只有交易界面、调度机队显示」），sel 接线随撤。</summary>
     private static bool Allows(string view, RegEntry e, TagContext ctx, out string why)
     {
         why = "browser全留";

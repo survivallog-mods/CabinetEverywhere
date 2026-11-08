@@ -295,7 +295,7 @@ internal static class TabInjector
         Func<T, long> ownerOf, long activeOwner, string view, TabGate.TagCtx ctx)
     {
         var removedOwners = new HashSet<long>();
-        int removed = TabGate.RemoveUndesired(tabs, ownerOf, activeOwner, view, ctx, removedOwners);
+        int removed = TabGate.RemoveUndesired(tabs, ownerOf, activeOwner, view, null, ctx, removedOwners); /* sel=null：bag×4 不在筛选下拉范围（批改后=Trade/DroneHub 两页）——按钮不在场即无写者，v1.8.7 旧文件残留键不生效 */
         if (removedOwners.Count > 0)
         {
             foreach (var o in removedOwners) s.Injected.Remove(o);

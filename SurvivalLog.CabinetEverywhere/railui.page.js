@@ -257,6 +257,9 @@
     '<div class="sr-body" id="srBody"><div class="sr-gridhost" id="srGridHost"></div><div class="sr-list" id="srList" hidden></div></div>' +
     '<div class="sr-hover" id="srHover">悬停查看物品详情</div>' +
     '<div class="sr-foot"><button class="sr-act sr-fsort" id="srFoodSort" type="button" hidden title="排序：官方默认，或按属性排序（格子右上角显示数值）"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg><span id="srFoodSortLbl">排序</span><span class="sb-caret2" aria-hidden="true">▾</span></button>' +
+    /* v1.9.1 筛选下拉（批改：两页 Trade/DroneHub）：图标容器（sync 换装=当前分类官方 SVG，
+       缺省三横线）+当前类文案，选中态 .on 金色（sr-fsort 同视觉族，railui.css .sr-ftag） */
+    '<button class="sr-act sr-ftag" id="srTagFilt" type="button" hidden title="按标签筛选柜子页签（本页独立记忆）"><span class="sr-ftag-ico sr-btn-ico" aria-hidden="true"></span><span id="srTagFiltLbl">全部</span><span class="sb-caret2" aria-hidden="true">▾</span></button>' +
     '<div class="sr-foot-l"><span id="srFill"></span><span class="fr" id="srView"></span></div>' +
     '<div class="sr-actrow">' +
     '<button class="sr-act primary" id="srStoreAll" type="button" hidden title="按物品分类自动放入带对应标签的柜子（柜满顺延，无匹配留在背包）">📦 一键入库</button>' +
@@ -274,7 +277,9 @@
     '<button class="sr-popclear" id="srTagNewBtn" type="button">添加</button></div></div></div>' +
     '<div class="sr-pop sr-popsort" id="srSortPop" hidden><div class="sr-pophead"><span>排序方式</span></div>' +
     '<div class="sr-popbody" id="srSortPopBody"></div></div>' +
-    '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-popbody" id="srFootSortBody"></div></div>';
+    '<div class="sr-pop sr-popfsort" id="srFootSortPop" hidden><div class="sr-popbody" id="srFootSortBody"></div></div>' +
+    /* v1.9.1 筛选下拉弹层（sr-popfsel：左缘=anchorFselPop 开合时对按钮锚定） */
+    '<div class="sr-pop sr-popfsel" id="srTagFiltPop" hidden><div class="sr-popbody" id="srTagFiltBody"></div></div>';
 
   /* 整理柜中段 mod 增值三按钮（MID_EXTRA_HTML：◀分类取出/分类放入▶/按标签放入，
      v1.8.2 v13 口径 append 进官方 .transfer-controls）——2026-11-07 作者实机对账裁决
@@ -795,6 +800,7 @@
     if (keep !== 'tag') el.srTagManage.hidden = true;
     if (keep !== 'sort') el.srSortPop.hidden = true;
     if (keep !== 'fsort') el.srFootSortPop.hidden = true;
+    if (keep !== 'fsel' && el.srTagFiltPop) el.srTagFiltPop.hidden = true; /* v1.9.1 筛选下拉 */
     if (keep !== 'store') el.srStoreConfirm.hidden = true;
   }
   /* ---- 官方分类下拉收起（rail.js closeMidMenus 同款；T10 自 bind() 局部提升到模块级——
@@ -821,7 +827,7 @@
     /* Bug3 v1.8.2.3：物品变更类命令发出后，官方格需官方重绑才重渲染——BackpackUI 页的
        C# 侧 RefreshBag 带参不可直调，此处对当前 owner 重发 SWITCH_BAG（官方重绑=同效刷新；
        600ms=命令泵 0.5s 周期后落点）。其余 12 页走 C# RefreshActivePage（无参官方动作）。 */
-    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && op !== 'pinOrder' && store.ctx && store.ctx.page === 'BackpackUI') {
+    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && op !== 'pinOrder' && op !== 'setFilter' && store.ctx && store.ctx.page === 'BackpackUI') {
       setTimeout(function () { try { forgeSwitchTo(st.currentId); } catch (e) { } }, 600);
     }
   }
@@ -1083,6 +1089,185 @@
      srGridHost 内，pointer-events:none，只读官方 .item 几何，零 addEventListener）。 */
   function isPlainScene() { return !!PLAIN_KEYS[st.scene]; }
   function isSortScene() { return !!SORT_KEYS[st.scene]; } /* v1.8.10：isFoodScene 更名（集合已非纯食品页） */
+
+  /* ================= v1.9.1 筛选下拉（页脚排序钮旁「筛选 ▾」；状态层收口版 T4 复活；批改=两页+定版分类） =================
+     v1.7.0 tagfilter 下拉 / v1.8.7 T4 服务对象换轨回归：选中不走 JS DOM 隐藏，cmd setFilter →
+     C# cerail_filter.json 落库 → TabGate（Trade/DroneHub）下轮把官方数组收窄到选中集
+     （数组+源名单=可见集，A/D/tabdrop/拖物到页签原生）。
+     【批改（作者 2026-11-08 实机三条）】①样式完全迁移：v1.7.0 官方标签 SVG 图标+官方色
+     整套迁回（选项行=彩色图标+类名+✓，触发钮=当前类图标+文案）；②分类清单定版（顺序照令）：
+     全部、食物、材料、药品、日用品、燃料、肥料、种子、防御耗材、战斗用品、工具、杂项、其他
+     ——食物=官方食物域（dim1-4）汇总、各分类=官方同名标签（运行时按 iconKey 从契约 lib 解析
+     tagId）、**其他=前列分类全不中的柜子**（含未打标签与只带清单外标签——书刊/电器/剧情道具
+     等；材料架伪标签=材料不算其他；C# SelMatch 同口径单一事实源）；③按钮集合收两页：
+     无人机交易 Trade / 调度机队 DroneHub（**工作台撤**——作者令「工作台制作页面不需要，
+     只有交易界面、调度机队需要显示这俩按钮」）。选中按场景记忆（srp_filter_<scene> 回显 +
+     C# 文件权威），开页/重访帧对非缺省值上报自愈。 */
+  var FS_KEYS = { Trade: 1, DroneHub: 1 };
+  /* 官方标签图标 SVG（v1.7.0 tagfilter.page.js TAG_ICONS_FALLBACK 同源逐字迁移——官方
+     BackpackUI TAG_ICONS 克隆副本，根节点无 fill 由 CSS fill:currentColor 控色，
+     子路径自带 fill="#fff" 保持不动）+「全部」三横线（v1.7.0 ICON_ALL_SVG 同源）。 */
+  var FS_SVGS = {
+    all: '<svg viewBox="0 0 24 24"><path d="M3 5h18v2H3zm0 6h18v2H3zm0 6h18v2H3z"/></svg>',
+    food: '<svg viewBox="0 0 24 24"><path d="M2.6 10.6h18.8a9.4 9.4 0 0 1-18.8 0z"/><rect x="1.4" y="19.8" width="21.2" height="2.3" rx="1.15"/><rect x="7.6" y="2.2" width="1.9" height="5.6" rx=".95" opacity=".6"/><rect x="14.5" y="2.2" width="1.9" height="5.6" rx=".95" opacity=".6"/></svg>',
+    material: '<svg viewBox="0 0 24 24"><rect x="1.6" y="13.6" width="9.6" height="7.4" rx="1.2"/><rect x="12.8" y="13.6" width="9.6" height="7.4" rx="1.2"/><rect x="7.2" y="5" width="9.6" height="7.4" rx="1.2" opacity=".78"/></svg>',
+    med: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2.6"/><rect x="11" y="8.4" width="2" height="7.2" fill="#fff"/><rect x="8.4" y="11" width="7.2" height="2" fill="#fff"/></svg>',
+    daily: '<svg viewBox="0 0 24 24"><path d="M9.6 1.8h4.8v3.4l2.6 3.4a4 4 0 0 1 .8 2.4v9a2 2 0 0 1-2 2H8.2a2 2 0 0 1-2-2v-9a4 4 0 0 1 .8-2.4l2.6-3.4z"/><rect x="7.4" y="13" width="9.2" height="1.8" fill="#fff" opacity=".45"/></svg>',
+    fuel: '<svg viewBox="0 0 24 24"><rect x="6" y="8" width="12" height="13" rx="2"/><rect x="9.5" y="5.5" width="5" height="3"/><path d="M12 1.5c2.4 2 3.4 3.4 3.4 4.7A3.4 3.4 0 0 1 12 9.6 3.4 3.4 0 0 1 8.6 6.2c0-1.3 1-2.7 3.4-4.7z" opacity=".55"/></svg>',
+    book: '<svg viewBox="0 0 24 24"><path d="M4 3.5h7.2v17H4z"/><path d="M12.8 3.5H20v17h-7.2z" opacity=".72"/><rect x="11.2" y="3.5" width="1.6" height="17" opacity=".4"/></svg>',
+    fertilizer: '<svg viewBox="0 0 24 24"><path d="M2.4 21.5a9.6 6 0 0 1 19.2 0z"/><rect x="11.1" y="11.8" width="1.8" height="7.2"/><path d="M11.1 13.2c-2.4 0-4.2-1.7-4.6-4.3 2.9-.3 4.6 1.3 4.6 4.3z"/><path d="M12.9 13.2c2.4 0 4.2-1.7 4.6-4.3-2.9-.3-4.6 1.3-4.6 4.3z" opacity=".72"/><circle cx="5.2" cy="14.6" r="1.3" opacity=".6"/><circle cx="18.8" cy="14.6" r="1.3" opacity=".6"/></svg>',
+    seed: '<svg viewBox="0 0 24 24"><rect x="11" y="9.5" width="2" height="11.5"/><path d="M11 11C8 11 5.5 9 5 5.6c3.6-.4 6 1.6 6 5.4z"/><path d="M13 11c3 0 5.5-2 6-5.4-3.6-.4-6 1.6-6 5.4z" opacity=".72"/></svg>',
+    repair: '<svg viewBox="0 0 24 24"><path d="M15.6 2.4a5.2 5.2 0 0 0-4.9 6.9L2.9 17.1 2.7 19.6l1.7 1.7 2.5-.2 7.8-7.8a5.2 5.2 0 0 0 6.9-4.9l-.1-1-3 3-2.6-.6-.6-2.6 3-3z"/></svg>',
+    defense: '<svg viewBox="0 0 24 24"><path d="M12 2.2 20 5v7.2c0 4.6-3.2 8.2-8 9.6-4.8-1.4-8-5-8-9.6V5z"/><path d="M12 6.5v11" stroke="#fff" stroke-width="1.6" opacity=".5"/></svg>',
+    tool: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3" width="17" height="5.4" rx="1.4"/><rect x="9.6" y="8.4" width="4.8" height="12.6" rx="1"/></svg>',
+    misc: '<svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="3.2"/><rect x="13.4" y="3.8" width="6.6" height="6.6" rx="1.4"/><rect x="4" y="13.6" width="6.6" height="6.6" rx="1.4" opacity=".72"/><circle cx="17" cy="17" r="3.2" opacity=".72"/></svg>'
+  };
+  /* 定版分类清单（顺序=作者 2026-11-08 令）：sel 详注——'0'=全部 / 'food'=食物域(dim1-4) /
+     'other'=前列分类全不中 / 其余=官方同名标签（tagKey=iconKey，运行时从契约 lib 解析 tagId；
+     lib 查无该 iconKey=配置未就绪窗口，该项整行跳过不显示）。color=官方表色兜底（运行时优先
+     lib 真值）。tagKey 对应 Config_FurnitureTag 官方 id（游戏表 2026-11-05 快照）：材料 1012 /
+     药品 1009 / 日用品 1010 / 燃料 1013 / 肥料 1019 / 种子 1007 / 防御耗材 1033 / 战斗用品
+     1014 / 工具 1011 / 杂项 1018——id 不硬编码，按 iconKey 解析（表改版自动跟随）。 */
+  var FS_CATS = [
+    { sel: '0', label: '全部', icon: 'all', color: '' },
+    { sel: 'food', label: '食物', icon: 'food', color: '#E8A33D' },
+    { tagKey: 'material', label: '材料', color: '#A8825C' },
+    { tagKey: 'med', label: '药品', color: '#D9544F' },
+    { tagKey: 'daily', label: '日用品', color: '#66A6C9' },
+    { tagKey: 'fuel', label: '燃料', color: '#E2703A' },
+    { tagKey: 'book', label: '书刊', color: '#8E7CC3' },
+    { tagKey: 'fertilizer', label: '肥料', color: '#8A6D3B' },
+    { tagKey: 'seed', label: '种子', color: '#7CB342' },
+    { tagKey: 'repair', label: '防御耗材', color: '#B07A55' },
+    { tagKey: 'defense', label: '战斗用品', color: '#6D8FB0' },
+    { tagKey: 'tool', label: '工具', color: '#9E9E9E' },
+    { tagKey: 'misc', label: '杂项', color: '#7E7E7E' },
+    { sel: 'other', label: '其他', icon: 'misc', color: '#7E7E7E' }
+  ];
+  function fsLibByIcon(key) { /* iconKey → lib 条目（配置就绪防呆：查无=null） */
+    for (var i = 0; i < store.lib.length; i++) if (store.lib[i] && store.lib[i].icon === key) return store.lib[i];
+    return null;
+  }
+  function isFilterScene() { return !!FS_KEYS[st.scene]; }
+  function filterSelKey() { return 'srp_filter_' + st.scene; }
+  function loadFilterSel() {
+    try { var v = localStorage.getItem(filterSelKey()); return (v == null || v === '') ? '0' : String(v); } catch (e) { return '0'; }
+  }
+  function saveFilterSel(sel) {
+    try { if (sel === '0' || sel == null) localStorage.removeItem(filterSelKey()); else localStorage.setItem(filterSelKey(), String(sel)); } catch (e) { }
+  }
+  function filterOptions() { /* FS_CATS 定版序 → 菜单项（tag 类运行时解析 tagId；未解析=跳行） */
+    var opts = [];
+    for (var i = 0; i < FS_CATS.length; i++) {
+      var c = FS_CATS[i], k = c.sel, lib = null;
+      if (c.tagKey) {
+        lib = fsLibByIcon(c.tagKey);
+        if (!lib) continue; /* 契约 lib 未就绪：该分类整行不显示（C# 同键解析，语义面零分叉） */
+        k = String(lib.id);
+      }
+      opts.push({ k: k, label: c.label, svg: FS_SVGS[c.tagKey || c.icon], color: (lib && lib.color) || c.color });
+    }
+    return opts;
+  }
+  function filterLabel(sel) {
+    var opts = filterOptions();
+    for (var i = 0; i < opts.length; i++) if (opts[i].k === String(sel)) return opts[i].label;
+    return '全部';
+  }
+  function fsIcoHtml(k) { /* 触发钮图标（sync 换装）：当前类 SVG+官方色，缺省=三横线 */
+    var opts = filterOptions();
+    for (var i = 0; i < opts.length; i++) if (opts[i].k === String(k)) {
+      var o = opts[i];
+      return '<span style="display:flex;width:13px;height:13px;flex:0 0 auto;' + (o.color ? 'color:' + o.color : 'color:currentColor') + '">' + o.svg + '</span>';
+    }
+    return '<span style="display:flex;width:13px;height:13px;flex:0 0 auto">' + FS_SVGS.all + '</span>';
+  }
+  function pickFilterSel(sel) {
+    sel = String(sel);
+    saveFilterSel(sel);
+    cmdOut('setFilter', { key: st.scene, sel: sel });
+    if (menuFSel) menuFSel.sync();
+    /* 批改三轮④（作者令「提示信息不要」）：toast 退役——选中态即视觉回执（钮图标+文案+.on） */
+  }
+  /* 弹层左缘锚定（开合时重算）：按钮在页脚行内位置随排序钮有无/标签宽变化（ToolTable 无
+     排序钮=贴左缘，Trade/DroneHub=排序钮右侧）——按 offsetLeft 链（布局空间，zoom 无关）
+     把弹层左缘对到按钮左缘；链断（rail 外）不动=CSS 兜底 left:10px。 */
+  function anchorFselPop() {
+    try {
+      var rail = el.rail, btn = el.srTagFilt, pop = el.srTagFiltPop;
+      if (!rail || !btn || !pop) return;
+      var x = 0, n = btn;
+      while (n && n !== rail) { x += n.offsetLeft; n = n.offsetParent; }
+      if (n === rail) pop.style.left = Math.max(0, x) + 'px';
+    } catch (e) { }
+  }
+
+  /* ================= 批改四轮②：DroneHub 零命中「空页签栏+背包页签」呈现层守卫 =================
+     作者裁定（2026-11-08 三轮/四轮）：筛到命中零柜的分类时——不要假页签（座位方案已否决）、
+     不要官方 ≤1 的整栏收起换标题（renderBagTabs 对 tabs.length<=1 整栏 display:none，
+     DroneHub.html:906）——要「空页签栏」：栏保持显示、柜子页签区空、背包页签（pin 槽）保留。
+     官方无此形态 ⇒ rail 呈现层补：筛选激活（sel!=='0'）期间，官方每次渲染把栏藏掉就把栏
+     还原为 flex + 用页面自己的 createTabEl/State 把背包页签补进 pin 槽（数据零伪造——纯
+     呈现，C# 状态数组始终真实）；sel 回 '0' 后官方全量渲染自然接管（守卫条件失效零动作）。
+     防自激：只在「栏被藏 && 筛选激活」写，写完即静（observer 自触发再查=已 flex 不再写）。 */
+  function dhStripGuardApply(doc) {
+    try {
+      var bar = doc.getElementById('bagTabs'), pin = doc.getElementById('bagTabPinned'), title = doc.getElementById('bagTitleBar');
+      if (!bar || !pin) return;
+      if (bar.style.display !== 'none') return; /* 官方没藏=零动作（常态快路径） */
+      var scene = st.scene;
+      if (scene !== 'DroneHub') return;
+      if (loadFilterSel() === '0') return; /* 未筛选：官方 ≤1 收栏=原生语义，不干预 */
+      var w = doc.defaultView;
+      var S = w && w.State;
+      if (!S || !w.createTabEl || !S.bagTabs || !S.bagTabs.length) return;
+      if (!pin.firstChild) {
+        var t0 = S.bagTabs[0]; /* 数组 [0]=背包页签（pin 槽位，官方 renderBagTabs 同款挂法） */
+        pin.appendChild(w.createTabEl(t0, t0.ownerId === S.bagOwnerId));
+      }
+      bar.style.display = 'flex';
+      if (title) title.style.display = 'none';
+    } catch (e) { }
+  }
+  /* ================= 四轮③终版：DroneHub 页签渲染桥消费端 =================
+     C# TabGate.PushDroneTabs 每次对账把**权威数组**（rev+[{o,n,l}]）推到 Root
+     window.__CERAIL_TABS__（≤1KB 小包，ExecuteJavaScript 小包实证恒达）；本端 500ms 轮询
+     （scanFrames 兜底拍）消费：直写页面 State.bagTabs + 调页面自己的 renderBagTabs/
+     syncBagTitle——同文档 JS 调用**绕开官方消息管线**（四轮实证：Repush/RefreshBag/
+     SwitchBag 三杠杆均不重绘页签栏，消息拥塞到用户交互才处理）。零命中时数组=[背包]
+     →官方渲染收栏 → dhStripGuardApply 还原空栏+背包页签（紧跟同拍调用）。 */
+  var TABBRIDGE_REV = -1;
+  function tabBridgeTick() {
+    try {
+      if (st.scene !== 'DroneHub') return;
+      var pay = window.__CERAIL_TABS__;
+      if (!pay || typeof pay.rev !== 'number' || pay.rev === TABBRIDGE_REV || !Array.isArray(pay.tabs)) return;
+      var f = document.getElementById('DroneHub');
+      var d = f && f.contentDocument, w = d && d.defaultView;
+      if (!d || !w || !w.State || typeof w.renderBagTabs !== 'function') return;
+      var t = pay.tabs, out = [];
+      for (var i = 0; i < t.length; i++) if (t[i] && t[i].o != null) out.push({ ownerId: t[i].o, name: t[i].n || '', locked: !!t[i].l });
+      w.State.bagTabs = out;
+      TABBRIDGE_REV = pay.rev;
+      w.renderBagTabs();
+      if (w.syncBagTitle) w.syncBagTitle();
+      dhStripGuardApply(d); /* 零命中空栏守卫紧跟同拍（不等 observer 回调） */
+      try { console.log('[CERail] tabbridge rev=' + pay.rev + ' tabs=' + out.length); } catch (e) { }
+    } catch (e) { }
+  }
+
+  function dhStripGuardAttach(doc) {
+    try {
+      if (!doc || doc.__srDhGuard) return;
+      doc.__srDhGuard = true;
+      var bar = doc.getElementById('bagTabs');
+      if (!bar) { doc.__srDhGuard = false; return; } /* 栏未建：下轮 bind 再试（标记撤回） */
+      var mo = new (doc.defaultView.MutationObserver || MutationObserver)(function () { dhStripGuardApply(doc); });
+      mo.observe(bar, { attributes: true, attributeFilter: ['style'] });
+      mo.observe(doc.getElementById('bagTabPinned') || bar, { childList: true });
+      dhStripGuardApply(doc);
+    } catch (e) { }
+  }
   function fsortLabel(k) {
     /* dye-pigment-sort：动态键 pig:<id> 查 dyePal 色名（FSORTS 静态表无此键；查无回原键串） */
     if (String(k).indexOf('pig:') === 0) {
@@ -1522,7 +1707,7 @@
                               筛掉的格不标。三道防抖全保留（瞬时零格/配对未成保旧、同串免写
                               ——v1.8.5 作者缺陷#2/#3 定稿语义）。
      新页面要排序 = 一处 makeSortMenu + 一份 applyDispSort cfg + 一个 makeBadgeLayer 实例。 */
-  var menuSort = null, menuFoot = null, menuNB = null, menuNB2 = null; /* bind()/nbMount 每周期重建（换 doc 换元素）；menuNB2=NB 柜侧（v1.8.6） */
+  var menuSort = null, menuFoot = null, menuNB = null, menuNB2 = null, menuFSel = null; /* bind()/nbMount 每周期重建（换 doc 换元素）；menuNB2=NB 柜侧（v1.8.6）；menuFSel=v1.9.1 筛选下拉 */
 
   function makeSortMenu(cfg) {
     var d = cfg.doc || document;
@@ -1548,25 +1733,39 @@
         var h = '', ks = keysOf();
         for (var i = 0; i < ks.length; i++) {
           var s = ks[i], on = s.k === cfg.getKey();
-          /* dye-pigment-sort：色项带 color → 色块 swatch（无文字，f-ico 同位）；其余项 ico 文字照旧 */
+          /* dye-pigment-sort：色项带 color → 色块 swatch（无文字，f-ico 同位）；v1.9.1 筛选：
+             项带 svg → 官方标签 SVG+官方色（span 内联控色，CSS fill:currentColor 管子路径）；
+             其余项 ico 文字照旧 */
           var icoHtml = '';
-          if (cfg.ico) icoHtml = s.color
-            ? '<span class="f-ico sr-fswatch" aria-hidden="true" style="background:' + s.color + '"></span>'
-            : '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>';
+          if (cfg.ico) icoHtml = s.svg
+            ? '<span class="f-ico" aria-hidden="true"' + (s.color ? ' style="color:' + s.color + '"' : '') + '>' + s.svg + '</span>'
+            : s.color
+              ? '<span class="f-ico sr-fswatch" aria-hidden="true" style="background:' + s.color + '"></span>'
+              : '<span class="f-ico" aria-hidden="true">' + s.ico + '</span>';
           h += '<button type="button" class="' + cfg.optCls + (on ? ' active' : '') + '" ' + cfg.attr + '="' + s.k + '">' +
             icoHtml + s.label +
-            (on && cfg.tick ? '<span class="srn-tick">✓</span>' : '') + '</button>';
+            (on && cfg.tick ? '<span class="' + (cfg.tickCls || 'srn-tick') + '">✓</span>' : '') + '</button>';
         }
         body.innerHTML = h;
       },
-      /* v1.8.5（作者缺陷#2）：触发钮标签随当前类型（选中=亮金 onCls；默认=defLbl「排序」） */
+      /* v1.8.5（作者缺陷#2）：触发钮标签随当前类型（选中=亮金 onCls；默认=defLbl「排序」）。
+         v1.9.1：defKey 通用化（缺省 'official' 零变化；筛选实例 defKey='0'=「全部」态）+
+         icoOf 可选（触发钮图标随当前项换装——筛选实例=当前分类官方 SVG） */
       sync: function () {
         if (!lbl || !btn) return;
-        var k = cfg.getKey(), t = (k && k !== 'official') ? labelOf(k) : cfg.defLbl;
+        var defK = cfg.defKey || 'official';
+        var k = cfg.getKey(), t = (k && k !== defK) ? labelOf(k) : cfg.defLbl;
         if (lbl.textContent !== t) lbl.textContent = t;
         if (cfg.onCls) {
-          var on = !!(k && k !== 'official');
+          var on = !!(k && k !== defK);
           if (btn.classList.contains(cfg.onCls) !== on) btn.classList.toggle(cfg.onCls, on);
+        }
+        if (cfg.icoOf) {
+          var icoEl = btn.querySelector(cfg.icoSel || '.sr-btn-ico');
+          if (icoEl) {
+            var ih = cfg.icoOf(k);
+            if (ih != null && icoEl.innerHTML !== ih) icoEl.innerHTML = ih;
+          }
         }
       }
     };
@@ -1961,6 +2160,10 @@
     el.srFoodSort.hidden = !isSortScene();
     if (menuFoot) menuFoot.sync();
     if (menuFoot) menuFoot.refresh();
+    /* v1.9.1 筛选下拉：FS_KEYS 两页显示（批改：Trade/DroneHub，工作台撤），其余页隐藏 */
+    if (el.srTagFilt) el.srTagFilt.hidden = !isFilterScene();
+    if (menuFSel) menuFSel.sync();
+    if (menuFSel) menuFSel.refresh();
     ensureBadgeObserver();
     /* v1.8.9：Trade 默认价值排序退役——不再重排物品；曾在此 prime 一次模型（official 态
        常显价值角标的 join 依赖）。v1.8.10 十三批三追：official 态常显价值角标随作者令
@@ -2081,7 +2284,8 @@
       'srTabs', 'srOffTabs', 'srSearch', 'srScope',
       'srTagRow', 'srTagAdd', 'srSortBtn', 'srSortLbl', 'srDir', 'srSeg', 'srBody', 'srGridHost', 'srList', 'srHover', 'srFill', 'srView', 'srToast',
       'srTagManage', 'srTagManageX', 'srTagManageBody', 'srTagNew', 'srTagNewBtn', 'srSortPop', 'srSortPopBody',
-      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody'];
+      'srFoodSort', 'srFoodSortLbl', 'srFootSortPop', 'srFootSortBody',
+      'srTagFilt', 'srTagFiltLbl', 'srTagFiltPop', 'srTagFiltBody']; /* v1.9.1 筛选下拉四件 */
       /* T10 中段七 id（srMid/srTakeCat/srTakeCatMenu/srPutCat/srPutCatMenu/srTagPutIn/
          srTagChips）随 2026-11-07 rackMid 退役移出引用表；官方两按钮 btnPutAll/btnTakeAll
          恒零接线——官方监听在官方节点上原样存活，从不入引用表。 */
@@ -2120,6 +2324,21 @@
         });
       }
     });
+    /* v1.9.1 筛选下拉实例（Trade/DroneHub 页脚）：选项=FS_CATS 定版分类（函数式 keys，
+       makeSortMenu v14 兼容）；defKey='0'=「全部」缺省态；选中落 localStorage+C# 双库；
+       批改=官方 SVG 图标（选项行/触发钮）+✓ 选中标记（v1.7.0 样式完全迁移） */
+    menuFSel = makeSortMenu({
+      doc: d, btnId: 'srTagFilt', lblId: 'srTagFiltLbl', popId: 'srTagFiltPop', bodyId: 'srTagFiltBody',
+      keys: filterOptions,
+      optCls: 'sr-fselopt', attr: 'data-fsel', defLbl: '全部', defKey: '0', onCls: 'on',
+      ico: true, tick: true, tickCls: 'sr-fsel-tick',
+      icoOf: fsIcoHtml, icoSel: '.sr-ftag-ico',
+      pre: function () { closePops('fsel'); anchorFselPop(); },
+      getKey: function () { return loadFilterSel(); },
+      onPick: pickFilterSel
+    });
+    /* 批改四轮②：DroneHub 零命中栏守卫（幂等挂一次；官方每次收栏即还原空栏+背包页签） */
+    if (st.scene === 'DroneHub') dhStripGuardAttach(d);
     /* T9 重绑幂等门：rail 节点已带监听器（首次 bind 挂过，节点未换）→ 引用表重收即可，
        不再重挂（addEventListener 重复挂会让 contextmenu/drag/dblclick 双发）。
        mount 路（全新 DOM）无标记 → 正常挂全量。 */
@@ -2270,7 +2489,7 @@
         if (!el.srTagManage) return;
         var t = e.target;
         if (t.closest && t.closest('.sr-pop')) return;
-        if (t.closest && (t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll') || t.closest('#srFoodSort'))) return;
+        if (t.closest && (t.closest('#srTagAdd') || t.closest('#srSortBtn') || t.closest('#srStoreAll') || t.closest('#srFoodSort') || t.closest('#srTagFilt'))) return;
         closePops();
         /* 官方分类下拉：点下拉外任意处收起（wrapper 内豁免，防同次点击开合互搏；rack 装配后生效） */
         if (d.querySelector('.category-dropdown:not([hidden])') && t.closest && !t.closest('.category-dropdown-wrapper')) closeMidMenus();
@@ -4005,7 +4224,15 @@
      换回本帧快照（筛选/页签/当前柜态跟着帧走，不串味），随后补渲染——本帧 rail 重新响应
      setData 与消息回包。 */
   function rebindFrame(f, rail) {
-    if (!loadSnap(f.key)) applyScene(f.key); /* 无快照（异常兜底）：按场景态重置 */
+    var hadSnap = loadSnap(f.key);
+    if (!hadSnap) applyScene(f.key); /* 无快照（异常兜底）：按场景态重置 */
+    /* v1.9.1：重访路自愈上报——快照恢复不走 applyScene（loadSnap 连 sceneApplied 一并
+       还原=setData 场景门恒假），非缺省选中在此补发（C# cerail_filter.json 被清/换档时
+       按浏览器侧回显重建；hadSnap=false 时 applyScene 已发过，不重复） */
+    if (hadSnap && FS_KEYS[f.key]) {
+      var selv = loadFilterSel();
+      if (selv !== '0') cmdOut('setFilter', { key: f.key, sel: selv });
+    }
     bind(f.doc, rail);
     el.srSearch.value = st.query || ''; /* 搜索框是快照外唯一的受控输入：与恢复的筛选态对齐 */
     closePops(); /* 隐藏期间的弹层 DOM 态不属快照语义：重显一律收起 */
@@ -4044,7 +4271,7 @@
       }
     }
   }
-  try { setInterval(scanFrames, 500); } catch (e) { }        /* 兜底轮询（裁定 2：观察器+interval 双保险） */
+  try { setInterval(function () { scanFrames(); tabBridgeTick(); }, 500); } catch (e) { } /* 兜底轮询（裁定 2：观察器+interval 双保险）+页签渲染桥消费拍 */
   try { setTimeout(scanFrames, 0); } catch (e) { }           /* 首扫错开一拍：bootstrap 在本 IIFE 返回后才写 __CERAIL_CSS__ */
   /* ---- v1.8.10 十三批四追：首包丢失自愈心跳（八追扩陈旧态） ----
      实机实锤（2026-11-05 作者重启后全界面 rail 裸骨架：排序钮全隐/格区布局残留）：
@@ -4127,7 +4354,12 @@
     /* v1.8.7：场景开启上报本页显示序退役——顺序唯一权威=C# cerail_pinorder.json，
        各页轮询（TabInjector/TabGate/Pruner 的 ApplyOrder）每 0.5s 对账自愈，
        无需 JS 浏览器侧回灌（旧 srp_pin_order_<scene> localStorage 读写路整体下线）。
-       v1.8.9：T4 Browser 选中上报同批退役（下拉按钮已删，C# 端 setFilter/cerail_filter.json 一并拆）。 */
+       v1.9.1：筛选下拉回归——开页对**非缺省**选中上报自愈（C# 文件被清/换档时按浏览器
+       侧回显重建；缺省不上报=SaveFilter 幂等门零 IO）。 */
+    if (FS_KEYS[key]) {
+      var selv = loadFilterSel();
+      if (selv !== '0') cmdOut('setFilter', { key: key, sel: selv });
+    }
     PIN_KEY = ''; /* 场景换了/全新侧栏 DOM：页签结构必重建（原地更新纪律，§4.10） */
     RENDERED_ID = null; /* 场景态重置=渲染目标未知，回包门回到「未渲染」 */
     saveSnap(); /* T9：入口态即刻入快照（数据未到时重绑重访也有完整场景态可换回） */

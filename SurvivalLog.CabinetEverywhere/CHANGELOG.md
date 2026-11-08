@@ -3,6 +3,121 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## v1.9.1（2026-11-08，筛选下拉回归批（含实机批改五轮）+ 交易页「回应求助」柜子页签补挂批）
+
+**作者实报（2026-11-08）**：无人机交易 **回应求助** 页面没有显示储物柜的页签栏（正常交易页
+有——同一 TradeUI，差异只在入口路）。
+
+- **根因（gamekb 2026-11-05_26454866 反汇编取证，RVA 全录 TradeTabs.cs 头注）**：交易页柜子
+  页签原生收集链=开页事件 → NotifyGlobal(3049 TradeContainerTabsRequest) → ItemManager.
+  CollectTradeContainers（白名单过滤——mod 白名单注入本在生效）→ Ac_TradeUI_SetContainerTabs
+  写 state 容器名单 → RebuildBagTabs。电台**回应求助路**（LogicAdapter.OnBtOpenTradeRosterUI）
+  在 TradeUI WebView 挂载完成前**同帧**发 3049——容器页签晚到即丢（官方另一条派送路
+  SwitchTradeToDispatchAsync 特意「等 UI 关净→开页→逐帧等挂载→才请求」=官方自己知道该时序）；
+  选人（PickRosterCore）只切 phase 进派送态，全程无重发 → 柜子页签在该路永不出现。正常终端
+  交易路时序无此竞态=页签齐全——故「正常交易有、回应求助没有」。
+- **修法（TradeTabs.cs，DrawerTabs 同页同款先例）**：TradeUI 激活期间对 State_Web_TradeUI.BagTabs
+  做 Ensure——HomeInstances（=白名单同源柜子集）里缺页签的逐台尾插 BagTabEntry POCO（视图
+  View_Trade 谓词+筛选下拉 sel 同 TabGate 单一口径；cols/rows live 读 BagCache→Config_Bag.Size
+  =官方快照宽度问题的同源自愈口径）。FastPoll 开页翻转短窗每帧抢跑（治开页闪「先背包后柜子」）
+  +0.5s 轮询覆盖 roster→pick 页中重建（官方重建即清补挂条目，≤0.5s 收敛=抽屉页签既有节奏）。
+  正常交易路官方原生已含全部白名单柜=零动作幂等；重开界面即还原官方（纯视图层，零配置/存档写）。
+  门=General.Enabled + EnableCraftSource（交易柜子页签本就是白名单族特性，cfg 原句「白名单注入：
+  工作台/无人机交易/…的柜子页签」——本补是同一承诺在回应求助页兑现）。语义边界同抽屉页签：
+  页签=手动搬运，回应求助装货本就全手动。
+- 待实机验收：电台接求助单→回应求助→选人后背包区页签栏应出现柜子页签（+工作台抽屉），
+  切柜取物装无人机正常；正常终端交易页无回归。
+
+**作者令（2026-11-08）**：v1.7.0 做过「筛选页签栏显示哪些标签的柜子」的筛选按钮，后面版本
+升级时丢了——加回来，放到交易/调度机队界面，挨着这版的排序按钮。**实机批改三条（同日）**：
+①样式没有完全迁移过来；②分类清单定版=全部/食物/材料/药品/日用品/燃料/肥料/种子/防御耗材/
+战斗用品/工具/杂项/其他（顺序照令，**其他=前列分类全不中的柜子**）；③工作台撤钮——只有
+交易界面、调度机队显示这俩按钮；④切换筛选卡很久才生效（排查抄错/漏了）。
+
+- **历史链（考古定谳）**：下拉有两代——v1.7.0 tagfilter 自绘下拉（JS 藏 DOM 页签+消息扣发
+  十七轮防闪烁工程），v1.8.7 T4 换轨**状态层筛选**（选中→cmd setFilter→cerail_filter.json 落库
+  →TabGate 轮询把官方页签数组收窄到选中集，A/D/拖物到页签全原生）；v1.8.8 九批「交易页删冗余
+  UI」随「全部柜子」下拉整链退役。本次复活 T4 状态层链路（正确架构，不回头走 DOM 隐藏），
+  按钮按作者令重新落位。
+- **④卡顿根因（实机 LogOutput 定谳，非抄错）**：Trade 页只剪 BagTabs→Repush 时，官方
+  Refresh/重建路从**全量 Containers 源名单**重建 BagTabs（RA_SetContainerTabs 写
+  state.Containers、RebuildBagTabs 消费——dump.cs 222724/226109 取证）→全量回流→再剪→
+  再 Repush=**自持振荡**（日志「移出 19 条」无限重复+DrawerTabs 反复补+心跳 ping 风暴=推送
+  通道拥塞，页面卡死直到某次推送落地=「很久才生效」）。根修=PollTrade 对 **Containers 源名单
+  一并收窄**（会话快照并集+期望集差异重写；未选=快照全量还原）：官方任何重建天然产出筛选后
+  集合，稳态零差异零 Repush。DroneHub 无源名单字段（RA_Open 携带收集开页即建，稳态无回流
+  路）不受此坑。ToolTablePruner 的 sel 接线随撤钮整体回退（残留 cerail_filter.json "tooltable"
+  键自然失效）。
+- **②分类定版（JS FS_CATS+C# SelMatch 单一事实源同口径）**：食物=官方食物域（dim1-4 任一
+  标签）；十个分类=官方同名标签（**id 不硬编码，按 iconKey 从契约 lib/标签表运行时解析**，
+  表改版自动跟随；lib 未就绪=该项跳行不显示）；其他=食物域+十分类全不中的柜子（含未打标签
+  与只带清单外标签如书刊/电器/剧情道具；材料架伪标签=材料→不算其他）。sel 编码 '0'/'food'/
+  'other'/tagId，SelValid 白名单同步。
+- **①样式完全迁移（v1.7.0 官方件逐字迁回）**：选项行=官方标签 SVG 图标（v1.7.0
+  TAG_ICONS_FALLBACK 同源 12 键迁移，fill:currentColor+行内官方色）+类名+选中 ✓；触发钮=
+  当前类官方图标（sync 换装，缺省三横线）+文案+.on 金态。makeSortMenu 复用件三点扩展
+  （svg 项渲染/tickCls 可配/icoOf 触发钮换装——既有实例零变化）。
+- **③按钮集合收两页**：FS_KEYS={Trade, DroneHub}（工作台撤）；持久化 cerail_filter.json
+  （C# 权威）+localStorage 回显，开页/重访帧对非缺省选中上报自愈（rebindFrame 补发路：快照
+  恢复不走 applyScene——loadSnap 连 sceneApplied 一并还原=setData 场景门恒假，harness 实证）。
+  bag×4 注入页与 cart 三页传 null 不参与。**并行批咬合**：TradeTabs.cs 回应求助补挂的注入集
+  同用 Judge(view, sel) 单一口径（防「我补它剪」震荡）。
+- 回归：harness **page-filter 16/16 新锚（批改后重写）**（两页按钮在场/定版分类序+SVG 图标+✓/
+  tagId 按 iconKey 解析/food·other 语义 sel/ToolTable 撤钮恒藏/DroneHub 并排/复位/锚定 px/
+  外部点击关/重进 Trade 自愈补发/console 清洁）；全量绿：tagfilter-gate 15、switch-cabinet 27、glist 128、
+
+**作者实机批改二轮（2026-11-08 下午，四条）**：①「工作台抽屉归类为材料，现在是所有筛选项
+都能筛出它来」；②「切换筛选后页签没有自动刷新，要手动移动下页签才刷新」；③「感觉还是有点
+卡顿」；④「调度机队切换筛选不生效，只有首次打开的条件生效」。
+
+- **④根因（批改一版实机日志定谳）**：DroneHub 旧实现**只剪不补=单向棘轮**——首次筛选剪掉的
+  条目一去不返（官方数组仅开页全量重建，稳态无回流路），再切条件无从加回（交集常空）；剪空后
+  更被 `Count==0` 早退钉死，后续 sel 切换整链静默（日志 1715-1717 三连选 1009/1010/1013 无
+  「移出」行实证）。修=PollDroneHub 重写**会话快照双向对账**：快照（owner→条目对象，每轮并入
+  官方重建/抽屉补挂新见）∩（活动恒留+Judge+抽屉归类门）=期望集，多则剪、缺则补回（对象复用、
+  Index=位次重排）——切宽切窄都 ≤0.5s 还原。
+- **②③根因（同日志）**：渲染走 `MarkAllMsgDirty` 全量重推=大包高丢弃率（v1.8.10 十三批六追
+  已证 62KB 契约包常丢），页签区不重渲染=「要手动移动页签」；掉包→ping→ForceRepublish 风暴
+  =卡顿观感。修=两页渲染统一换**官方 `Ac_TradeUI_RefreshBag`/`Ac_DroneHub_RefreshBag`**
+  （Bug3 实证杠杆：按数据重建 state 并推送页面——小包定向，页签随 BagMsg 官方通道重绘）。
+- **①修法**：抽屉 owner 不在容器表（Judge 恒放行=旧病根）——`DrawerPasses` 归类门：材料分类/
+  材料视图=显、其余分类藏、未选全显；TabGate 两页剪枝与 **DrawerTabs 补挂门**（DrawerVisibleFor
+  同口径单一事实源）双侧生效，防「它剪我补」振荡；粉碎机页（筛选范围外）照常补。
+
+**作者实机批改三轮（2026-11-08 下午二场，四条）**：①「筛选列表缺失 书刊 选项，排在燃料下边」；
+②「调度机队筛选工具时整个页签栏消失」；③「调度机队还是有卡顿，且柜子详情页态切筛选后仍要移动
+页签才刷新」；④「切换筛选的提示信息不要」。
+
+- **①**：FS_CATS 燃料后插 `书刊`（官方 id 1015/iconKey book/官方色，v1.7.0 book SVG 同源迁移）；
+  C# CatIconKeys 同步收 book（「其他」补集口径跟着走）。
+- **②根因（DroneHub.html:906 实证）**：官方 `renderBagTabs` 对 `tabs.length<=1` **整栏
+  display:none 换标题栏**——筛到命中零柜的分类（如工具）时数组只剩背包页签=栏塌缩。
+  **座位方案（三轮首版：命中零柜保留一个最近看过的柜页签）作者裁定否决**（「留一个错误的
+  =硬造缺陷；没有就空页签栏就好，背包标题栏保留」）——已撤除。终版=mod 零干预：命中零柜时
+  走官方 `≤1` 原生空态（页签栏收起+背包标题栏显示），筛选语义纯粹无假条目；两页一致。
+- **③**：DroneHub 渲染杠杆升级——RefreshBag 只刷背包面板不重绘页签栏（柜子详情页态实锤），
+  换**官方切换全链自切** `Ac_DroneHub_SwitchBag{ownerId:active}`（=页签点击同路，BagMsg 携
+  bagTabsJson 整栏重建），RefreshBag 保留兜底；卡顿观感随页签栏即时重绘消除。
+- **④**：pickFilterSel 的 toast 退役（选中态即视觉回执：钮图标+文案+.on 金态）。
+
+**作者实机批改四轮（2026-11-08 晚，②③复报未愈+座位方案否决）**：②零命中仍整栏消失；③柜子
+详情页切筛选仍要手动移动页签才刷新、仍有卡顿。
+
+- **③根因定谳（用户自身操作反证）**：「手动移动页签能刷新」——拖页签走的是 mod 的
+  pinOrder→ApplyOrder→**Repush**（MarkAllMsgDirty 全量重推）链 ⇒ Repush 这条渲染路对
+  DroneHub 页签栏**实证有效**。三轮误诊：RefreshBag 的 BagMsg **不带 bagTabs 字段**
+  （页面 handler `if (data.bagTabs !== undefined)` 才更新 State——DroneHub.html:1110 实证）=
+  只刷物品不重绘页签栏；SwitchBag 自切=RA 同值守卫无效果。修=渲染主杠杆回归 **Repush**，
+  RefreshBag 降为兜底（活动袋物品补刷）。
+- **②终版（座位方案作者否决后重定）**：零命中的正确形态=「空页签栏+背包页签保留」（作者
+  裁定），官方 renderBagTabs 对 ≤1 整栏收起换标题**无此形态** ⇒ rail 呈现层守卫
+  （dhStripGuard）：筛选激活期间官方每次收栏即还原——栏 flex + 用**页面自己的**
+  createTabEl/State 把背包页签补进 pin 槽（MutationObserver 盯 #bagTabs style + pin
+  childList，防自激=只在被藏时写、写完即静）；数据零伪造（C# 状态数组始终真实，纯呈现层）；
+  sel 回 '0' 官方全量渲染自然接管。
+  fuelgen 53、heater 55、dye-pig 38、brew-tier 35、native-width 8、native-tab-align 14、
+  native-scroll-drag 14、width-floor 13；dotnet build 0 错（5 警告均存量）。
+
 ## v1.9.1（2026-11-08，多袋页签垂直对齐修正批——作者实报两单）
 
 **作者实报（2026-11-08）**：①野外探险界面选柜「取出物资」（BackpackUI 双背包）切 **SUV后备箱**

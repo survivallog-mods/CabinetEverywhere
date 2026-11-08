@@ -66,7 +66,7 @@ internal static class TagFilter
         }
     }
 
-    private static Vuplex.WebView.IWebView GetWebView()
+    internal static Vuplex.WebView.IWebView GetWebView()
     {
         try
         {
