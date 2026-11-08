@@ -22,7 +22,10 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   flags: bit0=污染 bit1=过期 bit2=临期；timeLeft 单位=游戏小时（RailSortMath 定案）。
 ///   s1..s4=饱腹/心态/精力/生命（RailSortMath=ProjectCook 实例+天赋口径；0/缺=null）、
 ///   trade=整叠计算后交易价值（null=无价）、days=保质排序键（null=不腐；-100001 腐败/
-///   -100000 过期/(-100000,0) 过期计天/>0 剩余天数——角标文本 JS 由键推导）。
+///   -100000 过期/(-100000,0) 过期计天/>0 剩余天数——角标文本 JS 由键推导）、
+///   v1.9.0 起行尾追加 attrSig（string=原始 InstanceVD 随机词条签名，无实例掷值=""——
+///   glist 合并键属性依据）、再尾 uses（v2 作者终案：原始剩余使用次数，仅 MaxUseTimes>0
+///   物品携带，null=无该维度——合并键=物品名+uses+attrSig；右键取物 FEFO=行内 timeLeft 升序）。
 ///   view=当前页场景视图（food/material/browser，TagFilter.ViewStr 同源）；tradePrefs=[[分类名,加成]…]；
 ///
 /// 取证依据（docs/superpowers/plans/2026-10-30-cerail-spike-findings.md，字段语义以它为准）：
@@ -485,6 +488,16 @@ internal static class RailData
         //（仅本页带出=页条件字段先例同 fgOn/tradePrefs）
         if (sc?.Page == "Heater")
             sb.Append(",\"heaterOn\":").Append(CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
+        // glistOn（v1.9.0 global-storage-list）：竖版全局物品栏页条件门——染料桶/暖炉两页先行；
+        // 染料桶受 EnableDye 联动（柜子页签关则 glist 一并还原官方），暖炉同理挂 EnableHeater；
+        // false=JS 拆装对称还原（glistGate 消费，heaterOn 先例同构）
+        if (sc?.Page == "DyePanel")
+            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false ? "true" : "false");
+        if (sc?.Page == "Heater")
+            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
+        // 批改#8（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；同构挂 EnableFuelGen
+        if (sc?.Page == "FuelGenerator")
+            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
         // dyePal（染料桶色素排序批）：颜色板页条件字段——DyePaletteRules.PanelDyeItems（官方面板
         // 序，全颜色含未解锁）+ PanelDyeHex（平行 hex）+ 染料物品本地化名（ItemDict）。spike v3
         // 实证：ColorCount=8（20363-20370），名称走染料物品自身（ColorShowKeys=StateXX 非显示名）。
@@ -815,6 +828,27 @@ internal static class RailData
                 // 缺陷单#1：逐叠排序数值（RailSortMath=ProjectCook 口径；任一环失败该维 null）
                 var nums = RailSortMath.Of(it, ic, tradeScene, nowHours);
 
+                // glist（v1.9.0 批改#1 三追）：attrSig=随机词条签名（**原始 InstanceVD**）——合并键
+                // =物品名+attrSig 的唯一属性依据。剥掉一切瞬态：使用次数（s 值乘了 UseTimes，随吃
+                // 递减=吃一口裂一行的假拆）、滋养天赋（玩家成长全叠同变）、保鲜（flags/timeLeft 食物
+                // 态位燃料恒 0）。无实例掷值（包装食品/燃料/材料）=空串（同名全并）。
+                string attrSig = "";
+                try
+                {
+                    var iv2 = it.InstanceVD;
+                    if (iv2 != null && iv2.Length >= 5 && (iv2[0] != 0f || iv2[1] != 0f || iv2[2] != 0f || iv2[3] != 0f || iv2[4] != 0f))
+                        attrSig = iv2[0].ToString("0.###", CultureInfo.InvariantCulture) + "|" + iv2[1].ToString("0.###", CultureInfo.InvariantCulture)
+                            + "|" + iv2[2].ToString("0.###", CultureInfo.InvariantCulture) + "|" + iv2[3].ToString("0.###", CultureInfo.InvariantCulture)
+                            + "|" + iv2[4].ToString("0.###", CultureInfo.InvariantCulture);
+                }
+                catch { }
+
+                // v2（作者 2026-11-08 终案）：uses/useMax=原始剩余/最大使用次数（仅 MaxUseTimes>0 的
+                // 多用途物品携带——非料理食物/药物/书籍同口径）——合并键第三维+行上官方「剩余/最大」
+                // 徽章（item-use 方案镜像）；null=无该维度（材料/燃料等同名即并）。
+                int? usesVal = null, usesMaxVal = null;
+                try { var um = it.MaxUseTimes; if (um > 0) { usesVal = Math.Max(1, it.UseTimes); usesMaxVal = um; } } catch { }
+
                 if (rows > 0) sb.Append(',');
                 sb.Append('[').Append(id).Append(',').Append(cfg).Append(',').Append(count)
                   .Append(',').Append(timeLeft) /* TimeLeft 原样（单位=游戏小时，RailSortMath 定案） */
@@ -824,6 +858,9 @@ internal static class RailData
                   .Append(',').Append(NumOrNull(nums.Stats[2])).Append(',').Append(NumOrNull(nums.Stats[3]))
                   .Append(',').Append(NumOrNull(nums.Trade))
                   .Append(',').Append(nums.DaysKey.HasValue ? nums.DaysKey.Value.ToString("0.###", CultureInfo.InvariantCulture) : "null")
+                  .Append(",\"").Append(attrSig).Append("\"") /* v1.9.0：attrSig（glist 合并键属性依据） */
+                  .Append(',').Append(usesVal.HasValue ? usesVal.Value.ToString(CultureInfo.InvariantCulture) : "null") /* v2：uses（glist 合并键+徽章） */
+                  .Append(',').Append(usesMaxVal.HasValue ? usesMaxVal.Value.ToString(CultureInfo.InvariantCulture) : "null") /* v2：useMax（徽章「剩余/最大」+键） */
                   .Append(']');
                 rows++;
             }

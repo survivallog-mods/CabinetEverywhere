@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "1.8.6";
+    public const string Version = "1.9.0";
 
     internal static ManualLogSource Log;
 
@@ -87,6 +87,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> EnableFuelGen;
     // 暖炉柜子页签总开关（暖炉移植批=bagtabs 族第二页：与 EnableFuelGen 同构独立开关，不联动）
     internal static ConfigEntry<bool> EnableHeater;
+    // 竖版全局物品栏（v1.9.0 global-storage-list）：染料桶/暖炉两页先行——左背包区换列表态全局
+    // 物品栏（列表/格子单图标互切，格子态=现行视图原样）；与 bagtabs/rail 壳共存互不干扰
+    internal static ConfigEntry<bool> EnableGlistDye, EnableGlistHeater, EnableGlistFuelGen;
 
     internal static volatile bool Rerun = true;
 
@@ -195,6 +198,14 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewHeater          = Config.Bind("Scenario", "View_Heater",          ScenarioView.Fuel, "暖炉" + viewDesc);
         EnableHeater = Config.Bind("Access", "EnableHeater", true,
             "暖炉界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送暖炉；false=界面还原官方（与燃油发电机同构、独立开关）。");
+        // 竖版全局物品栏（v1.9.0）：两页独立开关——进页默认列表态（跨背包+整屋柜子汇总/场景
+        // 预设筛选排序/右键移1件），单图标钮可切回格子态=现行视图；false=该页还原现行样式
+        EnableGlistDye = Config.Bind("Access", "EnableGlistDye", true,
+            "染料桶界面竖版全局物品栏：跨背包+整屋柜子的汇总列表（8色板筛选+主色点数排序+右键移1件入染料槽），单图标钮与格子样式互切；false=还原现行样式。");
+        EnableGlistHeater = Config.Bind("Access", "EnableGlistHeater", true,
+            "暖炉界面竖版全局物品栏：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入炉膛），单图标钮与格子样式互切；false=还原现行样式（与染料桶同构、独立开关）。");
+        EnableGlistFuelGen = Config.Bind("Access", "EnableGlistFuelGen", true,
+            "燃油发电机界面竖版全局物品栏（批改#8：复用暖炉同构）：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入燃料槽），单图标钮与格子样式互切；false=还原现行样式（独立开关）。");
 
         System.EventHandler reload = (object s, System.EventArgs e) => { Rerun = true; };
         IncludeFurnitureIds.SettingChanged += reload;
@@ -205,6 +216,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableRatCage.SettingChanged += reload;
         EnableBrew.SettingChanged += reload;
         EnableDye.SettingChanged += reload;
+        EnableGlistDye.SettingChanged += reload;     /* v1.9.0 glist：门变更走慢道重收敛（拆装对称） */
+        EnableGlistHeater.SettingChanged += reload;
+        EnableGlistFuelGen.SettingChanged += reload; /* 批改#8：发电机页同构 */
         ViewCooking.SettingChanged += reload;
         ViewRatCage.SettingChanged += reload;
         ViewBrewPanel.SettingChanged += reload;
@@ -327,6 +341,9 @@ internal sealed class AccessTicker : MonoBehaviour
             // v1.8.9 Bug4 帧级快通道：官方排序/搬运改叠数 ≤1 帧检出并重推（替代 0.5s 泵量化等待，
             // 「一键整理响应 2s+」排查修复；空闲≈零开销，重活仍在 0.5s Tick）
             RailUi.FastPoll();
+            // glist 键盘门（实机批改#5）：Dye/Heater 页激活期间 SetKeyboardEnabled+IME On
+            //（搜索框可输入+中文——PlanPick 装机实证方案同款，内部 0.3s 节流）
+            RailUi.GlistKeyboardTick();
             // v1.8.9 十三批：开界面瞬帧注入柜子页签（0.5s 轮询量化是首开闪烁根源——首推只带
             // 原生背包+冰箱；每帧只查翻转，开界面那帧抢在首推序列化前注入全量；稳态零动作）
             TabInjector.FastPoll();

@@ -344,6 +344,9 @@ window.__HZ_READY__ = function () {
      官方界面兜底值；置值后 __HZ_PUSH__ 生效——P2≤P1 时 JS 应回兜底，harness §1③） */
   window.__HZ_BREWP1__ = 0;
   window.__HZ_BREWP2__ = 0.5;
+  /* glist（global-storage-list v1.9.0）：两页强制门测试钮 {场景键:true}——置键后 scan() 即装配，
+     删键即拆净（正式门=ctx.glistOn 页条件字段，T7 接线；钮为 harness 覆盖位，与 __HZ_HTON__ 同类） */
+  window.__HZ_GLIST__ = {};
   function ctxFor(key) {
     var f = FAMILY[key] || { family: 'bag' };
     var ctx = {
@@ -353,6 +356,9 @@ window.__HZ_READY__ = function () {
       brewP1: window.__HZ_BREWP1__, brewP2: window.__HZ_BREWP2__
     };
     if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.fgOn = window.__HZ_FGON__ !== false; }
+    /* glist（v1.9.0）：ctx.glistOn 页条件字段夹具钮——undefined=字段缺席（C# 缺席语义）、
+       true/false=显式门；正式门=C# EnableGlistDye/Heater（T7 接线），__HZ_GLIST__ 钮为覆盖位 */
+    if (key === 'DyePanel' || key === 'Heater' || key === 'FuelGenerator') { if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; }
     if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.heaterOn = window.__HZ_HTON__ !== false; }
     /* dye-pigment-sort：DyePanel 页条件字段 dyePal（C# ctx 页条件先例 tradePrefs 同源）。三态：
        undefined=默认板 / 数组=测试板 / null=模拟 C# 缺席（配置未就绪窗口——字段整个不下发） */

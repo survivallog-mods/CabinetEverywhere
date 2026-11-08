@@ -740,6 +740,72 @@ internal static class RailUi
         }
         catch { return null; }
     }
+
+    // ==== glist 键盘门（批改#5→#12f，2026-11-08 定稿）：搜索框可输入 + 中文 IME ====
+    // 官方为防误触全局限制键盘转发（WebUI 预制体 KeyboardEnabled=0，仅白名单界面解锁），
+    // 页面侧 SEARCH_FOCUS 事件不够——C# 侧双开（PlanPick 实证方案）：页激活期间
+    // WebUILayer.SetKeyboardEnabled(true)（英文/裸键通道开关）+ Input.imeCompositionMode=On
+    // （中文 IME：组合挂 Unity 窗口、结果 Vuplex 直投浏览器）；页关/cfg 关对称还原。
+    // 【页 id 词汇教训（批改#12f，五轮弯路的定谳）】IsPageActive 的合法参数=PageMap 键名=
+    // 场景名本体：DyePanel/Heater/FuelGenerator。#5 起染料桶键名猜作 Dye/UI_Dye/WebUI_Dye
+    // 全不匹配=门从未开过；因暖炉/发电机名字恰是本名而「看起来方案对染料桶失灵」，随后三轮
+    // （0.3s 重申/每帧重申/Harmony 守卫）全打在未验证的「被压关」理论上——正确姿势是第一轮
+    // 就倾倒 PageMap.Keys 对表（一行日志）。录此防再犯：**假设先测量，不假设不加码**。
+    private static bool _gkHanded;
+    private static float _gkNext;
+    private static UnityEngine.IMECompositionMode _gkPrevIme = UnityEngine.IMECompositionMode.Auto;
+    private static readonly string[] _gkDyeKeys = { "DyePanel" };
+    private static readonly string[] _gkHeaterKeys = { "Heater" };
+    private static readonly string[] _gkFuelGenKeys = { "FuelGenerator" };
+    internal static void GlistKeyboardTick()
+    {
+        var now = UnityEngine.Time.unscaledTime;
+        if (now < _gkNext) return; // 0.3s 节流（PlanPick 同拍）
+        _gkNext = now + 0.3f;
+        GameCore.HotUpdate.ReduxUI.WebUILayer layer = null;
+        try
+        {
+            if (GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                layer = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance?.GetWebUILayer();
+        }
+        catch { layer = null; }
+        if (layer == null) { if (_gkHanded) GlistKeyboardReturn(layer); return; }
+        bool active =
+            (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
+            (CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false && GlistAnyPageActive(layer, _gkHeaterKeys)) ||
+            (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys));
+        if (active && !_gkHanded)
+        {
+            _gkHanded = true;
+            try
+            {
+                _gkPrevIme = UnityEngine.Input.imeCompositionMode;
+                layer.SetKeyboardEnabled(true);
+                UnityEngine.Input.imeCompositionMode = UnityEngine.IMECompositionMode.On;
+                CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘门开：SetKeyboardEnabled+IME On（搜索框可输入/中文）");
+            }
+            catch (Exception e) { _gkHanded = false; CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘门开异常: " + e.Message); }
+        }
+        else if (!active && _gkHanded) GlistKeyboardReturn(layer);
+    }
+    private static void GlistKeyboardReturn(GameCore.HotUpdate.ReduxUI.WebUILayer layer)
+    {
+        _gkHanded = false;
+        try
+        {
+            if (layer == null && GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
+                layer = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance?.GetWebUILayer();
+            layer?.SetKeyboardEnabled(false);
+            UnityEngine.Input.imeCompositionMode = _gkPrevIme;
+            CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘门关：还原官方键盘管理");
+        }
+        catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘门关异常: " + e.Message); }
+    }
+    private static bool GlistAnyPageActive(GameCore.HotUpdate.ReduxUI.WebUILayer layer, string[] keys)
+    {
+        foreach (var k in keys) { try { if (layer.IsPageActive(k)) return true; } catch { } }
+        return false;
+    }
     internal static Vuplex.WebView.IWebView ActiveWebView => GetWebView(); // v1.8.10 十三批六追：OpPing 通道对照实验用（微包回执）
     internal static Il2CppSystem.Action<string> PushAckCallback
     { // 惰性建（与 PushIfDue 内同款；命名方法 PushAck）

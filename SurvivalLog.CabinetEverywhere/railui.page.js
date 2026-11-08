@@ -3515,6 +3515,13 @@
     Heater:        { sys: 'heater-system',    right: 'heater-panel', onKey: 'heaterOn', fullText: '炉膛已满' },
   };
   function btOf(page) { return BAGTABS[page] || null; }
+  /* 实机批改#9（2026-11-08 作者裁定：格子态=官方默认背包，「柜子页签是之前版本的方案，已被
+     新方案替代」）：glist 在场的 bagtabs 族页（Heater/FuelGenerator）srfg 旧方案整体退役——
+     列表态=glist 面板接管左列，格子态=fgTeardown 后的原版面板（标题/官方格/提示，无页签无
+     整理钮无 778 锁）。门=glistGate（cfg/页/knob 同一真源）；门关=旧方案原路复活（cfg 回退面）。
+     连带：778 高度锁所有权转移——fgSyncHeight 随退役停跑，列表态由 glistApply 自写同规则锁
+     （778 地板+视口钳，见 glistApply），格子态/拆净=解除还自然高（官方 _fit 缩放接管）。 */
+  function glistOwnsPage(key) { return !!GLIST[key] && glistGate(key); }
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中' }; /* full=料槽满：文案页异（燃油槽/炉膛），走 BAGTABS[].fullText */
   var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
 
@@ -3528,6 +3535,14 @@
 
   function ensureBagtabs(f) {
     var doc = f.doc;
+    /* 批改#11b（渲染进程猝死根治）：GLIST 页上旧方案只许在「ctx 确认本页且 glist 关」时挂载
+       ——ctx 未确认（开门首扫 ctx 还是上页的）也一律 hold：否则旧方案抢挂→glist 接管→
+       teardown/换包过渡机级联=观察器雪崩（实机实锤 bagtabs mounted: Heater 后页面冻死）。
+       hold 语义=本帧不建，等 ctx 到位（glistOn=压制 / 确认关=挂载）。 */
+    if (GLIST[f.key] && (glistOwnsPage(f.key) || !store.ctx || store.ctx.page !== f.key)) {
+      if (FG.doc === doc) { try { fgTeardown(); } catch (e) { } }
+      return;
+    }
     if (!fgFuelCtns().length) return;        /* 无燃料柜=不建（拆后再建再拆=观察器乒乓暴毙，实机教训） */
     var bt = btOf(f.key);                    /* bagtabs 帧页描述符（scanFrames 只以 SCENES[key].bagtabs 帧入此） */
     if (!bt) return;
@@ -3607,6 +3622,13 @@
 
   function fgKey(e) {
     if (!FG.active || !FG.doc) return;
+    /* 实机批改#3：输入语境不切页签（glist 搜索框打字 a/d；双绑两侧都查——iframe 绑定
+       e.target=输入框，Root 绑定 e.target=body 时查目标帧 activeElement；SEARCH_FOCUS
+       开键盘转发后打字键会真实到达） */
+    var tgt = e.target;
+    if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
+    var ae = FG.doc.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
     var k = e.key;
     if (k !== 'a' && k !== 'A' && k !== 'd' && k !== 'D') return;
     var t = Date.now();
@@ -3661,6 +3683,7 @@
 
   function fgSettle() {
     if (!store.ctx || !btOf(store.ctx.page)) return; /* 页守卫：他页/非 bagtabs 页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
+    if (glistOwnsPage(store.ctx.page)) { if (FG.doc) { try { fgTeardown(); } catch (e) { } } return; } /* 批改#9：glist 在场=退役（含 fgSyncHeight 778 锁停跑——锁所有权移交 glistApply） */
     fgSyncHeight(); /* 等高契约每轮复核（同值守卫） */
     if (!FG.doc || !FG.doc.getElementById('srfgTabs')) {
       /* 自愈回装（实机二验收「二次打开页签栏不显示」加固）：页签不在而燃料柜数据在——可能是
@@ -3803,6 +3826,9 @@
   function ensureMountedFrame(f) {
     var doc = f.doc, key = f.key, sc = SCENES[key];
     if (!doc || !doc.body || !sc) return;
+    /* glist 全局物品栏（v1.9.0）：DyePanel/Heater 两页左面板接管——先于 bagtabs 分支跑
+       （门关=拆净）；Heater 的 bagtabs 件在本轮稍后新增时由下方分支内二跑兜住（无闪帧） */
+    if (GLIST[key]) { try { glistFrame(f); } catch (e) { try { console.warn('[CERail] glist 装配异常', e && (e.message || e)); } catch (e2) { } } }
     /* 燃油发电机/暖炉 bagtabs（fuelgen spec；暖炉移植批=族第二页）：frameVisible 门**之前**——
        隐帧也要翻 FG.active=false（Root A/D 守卫依赖它；隐藏后键不动作=不泄漏）。装配自身仍只
        对可见帧。
@@ -3813,8 +3839,20 @@
     if (sc.bagtabs) {
       var btVis = frameVisible(f.el);
       if (btVis) {
-        FG.active = true;
-        try { ensureBagtabs(f); } catch (e) { try { console.warn('[CERail] bagtabs 装配异常', e && (e.message || e)); } catch (e2) { } }
+        if (glistOwnsPage(key)) {
+          /* 批改#9：glist 在场=旧方案退役——FG.active 收口（a/d 键守卫不得残留真）+拆净。
+             拆净会清宿主 inline 高（fgTeardown 旧锁所有权），随后补跑一次 glistFrame 重申
+             glistApply 的新锁（同值守卫幂等；头序 glistFrame 先跑过，此补仅覆盖「本轮刚拆」面） */
+          FG.active = false;
+          if (FG.doc === f.doc) {
+            try { fgTeardown(); } catch (e) { }
+            try { glistFrame(f); } catch (e) { }
+          }
+        } else {
+          FG.active = true;
+          try { ensureBagtabs(f); } catch (e) { try { console.warn('[CERail] bagtabs 装配异常', e && (e.message || e)); } catch (e2) { } }
+          if (GLIST[key]) { try { glistFrame(f); } catch (e) { try { console.warn('[CERail] glist 装配异常', e && (e.message || e)); } catch (e2) { } } } /* bagtabs 件新增后再对齐列表态隐藏（同轮兜住，无 500ms 闪帧） */
+        }
       } else if (FG.page === f.key) {
         FG.active = false; /* 本页隐藏：键守卫收口（他页隐帧不得碰） */
       }
@@ -3839,6 +3877,7 @@
          两页 id 为静态默认值，实机若不符以本行日志为准回填 SCENES/ID_ALIAS。 */
       try { console.log('[CERail] scene mounted: ' + key + ' (iframe#' + f.el.id + (f.el.id !== key ? '，别名归一' : '') + ')'); } catch (e) { }
     }
+    if (GLIST[key]) { try { glistFrame(f); } catch (e) { try { console.warn('[CERail] glist 装配异常', e && (e.message || e)); } catch (e2) { } } } /* rail 壳本轮首装后宿主才可用（DyePanel 路径）：尾跑补挂 */
   }
   /* T9 重绑（T8 遗留缺陷修复）：帧重新可见但 el 引用表在他帧（A→B→A 重访）——rail 仍在
      本帧文档且宿主未复活（mount 无从下手，旧代码在此早退=A 帧冻结+setData 渲染进错帧）。
@@ -3985,6 +4024,604 @@
     }
     return store.bag;
   }
+  /* ══ 竖版全局物品栏 glist（global-storage-list v1.9.0 spec；先行=DyePanel+Heater 两页）══
+     Task1=聚合纯函数（不触 DOM，面板/交互随后续任务落）：GLIST 页描述符 + glistAggregate——
+     全屋（背包+全部契约柜）同名汇总，合并键=cfg+'|'+timeLeft+'|'+flags（UI-SPEC §3-6 全库
+     列表旧约：随机属性任异不合并，显示层近似零真实摆放触碰）；srcs 背包恒首、其后 ctn 契约序；
+     Dye 主色=该植物点数最高色（官方 State.mainPoints 同口径）+dyePal hex；Heater 徽章=burnValue
+     （icfg 燃料尾列）；场景预置隐藏行计数 hiddenCount；排序键降序+并列稳定+300 行截断（旧全库约）。 */
+  var GLIST = {
+    DyePanel: { target: '染料槽', badge: 'pig', feed: 'dye' },
+    Heater: { target: '炉膛', badge: 'heat', feed: 'fuel' },
+    /* 实机批改#8 追加（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）：
+       炉膛/燃料槽文案随官方页（BAGTABS[].fullText 同源差异），badge/feed 全同暖炉 */
+    FuelGenerator: { target: '燃料槽', badge: 'heat', feed: 'fuel' }
+  };
+  var GLIST_MAX_ROWS = 300;
+  function glistDyeHex(dyeId) {
+    var pal = store.ctx && store.ctx.dyePal;
+    if (!pal) return '';
+    for (var i = 0; i < pal.length; i++) if (String(pal[i][0]) === String(dyeId)) return pal[i][2] || '';
+    return '';
+  }
+  var GL_MEMO = { rev: -1, page: '', out: {} }; /* 终审 M5：聚合按 (rev,page) 记忆——巡帧/观察器/悬停多次调用免重算（渲染签名守卫外的算力面） */
+  function glistSigOf(r) { /* 随机词条签名=契约行尾 attrSig（**原始 InstanceVD**，C# RailData v1.9.0 三追）——
+     剥使用次数/滋养/保鲜一切瞬态：s 值乘了 UseTimes（随吃递减）当键=吃一口裂一行；无实例掷值
+     （包装食品/燃料/材料）="" 同名全并。旧夹具 9-15 列行无此列=空串同形。 */
+    return (r.length > 15 && typeof r[15] === 'string') ? r[15] : '';
+  }
+  function glistNameOf(cfgId) { var ic = ICFG[cfgId]; return ic && ic.n ? ic.n : ('#' + cfgId); }
+  function glistUsesOf(r) { return (r.length > 16 && r[16] != null) ? r[16] : null; } /* v2：剩余次数（null=无该维度） */
+  function glistUsesMaxOf(r) { return (r.length > 17 && r[17] != null) ? r[17] : null; }
+  function glistItemKey(r) {
+    var u = glistUsesOf(r);
+    return glistNameOf(r[1]) + '|' + (u == null ? '' : 'u' + u + '/' + glistUsesMaxOf(r)) + '|' + glistSigOf(r);
+  } /* 合并键 v2 终案=物品名+uses/max+attrSig：同名异 cfg 变体并／次数或上限异拆（行上官方「剩余/最大」徽章明示差异，批改#4）／料理随机属性异拆；timeLeft/flags/s 瞬态全不进键 */
+  function glistAggregate(sceneKey) {
+    var D = GLIST[sceneKey];
+    if (!D) return { rows: [], hiddenCount: 0, truncated: false };
+    if (GL_MEMO.rev === store.rev && GL_MEMO.page === (store.ctx && store.ctx.page) && GL_MEMO.out[sceneKey]) return GL_MEMO.out[sceneKey];
+    var order = ['bag'], i, k;
+    for (i = 0; i < store.ctn.length; i++) order.push(String(store.ctn[i].id));
+    var groups = [], byKey = {};
+    for (k = 0; k < order.length; k++) {
+      var ck = order[k], arr = store.items[ck];
+      if (!arr) continue;
+      for (i = 0; i < arr.length; i++) {
+        var r = arr[i]; if (!r || r.length < 9) continue;
+        /* 实机批改#1（含二追）：合并键=**物品名**+随机属性 s1..s4 签名——timeLeft/flags（食物态
+           位：污染/过期/临期，燃料恒 0）与同名异 cfg 变体都不拆行；随机属性任异（随性「辣/甜」类）
+           仍各行。行 key 与 glistItemKey 同构（取件/回放匹配同口径）。 */
+        var mk = glistItemKey(r);
+        var g = byKey[mk];
+        if (!g) { g = byKey[mk] = { key: mk, cfg: r[1], name: '', ico: '', total: 0, srcs: [], ord: groups.length, uses: r.length > 16 ? r[16] : null, usesMax: r.length > 17 ? r[17] : null }; groups.push(g); }
+        var n = r[2] || 0; g.total += n;
+        var hit = null;
+        for (var s = 0; s < g.srcs.length; s++) if (g.srcs[s][0] === ck) { hit = g.srcs[s]; break; }
+        if (hit) hit[2] += n; else g.srcs.push([ck, ck === 'bag' ? '背包' : (function (c) { return c ? nm(c) : ck; })(ctnById(ck)), n]); /* 终审 M7：nm()=自定义名 overlay（srp_ctn_names 存量只读） */
+      }
+    }
+    var rows = [], hidden = 0;
+    for (i = 0; i < groups.length; i++) {
+      var gr = groups[i], ic = ICFG[gr.cfg];
+      gr.name = glistNameOf(gr.cfg); gr.ico = ic ? ic.icon : '';
+      if (D.badge === 'heat') {
+        gr.fuel = !!(ic && ic.burn);
+        if (!gr.fuel) { hidden++; continue; }
+        gr.badge = { v: ic ? (ic.burnV || 0) : 0 };
+      } else {
+        var m = pigMapOf(gr.cfg), best = 0, bestId = null; /* 终审 M4：canDye 闸门不在契约（官方页模型私有）——glist 徽章/排序不设闸，右键由官方 ITEM_CLICK 裁决拒收；染料排序批 dyePts 闸门保持原面（两特性数据面不同，非矛盾） */
+        for (var did in m) if (m[did] > best) { best = m[did]; bestId = did; }
+        if (!bestId) { hidden++; continue; }
+        gr.colorId = parseInt(bestId, 10);
+        gr.mainPts = best;
+        gr.pig = m; /* 全色点数表（chips 任一色命中筛选用） */
+        gr.badge = { v: best, hex: glistDyeHex(gr.colorId) };
+      }
+      rows.push(gr);
+    }
+    rows.sort(function (a, b) { return (b.badge.v - a.badge.v) || (a.ord - b.ord); });
+    var truncated = false;
+    if (rows.length > GLIST_MAX_ROWS) { rows = rows.slice(0, GLIST_MAX_ROWS); truncated = true; }
+    var out = { rows: rows, hiddenCount: hidden, truncated: truncated };
+    if (GL_MEMO.rev !== store.rev || GL_MEMO.page !== (store.ctx && store.ctx.page)) { GL_MEMO.rev = store.rev; GL_MEMO.page = store.ctx && store.ctx.page; GL_MEMO.out = {}; }
+    GL_MEMO.out[sceneKey] = out;
+    return out;
+  }
+
+  /* ---- glist 装配（Task 2）：两页左面板接管 + 单图标视图互切 + 拆净还原 ----
+     门=ctx.glistOn 页条件字段（T7 接线）|| __HZ_GLIST__ 钮（harness 覆盖位，__HZ_HTON__ 同类）。
+     宿主：Heater=官方左背包面板（bagtabs 宿主同位）；DyePanel=rail 壳（#srRail）父容器——
+     #srgPanel 插宿主首子（头部置顶），列表态隐其余子元素（原值存 **expando** __srgPrevD，
+     不动属性=拆净后 innerHTML 逐字还原）、格子态还原（removeProperty 回到无内联原态）。
+     图标恒示「将切去」的样式（列表态=田字格 SVG、格子态=☰）。视图记忆 localStorage
+     srp_glist_view_<scene>（§4.9 分场景记忆惯例）。防自激：一切 DOM 写先比对同值跳过，
+     GL_W.writes 计数供 harness 断言（§0b 观察器铁律）。 */
+  var GLV = {};          /* sceneKey -> 'list'|'grid'（进页默认 list） */
+  var GL_DIRTY = {};     /* sceneKey -> 本轮是否隐过宿主子元素（拆净快速门） */
+  var GL_W = { writes: 0 };
+  function glW() { GL_W.writes++; }
+  function glistView(key) { if (!GLV[key]) { var v = null; try { v = localStorage.getItem('srp_glist_view_' + key); } catch (e) { } GLV[key] = (v === 'grid') ? 'grid' : 'list'; } return GLV[key]; }
+  function glistViewSet(key, v) {
+    GLV[key] = v;
+    try { if (v === 'list') localStorage.removeItem('srp_glist_view_' + key); else localStorage.setItem('srp_glist_view_' + key, v); } catch (e) { }
+  }
+  function glistGate(key) {
+    var knob = (typeof window !== 'undefined' && window.__HZ_GLIST__) || {};
+    if (knob[key]) return true;
+    return !!(store.ctx && store.ctx.page === key && store.ctx.glistOn);
+  }
+  function glistHost(f) {
+    /* bagtabs 族两页（Heater/FuelGenerator）宿主=BAGTABS 描述符两件套（sys/right 同源）；
+       实机批改#8 追加 FuelGenerator（复用暖炉），#9 起该族页 srfg 旧方案在 glist 在场时退役 */
+    var bt = BAGTABS[f.key];
+    if (bt) return f.doc.querySelector('.' + bt.sys + ' > .panel:not(.' + bt.right + ')');
+    var rail = f.doc.getElementById('srRail'); /* DyePanel：rail 壳在位后宿主=其父（官方 bag 列） */
+    return rail ? rail.parentNode : null;
+  }
+  /* （终审 M7 附：glistFrameOf 死代码移除） */
+  var SRG_ICON_GRID = '<svg viewBox="0 0 24 24" style="display:block"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M12 3.5v17M3.5 12h17"/></g></svg>';
+  var SRG_ICON_LIST = '☰';
+  function glistBuild(f) {
+    var doc = f.doc, D = GLIST[f.key];
+    if (!D || doc.getElementById('srgPanel')) return;
+    /* 实机批改#10（2026-11-08 作者实报「几个页面全不能用了」=列表面板无样式文本流+大白块）：
+       bagtabs 两页（Heater/FuelGenerator）无 rail，railui.css 唯一注入路=ensureBagtabs 内
+       injectRailStyle——#9 退役早退后 CSS 再无人注（暖炉 #7 前能看=当时旧路径还跑）。glist
+       自保：建面板前自注（injectRailStyle 幂等，#srpRail 守卫；染料页 rail 已注=空过）。
+       harness 测不出：夹具直链 ../railui.css，注入路是实机独有面（保真缺口记录在案）。 */
+    try { injectRailStyle(doc); } catch (e) { }
+    GL_SIG[f.key] = ''; /* 新面板=渲染签名作废，强制首渲（iframe 重载/拆装重挂都走此路） */
+    var host = glistHost(f); if (!host) return;
+    var p = doc.createElement('div');
+    /* 实机批改#7 正解+#8 泛化：bagtabs 族宿主（Heater/FuelGenerator .panel）=有界 flex 列
+       （778 锁，批改#9 起锁由 glistApply 自持），srg-fill 走「填满+内滚」；染料桶宿主 #srp=
+       裸块无界，才吃 816 铁约束（railui.css 同名规则） */
+    p.id = 'srgPanel'; p.className = 'srg-panel' + (BAGTABS[f.key] ? ' srg-fill' : '');
+    p.innerHTML =
+      '<div class="srg-head" id="srgHead"><div class="srg-title">全局物品栏 <span class="srg-sub">· 背包 + 整屋柜子</span></div>' +
+      '<div class="srg-toggle" id="srgToggle" title="切换为格子样式"></div></div>' +
+      '<div class="srg-search" id="srgSearch"><span class="srg-sico">🔍</span><input id="srgQ" type="text" placeholder="搜索：背包 + 整屋柜子…"></div>' +
+      '<div class="srg-chips" id="srgChips"></div>' +
+      '<div class="srg-hint" id="srgHint">悬停=物品信息 · 左键=详情 · 右键行=移 1 件至' + D.target + ' · 搜索即时过滤</div>' +
+      '<div class="srg-list" id="srgList"></div>' +
+      '<div class="srg-foot" id="srgFoot"><span class="srg-foot-l" id="srgFootL"></span><span class="srg-foot-r" id="srgFootR"></span></div>';
+    host.insertBefore(p, host.firstChild); glW();
+    var tg = p.querySelector('#srgToggle'); /* mod 自有元素挂监听（红线仅限官方元素） */
+    tg.addEventListener('click', function () {
+      glistViewSet(f.key, glistView(f.key) === 'list' ? 'grid' : 'list');
+      glistApply(f);
+      glistRender(f);
+      /* 实机批改（2026-11-08 作者验收单#2 → 批改#9 重做）：切格子态补官方刷新杠杆——列表态全程
+         隐藏官方格网，官方侧未见重建时机（实机切回=整片空白格）。#2 旧杠杆=switchBag 同值守卫
+         早退（cur==owner 不派刷新=官方状态已在背包时杠杆哑火，且不覆盖染料页）；#9 正身=
+         refreshBag 裸命令→C# RailData.RefreshActivePage()（按活跃页派 Ac_*_RefreshBag，三页
+         全覆盖：Dye/Heater/FuelGenerator，官方动作重放零伪造）。 */
+      if (glistView(f.key) === 'grid') {
+        try { cmdOut('refreshBag', {}); } catch (e) { }
+      }
+    });
+    var qi = p.querySelector('#srgQ'); /* 搜索即时过滤（显示层，走同一签名守卫） */
+    if (qi) {
+      qi.value = GLQ[f.key] || ''; /* 复挂回填（终审 M1）：模块态跨 iframe 重载存活，输入框必须与过滤一致 */
+      qi.setAttribute('autocomplete', 'off');
+      /* 实机批改#3（2026-11-08）：官方键盘转发协议——WebUI KeyboardEnabled=0 全局关键盘，
+         输入框必须 focus→SEARCH_FOCUS{focused:true,ime:true} 通知 Unity 开键盘+IME（含中文
+         输入法），blur 关还（官方 ToolTable notes-search-input 同款，游戏源码取证）；
+         不发此事件=实机一个键都进不了 iframe（harness 无此层所以测不出）。 */
+      qi.addEventListener('focus', function () {
+        try { var w = f.doc.defaultView; if (w && w.core && w.core.UnitySendEvent) w.core.UnitySendEvent('SEARCH_FOCUS', { focused: true, ime: true }); } catch (e) { }
+      });
+      qi.addEventListener('blur', function () {
+        try { var w = f.doc.defaultView; if (w && w.core && w.core.UnitySendEvent) w.core.UnitySendEvent('SEARCH_FOCUS', { focused: false }); } catch (e) { }
+      });
+      qi.addEventListener('input', function () { GLQ[f.key] = this.value; try { glistRender(f); } catch (e) { } });
+    }
+    var chipsEl = p.querySelector('#srgChips'); /* 预设 chips 点击（委托，chips 随签名重写） */
+    if (chipsEl) chipsEl.addEventListener('click', function (e) {
+      var chip = e.target && e.target.closest ? e.target.closest('.srg-chip') : null;
+      if (!chip || chip.classList.contains('lock')) return; /* lock=固定筛选不可取消（点击无操作） */
+      var c = chip.getAttribute('data-c');
+      GLCLR[f.key] = (c === '' || c == null) ? null : Number(c);
+      glistRender(f);
+    });
+    /* 行三键（Task 4）：事件委托挂 mod 自有 #srgList（行 innerHTML 随签名守卫重写，委托不随行重建丢） */
+    var list = p.querySelector('#srgList');
+    if (list) {
+      list.addEventListener('mouseover', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistShowTip(f, e, row.getAttribute('data-key')); });
+      list.addEventListener('mousemove', function (e) { glistMoveTip(f, e); });
+      list.addEventListener('mouseout', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistHideTip(f); });
+      list.addEventListener('click', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistShowDetail(f, row.getAttribute('data-key')); });
+      list.addEventListener('contextmenu', function (e) {
+        var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null;
+        if (!row) return;
+        e.preventDefault(); /* 默认菜单拦截（D7）；右键=移 1 件（官方口径，spec §5.4） */
+        glistFeed(f, row.getAttribute('data-key'));
+      });
+    }
+    if (!doc.__srgEsc) { /* Esc 关详情：文档级监听需防重挂（面板重建同文档累积） */
+      doc.__srgEsc = true;
+      doc.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        var ov = doc.getElementById('srgDetail');
+        if (ov && ov.style.display !== 'none') { ov.style.display = 'none'; glW(); }
+      });
+    }
+  }
+  /* ---- glist 行三键（Task 4）：悬停信息条 / 左键详情 / 右键官方口径移 1 件 ----
+     右键口径（spec §5.4 + §0 修订）：Heater=既有 feed 两跳直达（柜→包→Ac_Heater_FuelAdd）；
+     Dye=bag 源直接回放页面官方 ITEM_CLICK{rightClick}（core.UnitySendEvent——官方右键快转，
+     Unity 裁决 canDye/锁定/满员+官方飘字）；柜源=take{ids,all:false}（C# 第一叠拆 1 件柜→包）
+     + GLPEND 待回放队列，**下次契约推送落地**（glistPump 于 glistFrame 尾）在包中找到该 cfg
+     实例才回放——双跳时序防线（Review Focus 3：推送前回放=物品不在包=丢失）。 */
+  var GLPENDQ = {}; /* sceneKey -> [{key,cfg,name,at}]（终审 M3：队列化，cap 8；5s 过期防悬死） */
+  function glistDyeName(colorId) {
+    var pal = store.ctx && store.ctx.dyePal;
+    if (!pal) return '#' + colorId;
+    for (var i = 0; i < pal.length; i++) if (String(pal[i][0]) === String(colorId)) return pal[i][1] || ('#' + colorId);
+    return '#' + colorId;
+  }
+  function glistRowByKey(f, key) {
+    var a = glistAggregate(f.key), q = (GLQ[f.key] || '').trim(), rows = a.rows;
+    if (q) { var fr = []; for (var i = 0; i < rows.length; i++) if (rows[i].name && rows[i].name.indexOf(q) >= 0) fr.push(rows[i]); rows = fr; }
+    for (var j = 0; j < rows.length; j++) if (rows[j].key === key) return rows[j];
+    return null;
+  }
+  function glistTipEl(f) {
+    var t = f.doc.getElementById('srgTip');
+    if (!t) { t = f.doc.createElement('div'); t.id = 'srgTip'; t.className = 'srg-tip'; t.style.display = 'none'; f.doc.body.appendChild(t); glW(); }
+    return t;
+  }
+  /* 使用次数徽章（实机批改#4）：官方 webui-bag .item-use 方案逐字镜像——左下「剩余/最大」
+     胶囊 + 底部 2px 比例条（>60% 绿 #4CAF50 / >30% 黄 #FFC107 / 红 #F44336），仅 useTimesMax>1。 */
+  function glistUseBarColor(u, m) {
+    var ratio = m > 0 ? Math.max(0, Math.min(1, u / m)) : 0;
+    return ratio > 0.6 ? '#4CAF50' : (ratio > 0.3 ? '#FFC107' : '#F44336');
+  }
+  function glistUsesHtml(r) {
+    if (r.uses == null || !(r.usesMax > 1)) return '';
+    var ratio = Math.max(0, Math.min(1, r.uses / r.usesMax));
+    return '<span class="srg-use">' + r.uses + '/' + r.usesMax + '</span>' +
+      '<div class="srg-use-bar"><div class="srg-use-bar-fill" style="transform:scaleX(' + ratio + ');background:' + glistUseBarColor(r.uses, r.usesMax) + '"></div></div>';
+  }
+  function glistAttrLines(f, r) {
+    var lines = [];
+    if (r.uses != null && r.usesMax > 1) lines.push('使用次数：' + r.uses + '/' + r.usesMax); /* 批改#4 */
+    if (GLIST[f.key].badge === 'pig') { lines.push('颜色：' + glistDyeName(r.colorId)); lines.push('色素值（主色）：' + r.mainPts); }
+    else { lines.push('热值：' + r.badge.v); lines.push('类别：可燃物'); }
+    return lines;
+  }
+  function glistShowTip(f, e, key) {
+    var r = glistRowByKey(f, key); if (!r) return;
+    var t = glistTipEl(f);
+    var srcs = []; for (var i = 0; i < r.srcs.length; i++) srcs.push(esc(r.srcs[i][1]) + '×' + r.srcs[i][2]);
+    t.innerHTML = '<div class="srg-tip-name">' + esc(r.name) + '</div>' +
+      glistAttrLines(f, r).map(function (l) { return '<div>' + esc(l) + '</div>'; }).join('') +
+      '<div>来源：' + srcs.join(' · ') + '</div>' +
+      '<div class="srg-tip-hint">左键 = 详情 · 右键 = 移 1 件到' + GLIST[f.key].target + '</div>';
+    t.style.display = 'block'; glW(); /* 显式 block：'' 会回落 CSS display:none（inline 置空=隐藏回流） */
+    glistMoveTip(f, e);
+  }
+  function glistMoveTip(f, e) {
+    var t = f.doc.getElementById('srgTip'); if (!t || t.style.display === 'none') return;
+    var x = (e.clientX || 0) + 14, y = (e.clientY || 0) + 14;
+    var w = t.offsetWidth, h = t.offsetHeight, vw = f.doc.documentElement.clientWidth, vh = f.doc.documentElement.clientHeight;
+    if (x + w > vw - 8) x = (e.clientX || 0) - w - 14;
+    if (y + h > vh - 8) y = (e.clientY || 0) - h - 14;
+    t.style.left = x + 'px'; t.style.top = y + 'px';
+  }
+  function glistHideTip(f) { var t = f.doc.getElementById('srgTip'); if (t && t.style.display !== 'none') { t.style.display = 'none'; glW(); } }
+  function glistShowDetail(f, key) {
+    var r = glistRowByKey(f, key); if (!r) return;
+    glistHideTip(f);
+    var ov = f.doc.getElementById('srgDetail');
+    if (!ov) { ov = f.doc.createElement('div'); ov.id = 'srgDetail'; ov.className = 'srg-detail'; f.doc.body.appendChild(ov); glW(); }
+    var rows = glistAttrLines(f, r).map(function (l) {
+      var kv = l.split('：');
+      return '<div class="srg-dtl-row"><span class="k">' + esc(kv[0]) + '</span><span class="v">' + esc(kv.slice(1).join('：')) + '</span></div>';
+    }).join('');
+    var src = ''; for (var i = 0; i < r.srcs.length; i++) src += '<div class="srg-dtl-src">' + esc(r.srcs[i][1]) + ' <b>×' + r.srcs[i][2] + '</b></div>';
+    ov.innerHTML = '<div class="srg-detail-card"><div class="srg-dtl-head">' +
+      (r.ico ? '<img src="' + esc(r.ico) + '" alt="" aria-hidden="true" style="width:26px;height:26px;object-fit:contain">' : '') +
+      '<b>' + esc(r.name) + '</b><span class="srg-dtl-close" id="srgDtlClose">×</span></div>' +
+      rows + '<div class="srg-dtl-row"><span class="k">合计数量</span><span class="v">x' + r.total + '</span></div>' + src +
+      '<div class="srg-dtl-foot">右键列表行 = 移 1 件到' + GLIST[f.key].target + '</div></div>';
+    ov.style.display = 'flex'; glW();
+    var x = ov.querySelector('#srgDtlClose');
+    if (x) x.addEventListener('click', function () { ov.style.display = 'none'; });
+    ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; /* 点空白关（卡片内冒泡除外） */
+  }
+  function glistToast(f, msg) {
+    var t = f.doc.getElementById('srgToast');
+    if (!t) { t = f.doc.createElement('div'); t.id = 'srgToast'; t.className = 'srg-toast'; f.doc.body.appendChild(t); glW(); }
+    t.textContent = msg;
+    t.classList.add('on');
+    if (t.__srgT) clearTimeout(t.__srgT);
+    t.__srgT = setTimeout(function () { t.classList.remove('on'); }, 2000);
+  }
+  function glistDyeReplay(f, itemId) {
+    try {
+      var w = f.doc.defaultView;
+      if (w && w.core && w.core.UnitySendEvent) w.core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId, 10) || 0, rightClick: true });
+    } catch (e) { try { console.warn('[CERail] glist 官方回放失败', e && (e.message || e)); } catch (e2) { } }
+  }
+  /* FEFO（作者 v2 终案）：行内全部候选叠按 timeLeft 升序取最快过期者（无保鲜维度=同分取先见，
+     非食物恒 0=任意）；nameOnly=键失配兜底同名通道。返回命中叠 id+所在容器。 */
+  function glistPickFefo(row, nameOnly) {
+    var best = null, bestTl = 0, bestSrc = null;
+    for (var si = 0; si < row.srcs.length; si++) {
+      var arr = store.items[row.srcs[si][0]] || [];
+      for (var i = 0; i < arr.length; i++) {
+        var it = arr[i]; if (!it) continue;
+        if (!(nameOnly ? glistNameOf(it[1]) === row.name : glistItemKey(it) === row.key)) continue;
+        var tl = it[3] || 0;
+        if (best === null || tl < bestTl) { best = it; bestTl = tl; bestSrc = row.srcs[si][0]; }
+      }
+    }
+    return best === null ? null : { id: best[0], srcKey: bestSrc };
+  }
+  function glistFeed(f, key) {
+    var r = glistRowByKey(f, key), D = GLIST[f.key];
+    if (!r || !r.srcs.length) return;
+    var pick = glistPickFefo(r, false) || glistPickFefo(r, true);
+    if (!pick) { glistToast(f, '未找到可用的' + r.name); return; }
+    var srcName = '背包';
+    for (var si2 = 0; si2 < r.srcs.length; si2++) if (r.srcs[si2][0] === pick.srcKey) srcName = r.srcs[si2][1];
+    if (D.feed === 'fuel') {
+      cmdOut('feed', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id });
+      glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 ' + srcName + '）'); /* 送出≠已入：失败经 ctx.feedFail 面（终审 I1/I2） */
+    } else if (pick.srcKey === 'bag') {
+      glistDyeReplay(f, pick.id);
+      glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 背包）'); /* 拒收由官方飘字裁决（I2：不预支成功话术） */
+    } else {
+      var q = GLPENDQ[f.key] || (GLPENDQ[f.key] = []);
+      if (q.length < 8) q.push({ key: r.key, cfg: r.cfg, name: r.name, at: Date.now() });
+      cmdOut('take', { ids: [pick.id], from: Number(pick.srcKey), all: false });
+      glistToast(f, '正在取 1 件 ' + r.name + '（取自 ' + srcName + '）→ ' + D.target);
+    }
+  }
+  function glistPump(f) { /* 契约落地后消费待回放队列（双跳第二拍；合并键匹配+超时面） */
+    var q = GLPENDQ[f.key]; if (!q || !q.length) return;
+    var arr = store.items['bag'] || [], keep = [];
+    for (var i = 0; i < q.length; i++) {
+      var pend = q[i];
+      if (Date.now() - pend.at > 5000) { glistToast(f, '取件超时：' + pend.name + ' 仍在柜中（背包满或通道断）'); continue; } /* 终审 I2：超时不再静默 */
+      var hit = null, hitTl = 0;
+      for (var j = 0; j < arr.length; j++) { /* FEFO：同键多叠取最快过期 */
+        var it2 = arr[j]; if (!it2 || glistItemKey(it2) !== pend.key) continue;
+        var tl2 = it2[3] || 0;
+        if (hit === null || tl2 < hitTl) { hit = it2[0]; hitTl = tl2; }
+      }
+      if (hit == null) for (var j2 = 0; j2 < arr.length; j2++) if (arr[j2] && glistNameOf(arr[j2][1]) === pend.name) { hit = arr[j2][0]; break; }
+      if (hit != null) glistDyeReplay(f, hit);
+      else keep.push(pend); /* 未落包：留队等下一拍 */
+    }
+    GLPENDQ[f.key] = keep;
+  }
+  /* ---- glist 行渲染/页脚（Task 3；行三键交互 Task 4 接）----
+     行=汇总只读展示（spec §5.2）：ico(40×40，fuel 带官方火苗)/名称[(染料)主色圆点]/来源行
+     （前 3 处逐显+折叠「等 N 处」，背包金色）/场景徽章/x总数(12px Consolas)。页脚左=统计、
+     右=截断提示(优先)或场景隐藏提示（spec §5.3 逐字）。签名守卫=整包串比对同值跳过（防自激，
+     §0b）。空态「无匹配物品」。 */
+  var GLQ = {};   /* sceneKey -> 搜索串（显示层，拆装保留） */
+  var GLCLR = {}; /* sceneKey -> 选中色 dyeItemId|null（染料预设单选；null=全部） */
+  var GL_SIG = {};/* sceneKey -> 上次渲染签名（新面板/拆装时作废） */
+  /* 染料预设 chips（spec §5.3）：全部(默认)+dyePal 动态全色板（8 色）+常驻排序牌；单选。
+     空板（dyePal=[]/缺席）=仅「全部」——容错不报错（Review Focus 5，染料批同款）。 */
+  function glistChipsHtml(f) {
+    if (GLIST[f.key].badge === 'heat') { /* 暖炉/发电机口径（spec §5.3）：固定筛选不可取消（lock）+常驻排序牌 */
+      return '<span class="srg-chip on lock">🔥 仅可燃物</span><span class="srg-plaque">🔥 按热值 ↓</span>';
+    }
+    if (GLIST[f.key].badge !== 'pig') return '';
+    var pal = (store.ctx && store.ctx.dyePal) || [];
+    var sel = GLCLR[f.key];
+    var h = '<span class="srg-chip' + (sel == null ? ' on' : '') + '" data-c="">全部</span>';
+    for (var i = 0; i < pal.length; i++) {
+      h += '<span class="srg-chip' + (String(sel) === String(pal[i][0]) ? ' on' : '') + '" data-c="' + esc(String(pal[i][0])) + '">' +
+        '<i class="srg-swatch" style="background:' + esc(pal[i][2] || '#888') + '"></i>' + esc(pal[i][1] || ('#' + pal[i][0])) + '</span>';
+    }
+    return h + '<span class="srg-plaque">💧 按色素值 ↓</span>';
+  }
+  function glistBadgeHtml(key, r) {
+    if (!r.badge) return '';
+    if (GLIST[key].badge === 'pig') return '<span class="srg-badge srg-pig" style="color:' + esc(r.badge.hex || '#fff') + '">' + dyeDropSvg(r.badge.hex || '#fff') + r.badge.v + '</span>';
+    return '<span class="srg-badge srg-heat">🔥 ' + r.badge.v + '</span>';
+  }
+  function glistRender(f) {
+    var p = f.doc.getElementById('srgPanel');
+    if (!p || p.classList.contains('srg-gridmode')) return;
+    var a = glistAggregate(f.key);
+    var q = (GLQ[f.key] || '').trim();
+    var rows = a.rows;
+    /* 染料预设单选过滤（spec §5.3）：选中色=该色任一点数>0 即命中（主色非该色但含点数也入选） */
+    if (GLIST[f.key].badge === 'pig' && GLCLR[f.key] != null) {
+      var cr = []; for (var ci = 0; ci < rows.length; ci++) if (rows[ci].pig && rows[ci].pig[String(GLCLR[f.key])] > 0) cr.push(rows[ci]);
+      rows = cr;
+    }
+    if (q) { var fr = []; for (var i = 0; i < rows.length; i++) if (rows[i].name && rows[i].name.indexOf(q) >= 0) fr.push(rows[i]); rows = fr; }
+    var h = '';
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j], src = '';
+      for (var k = 0; k < r.srcs.length && k < 3; k++) {
+        var s = r.srcs[k];
+        src += (k ? ' · ' : '') + '<span' + (s[0] === 'bag' ? ' class="bag"' : '') + '>' + esc(s[1]) + '</span>×' + s[2];
+      }
+      if (r.srcs.length > 3) src += ' · <span class="more">等 ' + r.srcs.length + ' 处</span>';
+      h += '<div class="srg-row" data-i="' + j + '" data-key="' + esc(r.key) + '">' +
+        '<div class="srg-ico' + (r.fuel ? ' is-fuel' : '') + '">' + (r.ico ? '<img src="' + esc(r.ico) + '" alt="" aria-hidden="true" draggable="false" style="width:26px;height:26px;object-fit:contain;pointer-events:none">' : '') + glistUsesHtml(r) + '</div>' +
+        '<div class="srg-main"><div class="srg-name">' + (r.colorId != null && r.badge && r.badge.hex ? '<i class="srg-cdot" style="background:' + esc(r.badge.hex) + '"></i>' : '') + esc(r.name) + '</div>' +
+        '<div class="srg-src">' + src + '</div></div>' +
+        '<div class="srg-right">' + glistBadgeHtml(f.key, r) + '<span class="srg-count">x' + r.total + '</span></div></div>';
+    }
+    if (!rows.length) h = '<div class="srg-empty">无匹配物品</div>';
+    var pieces = 0, srcSet = {};
+    for (var m = 0; m < rows.length; m++) { pieces += rows[m].total; for (var s2 = 0; s2 < rows[m].srcs.length; s2++) srcSet[rows[m].srcs[s2][0]] = 1; }
+    var footL = '<b>' + rows.length + '</b> 种 · <b>' + pieces + '</b> 件 · 来源 <b>' + Object.keys(srcSet).length + '</b> 处（含背包）';
+    var footR = a.truncated ? '已截断显示前 ' + GLIST_MAX_ROWS + ' 种'
+      : (a.hiddenCount > 0 ? (f.key === 'Heater' ? '非燃料 ' + a.hiddenCount + ' 种已按场景预设隐藏' : '已按预设隐藏 ' + a.hiddenCount + ' 种无色素物品') : '');
+    var chips = glistChipsHtml(f); /* 染料预设 chips（Heater 桌牌 Task 6）——进签名随选变色重渲 */
+    var sig = chips + '\u0001' + h + '\u0001' + footL + '\u0001' + footR;
+    if (GL_SIG[f.key] === sig) return;
+    GL_SIG[f.key] = sig;
+    var ch = f.doc.getElementById('srgChips'); if (ch && ch.__srgChips !== chips) { ch.__srgChips = chips; ch.innerHTML = chips; glW(); } /* 终审 M6：expando 标记比对（innerHTML 读回=序列化形态，同 __srgIcon 铁律） */
+    var list = f.doc.getElementById('srgList'); if (list) { list.innerHTML = h; glW(); }
+    var fl = f.doc.getElementById('srgFootL'); if (fl) { fl.innerHTML = footL; glW(); }
+    var frr = f.doc.getElementById('srgFootR'); if (frr) { frr.textContent = footR; glW(); }
+  }
+  function glistApply(f) {
+    var host = glistHost(f); if (!host) return;
+    var p = f.doc.getElementById('srgPanel'); if (!p) return;
+    var dirty = false;
+    var isList = glistView(f.key) === 'list';
+    /* 格子态=折叠类（非 display:none 整隐）：面板透明零占位、仅右上角浮动 ☰ 钮可达——
+       整隐会让切换钮自身不可点=回不了列表（B2 实测缺陷）。类名比对无序列化歧义。 */
+    var wantCls = 'srg-panel' + (BAGTABS[f.key] ? ' srg-fill' : '') + (isList ? '' : ' srg-gridmode');
+    if (p.className !== wantCls) { p.className = wantCls; glW(); dirty = true; }
+    var tg = f.doc.getElementById('srgToggle');
+    var wantIcon = isList ? SRG_ICON_GRID : SRG_ICON_LIST;
+    var wantTitle = isList ? '切换为格子样式' : '切换为列表样式';
+    /* 图标守卫用 expando 标记比对：innerHTML 读回是序列化形态、与字面量恒不等——
+       直接比较即永真重写=childList 观察器微任务风暴=渲染进程猝死（glist 首撞 §0b 铁律） */
+    if (tg && tg.__srgIcon !== wantIcon) { tg.__srgIcon = wantIcon; tg.innerHTML = wantIcon; tg.setAttribute('title', wantTitle); glW(); dirty = true; }
+    /* 批改#11b 次序重排：宿主整形（BAGTABS 锁+滚窗/染料 plain）先于隐藏循环——官方格从被 glist
+       接管起就住进滚窗（宿主直接子=滚窗而非格），隐/还原循环只管滚窗一个单位，格自身的
+       display 全程零触碰（旧序「先隐格后包装+随包还原」=还原补丁逻辑，过渡机雪崩点之一） */
+    var btHost = BAGTABS[f.key];
+    if (btHost) {
+      /* 批改#9+#11（作者实报：暖炉/发电机格子页「完全不能滚，压根没有滚动条」）：#9 格子态
+         「解除 778 锁还自然高」被实机否定——官方机页背包格无原生滚（官方设计没打算装 SizeEngine
+         的 12×25 大包），无锁=系统卡撑到 1100+（视口 864）底部裁死不可滚；#9 退役还拆走了旧
+         方案的格区滚动视窗（.srfg-gridscroll，正是当年为超高柜造的）。修正=锁与滚窗都由 glist
+         两态自持：778 地板+视口钳（fgSyncHeight 原数原义「14 格半」基准）+格区滚窗 srgGridScroll
+         （自有 id——fgTeardown 只拆它的 srfgGridScroll 互不相碰；同 class 复用滚窗样式）。
+         格子态=官方外观（标题/官方格/提示，无页签无整理钮——#9 裁定不变）但格在 778 卡内滚。 */
+      var wantH = 778;
+      var vh = (f.doc.defaultView && f.doc.defaultView.innerHeight) || 0;
+      if (vh > 400 && wantH > vh) wantH = vh;
+      var wantPx = wantH + 'px';
+      if (host.style.height !== wantPx) {
+        try { host.style.setProperty('height', wantPx, 'important'); } catch (e) { }
+        glW(); dirty = true;
+      }
+      var gg = f.doc.getElementById('backpackGrid');
+      /* 旧 srfgGridScroll 在场=罕见过渡帧（#11b 竞态根治后=cfg 中途翻转才有）：跳过（防嵌套），
+         fgTeardown 拆旧后由 owned 分支补跑的 glistFrame 完成自持包装 */
+      if (gg && gg.parentNode && gg.parentNode.id !== 'srgGridScroll' && gg.parentNode.id !== 'srfgGridScroll') {
+        var wrap = f.doc.getElementById('srgGridScroll');
+        if (!wrap) {
+          wrap = f.doc.createElement('div');
+          wrap.id = 'srgGridScroll';
+          wrap.className = 'srfg-gridscroll';
+          gg.parentNode.insertBefore(wrap, gg);
+        }
+        wrap.appendChild(gg); glW(); dirty = true;
+      }
+    } else if (GLIST[f.key]) {
+      /* 批改#9 对偶面（染料桶）：格子态=rail 简洁态（plainbag 同形：作者「只保留官方默认背包」
+         ——柜子页签/搜索/标签/工具行全隐，#srp.srg-plain 选择器在 railui.css 与 plainbag 并枝）；
+         列表态=还原。类挂宿主 #srp（自家节点，render 不重写）不挂 rail（mount/render 重写 className） */
+      var wantPlain = !isList;
+      if (host.classList.contains('srg-plain') !== wantPlain) {
+        if (wantPlain) host.classList.add('srg-plain'); else host.classList.remove('srg-plain');
+        glW(); dirty = true;
+      }
+      if (wantPlain) {
+        /* 批改#12g（作者实报「标题一直变来变去：背包→置物柜，照照片跟暖炉/发电机一样」）：
+           12d 错在展示 rail 动态标题（跟当前容器走）；官方机页标题=**静态背包专属**——
+           「角色背包」写死 + 信息条=背包空间（占用格数=Σw×h / ctx.bagCap），与容器切换无关。
+           写**既有子节点**（srTitle/srCols/srCap/srTags，render 的 el 引用表不脱钩——整条
+           textContent 改写会把跨节点抹掉、render 后续写入落游离节点）；render 数据变更后下轮
+           settle 自愈回写（glist 在 setData 链尾=同轮最后写者）。 */
+        var used = 0, rowsB = (store.items && store.items.bag) || [];
+        for (var ri = 0; ri < rowsB.length; ri++) used += (rowsB[ri][6] || 1) * (rowsB[ri][7] || 1);
+        var cap = (store.ctx && store.ctx.bagCap) || 0;
+        var wT = '角色背包', wC = '空间： ' + used + ' / ', wP = String(cap), wG = '';
+        var st = f.doc.getElementById('srTitle');
+        if (st && st.textContent !== wT) { st.textContent = wT; glW(); dirty = true; }
+        var sp = { srCols: wC, srCap: wP, srTags: wG };
+        for (var sid in sp) {
+          var se = f.doc.getElementById(sid);
+          if (se && se.textContent !== sp[sid]) { se.textContent = sp[sid]; glW(); dirty = true; }
+        }
+      }
+    }
+    for (var i = 0; i < host.children.length; i++) {
+      var el = host.children[i];
+      if (el === p) continue;
+      if (isList) {
+        if (el.__srgPrevD === undefined) el.__srgPrevD = el.style.display;
+        if (el.style.display !== 'none') { el.style.display = 'none'; glW(); dirty = true; }
+        GL_DIRTY[f.key] = true;
+      } else if (el.__srgPrevD !== undefined) {
+        var back = el.__srgPrevD;
+        if (back === '') { el.style.removeProperty('display'); if (!el.style.length) el.removeAttribute('style'); }
+        else if (el.style.display !== back) el.style.display = back;
+        delete el.__srgPrevD; glW(); dirty = true;
+      }
+    }
+    /* 实机批改#7（2026-11-08 暖炉列表溢出屏幕下缘）：官方 createViewportFit 只在
+       WebUI_*_BagMsg 时量 .heater-system 定 body.zoom——glist 挂载/互切发生在最后一次
+       BagMsg 之后，816 面板顶高系统卡时无人复测=zoom 滞留旧值→左列伸出屏幕外。官方杠杆
+       零伪造：状态实变后补发一次 resize 促 _fit.apply 复测（3645/3791 高锁同源先例）；
+       染料页无 _fit 监听=空放无副作用。幂等：稳态零写不触发（无 resize 风暴）。 */
+    if (dirty) { try { f.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } }
+  }
+  function railHeadSub(f) { /* rail 标题信息条节点（sr-headtxt>sr-sub；批改#12g 静态空间条改写目标） */
+    var rail = f.doc.getElementById('srRail');
+    return rail ? rail.querySelector('.sr-headtxt > .sr-sub') : null;
+  }
+  function glistFrame(f) {
+    if (!GLIST[f.key]) return;
+    if (!glistGate(f.key)) { glistTeardown(f); return; }
+    if (!glistHost(f)) return;
+    glistBuild(f);
+    glistApply(f);
+    glistRender(f);
+    glistPump(f);
+  }
+  function glistTeardown(f) {
+    var doc = f.doc; if (!doc) return;
+    var p = doc.getElementById('srgPanel');
+    if (!p && !GL_DIRTY[f.key]) return; /* 快速门：无面板无隐藏=零写离场 */
+    var host = glistHost(f);
+    var scope = host || doc;
+    var els = scope.querySelectorAll('*');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.__srgPrevD !== undefined) {
+        var back = el.__srgPrevD;
+        if (back === '') { el.style.removeProperty('display'); if (!el.style.length) el.removeAttribute('style'); }
+        else if (el.style.display !== back) el.style.display = back;
+        delete el.__srgPrevD;
+      }
+    }
+    if (p && p.parentNode) p.parentNode.removeChild(p);
+    /* 批改#9+#11 拆净对称面：宿主还原——BAGTABS 页解除 glist 自持 778 锁+拆自持滚窗（格还原
+       原位，DOM 序原版——cfg 关=旧方案 fgSettle 自愈回装并上自己的锁与滚窗）；染料桶摘
+       srg-plain（rail 回全功能态） */
+    if (host) {
+      if (BAGTABS[f.key] && host.style.height) { try { host.style.removeProperty('height'); if (!host.style.length) host.removeAttribute('style'); } catch (e) { } }
+      if (!BAGTABS[f.key] && GLIST[f.key] && host.classList.contains('srg-plain')) { try { host.classList.remove('srg-plain'); } catch (e) { } }
+    }
+    if (BAGTABS[f.key]) {
+      var gw = doc.getElementById('srgGridScroll');
+      var ggrid = doc.getElementById('backpackGrid');
+      if (gw && ggrid && ggrid.parentNode === gw) { try { gw.parentNode.insertBefore(ggrid, gw); } catch (e) { } }
+      if (gw && gw.parentNode) { try { gw.parentNode.removeChild(gw); } catch (e) { } }
+    }
+    /* 终审 M2：懒建三节点+文档级 Esc 监听同拆（§7-15「拆装循环零残留」——隐藏节点不算清） */
+    var ids = ['srgTip', 'srgDetail', 'srgToast'];
+    for (var ii = 0; ii < ids.length; ii++) { var n = doc.getElementById(ids[ii]); if (n && n.parentNode) n.parentNode.removeChild(n); }
+    delete doc.__srgEsc;
+    GL_DIRTY[f.key] = false;
+    GL_SIG[f.key] = ''; /* 拆装即作废渲染签名：重挂必重渲（防陈签名跳过致空面板） */
+    /* 实机批改#7 对称面：拆净=系统卡复矮，官方 body.zoom 若滞留 glist 期小值=整页无谓缩小
+       ——同样补发 resize 促 _fit 复测（glistApply 入向同源） */
+    try { doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { }
+  }
+  function glistSettle() { /* setData 尾钩：随契约重驱两页装配/重渲染（幂等）+feedFail 优先面 */
+    /* 终审 I1/I2：glist 列表态在场时优先消费 ctx.feedFail→toast（fgSettle 的 #srfgWarn 在
+       列表态被隐=玩家瞎）；glist 不在场/格子态则让位 fgSettle 原路。setData 调用序在本函数
+       先于 fgSettle（一次性消费竞争）。 */
+    try {
+      var ff = store.ctx && store.ctx.feedFail;
+      if (ff) {
+        for (var fi = 0; fi < FRAMES.length; fi++) {
+          var fk = FRAMES[fi].key;
+          if (!GLIST[fk] || !FRAMES[fi].doc) continue;
+          var fp = FRAMES[fi].doc.getElementById('srgPanel');
+          if (fp && !fp.classList.contains('srg-gridmode')) {
+            var bt = btOf(store.ctx.page);
+            glistToast(FRAMES[fi], ff === 'full' ? (bt ? bt.fullText : '料槽已满') : (FG_FAIL_TEXT[ff] || '转移失败'));
+            store.ctx.feedFail = '';
+            break;
+          }
+        }
+      }
+    } catch (e) { }
+    for (var i = 0; i < FRAMES.length; i++) if (GLIST[FRAMES[i].key]) glistFrame(FRAMES[i]);
+  }
+
   /* ---- 数据入口：C# rev 门控直推契约 v4 JSON → 归一化入 store → render ---- */
   function setData(json) {
     if (!json || typeof json !== 'object') return;
@@ -4043,8 +4680,8 @@
       try { render(); } catch (e) { try { console.warn('[CERail] render 失败(兜底不炸通道)', e && (e.stack || e.message), e); } catch (e2) { } }
     }
     try { settleXfer(); } catch (e) { try { console.warn('[CERail] settleXfer 失败', e && (e.stack || e.message), e); } catch (e2) { } }
+    try { glistSettle(); } catch (e) { try { console.warn('[CERail] glistSettle 失败', e && (e.message || e)); } catch (e2) { } } /* glist：随契约重驱两页装配/重渲染（幂等）+feedFail 优先消费（须先于 fgSettle：一次性字段竞争，列表态 #srfgWarn 被隐） */
     try { fgSettle(); } catch (e) { try { console.warn('[CERail] fgSettle 失败', e && (e.stack || e.message), e); } catch (e2) { } } /* fuelgen bagtabs：页签/格网/底行随数据更新 + ctx.feedFail 一次性消费 */
-    try { nbRefresh(); } catch (e) { try { console.warn('[CERail] nbRefresh 失败', e && (e.stack || e.message), e); } catch (e2) { } } /* v1.8.4 原生页角标随契约重算 */
   }
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
@@ -4057,6 +4694,14 @@
       points: function (row, dyeId) { return pigPointsOf(row, dyeId); },
       norm: function (cfgId) { return ICFG[cfgId] || null; },
       apply: function (k) { applyDispSort(k, { setKey: function (v) { st.fsort = v; }, owner: function () { return st.currentId; }, menu: menuFoot, after: render }); }
+    },
+    /* glist 自检口（dyePig 先例）：aggregate=harness §聚合断言；writes(n)=防自激计数
+       （传数复位归零、无参读）；view(k)=视图态读 */
+    glist: {
+      GLIST: GLIST, aggregate: glistAggregate,
+      writes: function (v) { if (typeof v === 'number') GL_W.writes = v; return GL_W.writes; },
+      view: function (k) { return glistView(k); },
+      _pend: function (k, v) { if (v) (GLPENDQ[k] = GLPENDQ[k] || []).push(v); return GLPENDQ[k] || []; } /* 终审 FD3 测试口（dyePig.apply 自检先例） */
     },
     _ppCount: 0,
     _pp: function () { this._ppCount++; }, /* v1.8.10 十三批六追：微包回执钩（OpPing 发 ~40B 微型 ExecuteJavaScript——达=通道活、长度丢弃实锤；不达=通道级死） */

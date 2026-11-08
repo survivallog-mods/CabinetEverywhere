@@ -225,6 +225,7 @@ internal static class RailCommands
             case "tidy": OpTidy(c); break;
             case "feed": OpFeed(c); break; // 燃油发电机柜中燃料直送（两跳，见 OpFeed 注释）
             case "switchBag": OpSwitchBag(c); break; // 九验收：柜签=官方背包数据切换（官方网格/拖拽/详情/悬浮全原生，见 OpSwitchBag 注释）
+            case "refreshBag": OpRefreshBag(); break; // glist 批改#9：格子态官方刷新杠杆（switchBag 同值守卫早退不覆盖——见 OpRefreshBag 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -543,7 +544,11 @@ internal static class RailCommands
     {
         long bag = RailData.BagOwner();
         if (bag <= 0) { WarnOnce("feed:nobag", "feed 丢弃：背包 owner 不可得"); return; }
-        if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] feed 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
+        // glist（v1.9.0 终审 I1）：背包源=合法源（物品已在包，第一跳柜→包跳过）——bagtabs 时代
+        // 无此调用面（柜签喂料恒为柜源），白名单对 bag owner 恒放行；不跳一跳则 TryQuickMoveItems
+        // (bag→bag)=0 moved=假「背包已满」
+        bool fromBag = c.Owner == bag;
+        if (!fromBag && !Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] feed 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
         if (c.Item <= 0) return;
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("feed:noim", "feed 丢弃：ItemManager 不可得"); return; }
@@ -571,15 +576,19 @@ internal static class RailCommands
         }
         if (slots > 0 && queued >= slots) { RailData.MarkFeedFail("full"); return; }
 
-        // ③ 第一跳：柜→背包（整叠，silent=不弹官方 toast——结果经数据回推自渲染）
-        var batch = new Il2CppSystem.Collections.Generic.List<long>();
-        batch.Add(c.Item);
-        int moved = im.TryQuickMoveItems(batch, c.Owner, bag, SilentQuickMove, false);
-        if (moved <= 0)
+        // ③ 第一跳：柜→背包（整叠，silent=不弹官方 toast——结果经数据回推自渲染）。
+        //    glist 背包源（fromBag）：物品已在包，本跳整体跳过直落 ④ 重解析。
+        if (!fromBag)
         {
-            // 背包满 vs 物品消失：源物品仍在柜=背包满；已不在=noitem
-            RailData.MarkFeedFail(ItemOf(OwnerItems(im, c.Owner), c.Item) != null ? "bagfull" : "noitem");
-            return;
+            var batch = new Il2CppSystem.Collections.Generic.List<long>();
+            batch.Add(c.Item);
+            int moved = im.TryQuickMoveItems(batch, c.Owner, bag, SilentQuickMove, false);
+            if (moved <= 0)
+            {
+                // 背包满 vs 物品消失：源物品仍在柜=背包满；已不在=noitem
+                RailData.MarkFeedFail(ItemOf(OwnerItems(im, c.Owner), c.Item) != null ? "bagfull" : "noitem");
+                return;
+            }
         }
 
         // ④ 叠并重解析（终审 Important2 修正）：**先查原 InstanceId**——未并叠时原 id 存活
@@ -663,6 +672,18 @@ internal static class RailCommands
             VLog(c.Op, "owner=" + cur + "→" + owner + "（官方状态直写+官方刷新）");
         }
         catch (Exception e) { WarnOnce("switch:write", "BagOwnerId 直写异常: " + e.Message); }
+    }
+
+    /// <summary>
+    /// refreshBag（glist 实机批改#9，2026-11-08）：glist 列表→格子切换的官方刷新杠杆。
+    /// 背景：列表态全程隐藏官方格网，官方侧无重建时机=切回一片空白（#2 旧杠杆 switchBag 的
+    /// 同值守卫 cur==owner 早退在「官方状态已在背包」时哑火，且只覆盖 bagtabs 两页不覆盖染料）。
+    /// 正身=裸命令直调 RailData.RefreshActivePage()（按活跃页派 Ac_*_RefreshBag：Dye/Heater/
+    /// FuelGenerator 三页全覆盖，官方动作重放零伪造；IsUIActive 门内置，页不活跃=无害空过）。
+    /// </summary>
+    private static void OpRefreshBag()
+    {
+        try { RailData.RefreshActivePage(); VLog("refreshBag", "活跃页官方刷新（glist 格子态）"); } catch (Exception e) { WarnOnce("refresh:fail", "refreshBag 异常: " + e.Message); }
     }
 
     /// <summary>

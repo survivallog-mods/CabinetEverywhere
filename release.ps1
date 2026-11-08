@@ -94,6 +94,10 @@ if (Test-Path $srcCfg) {
     # 负重批（v1.8.6）：[Burden] 两键归一发布默认（防本机测试值带进发布包，如同其他键）
     $txt = $txt -replace '(?m)^(BackpackBurden\s*=\s).*$', '${1}0'
     $txt = $txt -replace '(?m)^(CabinetUnburden\s*=\s).*$', '${1}true'
+    # glist（v1.9.0）：[Access] 三键归一发布默认 true（批改#8 增发电机页）
+    $txt = $txt -replace '(?m)^(EnableGlistDye\s*=\s).*$', '${1}true'
+    $txt = $txt -replace '(?m)^(EnableGlistHeater\s*=\s).*$', '${1}true'
+    $txt = $txt -replace '(?m)^(EnableGlistFuelGen\s*=\s).*$', '${1}true'
     [System.IO.File]::WriteAllText($dstCfg, $txt, (New-Object System.Text.UTF8Encoding($false)))
 } else {
     Write-Host 'note: runtime cfg not found - packaging without preset cfg'

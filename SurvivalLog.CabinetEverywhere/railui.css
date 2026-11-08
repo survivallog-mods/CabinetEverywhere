@@ -29,12 +29,32 @@
 #srp .sr-act.primary:hover{background:rgba(240,176,60,.26)}
 #srp .sr-act[hidden]{display:none}
 /* v1.8.2.5 简洁背包栏（plainbag：整理物资/材料架的背包侧，作者裁决"普通存储取物界面"）：
-   只留 标题/官方格/悬停条/页脚——页签栏/搜索行/快捷标签行/工具行(排序+网格列表切换) 全隐 */
-#srp .sr-rail.plainbag .sr-tabsrow{display:none !important}
-#srp .sr-rail.plainbag .sr-searchrow{display:none !important}
-#srp .sr-rail.plainbag .sr-tagrow{display:none !important}
-#srp .sr-rail.plainbag .sr-tools{display:none !important}
-#srp .sr-rail.plainbag .sr-offtabs{display:none !important}
+   只留 标题/官方格/悬停条/页脚——页签栏/搜索行/快捷标签行/工具行(排序+网格列表切换) 全隐。
+   实机批改#9 并枝（#srp.srg-plain：glist 格子态同形——作者裁定染料桶格子态"只保留官方默认
+   背包"=柜子页签/搜索/标签/工具行全隐；类挂宿主 #srp 不挂 rail——mount/render 会重写
+   rail className，宿主是自家节点恒稳）。 */
+/* 批改#12b→#12d（作者：染料桶格子态标题行「按照这个样式做，与燃油发电机的标题栏一样」）：
+   染料页 rail 本带 plain 类（机器页简化令，藏 sr-head）——srg-plain 态反藏还头并整体换装
+   官方机页 .panel-title/.info-bar 同款（FuelGenerator.html:51-59/87 逐项镜像：金条+金字
+   发光标题/左金边渐变信息条）；文字保持 rail 真值（背包名+容量，比官方写死「角色背包」更准）。 */
+#srp.srg-plain .sr-rail .sr-head{display:flex !important;flex-direction:column;align-items:stretch}
+#srp.srg-plain .sr-rail .sr-head .sr-title{
+  font-size:16px;font-weight:bold;color:var(--warm-gold,#fbb034);margin-bottom:12px;text-transform:uppercase;
+  letter-spacing:1px;display:flex;align-items:center;flex-shrink:0;text-shadow:0 0 10px rgba(251,176,52,.4);
+  white-space:nowrap;overflow:visible}
+#srp.srg-plain .sr-rail .sr-head .sr-title::before{
+  content:'';display:inline-block;width:4px;height:16px;background-color:var(--warm-gold,#fbb034);margin-right:8px;
+  border-radius:2px;box-shadow:0 0 8px rgba(251,176,52,.8);flex:0 0 auto}
+#srp.srg-plain .sr-rail .sr-head .sr-sub{
+  display:block;margin:0 0 12px;padding:8px 10px;font-size:13px;font-weight:bold;color:#fff;border-radius:4px;
+  background:linear-gradient(90deg,rgba(255,255,255,.12),rgba(255,255,255,.03));
+  border:1px solid rgba(255,255,255,.14);border-left:4px solid var(--warm-gold,#fbb034);
+  box-shadow:inset 0 2px 5px rgba(0,0,0,.3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#srp .sr-rail.plainbag .sr-tabsrow, #srp.srg-plain .sr-rail .sr-tabsrow{display:none !important}
+#srp .sr-rail.plainbag .sr-searchrow, #srp.srg-plain .sr-rail .sr-searchrow{display:none !important}
+#srp .sr-rail.plainbag .sr-tagrow, #srp.srg-plain .sr-rail .sr-tagrow{display:none !important}
+#srp .sr-rail.plainbag .sr-tools, #srp.srg-plain .sr-rail .sr-tools{display:none !important}
+#srp .sr-rail.plainbag .sr-offtabs, #srp.srg-plain .sr-rail .sr-offtabs{display:none !important}
 /* BackpackUI aTabs 模式（v1.8.2.2 Bug1 真因；v1.8.3 原生模式后休眠路径，规则保留无害） */
 #srp .sr-rail.atabs .sr-tabsrow{display:none}
 #srp .sr-offtabs{margin-top:8px;overflow-x:auto;scrollbar-width:none}
@@ -296,7 +316,7 @@
    官方 .item.is-fuel::before 规则无类可配=死规则，mod 曾是唯一消费者）：本规则=官方
    FuelGenerator.html 逐字拷贝（Heater 页官方无此规则=mod 补供；--warm-orange/--danger-red 两页
    同名同值）；类由 fgBadgeFuel 按 ICFG 燃烧位在官方格渲染后补（仅 bagtabs 帧，rail 他页无类=规则惰性） */
-.item.is-fuel::before { content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
+.item.is-fuel::before, .srg-ico.is-fuel::before { content: ''; position: absolute; top: -4px; left: -4px; width: 15px; height: 15px; box-sizing: border-box;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1.6c0 5.6-2.4 6.9-4.2 9C6 12.9 4.8 14.9 4.8 17.1c0 3.5 3.2 5.9 7.2 5.9s7.2-2.4 7.2-5.9c0-2.4-1.3-4.3-2.9-6.3-.6 2-1.8 2.8-2.8 2.2-1.2-.7-1.3-4.5-1.5-11.4z' fill='white'/></svg>"), linear-gradient(135deg, var(--warm-orange), var(--danger-red));
   background-size: 9px 9px, 100% 100%; background-position: center, center; background-repeat: no-repeat, no-repeat;
   border-radius: 3px; pointer-events: none; z-index: 5; box-shadow: 0 2px 4px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.4); }
@@ -340,3 +360,132 @@
 .srfg-act svg { width: 14px; height: 14px; fill: currentColor; opacity: .8; }
 .srfg-act:hover { border-color: rgba(251,176,52,.5); color: #fff; transform: translateY(-1px); box-shadow: 0 5px 14px rgba(0,0,0,.35); }
 .srfg-act:active { transform: translateY(1px); }
+
+/* ══ glist 竖版全局物品栏（global-storage-list v1.9.0；spec §5 六段结构）══
+   两页（DyePanel/Heater）左面板接管面板；调色/字号沿本仓规范（金 #f0b03c、底 #201d24 族、
+   正文 12px/次要 11px/数字 Consolas）。切换钮=单图标（列表态田字格 SVG=将切去格子、格子态☰）。 */
+.srg-panel{position:relative;z-index:2;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;
+  width:100%;box-sizing:border-box;padding:10px;border-radius:10px;
+  background:#201d24;border:1px solid rgba(255,255,255,.09);box-shadow:0 10px 34px rgba(0,0,0,.45);
+  font-family:inherit}
+/* 实机批改#6（2026-11-08 作者验收单：染料桶列表随内容涨缩+超宽+无滚动条）：
+   基类 flex:1 1 auto/width:100% 只在「有界纵向 flex 宿主」成立——DyePanel 宿主 #srp=裸块
+   （#srp 自身无 CSS，.dye-system 行内 shrink-to-fit 项），宽随行内容环形解析=超宽/缩窄，
+   高=auto 随行数涨缩，.srg-list overflow-y 永不触发=无滚动条；Heater .panel 虽为 flex 列
+   但同随内容增长（长列表同炸，只是常驻条目少未显形）。
+   正解=列表态版式铁约束：宽 616=spec §5 定稿（=官方12列背包同宽，替换零位移）；
+   高 816=spec 留给实现期的裁定（816=侧栏恒定高，v12 版式约束同款，与格子态 rail 等高、
+   视图互切零跳动）。:not(.srg-gridmode) 圈定——格子态折叠层必须可塌缩（透明浮钮），
+   固定高会顶开官方格。全 !important 防场景页 CSS 反噬（#srp 版式约束惯例）。 */
+.srg-panel:not(.srg-gridmode){width:616px !important;min-width:616px !important;max-width:616px !important;
+  height:816px !important;min-height:816px !important;max-height:816px !important;flex:0 0 auto !important}
+/* 实机批改#7 正解（暖炉列表戳出卡片底/屏幕外，#7 首修 resize 复测不对症）：暖炉宿主=mod
+   高度锁面板（fgSyncHeight 内联 height:778px!important+视口钳，railui.page.js fgSettle 恒跑）
+   ——本就是**有界**纵向 flex 列，预#6 的 flex:1 1 auto 填满+内滚才是正形；#6 的 816 铁约束
+   在这里错向：戳出锁定卡片（778-30 内容框装不下 816），.panel overflow:visible=画出卡外，
+   矮视口即屏幕底截断（官方 _fit 量卡片 812「没超」也不救——溢出在卡内元素层）。
+   srg-fill=暖炉专用回填满：高 auto/flex:1 1 auto/min-height:0，宽仍 616（spec §5 两页同宽）；
+   816 铁约束只留给无界宿主（染料桶 #srp 裸块）。 */
+.srg-panel.srg-fill:not(.srg-gridmode){height:auto !important;min-height:0 !important;max-height:none !important;flex:1 1 auto !important}
+.srg-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:0 0 auto;margin-bottom:8px}
+.srg-title{font-size:14px;font-weight:600;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srg-title .srg-sub{color:#a89f92;font-size:11.5px;font-weight:400}
+.srg-toggle{width:34px;height:30px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  margin:-5px -5px 0 0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;color:#d8d0c2;font-size:15px;cursor:pointer;user-select:none;
+  transition:background .15s,color .15s,border-color .15s}
+.srg-toggle:hover{background:rgba(240,176,60,.14);color:#ffe1a0;border-color:rgba(240,176,60,.5)}
+.srg-toggle svg{width:15px;height:15px}
+.srg-search{position:relative;flex:0 0 auto;margin-bottom:8px}
+.srg-search .srg-sico{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;opacity:.6;pointer-events:none}
+.srg-search input{width:100%;box-sizing:border-box;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:7px 9px 7px 28px;color:#ece5d8;font-size:12px;font-family:inherit;outline:none;
+  transition:border-color .15s,box-shadow .15s}
+.srg-search input:focus{border-color:rgba(240,176,60,.55);box-shadow:0 0 8px rgba(240,176,60,.22)}
+.srg-search input::placeholder{color:#8e857d}
+.srg-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:22px;flex:0 0 auto;margin-bottom:7px}
+.srg-hint{flex:0 0 auto;font-size:11px;color:#8e857d;margin:0 1px 7px}
+.srg-hint b{color:#d8d0c2;font-weight:500}
+.srg-list{flex:1 1 auto;min-height:0;overflow-y:auto;background:rgba(12,10,8,.6);border:1px solid rgba(255,255,255,.08);
+  border-radius:8px;box-shadow:inset 0 5px 20px rgba(0,0,0,.5);box-sizing:border-box;
+  scrollbar-width:thin;scrollbar-color:#6b5b46 #14100c}
+.srg-list::-webkit-scrollbar{width:8px}
+.srg-list::-webkit-scrollbar-track{background:#14100c;border-radius:4px}
+.srg-list::-webkit-scrollbar-thumb{background:#6b5b46;border-radius:4px}
+.srg-empty{height:100%;display:flex;align-items:center;justify-content:center;color:#8e857d;font-size:12px}
+.srg-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex:0 0 auto;margin-top:8px;
+  font-size:11px;color:#a89f92}
+.srg-foot b{color:#ece5d8;font-size:11.5px}
+.srg-foot .srg-foot-r{color:#8e857d;text-align:right}
+/* 格子态折叠（B2 缺陷修）：整隐=切换钮不可点回不去列表——折叠类让面板透明零占位，
+   仅右上角浮动 ☰（图标恒示「将切去」的样式）盖在现行格网视图之上 */
+.srg-panel.srg-gridmode{z-index:5;background:none;border:none;box-shadow:none;padding:0;pointer-events:none;flex:0 0 auto;min-height:0}
+.srg-panel.srg-gridmode > *:not(.srg-head){display:none !important}
+/* 批改#12→#12h→#12i（作者两轮微调：卡角贴边突兀→往左下→「有点高了再往下一点」）：
+   -8,-8 卡角外贴 → -2,14 → 12,14——纵向再下 14px（标题行下沿），横向离卡边 14px 呼吸位。 */
+.srg-panel.srg-gridmode .srg-head{position:absolute;top:12px;right:14px;margin:0;z-index:5;pointer-events:none}
+.srg-panel.srg-gridmode .srg-title{display:none}
+.srg-panel.srg-gridmode .srg-toggle{pointer-events:auto;margin:0;background:rgba(32,29,36,.85)}
+/* glist 行（spec §5.2）：40×40 ico（fuel 复用上方火苗规则）/双行主体/右列徽章+x总数 */
+.srg-row{display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer}
+.srg-row:last-child{border-bottom:none}
+.srg-row:hover{background:rgba(240,176,60,.08)}
+.srg-ico{width:40px;height:40px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;box-sizing:border-box;position:relative;
+  background:linear-gradient(135deg,rgba(70,60,55,.95),rgba(45,38,34,.95));border:1px solid rgba(255,255,255,.3);border-radius:4px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.srg-main{flex:1 1 auto;min-width:0}
+.srg-name{font-size:12px;font-weight:600;color:#ece5d8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srg-cdot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;box-shadow:0 0 4px rgba(0,0,0,.5)}
+.srg-src{font-size:11px;color:#a89f92;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srg-src .bag{color:#ffe1a0}
+.srg-src .more{color:#8e857d}
+.srg-right{flex:0 0 auto;display:flex;align-items:center;gap:9px}
+.srg-count{font-size:12px;font-weight:700;font-family:Consolas,'Cascadia Mono',monospace;color:#fff;min-width:30px;text-align:right;text-shadow:0 1px 2px #000}
+.srg-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:9px;white-space:nowrap;font-family:Consolas,'Cascadia Mono',monospace;display:inline-flex;align-items:center}
+.srg-badge .drop{margin-right:4px;display:inline-flex}
+.srg-badge.srg-heat{color:#ffb066;background:rgba(255,149,0,.13);border:1px solid rgba(255,149,0,.5)}
+.srg-badge.srg-pig{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.25)}
+/* glist 行三键（spec §5.4）：悬停信息条（官方 tooltip 观感）/详情遮罩弹窗/toast 回执 */
+.srg-tip{position:absolute;z-index:60;display:none;max-width:300px;padding:8px 11px;border-radius:8px;
+  background:rgba(15,12,10,.97);border:1px solid rgba(240,176,60,.45);box-shadow:0 8px 24px rgba(0,0,0,.7);
+  color:#d8d0c2;font-size:11.5px;line-height:1.6;pointer-events:none}
+.srg-tip-name{font-size:12.5px;font-weight:600;color:#f0b03c;margin-bottom:3px}
+.srg-tip-hint{margin-top:5px;color:#f0b03c;font-size:11px}
+.srg-detail{position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
+.srg-detail-card{width:340px;max-width:92%;box-sizing:border-box;padding:14px 16px;border-radius:10px;
+  background:linear-gradient(180deg,rgba(55,48,44,.97),rgba(35,28,25,.98));border:1px solid rgba(255,255,255,.2);
+  box-shadow:0 25px 60px rgba(0,0,0,.8);color:#ece5d8;font-size:12px}
+.srg-dtl-head{display:flex;align-items:center;gap:10px;font-size:14px;color:#f0b03c;margin-bottom:10px}
+.srg-dtl-close{margin-left:auto;cursor:pointer;color:#a89f92;font-size:20px;line-height:1;padding:0 4px}
+.srg-dtl-close:hover{color:#ece5d8}
+.srg-dtl-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.srg-dtl-row .k{color:#8e857d}
+.srg-dtl-row .v{color:#ece5d8;font-weight:600;text-align:right}
+.srg-dtl-src{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);color:#d8d0c2}
+.srg-dtl-src b{color:#ece5d8}
+.srg-dtl-foot{margin-top:9px;font-size:11px;color:#f0b03c}
+.srg-toast{position:fixed;left:50%;bottom:36px;transform:translateX(-50%) translateY(8px);z-index:80;
+  padding:10px 18px;border-radius:8px;background:rgba(30,24,20,.96);border:1px solid rgba(240,176,60,.6);
+  color:#ffe1a0;font-size:12.5px;box-shadow:0 8px 24px rgba(0,0,0,.7);opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s}
+.srg-toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+/* glist 预设 chips（spec §5.3）：全部+动态色板（11px 色块+色名）单选；常驻排序牌 */
+.srg-chips .srg-chip{display:inline-flex;align-items:center;padding:3px 10px;font-size:11px;border-radius:6px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:#d8d0c2;cursor:pointer;
+  user-select:none;white-space:nowrap;transition:all .15s}
+.srg-chips .srg-chip:hover{border-color:rgba(240,176,60,.5);color:#ece5d8}
+.srg-chips .srg-chip.on{background:linear-gradient(180deg,rgba(240,176,60,.22),rgba(240,176,60,.08));color:#ffe1a0;border-color:rgba(240,176,60,.7)}
+.srg-swatch{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;box-shadow:0 0 5px rgba(0,0,0,.6),inset 0 0 2px rgba(255,255,255,.5)}
+.srg-plaque{display:inline-flex;align-items:center;padding:3px 10px;font-size:11px;border-radius:6px;
+  border:1px solid rgba(240,176,60,.45);color:#f0b03c;background:rgba(240,176,60,.07);user-select:none;white-space:nowrap}
+.srg-chips .srg-chip.lock{cursor:default}
+.srg-chips .srg-chip.lock:hover{border-color:rgba(255,255,255,.14);color:#d8d0c2}
+/* 使用次数徽章（实机批改#4）：官方 webui-bag .item-use/.item-use-bar 逐字镜像——行图标左下
+   「剩余/最大」胶囊+底 2px 比例条，仅 useTimesMax>1 显示 */
+.srg-ico .srg-use{position:absolute;bottom:5px;left:3px;font-size:10px;font-weight:700;color:#fff;
+  background:rgba(0,0,0,.7);border:1px solid rgba(255,255,255,.12);padding:0 5px;border-radius:8px;
+  line-height:13px;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.85);
+  box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none;z-index:4}
+.srg-ico .srg-use-bar{position:absolute;left:2px;right:2px;bottom:0;height:2px;background:rgba(0,0,0,.55);
+  border-radius:1px;overflow:hidden;pointer-events:none;z-index:4}
+.srg-ico .srg-use-bar-fill{height:100%;width:100%;transform-origin:left;transition:transform .2s}
