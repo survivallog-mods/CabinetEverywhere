@@ -695,6 +695,17 @@ function check(name, ok, detail) {
        格无原生滚，12×25 大包必须滚窗——作者实报「完全不能滚，压根没有滚动条」） */
     check('GE-grid-vanilla', !!gv && !gv.srfg && !gv.oldWrap && gv.ownWrap && gv.wrapOv === 'auto' &&
       /778/.test(gv.lock) && gv.gridShown, JSON.stringify(gv));
+    /* 12j：按钮底边对齐标题行下标 + 暖炉信息条补齐发电机款（官方两页异款=作者实报不一致根源） */
+    const gja = await d.evaluate(() => {
+      const host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
+      const t = host ? host.querySelector('.panel-title') : null;
+      const info = document.getElementById('bagInfoBar');
+      const b = document.getElementById('srgToggle');
+      if (!t || !info || !b) return null;
+      const tr = t.getBoundingClientRect(), ir = info.getBoundingClientRect(), br = b.getBoundingClientRect();
+      return { btnAlignTitleB: Math.abs(br.bottom - tr.bottom) <= 3, infoH: Math.round(ir.height) };
+    }).catch(() => null);
+    check('GE-12j-btn-align-info', !!gja && gja.btnAlignTitleB && gja.infoH >= 28, JSON.stringify(gja));
     await d.click('#srgToggle'); await page.waitForTimeout(60);
   }
 
