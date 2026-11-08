@@ -77,6 +77,21 @@
      面板出现时 ownerId 已绑定），竞态根治。官方元素零 addEventListener（监听只在
      mod 自有钮/弹层；文档级「点空白收弹层」含 mod 钮豁免=v9 同款）；弹层 `[hidden]`
      必须 `!important` 压过 ID display 规则（v13.9 实测「按钮上方常驻黑条」教训，§4.10 同源）。
+5. **多袋页签垂直对齐修正（v1.9.1，作者实报 2026-11-08 两单：取出物资切 SUV后备箱/
+   整理物资切购物袋「左侧上移、右侧下移」）**：官方 `syncSlotHeight` 对齐基准=grid
+   **内容中点**（`.grid-container` 全高 rect）+A slot 预留=maxRows 全额——§0a-1 的 560
+   视口钳使行数>10 的袋「可见窗口中点」比内容中点恒高 (rows-10)/2*CELL、slot 预留与被钳
+   面板实际高脱钩 ⇒ 切袋页签时 B 对齐进 A 的不可见内容区（整段下坠）、A 预留塌缩/释放
+   使整页 zoom 与面板 top 跳变（harness 实测错位 52~210px）。修法=**官方每轮
+   syncSlotHeight 后微任务级跟校**（MutationObserver 盯官方内联写+nbMount 500ms 周期
+   兜底，写全幂等签名守卫防自激）：①A 预留改钳后行数口径（effX=min(rows,CAPR)——跨页签
+   slot 高恒定，panel.top=extra/2=可见窗口居中）；②B marginTop 增补两侧**可见窗口**中点
+   互齐（(bVisMid-aVisMid)/zoom，负值合法——横排并置无重叠）；③zoom 自持复测（官方
+   公式同款，官方量在先=恒滞后）。cap 退役（cfg 关：maxHeight none）⇒ CAPR=∞ 三式坍缩
+   回官方原值零写；非 anchored 形态（取用单柜/单袋无页签）早退零扰动。自检口
+   `__CERAIL__.nbTab.writes`（glist.writes 先例）。harness-native-tab-align 三场景
+   （背包18/SUV10、背包18/SUV20、背包18/购物袋8）×两态：Δ=0/零跳位/zoom 恒定+防自激
+   静止+无 mod 基线对照（官方两态 Δ≤0.7px 自洽性实证）。
 
 ## 0a-5. v13.10 柜侧排序（取用/整理物资，作者 2026-11-03 令）
 

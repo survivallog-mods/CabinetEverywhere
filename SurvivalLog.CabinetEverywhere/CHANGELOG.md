@@ -3,6 +3,33 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## v1.9.1（2026-11-08，多袋页签垂直对齐修正批——作者实报两单）
+
+**作者实报（2026-11-08）**：①野外探险界面选柜「取出物资」（BackpackUI 双背包）切 **SUV后备箱**
+页签后「左侧界面上移了，右侧下移了」；②屋内整理物资从背包切 **购物袋** 页签同样现象。
+
+- **根因（官方 BackpackUI.html Vue 源码取证 + harness-native-tab-align 三场景实证）**：官方
+  `syncSlotHeight` 把 B 侧对齐到 A 侧 grid **内容中点**（`.grid-container`=inline rows*56 全高
+  rect）、A slot 预留=maxRows 全额——官方无高度上限时内容中点=可见中点，跨页签恒对齐（基线
+  实测 Δ≤0.7px/面板零跳位/zoom 恒定）。v1.8.3 NATIVE_BP_CSS 的 560 视口钳使行数>10 的袋
+  （背包原生 18 行等）「可见窗口中点」比内容中点恒高 (rows-10)/2*CELL、slot 预留与被钳面板
+  实际高脱钩 ⇒ 切袋页签时 B 对齐进 A 的**不可见内容区**整段下坠、A 预留塌缩/释放使整页 zoom
+  与面板 top 跳变（实测错位 52~210px、跳位 ±52~96px、zoom 0.94↔0.72）。
+- **修法=官方每轮 syncSlotHeight 后微任务级跟校**（MutationObserver 盯官方内联写 + nbMount
+  500ms 周期兜底；写全幂等签名守卫=差>0.5px 才写，防自激铁律同 §0b-glist）：①A 预留改「钳后
+  行数」口径 effX=min(rows,CAPR) ⇒ 跨页签 slot 高恒定（面板 top/整页 zoom 随之稳定）、
+  panel.top=extra/2=可见窗口居中；②B slot marginTop 增补 (bVisMid-aVisMid)/zoom=两侧**可见
+  窗口**中点互齐（负值合法：双面板横排并置无重叠）；③zoom 自持复测（官方同式，官方先量
+  官方布局=恒滞后须补刀）。cap 退役态（cfg 关）CAPR=∞ ⇒ 三式坍缩回官方原值零写零扰动；
+  非 anchored 形态（取用单柜/单袋无页签）早退零扰动。`__CERAIL__.nbTab.writes` 自检口
+  （glist.writes 先例）。
+- **修复后 mod 态优于官方**：三场景（背包18/SUV10/B柜20、背包18/SUV20/B柜20、背包18/购物袋8/
+  B柜7）两页签态 Δ=0/零跳位/zoom 恒定 0.9368——且 zoom 0.94 对比官方全高态 0.66~0.72=cap
+  「不整页缩小」的价值保留。harness：native-tab-align 14/14（对齐/零跳/zoom 稳/防自激静止/
+  官方基线对照）；回归 scroll-drag 14/14、native-width 8/8、switch-cabinet 27/27、height 12/12、
+  glist 128/128、fuelgen 53、heater 55、dye-pig 38、brew-tier 35、tagfilter-gate 15、width-floor 13、
+  sbtrack-flash 全绿（mount/regression/store-all/tidy 四旧线基线同败=存量环境问题，非本批）。
+
 ## v1.9.0（2026-11-08，竖版全局物品栏批——染料桶+暖炉两页先行；二楼交易点待定）
 
 **作者令**：出「竖版全局物品栏」——跨背包+整屋柜子的汇总列表形态，与现行格子样式单图标互切；

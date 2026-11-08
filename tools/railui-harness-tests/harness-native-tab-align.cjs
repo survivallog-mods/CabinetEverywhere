@@ -114,15 +114,23 @@ function check(name, ok, detail) {
     for (let si = 0; si < SCENARIOS.length; si++) {
       feed.si = si;
       if (!withMod) {
-        await frame().evaluate(() => { const st = document.getElementById('srNativeBp'); if (st) st.remove(); });
+        /* 官方基线：元素保留+data-uw 不动、textContent 清空——ensureNativeBpw 数据幂等早退
+           （scan 500ms 重注不会复活 cap），再派 resize 促官方 applyViewportFit 用全高面板重算 */
+        await frame().evaluate(() => {
+          const st = document.getElementById('srNativeBp');
+          if (st) st.textContent = '';
+          window.dispatchEvent(new Event('resize'));
+        });
       } else {
         /* 重装 mod CSS（幂等注入器不在页面态里，直接重建同款 style） */
         await frame().evaluate((css) => {
-          if (!document.getElementById('srNativeBp')) {
-            const st = document.createElement('style');
-            st.id = 'srNativeBp'; st.setAttribute('data-uw', '2'); st.textContent = css;
-            document.head.appendChild(st);
-          }
+          const st = document.getElementById('srNativeBp');
+          if (!st) {
+            const s = document.createElement('style');
+            s.id = 'srNativeBp'; s.setAttribute('data-uw', '2'); s.textContent = css;
+            document.head.appendChild(s);
+          } else if (!st.textContent) { st.textContent = css; }
+          window.dispatchEvent(new Event('resize'));
         }, '.grid-wrapper{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:12px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto}'
          + '.grid-wrapper::-webkit-scrollbar{width:8px}.grid-wrapper::-webkit-scrollbar-track{background:transparent}.grid-wrapper::-webkit-scrollbar-thumb{background:transparent}'
          + '.bag-panel.is-storage .weight-section{display:none !important}');
@@ -152,18 +160,30 @@ function check(name, ok, detail) {
   await runPass('MOD', true);
   await runPass('OFFICIAL', false);
 
-  /* 断言：OFFICIAL 基线跨页签恒对齐（官方设计自洽）；MOD 两态错位（复现=机制实证） */
+  /* 防自激：终态静止后 1s 写计数不增（观察器+周期兜底双触发下的幂等收敛实证） */
+  await feed(0);
+  await page.waitForTimeout(400);
+  const w1 = await page.evaluate(() => window.__CERAIL__ && window.__CERAIL__.nbTab && window.__CERAIL__.nbTab.writes());
+  await page.waitForTimeout(1100);
+  const w2 = await page.evaluate(() => window.__CERAIL__ && window.__CERAIL__.nbTab && window.__CERAIL__.nbTab.writes());
+  check('mod:防自激（终态写计数静止）', w1 !== null && w1 === w2, `静止后 writes=${w1} →1.1s→ ${w2}`);
+
+  /* 断言：OFFICIAL 基线两态可见中点恒对齐（官方设计自洽——无 cap 时可见中点=内容中点；
+     官方本身切页签面板 top 有预留居中位移，属官方设计，不设面板位移断言）；
+     MOD = 修复契约：两态对齐 + 跨页签面板/zoom 稳定（当前代码预期 RED=病在，修复后 GREEN） */
   const official = results.filter((r) => r.pass === 'OFFICIAL');
   const mod = results.filter((r) => r.pass === 'MOD');
   for (const r of official) {
-    check(`official:${r.scenario}: 跨页签可见中点恒对齐`, Math.abs(r.s0.visMidDelta) <= 4 && Math.abs(r.s1.visMidDelta) <= 4,
+    check(`official:${r.scenario}: 两态可见中点恒对齐`, Math.abs(r.s0.visMidDelta) <= 4 && Math.abs(r.s1.visMidDelta) <= 4,
       `S0 Δ=${r.s0.visMidDelta} S1 Δ=${r.s1.visMidDelta}（≤4px）`);
-    check(`official:${r.scenario}: 跨页签面板位移小`, Math.abs(r.dApanelTop) <= 4 && Math.abs(r.dBpanelTop) <= 4,
-      `A ${r.dApanelTop}px B ${r.dBpanelTop}px`);
   }
   for (const r of mod) {
-    check(`mod:${r.scenario}: 复现错位（RED 预期 FAIL=病在）`, Math.abs(r.s1.visMidDelta) > 30 || Math.abs(r.dApanelTop) > 30 || Math.abs(r.dBpanelTop) > 30,
-      `S1 ΔvisMid=${r.s1.visMidDelta} A位移=${r.dApanelTop} B位移=${r.dBpanelTop}`);
+    check(`mod:${r.scenario}: 两态可见中点对齐（修复契约）`, Math.abs(r.s0.visMidDelta) <= 4 && Math.abs(r.s1.visMidDelta) <= 4,
+      `S0 Δ=${r.s0.visMidDelta} S1 Δ=${r.s1.visMidDelta}（≤4px）`);
+    check(`mod:${r.scenario}: 跨页签面板零跳位（修复契约）`, Math.abs(r.dApanelTop) <= 4 && Math.abs(r.dBpanelTop) <= 4,
+      `A ${r.dApanelTop}px B ${r.dBpanelTop}px`);
+    check(`mod:${r.scenario}: 跨页签 zoom 稳定（修复契约）`, r.s0.zoom === r.s1.zoom,
+      `${r.s0.zoom}→${r.s1.zoom}`);
   }
   check('console 零错', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 

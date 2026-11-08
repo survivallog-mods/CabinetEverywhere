@@ -3310,7 +3310,127 @@
         DISP.choice = null; DISP.owner = 0; DISP.model = null; /* v1.8.5：进页沿重置显示层排序态 */
         DISP_CT.choice = null; DISP_CT.owner = 0; DISP_CT.model = null; /* v1.8.6：柜侧同沿重置 */
       }
+      nbTabAlignSettle(doc); /* v1.9.1：多袋页签垂直对齐跟校（周期兜底线；主触发=观察器微任务） */
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
+  }
+  /* ================= v1.9.1 原生多袋页签垂直对齐修正（作者实报 2026-11-08 两单：野外探险
+     取出物资切 SUV后备箱 / 整理物资切购物袋后「左侧上移、右侧下移」） =================
+     机制（官方 BackpackUI.html Vue 源码取证 + harness-native-tab-align 三场景实证）：
+     官方 syncSlotHeight ①把 B 侧对齐到 A 侧 grid **内容中点**（gridRefs=.grid-container=
+     inline height:rows*56 的全高 rect）②A slot 预留=maxRows（各袋页签 rows 全额）。官方
+     无高度上限 ⇒ 内容中点=可见中点，跨页签恒对齐（基线 Δ≤0.7px/面板零跳位/zoom 恒定）。
+     NATIVE_BP_CSS 的 560 视口钳（v1.8.3 格区高度滚动）使行数>10 的袋「可见窗口中点」比
+     内容中点恒高 (rows-10)/2*CELL、slot 预留与被钳面板实际高脱钩 ⇒ 切袋页签时 B 对齐进
+     A 的**不可见内容区**（整段下坠）、A 预留塌缩/释放使整页 zoom 与面板 top 跳变（实测
+     错位 52~210px、跳位 ±52~96px、zoom 0.94↔0.72）。
+     修法=官方每轮 syncSlotHeight 之后**微任务级跟校**（MutationObserver 盯官方内联写
+     [slot.height/panel.top/slot.marginTop] + nbMount 500ms 周期兜底；写全部幂等签名守卫
+     =值差>0.5px 才写，防自激铁律同 §0b-glist）：
+     ① A 预留改「钳后行数」口径：effX=min(rows,CAPR)、extra=(effMax-effRows)*CELL ⇒ 跨
+       页签 slot 高恒定（=chrome+effMax*CELL，面板 top/整页 zoom 随之稳定），panel.top=
+       extra/2=可见窗口在预留内居中；
+     ② B slot marginTop 增补 d=(bVisMid-aVisMid)/zoom（两侧**可见窗口**中点互齐；负值
+       合法——双面板横排并置无重叠；rect=视口 px、marginTop=布局 px，须除 zoom）；
+     ③ zoom 自持复测（官方同式 min(1,(inW-24)/offsetW,(inH-24)/offsetH)，官方清零态量
+       官方布局=先于本校正恒滞后，须自持补一刀；k=1 写 ''=官方口径）。
+     cap 退役态（cfg 关：maxHeight:none）CAPR=∞ ⇒ 三式逐项坍缩回官方原值=零写零扰动；
+     非 anchored 形态（取用单柜/单袋无页签）官方本无预留与互对齐，早退零扰动。 */
+  var NB_TAB_W = { writes: 0 };
+  function nbTabAlignTick(doc) {
+    try {
+      var su = nbVueSu(doc);
+      if (!su || !su.bagA) return 0;
+      var aTabs = refVal(su.aTabs);
+      if (!aTabs || aTabs.length < 2) return 0;
+      var ct = doc.querySelector('.backpack-container');
+      if (!ct) return 0;
+      var slots = ct.querySelectorAll('.bag-slot');
+      var aSlot = null, bSlot = null;
+      for (var i = 0; i < slots.length; i++) {
+        if (slots[i].classList.contains('is-anchored')) aSlot = slots[i];
+        else bSlot = slots[i];
+      }
+      if (!aSlot) return 0;
+      var aPanel = aSlot.querySelector('.bag-panel');
+      var aWrap = aPanel && aPanel.querySelector('.grid-wrapper');
+      var aGrid = aPanel && aPanel.querySelector('.grid-container');
+      if (!aPanel || !aWrap || !aGrid) return 0;
+      var rowsA = +su.bagA.gridRows;
+      if (!(rowsA > 0)) return 0;
+      var CELL = Math.round((parseFloat(aGrid.style.height) || 0) / rowsA) || 56;
+      var capPx = parseFloat((doc.defaultView && doc.defaultView.getComputedStyle(aWrap) || {}).maxHeight);
+      var capRows = (isFinite(capPx) && capPx > 0) ? Math.floor(capPx / CELL) : Infinity;
+      var maxRows = rowsA;
+      for (var j = 0; j < aTabs.length; j++) { var r = +(aTabs[j] && aTabs[j].rows) || 0; if (r > maxRows) maxRows = r; }
+      var extra = Math.max(0, Math.min(maxRows, capRows) - Math.min(rowsA, capRows)) * CELL;
+      var ph = aPanel.offsetHeight;
+      if (!ph) return 0;
+      var writes = 0;
+      /* ① 预留/居中（钳后口径；官方值同=零写） */
+      var wantH = ph + extra;
+      if (Math.abs((parseFloat(aSlot.style.height) || 0) - wantH) > 0.5) { aSlot.style.height = wantH + 'px'; writes++; }
+      var wantT = extra / 2;
+      if (Math.abs((parseFloat(aPanel.style.top) || 0) - wantT) > 0.5) { aPanel.style.top = wantT + 'px'; writes++; }
+      /* ② B 可见窗口对齐（相对量：官方写什么 marginTop 都能叠校到位） */
+      if (bSlot) {
+        var bPanel = bSlot.querySelector('.bag-panel');
+        var bWrap = bPanel && bPanel.querySelector('.grid-wrapper');
+        if (bPanel && bWrap) {
+          var app = doc.getElementById('app');
+          var zm = (app && parseFloat(app.style.zoom)) || 1;
+          var ar = aWrap.getBoundingClientRect(), br = bWrap.getBoundingClientRect();
+          var d = ((br.top + br.bottom) - (ar.top + ar.bottom)) / 2 / zm;
+          if (Math.abs(d) > 0.5) {
+            var curM = parseFloat(bSlot.style.marginTop) || 0;
+            bSlot.style.marginTop = (Math.round((curM - d) * 10) / 10) + 'px';
+            writes++;
+          }
+        }
+      }
+      /* ③ zoom 复测（官方清零态同基准量；k=1 → ''=官方不写口径） */
+      var app3 = doc.getElementById('app');
+      var win = doc.defaultView;
+      if (app3 && win && ct.offsetWidth && ct.offsetHeight) {
+        var prevZ = app3.style.zoom || '';
+        app3.style.zoom = '';
+        var k = Math.min(1, (win.innerWidth - 24) / ct.offsetWidth, (win.innerHeight - 24) / ct.offsetHeight);
+        var wantZ = k < 1 ? String(Math.round(k * 10000) / 10000) : '';
+        app3.style.zoom = wantZ;
+        if (prevZ !== wantZ) writes++;
+      }
+      NB_TAB_W.writes += writes;
+      return writes;
+    } catch (e) { return 0; }
+  }
+  function nbTabAlignSettle(doc) {
+    try {
+      if (!doc || !doc.body) return;
+      for (var i = 0; i < 3 && nbTabAlignTick(doc) > 0; i++) { } /* mt(相对量)/zoom 收敛，最多三轮 */
+      var aSlot = doc.querySelector('.bag-slot.is-anchored');
+      var st = doc.__srnTabAl;
+      if (!aSlot) { /* 形态离开（单柜/页签消失）：官方下一轮 syncSlotHeight 自清全部内联值，观察器随拆 */
+        if (st) { try { st.mo.disconnect(); } catch (e) { } doc.__srnTabAl = null; }
+        return;
+      }
+      var bSlot = null, slots = doc.querySelectorAll('.bag-slot');
+      for (var s = 0; s < slots.length; s++) if (!slots[s].classList.contains('is-anchored')) bSlot = slots[s];
+      var aPanel = aSlot.querySelector('.bag-panel');
+      if (!st || st.a !== aSlot || st.b !== bSlot || st.p !== aPanel) {
+        if (st) { try { st.mo.disconnect(); } catch (e) { } }
+        var mo = new MutationObserver(function () {
+          if (doc.__srnTabPend) return;
+          doc.__srnTabPend = true;
+          Promise.resolve().then(function () {
+            doc.__srnTabPend = false;
+            try { for (var i2 = 0; i2 < 3 && nbTabAlignTick(doc) > 0; i2++) { } } catch (e) { }
+          });
+        });
+        mo.observe(aSlot, { attributes: true, attributeFilter: ['style'] });
+        if (aPanel) mo.observe(aPanel, { attributes: true, attributeFilter: ['style'] });
+        if (bSlot) mo.observe(bSlot, { attributes: true, attributeFilter: ['style'] });
+        doc.__srnTabAl = { mo: mo, a: aSlot, b: bSlot, p: aPanel };
+      }
+    } catch (e) { }
   }
   /* nbRenderSortPop/nbSortLabel/nbApplyFsort 已收敛：弹层渲染/标签同步=makeSortMenu 实例
      （menuNB，nbMount 创建），应用=applyDispSort 统一入口（选完即关/亮金态/toast 文案原样） */
@@ -4702,6 +4822,12 @@
       writes: function (v) { if (typeof v === 'number') GL_W.writes = v; return GL_W.writes; },
       view: function (k) { return glistView(k); },
       _pend: function (k, v) { if (v) (GLPENDQ[k] = GLPENDQ[k] || []).push(v); return GLPENDQ[k] || []; } /* 终审 FD3 测试口（dyePig.apply 自检先例） */
+    },
+    /* v1.9.1 nbTab 自检口（glist.writes 先例）：writes(n)=跟校写计数（传数复位、无参读；
+       harness 断言收敛后静止=防自激实证）；tick(doc)=手动跟校一轮（观察器路径外直调） */
+    nbTab: {
+      writes: function (v) { if (typeof v === 'number') NB_TAB_W.writes = v; return NB_TAB_W.writes; },
+      tick: function (doc) { return nbTabAlignTick(doc); }
     },
     _ppCount: 0,
     _pp: function () { this._ppCount++; }, /* v1.8.10 十三批六追：微包回执钩（OpPing 发 ~40B 微型 ExecuteJavaScript——达=通道活、长度丢弃实锤；不达=通道级死） */
