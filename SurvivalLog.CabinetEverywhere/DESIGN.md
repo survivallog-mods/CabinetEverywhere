@@ -998,3 +998,24 @@ spec=docs/superpowers/specs/2026-11-07-bag-height-design.md；计划=docs/superp
 - **退役对账（作者令 2026-11-07）**：BackpackExpand（背包宽高+负重）/CabinetSize（柜子宽高）/
   CabinetBurden（柜子负重）三 mod 同批从套件退役——宽高归宿=§12 高度批（宽度恒 12 定案），
   负重归宿=本节；旧 dll 同写 Config_Bag.Size/Burden 会互相覆盖，双 README 升级提示先卸载旧件。
+
+## 14. 竖版全局物品栏 glist（2026-11-08 v1.9.0；先行=DyePanel+Heater，交易点待定）
+
+设计 spec：docs/superpowers/specs/2026-11-07-global-storage-list-design.md（含 v1→v4 决策史与被否
+选项）；UI 规格=UI-SPEC §0b-glist；实施计划=docs/superpowers/plans/2026-11-07-global-storage-list-v190.md。
+
+- **形态**：两页左背包区的列表形态（与 rail 壳/bagtabs 共存；格子态=现行视图原样+右上浮动☰）。
+  数据零新管道——契约 v4 本就每页推全屋快照（bag+全部白名单柜 items + icfg 尾列 burnValue/pig +
+  ctx.dyePal），glist 只做显示层聚合。
+- **装配**（railui.page.js glist 段）：`GLIST` 页描述符驱动 `glistFrame{Build→Apply→Render→Pump}`；
+  ensureMountedFrame 三挂点 + setData 尾 glistSettle。宿主=Heater 官方左面板首子 / DyePanel #srp 首子；
+  列表态隐宿主其余子元素（expando 存原值，拆净逐字还原）。
+- **行三键**：悬停 #srgTip / 左键 #srgDetail / 右键=官方口径移 1 件（Heater=feed 既有两跳；Dye=bag
+  源 core.UnitySendEvent('ITEM_CLICK',{rightClick:true}) 直回放，柜源 take{all:false}+GLPEND 推送
+  落包后回放）——§0-4 红线条款随本批修订（列表行三键语义）。
+- **防自激新证**：innerHTML 读回=序列化形态≠字面量，图标守卫必须 expando（__srgIcon）比对——
+  直接比较=childList 观察器微任务风暴=渲染进程猝死（harness B4 写计数断言钉死）。
+- **C#**：Access.EnableGlistDye/EnableGlistHeater（SettingChanged 慢道）+ ctx.glistOn 页条件字段
+  （DyePanel 挂 EnableDye、Heater 挂 EnableHeater 联动；heaterOn 先例）；零新命令。
+- **验证**：harness-glist 80 断言全绿；维护中十套件回归绿；mount/regression/store-all/tidy 四套件
+  主基线既有红（26/3/3/8）逐套持平零回归（基线工作树对账 2026-11-08）。

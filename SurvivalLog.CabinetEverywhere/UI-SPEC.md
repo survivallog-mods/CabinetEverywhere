@@ -128,6 +128,62 @@
 
 **暖炉同构扩页（2026-11-07 暖炉移植批）**：SCENES.Heater 为第 14 个装配场景（bagtabs 族第二页）——同一 ensureBagtabs 四件装配，页差异全走 JS BAGTABS 页描述符：宿主选择器 .heater-system > .panel:not(.heater-panel)、cfg 门 ctx.heaterOn（Access.EnableHeater）、满员文案「炉膛已满」（页官方 warningFuelFull 同词）。右侧炉体面板（炉门火舆 SVG/点火钮/供暖读数）零改动；官方 tooltip 元素 id 页异（#fuelTooltip，发电机=#recipeTooltip）。视觉规范与 §0b 逐条同款。
 
+## 0b-glist. 竖版全局物品栏（2026-11-08 v1.9.0；spec=docs/superpowers/specs/2026-11-07-global-storage-list-design.md，先行=DyePanel+Heater 两页，交易点待定）
+
+第 15/16 个装配场景上的**左面板列表形态**。批改#8（2026-11-08）起新增 **FuelGenerator 页**
+（作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；批改#9 起格子态语义重定
+（见下「格子态」）。JS `GLIST` 页描述符：
+`{DyePanel:{target:'染料槽',badge:'pig',feed:'dye'}, Heater:{target:'炉膛',badge:'heat',feed:'fuel'},
+FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}}`（bagtabs 族宿主选择器走 `BAGTABS`
+描述符两件套统一取）。装配链：`ensureMountedFrame` 顶挂点 →
+`glistFrame{glistBuild→glistApply→glistRender→glistPump}`，`setData` 尾 `glistSettle` 随契约重驱。
+
+- **宿主与 DOM**：Heater/FuelGenerator=官方左背包面板（`.heater-system`/`.generator-system >
+  .panel:not(.heater-panel/.gen-panel)`）首子，`srg-fill` 类=填满锁定宿主（高 auto/flex:1 1 auto/
+  min-height:0，**778 锁由 glistApply 自持**——批改#9 锁所有权随旧方案退役从 fgSyncHeight 移交：
+  778 地板+视口钳同数同义，列表态写/格子态与拆净解除）；DyePanel=#srRail 父（#srp）首子，
+  **816 版式铁约束**（批改#6：#srp 裸块无界，616 宽=spec §5 定稿/816 高=实现期裁定侧栏恒定高）。
+  面板六段 `#srgPanel`（`#srgHead`(标题+`#srgToggle`) / `#srgSearch#srgQ` / `#srgChips` /
+  `#srgHint` / `#srgList` / `#srgFoot`），行 `.srg-row[data-key]`。
+- **格子态=官方默认背包**（批改#9，作者裁定「柜子页签是之前版本的方案，已被新方案替代」）：
+  glist 在场（列表/格子皆）=bagtabs 族页 srfg 旧方案**整体退役**（`glistOwnsPage` 三抑制门：
+  ensureBagtabs 头/fgSettle 头/ensureMountedFrame 分支；拆净=原版面板——标题/官方格/提示，
+  无页签无整理钮无包装层；`FG.active` 收口=a/d 热键同退役）。格子态切换补 **`refreshBag` 裸命令**
+  →C# `RailData.RefreshActivePage()` 按活跃页派 `Ac_*_RefreshBag`（三页全覆盖——#2 旧杠杆
+  switchBag 的同值守卫早退在官方状态已在背包时哑火，实机「切回一片空白」根因）；DyePanel
+  格子态=rail 简洁态（`#srp.srg-plain` 与 plainbag 并枝选择器：柜子页签/搜索/标签/工具行全隐，
+  类挂宿主不挂 rail——render 重写 rail className）。cfg 关=旧方案原路复活（fgSettle 自愈回装）。
+- **视图互切**：单图标钮（34×30 微贴右上角），图标恒示「将切去」的样式（列表态=SVG 田字格、
+  格子态=☰）；格子态=`srg-gridmode` 折叠类（面板透明零占位、右上浮动☰——**整隐会使钮不可达**，
+  z-index 需高于 .sr-rail 的 2）；视图记忆 `localStorage['srp_glist_view_<scene>']`。列表态隐宿主
+  其余子元素（原值存 expando `__srgPrevD`，拆净逐字还原——innerHTML 不受污染）。状态实变
+  （挂载/互切/拆净）补发 window `resize` 促官方 `createViewportFit` 复测 body.zoom（批改#7，
+  官方只在 BagMsg 重测=glist 顶高系统卡时 zoom 滞留；稳态零发无风暴）。
+- **门**：`ctx.glistOn` 页条件（DyePanel=EnableGlistDye&&EnableDye，Heater=EnableGlistHeater&&
+  EnableHeater，FuelGenerator=EnableGlistFuelGen&&EnableFuelGen；heaterOn 先例）；harness 覆盖钮
+  `__HZ_GLIST__`。cfg 5s 慢道拆装对称。
+- **聚合**：`glistAggregate(sceneKey)` 纯函数——契约 v4 全屋快照（bag+全部白名单柜）按
+  **v2 作者终案键=物品名+uses+attrSig** 归组（2026-11-08 四轮实机对谈定：无次数物品同名并（同名异 cfg 变体并）/有次数物品（非料理食物/药物/书籍）同名同次数并/料理 attrSig 异拆；timeLeft/flags/s 瞬态不进键——实机三连返工教训：flags=食物态位、s 值乘使用次数；**右键取物 FEFO**=行内候选叠 timeLeft 升序最快过期先出，跨背包/柜选叠）（§3-6 旧约），srcs 背包恒首，Dye 主色=最高点数（官方 mainPoints
+  口径）+dyePal hex，Heater 徽章=burnValue；场景排序降序+并列稳定+300 截断。
+- **行三键**（§0-4 修订条款）：悬停 `#srgTip`（跟随+边缘翻转）/左键 `#srgDetail`（Esc/点空白/×）/
+  **右键=官方口径移 1 件**：Heater/FuelGenerator=`feed{owner,item}`（C# OpFeed 页感知两态机）；
+  Dye bag 源=页面官方 `core.UnitySendEvent('ITEM_CLICK',{itemId,rightClick:true})` 直回放；Dye 柜源=
+  `take{ids,all:false}`（C# 第一叠拆 1 件柜→包）+`GLPEND` 队列**契约推送落地后**回放（glistPump，
+  5s 过期）——双跳时序防线。
+- **预设**：染料=dyePal 动态 8 色板 chips 单选（命中=任一色点数>0）+「💧 按色素值 ↓」常驻
+  （水滴=官方 dropSvg 随主色 hex）；暖炉/发电机=「🔥 仅可燃物」lock+「🔥 按热值 ↓」常驻。
+- **键盘门（C#）**：`GlistKeyboardTick`——Dye/Heater/FuelGenerator 页激活且 cfg 开：
+  `WebUILayer.SetKeyboardEnabled(true)`+`Input.imeCompositionMode=On`（中文 IME；官方全局
+  KeyboardEnabled=0 白名单制，页面 SEARCH_FOCUS 事件不够——PlanPick 实证方案）；页关/cfg 关
+  对称还原。0.3s 节流。
+- **防自激铁律（本批新证）**：`innerHTML` 读回是序列化形态≠字面量——**图标守卫必须 expando
+  标记比对**（`__srgIcon`），直接比较=永真重写=childList 观察器微任务风暴=渲染进程猝死；
+  行/页脚/chips 渲染走整包签名守卫（`GL_SIG`，新面板/拆装作废）。写计数 `__CERAIL__.glist.writes`
+  供 harness 断言（B4）。
+- harness：`tools/railui-harness-tests/harness-glist.cjs` 126 断言（聚合/装配互切/渲染搜索/三键含
+  take 模拟器全链/染料预设/暖炉预设/ctx 门/键盘协议/uses 徽章/版式契约 L 系/旧方案退役+格子态
+  原版 GE/发电机 GF 系）。
+
 ## 0. 动作保真红线（总纲，2026-10-31 作者总裁决）
 
 **本 mod 的职责 = 重构储物系统的布局与导航（壳），不重造储物系统（物品格）。**
@@ -142,7 +198,11 @@
    ②新增整柜批量动作（一键整理/一键入库/分类与按标签互转，C# 官方 API 直调）；
    ③rackOpen（整理柜跨柜 = C# 重放官方 `Ac_MaterialRack_Open` 动作，官方 state 整体重绑，
    官方行组件原生重渲染——非伪造、非自绘）。
-4. **列表 = 纯汇总只读**：行零事件（无右键取放——取出/放入一律回到官方网格/行组件做）。
+4. **列表行事件分两代**（v1.9.0 修订，作者 2026-11-07 裁决「没有推翻，他们是一起的」）：
+   v1.8.x 全库列表（`.sr-row`）=纯汇总只读、行零事件（取出/放入回官方网格做）——照旧；
+   **v1.9.0 glist 全局物品栏行（`.srg-row`）=汇总显示+右键官方事件回放一体**：悬停/左键
+   =只读（信息条/详情），右键=官方口径移 1 件（暖炉 feed 官方动作、染料页面官方
+   ITEM_CLICK{rightClick} 回放——Unity 裁决+官方飘字，mod 不拦截不伪造），见 §0b-glist。
 5. **验收 = §7 动作矩阵逐项实机打勾**；床测全绿不替代实机，缺一项不交付。
 6. 修订历史条款：「官方原版背包禁绝」（v11）限缩为**禁整页原版 chrome**——物品格
    一律官方原件（本条为 v13 对 v11/v12「自研面板/自绘格/复刻按钮」三要素的显式推翻）。
@@ -532,6 +592,10 @@ GreenhouseBuild（cart 族同款）。
     属性/交易价值排序数值高在前且格子右上角角标与排序一致（0=「—」、负数带号、
     保质期=天数文本）；**选维后切到空柜：角标整层清空不残留**（三追修——空容器 ≠
     瞬时窗口，模型 0 件即清）。
+15. **竖版全局物品栏（v1.9.0 §0b-glist）**：DyePanel/Heater 两页进页默认列表态（六段结构/汇总行/
+    场景预设/页脚提示逐项过目）；单图标互切来回（格子态=现行视图原样+浮动☰ 可回）；行三键逐项
+    实机（悬停条/详情三路关/右键送染料槽与炉膛各打勾——柜源双跳含推送后回放）；两 cfg 关=还原
+    现行样式（5s 内）；拆装循环零残留；控制台零错。
 
 ## 8. 资产与构建
 

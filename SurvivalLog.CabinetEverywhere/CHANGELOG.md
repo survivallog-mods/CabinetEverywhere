@@ -3,6 +3,69 @@
 > 本文件只记本 mod 的更新；套件/安装器版本史见总仓根 CHANGELOG.md。
 > 版本号单源：总仓 version.json 的 mods 字段（作者定义）。
 
+## v1.9.0（2026-11-08，竖版全局物品栏批——染料桶+暖炉两页先行；二楼交易点待定）
+
+**作者令**：出「竖版全局物品栏」——跨背包+整屋柜子的汇总列表形态，与现行格子样式单图标互切；
+先行落地染料桶/暖炉两页（二楼交易点整场景待定，spec 2026-11-07-global-storage-list §7.0 Q1 裁定；
+染料颜色补齐=动态 8 色板 Q2 裁定）。设计要点全录见该 spec（v1→v4 决策史+被否选项防回潮）。
+
+- **竖版全局物品栏（glist）**：进页默认列表态——头部（标题+单图标切换钮：列表态显田字格=切去
+  格子、格子态显☰=切回，视图记忆 localStorage 分场景）/搜索（即时过滤）/场景预设 chips 行/
+  提示行/汇总列表/页脚（N 种 · Σ 件 · 来源 K 处+预设隐藏提示）。格子态=折叠浮动（srg-gridmode：
+  面板透明零占位、右上浮动☰ 钮盖在现行视图上——整隐会使切换钮不可达）。
+- **汇总行**（同名同 timeLeft/flags 才合并、随机属性任异各行——全库列表旧约）：图标 40×40
+  （可燃物官方火苗角标）+名称（染料场景带主色圆点）+来源行（前 3 处逐显、超 3 折「等 N 处」、
+  背包金色）+场景徽章+「x总数」（12px Consolas）；300 行截断+页脚提示。
+- **行三键=背包页同款**：悬停信息条（场景属性+全部来源+操作提示，跟随+边缘翻转）；左键详情
+  弹窗（属性行+合计+来源清单；Esc/点空白/× 三路关）；**右键=官方口径移 1 件**——暖炉走 feed
+  两跳直达（柜→包→Ac_Heater_FuelAdd）；染料 bag 源直回放页面官方 ITEM_CLICK{rightClick}
+  （Unity 裁决 canDye/锁定/满员+官方飘字）、柜源 take{all:false} 拆 1 件+推送落包后回放
+  （GLPEND 双跳时序防线，5s 过期）。§0-4 红线条款随本批修订（列表行三键语义，UI-SPEC §0b-glist）。
+- **场景预设（spec §5.3）**：染料桶=dyePal 动态 8 色板 chips 单选（命中=任一色点数>0）+「💧 按
+  色素值 ↓」常驻（主色=最高点数，官方 mainPoints 口径；水滴=官方 dropSvg 随主色 hex）；暖炉=
+  「🔥 仅可燃物」lock 固定筛选（不可取消）+「🔥 按热值 ↓」常驻（发电机同口径复用位）。
+- **[Access] 两键**：EnableGlistDye / EnableGlistHeater（默认 true；染料桶挂 EnableDye 联动、
+  暖炉挂 EnableHeater；ctx.glistOn 页条件字段（heaterOn 先例），5s 慢道生效，拆装对称还原）。
+- **防自激铁律实证**：innerHTML 读回=序列化形态≠字面量——图标守卫必须 expando 标记比对
+  （直接比较=永真重写=childList 观察器微任务风暴=渲染进程猝死，B4 断言钉死）。
+- harness：新增 harness-glist 80 断言（聚合/装配互切/渲染搜索/行三键含 take 模拟器全链/染料
+  预设/暖炉预设/ctx 门）；dye-pig 38 / brew 35 / fuelgen 53 / heater 55 / height 12 / native
+  14+8 / switch 27 / tagfilter 15 / width-floor 13 回归绿；mount/regression/store-all/tidy
+  四套件主基线既有红（26/3/3/8）本批逐套持平零回归。
+- **实机批改#1-#5（2026-11-08 验收日）**：#1 合并键三追→v2 作者终案（名+uses/max+attrSig，
+  FEFO 右键取最快过期）；#2 格子态空白（switchBag 官方刷新杠杆）；#3/#5 搜索框键盘门
+  （SEARCH_FOCUS 页事件+C# GlistKeyboardTick 双开：SetKeyboardEnabled+IME On，PlanPick 实证）；
+  #4 使用次数官方镜像徽章（.item-use 同款+2px 比例条）。
+- **实机批改#6/#7（版式）**：#6 列表态版式铁约束 616×816（染料桶 #srp 裸块无界——宽随内容环形
+  解析/高 auto/无滚动条三症一因；spec §5 定稿 616+实现期裁定 816）；#7 暖炉溢出屏幕（真根因=
+  宿主是 mod 高度锁面板本就有界，正解 srg-fill 填满+778 锁，816 只属无界宿主；附：状态实变补发
+  resize 促官方 createViewportFit 复测 body.zoom）。
+- **实机批改#8（作者令：发电机复用）**：燃油发电机页新增 glist（FuelGenerator 描述符：燃料槽/
+  仅可燃物/热值/feed 官方两跳）——cfg EnableGlistFuelGen（挂 EnableFuelGen）、ctx glistOn 页条件、
+  键盘门 _gkFuelGenKeys 三页齐。
+- **实机批改#9（作者裁定：格子态=官方默认背包，柜子页签方案退役）**：glist 在场的 bagtabs 族页
+  （暖炉/发电机）srfg 旧方案整体退役（glistOwnsPage 三抑制门+fgTeardown 拆净还原版：无页签/
+  无整理钮/无包装层；a/d 热键随退役收口；cfg 关=旧方案原路复活）；778 锁所有权 fgSyncHeight→
+  glistApply 移交（列表态自持/格子态解除）；**格子态空白正修=refreshBag 裸命令**（C# RefreshActivePage
+  按页派 Ac_*_RefreshBag 三页全覆盖——旧杠杆 switchBag 同值守卫早退在官方状态已在背包时哑火）；
+  染料桶格子态=rail 简洁态（#srp.srg-plain 与 plainbag 并枝：柜子页签/搜索/标签/工具行全隐）。
+  harness glist 126 断言（新增 L 版式契约/GE 格子态原版/GF 发电机/S4 双语境）。
+- **实机批改#10（CSS 注入路断裂）**：#9 退役早退带断 bagtabs 页 railui.css 唯一注入点
+  （ensureBagtabs 内 injectRailStyle）=列表面板无样式文本流+大白块；修=glistBuild 建面板前自保
+  注入（幂等）；harness 补 GF1-css-injected 回归锚（夹具直链 css 是保真缺口，注入路实机独有）。
+- **实机批改#11（渲染进程猝死）**：开门首扫 ctx 陈旧→旧方案抢挂（日志实锤 bagtabs mounted）→
+  glist 接管过渡机级联=观察器雪崩；修=①GLIST 页旧方案仅「ctx 确认本页且 glist 关」才许挂载
+  （未确认一律 hold，过渡机整类消灭）②宿主整形（锁+滚窗/plain）先于隐藏循环、格 display 全程
+  零触碰。附带：机页格子态锁+滚窗两态自持（官方机页格无原生滚，12×25 大包必须滚窗——作者
+  实报「完全不能滚」）；键盘门每帧重申→后随 #12f 定谳回收到简洁门。
+- **实机批改#12（染料桶搜索框五轮定谳=页名一个字符串）**：v4 遥测 PageMap 倾倒实锤官方页 id
+  词汇=场景名本体（DyePanel/Heater/FuelGenerator）；#5 起染料桶键名猜作 Dye/UI_Dye/WebUI_Dye
+  全不匹配=键盘门从未开过（暖炉/发电机名字恰是本名所以一直能通）；中间三轮（0.3s 重申/每帧
+  重申/Harmony 守卫）全打在未验证的「被压关」理论上——**教训入档：假设先测量（一行日志倾倒
+  PageMap.Keys 即第一轮可得真相），不假设不加码**。同批：染料桶格子态标题静态化（角色背包+
+  空间条，官方机页同款，与容器切换无关）、折叠态☰按钮两轮微调归位（12,14）。
+  harness glist 127 断言终态。
+
 ## v1.8.6（2026-11-07，负重批——背包负重调整新增 + 原独立 mod CabinetBurden 并回；BackpackExpand/CabinetSize/CabinetBurden 三 mod 随批退役）
 
 **作者令**：本 mod 增加「背包负重调整」（公斤）与「柜子负重解放」开关（CabinetBurden 整体并回）；
