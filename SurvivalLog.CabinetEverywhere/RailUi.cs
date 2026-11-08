@@ -741,27 +741,54 @@ internal static class RailUi
         catch { return null; }
     }
 
-    // ==== glist 键盘门（批改#5→#12f，2026-11-08 定稿）：搜索框可输入 + 中文 IME ====
-    // 官方为防误触全局限制键盘转发（WebUI 预制体 KeyboardEnabled=0，仅白名单界面解锁），
-    // 页面侧 SEARCH_FOCUS 事件不够——C# 侧双开（PlanPick 实证方案）：页激活期间
-    // WebUILayer.SetKeyboardEnabled(true)（英文/裸键通道开关）+ Input.imeCompositionMode=On
-    // （中文 IME：组合挂 Unity 窗口、结果 Vuplex 直投浏览器）；页关/cfg 关对称还原。
-    // 【页 id 词汇教训（批改#12f，五轮弯路的定谳）】IsPageActive 的合法参数=PageMap 键名=
-    // 场景名本体：DyePanel/Heater/FuelGenerator。#5 起染料桶键名猜作 Dye/UI_Dye/WebUI_Dye
-    // 全不匹配=门从未开过；因暖炉/发电机名字恰是本名而「看起来方案对染料桶失灵」，随后三轮
-    // （0.3s 重申/每帧重申/Harmony 守卫）全打在未验证的「被压关」理论上——正确姿势是第一轮
-    // 就倾倒 PageMap.Keys 对表（一行日志）。录此防再犯：**假设先测量，不假设不加码**。
+    // ==== glist 键盘门（实机批改#5，2026-11-08）：搜索框可输入 + 中文 IME ====
+    // 方案=套件 PlanPick（自选规划）装机十一轮实证同款：官方为防误触**全局限制**输入法与键盘转发
+    // （WebUI 预制体 KeyboardEnabled=0，仅工具台配方搜索等白名单界面解锁）——单靠页面侧
+    // SEARCH_FOCUS 事件不够（#3 教训）。正解 C# 侧双开：Dye/Heater 页激活期间
+    // WebUILayer.SetKeyboardEnabled(true)（英文/裸键通道唯一开关，PlanPick S1/S3 实证）+
+    // Input.imeCompositionMode=On（中文 IME 解锁：组合挂 Unity 窗口、结果 Vuplex 直投浏览器
+    // 即时上屏）；页关/cfg 关=对称还原（SetKeyboardEnabled(false)+IME 还原 prev）。
     private static bool _gkHanded;
     private static float _gkNext;
+    private static GameCore.HotUpdate.ReduxUI.WebUILayer _gkLayer; // 批改#12c：帧级重申快速路缓存（门开期间层恒在）
     private static UnityEngine.IMECompositionMode _gkPrevIme = UnityEngine.IMECompositionMode.Auto;
-    private static readonly string[] _gkDyeKeys = { "DyePanel" };
-    private static readonly string[] _gkHeaterKeys = { "Heater" };
-    private static readonly string[] _gkFuelGenKeys = { "FuelGenerator" };
+    // 批改#12f 定谳（v4 遥测 PageMap 倾倒）：官方页 id 词汇=场景名本体——染料桶真名 DyePanel
+    // （非 Dye/UI_Dye/WebUI_Dye 任意变体——此前整场「门开被压关」理论全废，染料桶的门从
+    // #5 起就没开过；暖炉/发电机的 Heater/FuelGenerator 恰是本名所以一直能通）。真名置首，
+    // 旧变体保留兜底（IsPageActive 精确匹配，多键无副作用）。
+    private static readonly string[] _gkDyeKeys = { "DyePanel", "Dye", "UI_Dye", "WebUI_Dye" };
+    private static readonly string[] _gkHeaterKeys = { "Heater", "UI_Heater", "WebUI_Heater" };
+    private static readonly string[] _gkFuelGenKeys = { "FuelGenerator", "UI_FuelGenerator", "WebUI_FuelGenerator" }; // 批改#8：燃油发电机复用暖炉（搜索框键盘门同开）
     internal static void GlistKeyboardTick()
     {
         var now = UnityEngine.Time.unscaledTime;
-        if (now < _gkNext) return; // 0.3s 节流（PlanPick 同拍）
+        if (_gkHanded && now < _gkNext)
+        {
+            /* 批改#12c 快速路（帧级差分实锤：暖炉搜索键全到/染料桶 0 键——染料页存在页面级
+               原生压关，0.3s 节流重申打不过每帧压关者）：非求值帧只做**每帧重申开**（幂等轻量），
+               状态求值/日志/IME prev 采样仍 0.3s 节流。 */
+            try { _gkLayer?.SetKeyboardEnabled(true); } catch { }
+            return;
+        }
+        if (now < _gkNext) return;
         _gkNext = now + 0.3f;
+        /* 批改#12e 测量仪（与守卫独立的第二信道）：门开着期间采样标志位真值并记翻转——
+           若打字失败期间标志位恒 true=「标志位不是染料页闸门」直接定谳（整个向量弃案）；
+           恒 false=压关实锤（守卫应同时开火，频次对上即结案）。前 6 次翻转留日志。 */
+        if (_gkHanded && _gkLayer != null)
+        {
+            try
+            {
+                bool k = _gkLayer.IsKeyboardEnabled;
+                if (k != _gkSeen || _gkSeenN < 6)
+                {
+                    if (k != _gkSeen) _gkSeenN++;
+                    _gkSeen = k;
+                    CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘标志位采样=" + k + (_gkSeenN <= 6 ? " (#" + _gkSeenN + ")" : ""));
+                }
+            }
+            catch { }
+        }
         GameCore.HotUpdate.ReduxUI.WebUILayer layer = null;
         try
         {
@@ -769,28 +796,110 @@ internal static class RailUi
                 layer = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance?.GetWebUILayer();
         }
         catch { layer = null; }
-        if (layer == null) { if (_gkHanded) GlistKeyboardReturn(layer); return; }
+        if (layer == null)
+        {
+            if (_gkHanded) GlistKeyboardReturn();
+            /* 批改#12e 遥测：门未开期间层取不到=静默 return（v2 实机会话整场零日志的两种可能之一，
+               30s 节流一行把静默路径照亮） */
+            if (now > _gkTelNext) { _gkTelNext = now + 30f; CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：GetWebUILayer=null（tick 活着，层不可得）"); }
+            return;
+        }
+        /* 批改#12e 遥测：门未开时 30s 一行页键全景（层在但页键全灭=IsPageActive 键名/覆盖层问题）。
+           v4：实机判决=染料页开着九键全灭 → 键名本身可疑，加 PageMap/pageReadyStates 键名倾倒
+           （官方页 id 词汇表=IsPageActive 的合法参数域，一次拿到真相） */
+        if (!_gkHanded && now > _gkTelNext)
+        {
+            _gkTelNext = now + 30f;
+            try
+            {
+                string keys = "";
+                foreach (var k in _gkDyeKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
+                foreach (var k in _gkHeaterKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
+                foreach (var k in _gkFuelGenKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
+                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：门未开；页键全景 " + keys);
+            }
+            catch { }
+            try
+            {
+                string ids = "";
+                foreach (var k in layer.PageMap.Keys) ids += k + " ";
+                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：PageMap keys: " + ids);
+            }
+            catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：PageMap 枚举失败 " + e.Message); }
+            try
+            {
+                string ids = "";
+                foreach (var k in layer.pageReadyStates.Keys) ids += k + " ";
+                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：pageReadyStates keys: " + ids);
+            }
+            catch { }
+        }
         bool active =
             (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
             (CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false && GlistAnyPageActive(layer, _gkHeaterKeys)) ||
             (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys));
-        if (active && !_gkHanded)
+        if (active)
         {
+            bool first = !_gkHanded;
             _gkHanded = true;
+            _gkLayer = layer;
             try
             {
-                _gkPrevIme = UnityEngine.Input.imeCompositionMode;
+                if (first) GlistKeyboardArmGuard();
+                if (first) _gkPrevIme = UnityEngine.Input.imeCompositionMode;
                 layer.SetKeyboardEnabled(true);
                 UnityEngine.Input.imeCompositionMode = UnityEngine.IMECompositionMode.On;
-                CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘门开：SetKeyboardEnabled+IME On（搜索框可输入/中文）");
+                if (first) CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘门开（每帧重申+守卫补丁）：SetKeyboardEnabled+IME On");
             }
             catch (Exception e) { _gkHanded = false; CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘门开异常: " + e.Message); }
         }
-        else if (!active && _gkHanded) GlistKeyboardReturn(layer);
+        else if (_gkHanded) GlistKeyboardReturn(layer);
     }
-    private static void GlistKeyboardReturn(GameCore.HotUpdate.ReduxUI.WebUILayer layer)
+
+    /* 批改#12e v2（v1 IL Compile Error 实锤=类型化注入参数不被 il2cpp 补丁接受；照抄本仓
+       RefreshCoalescer.SendPrefix 零参数实证模式）：零参数后置守卫——每次 SetKeyboardEnabled
+       调用后读现值（getter），门开着（_gkHanded）期间若被压 false 立即夺回 true（postfix 在
+       原方法后跑=必赢，与 Update 顺序无关；夺回调用自身 value=true 走读值短路，无递归）。
+       门关守卫静默，官方归还语义不变。前 5 次拦截带调用栈日志=测量仪：压关者真身+频次。 */
+    private static bool _gkGuardArmed;
+    private static int _gkRepelled;
+    private static bool _gkSeen; private static int _gkSeenN;
+    private static float _gkTelNext;
+    private static void GlistKeyboardArmGuard()
+    {
+        if (_gkGuardArmed) return;
+        _gkGuardArmed = true;
+        try
+        {
+            var m = HarmonyLib.AccessTools.Method(typeof(GameCore.HotUpdate.ReduxUI.WebUILayer), "SetKeyboardEnabled");
+            if (m == null) { CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘守卫：SetKeyboardEnabled 方法不可寻"); return; }
+            new HarmonyLib.Harmony("com.local.survivallog.cabineteverywhere.gkguard").Patch(
+                m, postfix: new HarmonyLib.HarmonyMethod(typeof(RailUi), nameof(GlistKeyboardGuardPostfix)));
+            CabinetEverywherePlugin.Log.LogInfo("[CERail] glist 键盘守卫已武装（零参数后置）");
+        }
+        catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘守卫武装异常: " + e.Message); }
+    }
+    private static void GlistKeyboardGuardPostfix()
+    {
+        if (!_gkHanded || _gkLayer == null) return;
+        try
+        {
+            if (_gkLayer.IsKeyboardEnabled) return; /* 现值开=无事（含我方夺回/重申的 true 调用） */
+            _gkLayer.SetKeyboardEnabled(true);
+            if (_gkRepelled < 5)
+            {
+                _gkRepelled++;
+                string who = "";
+                try { who = "\n" + new System.Diagnostics.StackTrace().ToString(); } catch { }
+                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘守卫拦截压关并夺回 #" + _gkRepelled + who);
+            }
+        }
+        catch { }
+    }
+    private static void GlistKeyboardReturn(GameCore.HotUpdate.ReduxUI.WebUILayer layer = null)
     {
         _gkHanded = false;
+        _gkLayer = null;
         try
         {
             if (layer == null && GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
