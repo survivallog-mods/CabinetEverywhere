@@ -91,6 +91,7 @@ internal static class RailCommands
         public string Name;
         public string Key; // uiShow/uiClose/pinOrder/setFilter 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP）
         public string Sel; // v1.9.1：setFilter 筛选选中（"0"=全部柜子/"other"=未打标签/tagId）
+        public string Text; // TradeFx 批1：report 探针上报文本（纯日志，零副作用）
         public List<long> Ids = new();
         public List<long> Tags = new();
         public List<long> Order = new();
@@ -149,6 +150,7 @@ internal static class RailCommands
         if (o.TryGetValue("name", out var nm) && nm is string s) c.Name = s;
         if (o.TryGetValue("key", out var ky) && ky is string ks) c.Key = ks;
         if (o.TryGetValue("sel", out var sl) && sl is string ss) c.Sel = ss;
+        if (o.TryGetValue("text", out var tx) && tx is string ts) c.Text = ts;
         c.Ids = Lngs(o, "ids");
         c.Tags = Lngs(o, "tags");
         c.Order = Lngs(o, "order");
@@ -192,7 +194,7 @@ internal static class RailCommands
             {
                 try { Execute(c); }
                 catch (Exception e) { WarnOnce("exec:" + c.Op, "命令 " + c.Op + " 执行异常: " + e.Message); }
-                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder" && c.Op != "setFilter"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush；setFilter=选中落库走 TabGate/Pruner 下轮对账）
+                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder" && c.Op != "setFilter" && c.Op != "report"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush；setFilter=选中落库走 TabGate/Pruner 下轮对账；report=纯日志）
                 executed++;
             }
             if (executed > 0)
@@ -236,6 +238,8 @@ internal static class RailCommands
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
             case "setFilter": OpSetFilter(c); break; // v1.9.1 筛选下拉：选中落库（TabGate 下轮按选中收窄可见集）
             case "ping": OpPing(c); break; // v1.8.10 十三批四追：心跳自愈；六追后升级为通道对照实验（微包回执）：ExecuteJavaScript 大包（62KB 契约）实测零达而 drain（33B）恒达——长度丢弃假说验证
+            case "report": OpReport(c); break; // TradeFx 批1：JS 侧 missing 探针上报（纯日志零副作用——游戏改版定位「哪个依赖部件没了」）
+            case "detail": OpDetail(c); break; // TradeFx 批2（A5）：货架/格子点击 → 官方物品详情弹窗
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }
@@ -500,6 +504,28 @@ internal static class RailCommands
             }
         }
         catch (Exception) { }
+    }
+
+    /// <summary>report：TradeFx JS 侧 missing 探针上报（批1 Task 3）。纯日志零副作用——
+    /// 依赖选择器缺失即上报（「游戏改版把哪个部件改没了」实机定位口），消息去重防刷屏。
+    /// 不入 Pump 的 mutated 名单（不触发 republish）。</summary>
+    private static void OpReport(Cmd c)
+    {
+        if (!string.IsNullOrEmpty(c.Text))
+            WarnOnce("fx:" + c.Text, "[TradeFx] 页面探针: " + c.Text);
+    }
+
+    /// <summary>detail：TradeFx 批2（A5）——货架单价/格子徽章点击 → 官方物品详情弹窗
+    /// （Ac_ItemDetailPopup_OpenUI，configId 位传值其余默认——BT DetailPopup 同参形）。</summary>
+    private static void OpDetail(Cmd c)
+    {
+        if (c.Item <= 0) return;
+        try
+        {
+            GameCore.HotUpdate.ReduxUI.Ac_ItemDetailPopup_OpenUI.SendAction(
+                0L, 0L, (int)c.Item, 1f, (GameCore.HotUpdate.TipsType)0, -1, 1f, 0, 0L, 0f, 0f, 0f, 0f);
+        }
+        catch (Exception e) { WarnOnce("fx:detail", "[TradeFx] 详情弹窗失败: " + e.Message); }
     }
     private static void OpTidy(Cmd c)
     {

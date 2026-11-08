@@ -524,3 +524,55 @@
 .srg-ico .srg-use-bar{position:absolute;left:2px;right:2px;bottom:0;height:2px;background:rgba(0,0,0,.55);
   border-radius:1px;overflow:hidden;pointer-events:none;z-index:4}
 .srg-ico .srg-use-bar-fill{height:100%;width:100%;transform-origin:left;transition:transform .2s}
+
+/* ---- TradeFx 批1（A3 chips；A4 bar 规则 Task 6 追加）----
+   色板沿用 BetterTrade 语义色（与官方交易页协调已被验证；裁定 #5），前缀 cfx。
+   chips 行=官方 cp-row 形制的兄弟行（.info-rows 缺席时 .cfx-head 自建容器）。 */
+.cfx-gold{color:#fbb034}.cfx-coral{color:#ff8a65}.cfx-green{color:#66bb6a}
+.cfx-hide{display:none}
+.cfx-head{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px}
+.cfx-head-row{display:inline-flex;align-items:center;gap:4px;margin-top:4px}
+.cfx-head-row .cfx-chip{margin-left:4px;padding:0 5px;border:1px solid currentcolor;border-radius:3px;
+  font-size:11px;line-height:15px;white-space:nowrap}
+.cfx-head-row.cfx-wants .cfx-chip{color:#66bb6a}
+.cfx-head-row.cfx-half .cfx-chip{color:#ff8a65}
+/* TradeFx 批1 A4：天平条两端数字+hover 气泡（体类门控——.bal-track 让位 46px 两端各 40px 数字） */
+body.cfx-bar .foot-main{position:relative}
+body.cfx-bar .foot-main>.bal-track{margin:0 46px}
+.cfx-bar-offer,.cfx-bar-goods{position:absolute;bottom:0;height:15px;font-size:12px;font-weight:700;
+  line-height:15px;font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none;color:#fbb034}
+.cfx-bar-offer{left:0;width:40px;text-align:right}
+.cfx-bar-goods{right:0;width:40px;text-align:left}
+.cfx-bar-tip{position:absolute;left:46px;bottom:20px;z-index:9999;padding:3px 8px;border-radius:4px;
+  font-size:11px;color:#fff;background:rgba(0,0,0,.72);white-space:nowrap;pointer-events:none}
+.cfx-bar-tip[hidden]{display:none}
+
+/* TradeFx 批2（提前批）：A1 每格价值徽章（官方单件值；tone=满值金/想要绿/折价珊瑚）+ A5 货架单价 */
+.cfx-cell-badge{position:absolute;top:1px;left:1px;z-index:5;padding:0 2px;border-radius:5px;
+  font-size:9px;font-weight:700;line-height:11px;letter-spacing:-0.3px;font-variant-numeric:tabular-nums;
+  color:#fbb034;background:rgba(0,0,0,.72);text-shadow:1px 1px 2px #000;pointer-events:none}
+.cfx-cell-badge.cfx-t-w{color:#66bb6a}
+.cfx-cell-badge.cfx-t-l{color:#ff8a65}
+.shelf-icon{position:relative}
+
+/* TradeFx 批2 全模式：A2 提示块 + B8 需求行增强 + B9 奖励条带 + B10 药品 chip */
+.cfx-tip{margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,.12);
+  font-size:12px;color:#fbb034;white-space:nowrap}
+img.cfx-dicon{width:14px;height:14px;object-fit:contain;margin-right:3px;vertical-align:-2px}
+.cfx-rewards{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.cfx-rewards-title{font-size:10.5px;color:rgba(255,193,7,.75)}
+.cfx-rewards-icons{display:flex;gap:5px;flex-wrap:wrap}
+.cfx-reward{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;border:1px solid rgba(255,255,255,.3);border-radius:4px;
+  background:rgba(0,0,0,.35);cursor:pointer}
+.cfx-reward:hover{box-shadow:0 0 0 1px #ffc107}
+.cfx-reward-ico{width:100%;height:100%;object-fit:contain}
+.cfx-xn{position:absolute;right:-3px;bottom:-4px;padding:0 2px;border-radius:3px;font-size:9px;
+  font-weight:600;line-height:11px;color:#fff;background:rgba(0,0,0,.72)}
+.cfx-med{font-size:10px;font-weight:600;color:#ef9a9a;white-space:nowrap}
+.cfx-cell-badge.cfx-t-d{display:none}
+/* 无该属性置灰（作者 2026-11-08 令：排序时无值物品置灰不显「-」；sr-brewdim 同视觉） */
+#srp #srBadgeLayer .sr-nodim,.srn-badges .sr-nodim{position:absolute;border-radius:4px;background:rgba(8,9,12,.60)}
+/* 实机批改十一批：回报条带换行到行下方（行=flex 横排，裸追加会挤到右侧） */
+.sup-row[data-cfx-bars]{flex-wrap:wrap}
+.sup-row[data-cfx-bars] .cfx-rewards{flex-basis:100%;width:100%;order:99;box-sizing:border-box}

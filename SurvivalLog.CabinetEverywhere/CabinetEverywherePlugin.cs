@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "1.9.2";
+    public const string Version = "2.0.0";
 
     internal static ManualLogSource Log;
 
@@ -255,6 +255,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         if (Verbose.Value) ToolTableProbe.Install();
         // 袋刷新帧尾合并（一次做一次算）：默认行为
         RefreshCoalescer.Install();
+        // TradeFx 官方刷新事件（第 4 个 patch，实机批改二批）：Reducer_Web_TradeUI.Refresh
+        // postfix 置事件位，AccessTicker.Update 每帧 TradeFx.FastPoll 消费——官方状态落定即推，
+        // 治 0.5s 轮询落在官方 DOM 半渲染瞬间的竞态（BT ValuesOnRefresh 同款事件驱动）
+        TradeFxRefreshHook.Install();
     }
 
     /// <summary>
@@ -352,6 +356,9 @@ internal sealed class AccessTicker : MonoBehaviour
             DrawerTabs.FastPoll();
             // 交易页柜子页签补挂（回应求助路官方收集缺位，TradeTabs 头注释反汇编取证）
             TradeTabs.FastPoll();
+            // TradeFx 官方刷新事件消费（实机批改二批）：Refresh postfix 置位→当帧重建推送，
+            // 官方状态落定即推——治 0.5s 轮询落在官方 DOM 半渲染瞬间的竞态
+            TradeFx.FastPoll();
             Tick(Time.deltaTime);
         }
         catch { /* 单帧异常不终止轮询 */ }
@@ -424,6 +431,9 @@ internal sealed class AccessTicker : MonoBehaviour
         DrawerTabs.PollAll();
         // 交易页柜子页签补挂（回应求助路官方收集缺位——覆盖 roster→pick 页中重建；TradeTabs 头注释）
         TradeTabs.PollAll();
+        // TradeFx 批1：交易页数值（A3 chips/A4 天平数字）0.5s 轮询——签名门控在 TradeFx.Poll
+        // 首行（RailUi.Enabled 门+静置零重算；推送=TabGate 式独立通道 __CERAIL_TRADEFX__）
+        TradeFx.Poll();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
         // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：

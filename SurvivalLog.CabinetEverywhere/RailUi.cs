@@ -625,6 +625,7 @@ internal static class RailUi
                                 _bootstrapLive = true;
                                 _probeState = 0;
                                 RailData.ForceRepublish(); // T6 缺口修补：注入成功即强制重推（rev 未变也要推一包）
+                                TradeFx.OnWebViewRebuilt(); // TradeFx 同缺口（终审 I4）：JS 侧状态已清而 C# 门控仍命中→复位重推
                                 CabinetEverywherePlugin.Log?.LogInfo("[CERail] bootstrap 注入确认（__CERAIL__ 就绪）→ ForceRepublish");
                             }
                         }
@@ -927,8 +928,9 @@ internal static class RailUi
         }
     }
 
-    /// <summary>JS 字符串字面量转义（TagFilter.EscapeJs 同款，railui.css 文本进 bootstrap 用）。</summary>
-    private static string EscapeJs(string s)
+    /// <summary>JS 字符串字面量转义（TagFilter.EscapeJs 同款，railui.css 文本进 bootstrap 用；
+    /// TradeFx 分块推送复用——转义语义全库只此一处实现）。</summary>
+    internal static string EscapeJs(string s)
     {
         if (string.IsNullOrEmpty(s)) return "";
         var sb = new System.Text.StringBuilder(s.Length + 8);

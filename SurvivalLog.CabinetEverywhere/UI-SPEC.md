@@ -199,6 +199,44 @@ FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}}`（bagtabs 族宿�
   take 模拟器全链/染料预设/暖炉预设/ctx 门/键盘协议/uses 徽章/版式契约 L 系/旧方案退役+格子态
   原版 GE/发电机 GF 系）。
 
+## 0c. TradeFx 交易页数值（2026-11-09 v2.0.0 终态；spec=docs/superpowers/specs/2026-11-08-tradefx-design.md）
+
+BetterTrade 功能融入全量交付（A1-A5、B7-B10）。兼容原则=只考虑套件与官方原生。
+**数值纪律=官方算子直调**：每格值=EvaluateState 单件、天平/成交线=EvaluateState 整笔、
+取走侧=ResolveTakeTradeValue×cfg.UseTimes（官方函数为单次价值，作者数据定谳）、补给=
+ConvertItem/CampGainOf、捐赠=DonateSatietyOf、派送+N=CollectDispatchTake 差分、奖励=
+BuildCommissionReward/GetDefRsGift——零复刻零漂移（早期复刻数学与 barNet 对账已废）。
+
+- **通道**：C# `TradeFx.Poll`（AccessTicker 0.5s）读 `State_Web_TradeUI` → `TradeFxMath`
+  （纯函数，tools/tradefx-math-test 30 例钉值）→ `TradeFxJson`（契约冻结）→ 根窗
+  `window.__CERAIL_TRADEFX__(json)` 直推（>7.5KB `__CERAIL_TRADEFX_CHUNK__` 分块，pid
+  起点 1e9 与 rail 序列隔离，乱序/重复/迟到幂等）。签名门控=7 源逐值 ordinal+ItemDataList
+  引用（Il2Cpp 字符串逐值原因：每读重封送引用恒不等）——窗口静置零重算零推送。
+- **A3 chips**：`.info-rows` 内官方「想要」行（cp-k 文本==wantLabel，Vue 缺席回退「想要」）
+  隐藏+同行式 chips（`cfx-wants` 绿/`cfx-half` 珊瑚，`×N` 倍率文本）；`.info-rows` 缺席=
+  `.bubble` 内 `.cfx-head` 自建容器，宿主回归反向清残留；**空组不隐藏官方行**（RF1）；
+  整行 `dataset.cfx` 签名幂等。
+- **A4 天平数字**：`body.cfx-bar` 门控（CSS 让位 `.bal-track` 46px），左 `.cfx-bar-offer`
+  右 `.cfx-bar-goods`（picked=false 不建）+ `.cfx-bar-tip` 悬停气泡（mouseenter/leave 绑
+  一次、tip 节点现查）；官方 `foot.barMode` ∈ {balance,noquote} 门（Vue 缺席视为可渲）；
+  `bar:null`（SelfCheck 对账超差）零渲染。
+- **SelfCheck 保险丝**：|offer−goods−官方 BarNet×BarScale|>0.5 → 一窗一报 + 本窗 bar=null
+  （游戏更新公式漂移固定验收口）。
+- **探针**：`TFX_DEPS`（chips:['.bubble'] / bar:['.foot-main','.bal-track']）apply 前探测，
+  缺件 drain `report` op 上报一次（页面级 Set 去重；无 Trade 帧不探测防刷屏）。
+- **多模式**（v2.0.0 终态）：trade=chips/bar/items/shelf；request=+N 徽章+需求行（图标/悬停
+  官方提示/点击详情，p/n 计数已按作者令去除）+回报条带（行内尾部插载防堆叠）；supply/camp=
+  补给徽章+药品 chip；donate=饱腹徽章。objects=官方 AppendShelfJson 裸拼对象（JS 侧 typeof
+  直收，勿再 JSON.parse）。
+- **渲染纪律**：data 驱动按模式分流，mode=none 全清；一切 DOM 写签名幂等（RF3/RF4）。
+- **重驱终态**（实机批改 13 批定谳）：观察器当帧补画（BT.apply 同款，自写防护=幂等收敛非
+  记录过滤——异步投递 applying 恒复位）+ **全模式** 500ms 兜底节拍器（批1 的 trade 门没随
+  多模式扩展=request 态开页竞态死到下包——已放开）+ Refresh 事件驱动（事件沿消费）。
+- **悬停提示（A2）**：物品提示真身=tooltipState→div.tooltip（onItemEnter 填充）——wrap 后
+  nextTick 向 div.tooltip 追加 .cfx-tip（出售 N·因子 / 货架整件价）；coTip 为联系人提示非物品。
+- harness：`tools/railui-harness-tests/harness-tradefx.cjs` 23 断言（入口/分块乱序/探针
+  去重/chips 双宿主/官方行门控/幂等/清路/bar 门控/悬停）。
+
 ## 0. 动作保真红线（总纲，2026-10-31 作者总裁决）
 
 **本 mod 的职责 = 重构储物系统的布局与导航（壳），不重造储物系统（物品格）。**
@@ -489,6 +527,11 @@ GreenhouseBuild（cart 族同款）。
 
 ## 6. 演进记录
 
+- **v2.0.0（11-09）**：TradeFx 全量——官方算子直调数值体系（A1-A5/B7-B10 九件）+
+  `__CERAIL_TRADEFX__` 独立通道+Refresh 事件驱动+全模式节拍器+观察器补画+missing 探针；
+  rail 交易价值角标让位官方徽章（Trade 页 value 键）；排序收敛四令（交易两项/派送投送隐/
+  烹饪去 value/鼠笼饱腹/无属性置灰 sr-nodim）；第 4 patch=Reducer_Web_TradeUI.Refresh。
+  实机批改 14 轮（CDP 取证驱动）收口（spec=2026-11-08-tradefx-design.md）。
 - **v3（10-29）**：几何恒定（画布/侧栏 !important）、9×39 网格、控件唯一
   （＋标签 / ☰容器 / 自制排序下拉）、删放大与工作区、本柜/全库、11 场景。
 - **v4（10-29）**：工作台 6×5@56、交易货舱 336px 修复（官方 CELL=56）；排序改 6 项

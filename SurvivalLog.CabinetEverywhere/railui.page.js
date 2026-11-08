@@ -1800,6 +1800,15 @@
     if (isSortScene() && st.fsort && st.fsort !== 'official') {
       var c = FBCOLOR[st.fsort];
       if (c == null && String(st.fsort).indexOf('pig:') === 0) c = dyePalColor(st.fsort); /* dye-pigment-sort：角标色=该色 hex */
+      /* TradeFx 批2 联动（实机批改六批）：Trade 页交易价值角标让位——官方页格已有官方精确值
+         徽章（cfx-cell-badge，EvaluateState 单件口径），rail 旧数学角标同格双显且数值对不上
+         （作者实报）。仅压 value 键、仅 Trade 场景、仅 TFX items 在场；其他维/其他页不受影响 */
+      if (st.fsort === 'value' && st.scene === 'Trade') {
+        try {
+          var te = window.__CERAIL_TRADEFX__;
+          if (te && te.data && te.data.mode === 'trade' && te.data.items && Object.keys(te.data.items).length) return null;
+        } catch (e) { }
+      }
       return { k: st.fsort, color: c || '#f0b03c' };
     }
     return null;
@@ -1902,7 +1911,13 @@
               '<span class="sr-tier" style="color:' + TIER_COLOR[tb] + '">' + TIER_TXT[tb] + '</span></i>';
             continue;
           }
-          h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + badgeTextFor(it, spec.k) + '</i>';
+          var bt = badgeTextFor(it, spec.k);
+          if (bt === '-') { /* 无该属性=置灰不显「-」（作者 2026-11-08 令，sr-brewdim 同视觉） */
+            h += '<b class="sr-nodim" style="left:' + Math.round(p[0]) + 'px;top:' + Math.round(p[1]) +
+              'px;width:' + Math.round(elx.offsetWidth) + 'px;height:' + Math.round(elx.offsetHeight) + 'px"></b>';
+          } else {
+            h += '<i style="left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;color:' + spec.color + '">' + bt + '</i>';
+          }
         }
         if (h === '' && layer.innerHTML) return; /* 空结果不覆写（隐藏/窗口期保上一次——作者缺陷#2 终修） */
         if (layer.innerHTML !== h) layer.innerHTML = h; /* 同串免写：防自家写入触发观察器回环 */
@@ -2157,7 +2172,10 @@
     if (plainSc) {
       st.mode = 'grid'; st.global = false; st.query = ''; st.tags = [];
     }
-    el.srFoodSort.hidden = !isSortScene();
+    /* 作者 2026-11-08 令：派送委托页去排序钮→十四批扩投送物资页=Trade 场景非 trade 态全隐 */
+    el.srFoodSort.hidden = !isSortScene() || (st.scene === 'Trade' && window.__CERAIL_TRADEFX__ &&
+      window.__CERAIL_TRADEFX__.data && window.__CERAIL_TRADEFX__.data.mode !== 'trade' &&
+      window.__CERAIL_TRADEFX__.data.mode !== 'none');
     if (menuFoot) menuFoot.sync();
     if (menuFoot) menuFoot.refresh();
     /* v1.9.1 筛选下拉：FS_KEYS 两页显示（批改：Trade/DroneHub，工作台撤），其余页隐藏 */
@@ -2308,7 +2326,16 @@
       /* v14：酿酒桶页收敛两项——默认/饱腹度（其余五维在该场景无意义，作者 2026-11-07 令；
          sat 项 label 显示「饱腹度」）；其他可排序页 FSORTS 7 项原样 */
       keys: function () {
+        if (st.scene === 'Trade') { /* 作者 2026-11-08 令：交易页只留默认+交易价值（价值显示已由 TradeFx 官方徽章承担） */
+          for (var ti = 0; ti < FSORTS.length; ti++) if (FSORTS[ti].k === 'value') return [FSORTS[0], FSORTS[ti]];
+          return [FSORTS[0]];
+        }
         if (st.scene === 'BrewPanel') return [FSORTS[0], { k: 'sat', label: '饱腹度', ico: '🍗' }];
+        if (st.scene === 'RatCage') return [FSORTS[0], { k: 'sat', label: '饱腹', ico: '🍗' }]; /* 作者 2026-11-08 令：只留饱腹 */
+        if (st.scene === 'Cooking') { /* 作者 2026-11-08 令：去掉交易价值 */
+          var ck = []; for (var ci = 0; ci < FSORTS.length; ci++) if (FSORTS[ci].k !== 'value') ck.push(FSORTS[ci]);
+          return ck;
+        }
         /* dye-pigment-sort：染料桶=「默认」+全部颜色（dyePal 动态项；空板=仅默认——配置未就绪容错） */
         if (st.scene === 'DyePanel') return [FSORTS[0]].concat(dyePalItems());
         return FSORTS;
@@ -5048,6 +5075,551 @@
     try { settleXfer(); } catch (e) { try { console.warn('[CERail] settleXfer 失败', e && (e.stack || e.message), e); } catch (e2) { } }
     try { glistSettle(); } catch (e) { try { console.warn('[CERail] glistSettle 失败', e && (e.message || e)); } catch (e2) { } } /* glist：随契约重驱两页装配/重渲染（幂等）+feedFail 优先消费（须先于 fgSettle：一次性字段竞争，列表态 #srfgWarn 被隐） */
     try { fgSettle(); } catch (e) { try { console.warn('[CERail] fgSettle 失败', e && (e.stack || e.message), e); } catch (e2) { } } /* fuelgen bagtabs：页签/格网/底行随数据更新 + ctx.feedFail 一次性消费 */
+  }
+
+  /* ---- TradeFx 批1（Task 4 消费壳；Task 5/6 填 chips/bar 渲染）----
+     C# TradeFx.Poll 0.5s 签名门控推 JSON → 根窗 __CERAIL_TRADEFX__(json)（TabGate
+     __CERAIL_TABS__ 同款独立通道，不进 rail 契约/rev）；>7.5KB 走 __CERAIL_TRADEFX_CHUNK__
+     (pid,i,total,片)（C# 侧 EscapeJs 装箱，JS 解析字面量还原；pid 单调，乱序/重复/迟到
+     幂等——railui pushChunk 同协议独立序列）。渲染宿主=Trade 帧（frameByKey('Trade')）。
+     探针：TFX_DEPS 每功能声明依赖选择器，apply 前探测，缺件经 cmd('report') 上报一次
+     （页面级 Set 去重，恢复再坏不重报）——游戏改版「哪个部件没了」实机定位口。
+     幂等纪律：解析失败静默（data 不变）；mode=none → clear。 */
+  var TFX = {
+    data: null,
+    chips: tfxChips, /* A3 想要/半价 chips——data 驱动：trade+有组=渲染，否则=清路 */
+    bar: tfxBar,     /* A4 天平条两端数字+hover 气泡 */
+    cells: tfxCells, /* A1/B7 每格徽章（trade=官方单件值；request=+N；supply/donate=量） */
+    shelf: tfxShelf, /* A5 货架单价徽章 + 点击弹官方详情 */
+    requests: tfxRequests, /* B8 需求行（计数/图标/悬停/点击） */
+    rewards: tfxRewards,   /* B9 奖励条带 */
+    medicine: tfxMedicine, /* B10 药品总计 chip */
+    clear: function (doc) { TFX.chips(doc); TFX.bar(doc); TFX.cells(doc); TFX.shelf(doc); TFX.requests(doc); TFX.rewards(doc); TFX.medicine(doc); }
+  };
+  function tfxChips(doc) {
+    if (!doc || !doc.body) return;
+    var d = TFX.data;
+    if (!d || d.mode !== 'trade' || !d.trader) { tfxChipsClear(doc); return; }
+    var wants = d.trader.wants || [], half = d.trader.half || [];
+    var any = wants.length > 0 || half.length > 0;
+    var label = '想要';
+    try {
+      var su = nbVueSu(doc);
+      if (su && su.localText && su.localText.wantLabel) label = String(su.localText.wantLabel);
+    } catch (e) { }
+    var officials = doc.querySelectorAll('.info-rows > .cp-row');
+    for (var i = 0; i < officials.length; i++) {
+      var or = officials[i];
+      if (or.classList.contains('cfx-head-row')) continue;
+      var ok = or.querySelector(':scope > .cp-k');
+      if (!ok || ok.textContent.trim() !== label) continue;
+      if (any) { if (!or.classList.contains('cfx-hide')) or.classList.add('cfx-hide'); }
+      else if (or.classList.contains('cfx-hide')) or.classList.remove('cfx-hide');
+    }
+    if (!any) { tfxChipsClear(doc); return; }
+    var rows = doc.querySelector('.info-rows');
+    if (rows) {
+      tfxChipRow(doc, rows, 'cfx-wants', '想要', wants);
+      tfxChipRow(doc, rows, 'cfx-half', '半价', half);
+      var bubble = doc.querySelector('.bubble');
+      var own = bubble ? bubble.querySelector(':scope > .cfx-head') : null;
+      if (own) own.remove();
+    } else {
+      var bb = doc.querySelector('.bubble');
+      if (!bb) { tfxChipsClear(doc); return; }
+      var head = bb.querySelector(':scope > .cfx-head');
+      if (!head) {
+        head = doc.createElement('div');
+        head.className = 'cfx-head';
+        bb.appendChild(head);
+      }
+      tfxChipRow(doc, head, 'cfx-wants', '想要', wants);
+      tfxChipRow(doc, head, 'cfx-half', '半价', half);
+    }
+  }
+  function tfxChipRow(doc, parent, cls, labelText, groups) {
+    var row = parent.querySelector(':scope > .cfx-head-row.' + cls);
+    if (!groups.length) { if (row) row.remove(); return; }
+    var sig = labelText + '|' + groups.map(function (g) { return g.n + ' ' + g.x; }).join('|');
+    if (row && row.dataset.cfx === sig) return;
+    if (!row) {
+      row = doc.createElement('span');
+      row.className = 'cp-row cfx-head-row ' + cls;
+      parent.appendChild(row);
+    }
+    row.dataset.cfx = sig;
+    row.textContent = '';
+    var k = doc.createElement('span');
+    k.className = 'cp-k';
+    k.textContent = labelText;
+    row.appendChild(k);
+    for (var i = 0; i < groups.length; i++) {
+      var chip = doc.createElement('span');
+      chip.className = 'cfx-chip';
+      chip.textContent = groups[i].n + ' ' + groups[i].x;
+      row.appendChild(chip);
+    }
+  }
+  function tfxChipsClear(doc) {
+    var gone = doc.querySelectorAll('.cfx-head-row, .cfx-head');
+    for (var i = 0; i < gone.length; i++) gone[i].remove();
+    var hidden = doc.querySelectorAll('.info-rows .cp-row.cfx-hide');
+    for (var j = 0; j < hidden.length; j++) hidden[j].classList.remove('cfx-hide');
+  }
+  function tfxBar(doc) {
+    if (!doc || !doc.body) return;
+    var d = TFX.data;
+    var main = doc.querySelector('.foot-main');
+    var track = main ? main.querySelector('.bal-track') : null;
+    var ok = false;
+    if (d && d.mode === 'trade' && d.bar && main && track) {
+      var bm = '';
+      try {
+        var su = nbVueSu(doc);
+        if (su && su.foot && su.foot.barMode !== undefined && su.foot.barMode !== null) bm = String(su.foot.barMode);
+      } catch (e) { }
+      ok = bm === '' || bm === 'balance' || bm === 'noquote';
+    }
+    if (!ok) { tfxBarClear(doc); return; }
+    var bar = d.bar;
+    if (!doc.body.classList.contains('cfx-bar')) doc.body.classList.add('cfx-bar');
+    tfxBarNode(doc, main, 'cfx-bar-offer', String(bar.offer));
+    if (bar.picked) tfxBarNode(doc, main, 'cfx-bar-goods', String(bar.goods));
+    else tfxBarDrop(main, 'cfx-bar-goods');
+    var text = '你给出 ' + bar.offer;
+    if (bar.picked) text += ' · 货物 ' + bar.goods + ' · 成交线 ' + bar.dealLine;
+    tfxBarNode(doc, main, 'cfx-bar-tip', text);
+    if (track && !track.__cfxTip) {
+      track.__cfxTip = true;
+      try {
+        track.addEventListener('mouseenter', function () {
+          var tt = main.querySelector(':scope > .cfx-bar-tip');
+          if (tt) tt.hidden = false;
+        });
+        track.addEventListener('mouseleave', function () {
+          var tt = main.querySelector(':scope > .cfx-bar-tip');
+          if (tt) tt.hidden = true;
+        });
+      } catch (e) { }
+    }
+  }
+  function tfxBarNode(doc, main, cls, text) {
+    var el = main.querySelector(':scope > .' + cls);
+    if (!el) {
+      el = doc.createElement('span');
+      el.className = cls;
+      if (cls === 'cfx-bar-tip') el.hidden = true;
+      main.appendChild(el);
+    }
+    if (el.textContent !== text) el.textContent = text;
+  }
+  function tfxBarDrop(main, cls) {
+    var el = main.querySelector(':scope > .' + cls);
+    if (el) el.remove();
+  }
+  function tfxBarClear(doc) {
+    if (doc.body.classList.contains('cfx-bar')) doc.body.classList.remove('cfx-bar');
+    var gone = doc.querySelectorAll('.cfx-bar-offer, .cfx-bar-goods, .cfx-bar-tip');
+    for (var i = 0; i < gone.length; i++) gone[i].remove();
+  }
+  function tfxCells(doc) {
+    if (!doc || !doc.body) return;
+    var d = TFX.data;
+    var su = null;
+    try { su = nbVueSu(doc); } catch (e) { }
+    if (!su || !d || d.mode === 'none' || !d.items) { tfxBadgesRemove(doc, '#tradeBagGrid .cfx-cell-badge, .col.mid .grid-container .cfx-cell-badge'); return; } /* items=对象映射无 length——勿加 .length 判空 */
+    /* join=BT 同款位置 zip：Vue items 数与格子数不符即整片放弃（宁缺勿错——防错配跳动）；
+       背包格宿主被 rail 收编进壳后 #tradeBagGrid 仍按 id 可查（id 不随 reparent 变） */
+    var bag = su.bag, drone = su.drone;
+    var drawer = d.mode === 'trade' ? tfxDrawGrid : tfxDrawGridMode;
+    drawer(doc, doc.querySelector('#tradeBagGrid'),
+      bag && !refVal(bag.isRack) ? bag.items : null, d);
+    drawer(doc, doc.querySelector('.col.mid .grid-container'),
+      drone ? drone.items : null, d);
+  }
+  function tfxDrawGrid(doc, grid, items, d) {
+    if (!grid) return;
+    var cells = grid.querySelectorAll(':scope > .item');
+    if (!cells.length) return;
+    if (!items || !items.length || cells.length !== items.length) {
+      for (var k = 0; k < cells.length; k++) tfxCellBadge(cells[k], null);
+      return;
+    }
+    for (var i = 0; i < cells.length; i++) {
+      var it = items[i];
+      var c = it ? d.items[String(it.id)] : null;
+      tfxCellBadge(cells[i], c ? { text: String(c.v), tone: c.t } : null);
+    }
+  }
+  /* B7-10（实机批改七批）：request=+N 徽章（v>0 否则清）；supply/camp/donate=补给/饱腹量。
+     look 构造按模式分流，join 与 trade 同款位置 zip（数不符整片放弃宁缺勿错）。 */
+  function tfxCellLook(d, it) {
+    var c = d.items[String(it.id)];
+    if (!c) return null;
+    if (d.mode === 'request') return c.v > 0 ? { text: '+' + c.v, tone: 'f' } : null;
+    return { text: String(c.v), tone: c.t === 'w' ? 'w' : c.t === 'l' ? 'l' : 'f' };
+  }
+  function tfxDrawGridMode(doc, grid, items, d) {
+    if (!grid) return;
+    var cells = grid.querySelectorAll(':scope > .item');
+    if (!cells.length) return;
+    if (!items || !items.length || cells.length !== items.length) {
+      for (var k = 0; k < cells.length; k++) tfxCellBadge(cells[k], null);
+      return;
+    }
+    for (var i = 0; i < cells.length; i++) {
+      var it = items[i];
+      tfxCellBadge(cells[i], it ? tfxCellLook(d, it) : null);
+    }
+  }
+  /* B8 需求行（索引 zip .sup-row ↔ requests[]）：计数 p/n + 物品图标（objects）+ hover 官方
+     提示 + 点击详情。当前页结构无 BT 时代 .sup-track 填充条——按现结构增强不动官方节点。 */
+  var _cfxObjs = {}; /* cid → 官方 AppendShelfJson 对象（解析缓存，随 objects 更新换代） */
+  function tfxObjects(d) {
+    if (!d || !d.objects) { _cfxObjs = {}; return; }
+    var fresh = {};
+    for (var k in d.objects) {
+      if (!Object.prototype.hasOwnProperty.call(d.objects, k)) continue;
+      var v = _cfxObjs[k];
+      if (!v) {
+        var raw = d.objects[k];
+        if (raw && typeof raw === 'object') v = raw; /* C# 裸拼进包=已是对象（实机批改八批：JSON.parse(对象)恒抛=图标/奖励全灭根因） */
+        else { try { v = JSON.parse(raw); } catch (e) { v = null; } }
+      }
+      if (v) fresh[k] = v;
+    }
+    _cfxObjs = fresh;
+  }
+  function tfxRequests(doc) {
+    var d = TFX.data;
+    var list = doc.querySelector('.sup-list');
+    if (!d || d.mode !== 'request' || !d.requests || !d.requests.length || !list) { tfxRequestsClear(doc); return; }
+    tfxObjects(d);
+    var rows = list.querySelectorAll(':scope > .sup-row');
+    if (rows.length !== d.requests.length) { tfxRequestsClear(doc); return; }
+    for (var r = 0; r < rows.length; r++) {
+      var req = d.requests[r];
+      var cells = rows[r].querySelectorAll('.sup-dims > .sup-cell, .sup-details > .sup-cell');
+      if (!req.rows || req.rows.length !== cells.length) { rows[r].removeAttribute('data-cfx-bars'); continue; }
+      if (!rows[r].hasAttribute('data-cfx-bars')) rows[r].setAttribute('data-cfx-bars', '');
+      for (var i = 0; i < cells.length; i++) {
+        var cell = cells[i], row = req.rows[i];
+        /* 十四批（作者令）：p/n 计数与官方进度条重复——去掉；保留图标+悬停官方提示+点击详情 */
+        var icon = cell.querySelector(':scope > img.cfx-dicon');
+        var obj = row.i > 0 ? _cfxObjs[String(row.i)] : null;
+        if (obj && obj.icon) {
+          if (!icon) { icon = doc.createElement('img'); icon.className = 'cfx-dicon'; icon.setAttribute('draggable', 'false'); cell.insertBefore(icon, cell.firstChild); }
+          if (icon.getAttribute('src') !== obj.icon) icon.setAttribute('src', obj.icon);
+        } else if (icon) icon.remove();
+        cell.__cfxObj = obj || null;
+        if (obj && !cell.__cfxHook) {
+          cell.__cfxHook = true;
+          cell.addEventListener('mouseenter', function (e) { if (this.__cfxObj) { var s = null; try { s = nbVueSu(doc); } catch (er) { } if (s && s.onItemEnter) s.onItemEnter(e, this.__cfxObj); } });
+          cell.addEventListener('mouseleave', function () { var s = null; try { s = nbVueSu(doc); } catch (er) { } if (s && s.onItemLeave) s.onItemLeave(); });
+          cell.addEventListener('click', function (e) { e.stopPropagation(); if (this.__cfxObj && this.__cfxObj.id) cmd('detail', { item: this.__cfxObj.id }); });
+        }
+      }
+    }
+  }
+  function tfxRequestsClear(doc) {
+    var gone = doc.querySelectorAll('img.cfx-dicon');
+    for (var i = 0; i < gone.length; i++) gone[i].remove();
+    var rows = doc.querySelectorAll('.sup-row[data-cfx-bars]');
+    for (var j = 0; j < rows.length; j++) rows[j].removeAttribute('data-cfx-bars');
+  }
+  /* B10 药品总计：supply 模式选中行尾 chip */
+  function tfxMedicine(doc) {
+    var d = TFX.data;
+    var row = doc.querySelector('.sup-row.on');
+    var place = row ? (row.querySelector('.sup-dims') || row.querySelector('.sup-details')) : null;
+    var chip = doc.querySelector('.cfx-med');
+    if (!place || !d || (d.mode !== 'supply' && d.mode !== 'camp') || !d.medicine) {
+      if (chip) chip.remove();
+      return;
+    }
+    var text = '药品 +' + d.medicine;
+    if (!chip) { chip = doc.createElement('span'); chip.className = 'sup-cell cfx-med'; }
+    if (chip.textContent !== text) chip.textContent = text;
+    if (chip.parentElement !== place) place.appendChild(chip);
+  }
+  function tfxCellBadge(cell, look) {
+    var b = cell.querySelector(':scope > .cfx-cell-badge');
+    if (!look) { if (b) b.remove(); return; }
+    if (!b) {
+      b = cell.ownerDocument.createElement('span');
+      b.className = 'cfx-cell-badge';
+      cell.appendChild(b);
+    }
+    var cls = 'cfx-cell-badge cfx-t-' + (look.tone || 'f');
+    if (b.className !== cls) b.className = cls;
+    if (b.textContent !== look.text) b.textContent = look.text;
+  }
+  function tfxBadgesRemove(doc, sel) {
+    var gone = doc.querySelectorAll(sel);
+    for (var i = 0; i < gone.length; i++) gone[i].remove();
+  }
+  function tfxShelf(doc) {
+    if (!doc || !doc.body) return;
+    var d = TFX.data;
+    var su = null;
+    try { su = nbVueSu(doc); } catch (e) { }
+    var list = doc.querySelector('.shelf-list');
+    if (!su || !d || d.mode !== 'trade' || !d.shelf || !list) { tfxShelfClear(doc); return; }
+    var items = su.shelf && su.shelf.items;
+    var rows = list.querySelectorAll(':scope > .shelf-row');
+    if (!items || !items.length || rows.length !== items.length) { tfxShelfClear(doc); return; }
+    for (var i = 0; i < rows.length; i++) {
+      var icon = rows[i].querySelector('.shelf-icon');
+      if (!icon) continue;
+      var unit = d.shelf[String(items[i].id)];
+      var b = icon.querySelector(':scope > .cfx-cell-badge');
+      if (!unit) { if (b) b.remove(); }
+      else {
+        if (!b) {
+          b = doc.createElement('span');
+          b.className = 'cfx-cell-badge cfx-t-f';
+          icon.appendChild(b);
+        }
+        if (b.textContent !== String(unit.v)) b.textContent = String(unit.v);
+      }
+      icon.__cfxDetail = items[i].id;
+      if (!icon.__cfxClick) { /* 点击弹官方详情（BT shelf 同款 stopPropagation） */
+        icon.__cfxClick = 1;
+        icon.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (this.__cfxDetail) cmd('detail', { item: this.__cfxDetail });
+        });
+      }
+    }
+  }
+  function tfxShelfClear(doc) { tfxBadgesRemove(doc, '.shelf-list .cfx-cell-badge'); }
+  /* B9 奖励条带：行下 .cfx-rewards（回报标题+图标+xN，点击详情；objects 与 B8 同缓存） */
+  function tfxRewards(doc) {
+    var d = TFX.data;
+    var list = doc.querySelector('.sup-list');
+    if (!d || d.mode !== 'request' || !d.rewards || !d.rewards.length || !list) { tfxRewardsClear(doc); return; }
+    var rows = list.querySelectorAll(':scope > .sup-row');
+    if (rows.length !== d.rewards.length) { tfxRewardsClear(doc); return; }
+    for (var r = 0; r < rows.length; r++) {
+      var rw = d.rewards[r];
+      var strip = rows[r].querySelector(':scope > .cfx-rewards');
+      var sig = rw.g.map(function (g) { return g.c + 'x' + g.q; }).join(',');
+      if (!rw.g.length) { if (strip) strip.remove(); continue; }
+      if (strip && strip.dataset.cfxSig === sig) continue;
+      if (strip) strip.remove();
+      /* 行内残留全清（实机批改十批：旧形态行外插入不被 :scope> 查到=无限堆叠加观察器放大
+         ——条带恒插行内尾部随行生命周期，幂等查找才闭环） */
+      var strays = rows[r].querySelectorAll('.cfx-rewards');
+      for (var si = 0; si < strays.length; si++) strays[si].remove();
+      strip = doc.createElement('div');
+      strip.className = 'cfx-rewards';
+      strip.dataset.cfxSig = sig;
+      var title = doc.createElement('span');
+      title.className = 'cfx-rewards-title';
+      title.textContent = '回报';
+      strip.appendChild(title);
+      var icons = doc.createElement('span');
+      icons.className = 'cfx-rewards-icons';
+      for (var i = 0; i < rw.g.length; i++) {
+        (function (g) {
+          var obj = _cfxObjs[String(g.c)];
+          if (!obj) return;
+          var b = doc.createElement('span');
+          b.className = 'cfx-reward';
+          if (obj.icon) { var im = doc.createElement('img'); im.className = 'cfx-reward-ico'; im.setAttribute('src', obj.icon); im.setAttribute('draggable', 'false'); b.appendChild(im); }
+          if (g.q > 1) { var n = doc.createElement('span'); n.className = 'cfx-xn'; n.textContent = 'x' + g.q; b.appendChild(n); }
+          b.addEventListener('mouseenter', function (e) { var s = null; try { s = nbVueSu(doc); } catch (er) { } if (s && s.onItemEnter && obj) s.onItemEnter(e, obj); });
+          b.addEventListener('mouseleave', function () { var s = null; try { s = nbVueSu(doc); } catch (er) { } if (s && s.onItemLeave) s.onItemLeave(); });
+          b.addEventListener('click', function (e) { e.stopPropagation(); if (obj && obj.id) cmd('detail', { item: obj.id }); });
+          icons.appendChild(b);
+        })(rw.g[i]);
+      }
+      if (!icons.childElementCount) { strip.remove(); continue; }
+      strip.appendChild(icons);
+      rows[r].appendChild(strip); /* 行内尾部（.sup-dims/.sup-details 结构通用） */
+    }
+  }
+  function tfxRewardsClear(doc) {
+    var gone = doc.querySelectorAll('.cfx-rewards');
+    for (var i = 0; i < gone.length; i++) gone[i].remove();
+  }
+  /* ---- A2 悬停提示（实机批改七批定稿）：物品提示渲染源=tooltipState→div.tooltip（页面包
+     实证 onItemEnter 填 tooltipState 而非 coTip——六批注错数组实机零显示）。扩展点=官方
+     填充后（Vue nextTick/rAF）向 div.tooltip 追加 .cfx-tip 块：出售 N·想要×·剩余使用 a/b；
+     货架 hover（it.id=configId）=单价行。wrap onItemEnter（setupState 代理替换）。 ---- */
+  var _tfxTipDoc = null;
+  function tfxTip(doc) {
+    if (_tfxTipDoc === doc) return;
+    _tfxTipDoc = doc;
+    var su = null;
+    try { su = nbVueSu(doc); } catch (e) { }
+    if (!su || typeof su.onItemEnter !== 'function') return;
+    var enter = su.onItemEnter;
+    su.onItemEnter = function (ev, it) {
+      var r = enter.apply(this, arguments);
+      try { tfxTipKick(doc, it); } catch (e) { }
+      return r;
+    };
+  }
+  function tfxTipKick(doc, it) {
+    var w = doc.defaultView;
+    var fn = function () { try { tfxTipFill(doc, it); } catch (e) { } };
+    try {
+      if (w && w.Vue && typeof w.Vue.nextTick === 'function') w.Vue.nextTick(fn);
+      else if (w && w.requestAnimationFrame) w.requestAnimationFrame(fn);
+      else if (w) w.setTimeout(fn, 0);
+    } catch (e) { try { fn(); } catch (e2) { } }
+  }
+  function tfxTipFill(doc, it) {
+    var d = TFX.data;
+    var tip = doc.querySelector('div.tooltip');
+    if (!tip) return;
+    var b = tip.querySelector(':scope > .cfx-tip');
+    var line = null;
+    if (d && d.mode !== 'none' && it) {
+      var c = d.items[String(it.id)];
+      if (c) {
+        line = (d.mode === 'trade' ? '出售 ' + c.v : d.mode === 'request' ? '投放 +' + c.v : '价值 ' + c.v);
+        if (d.mode === 'trade') {
+          if (c.m) line += ' · 想要 ' + c.m;
+          else if (c.t === 'l') line += ' · 折价';
+        }
+        if (c.u && d.mode === 'trade') line += ' · 剩余使用 ' + c.u;
+      } else if (d.shelf && d.shelf[String(it.id)]) {
+        var sh = d.shelf[String(it.id)];
+        line = '整件 ' + sh.v + (sh.u ? ' · ' + sh.u + '使用' : '');
+      }
+    }
+    if (!line) { if (b) b.remove(); return; }
+    if (!b) { b = doc.createElement('div'); b.className = 'cfx-tip'; tip.appendChild(b); }
+    if (b.textContent !== line) b.textContent = line;
+  }
+
+  var TFX_DEPS = {
+    chips: ['.bubble'],
+    bar: ['.foot-main', '.bal-track'],
+    cells: ['#tradeBagGrid'],
+    shelf: ['.shelf-list'],
+    requests: ['.sup-list'],
+    rewards: ['.sup-list']
+  };
+  var TFX_REPORTED = {}; /* 探针去重：key → true（页面级一次上报纪律） */
+  function tfxFrame() {
+    var f = frameByKey('Trade');
+    if (f && f.el && f.el.isConnected && f.doc) return f;
+    return null;
+  }
+  function tfxProbe(doc) {
+    for (var k in TFX_DEPS) {
+      if (!Object.prototype.hasOwnProperty.call(TFX_DEPS, k)) continue;
+      var sels = TFX_DEPS[k];
+      var missing = [];
+      for (var i = 0; i < sels.length; i++)
+        try { if (!doc.querySelector(sels[i])) missing.push(sels[i]); } catch (e) { }
+      if (missing.length && !TFX_REPORTED[k]) {
+        TFX_REPORTED[k] = true;
+        try { cmd('report', { text: 'tradefx missing ' + k + '(' + missing.join(',') + ')' }); } catch (e) { }
+      }
+    }
+  }
+  var _tfxApplying = false;   /* 自写标记（诊断口；观察器异步投递时已复位——自写防护靠幂等收敛） */
+  var _tfxObsDoc = null, _tfxObs = null, _tfxRaf = 0;
+  /* 观察器（实机批改二批，BT.apply 同款架构）：官方 DOM 变更当帧补画（Vue 重渲染/打字机动画
+     抹我们节点——含纯自形记录）。自写不做记录级过滤：MutationObserver 异步投递在 applying
+     复位后到达，过滤恒漏；防自激靠幂等收敛（补画零写入即无新记录，一拍自止）。
+     rAF 合帧防风暴。挂 Trade 帧文档 body，帧换文档由 tfxApply 末尾现查重挂。 */
+  function tfxWatch(doc) {
+    if (_tfxObsDoc === doc && _tfxObs) return;
+    if (_tfxObs) { try { _tfxObs.disconnect(); } catch (e) { } _tfxObs = null; }
+    _tfxObsDoc = doc;
+    if (!doc || !doc.body || !doc.defaultView) return;
+    _tfxObs = new doc.defaultView.MutationObserver(function (records) {
+      if (!records.length) return;
+      tfxKick();
+    });
+    try { _tfxObs.observe(doc.body, { childList: true, subtree: true, characterData: true }); } catch (e) { _tfxObs = null; }
+  }
+  function tfxKick() {
+    if (_tfxRaf) return;
+    _tfxRaf = 1;
+    try {
+      (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(function () {
+        _tfxRaf = 0;
+        try { tfxApply(); } catch (e) { }
+      });
+    } catch (e) { _tfxRaf = 0; }
+  }
+  function tfxApply() {
+    var d = TFX.data;
+    if (!d) return;
+    var f = tfxFrame();
+    if (!f) return; /* 无 Trade 帧（未开窗）：不渲染不报探针（防刷屏） */
+    try { tfxProbe(f.doc); } catch (e) { }
+    _tfxApplying = true;
+    try {
+      if (d.mode === 'trade') {
+        try { TFX.chips(f.doc); } catch (e) { }
+        try { TFX.bar(f.doc); } catch (e) { }
+        try { TFX.cells(f.doc); } catch (e) { }
+        try { TFX.shelf(f.doc); } catch (e) { }
+      } else if (d.mode === 'request') {
+        try { TFX.cells(f.doc); } catch (e) { }
+        try { TFX.requests(f.doc); } catch (e) { }
+        try { TFX.rewards(f.doc); } catch (e) { }
+      } else if (d.mode === 'supply' || d.mode === 'camp') {
+        try { TFX.cells(f.doc); } catch (e) { }
+        try { TFX.medicine(f.doc); } catch (e) { }
+      } else if (d.mode === 'donate') {
+        try { TFX.cells(f.doc); } catch (e) { }
+      } else {
+        try { TFX.clear(f.doc); } catch (e) { }
+      }
+    } finally { _tfxApplying = false; }
+    tfxWatch(f.doc); /* 帧文档在位即挂观察器（换文档自动迁移） */
+    tfxTip(f.doc); /* A2：wrap 一次（帧文档级幂等） */
+  }
+  var _fxBuf = { pid: 0, total: 0, got: 0, parts: {}, applied: false };
+  function tfxChunk(pid, i, total, s) {
+    if (pid < _fxBuf.pid) return;              /* 过期包（迟到旧 pid 片） */
+    if (pid > _fxBuf.pid) _fxBuf = { pid: pid, total: total, got: 0, parts: {}, applied: false };
+    if (_fxBuf.applied || i < 0 || i >= _fxBuf.total) return; /* 应用后同 pid 重放/越界片丢弃 */
+    if (_fxBuf.parts[i] !== undefined) return; /* 重复片 */
+    _fxBuf.parts[i] = s;
+    _fxBuf.got++;
+    if (_fxBuf.got < _fxBuf.total) return;
+    _fxBuf.applied = true;                     /* 应用即封口（后续同 pid 片全弃） */
+    var sb = [];
+    for (var k = 0; k < _fxBuf.total; k++) sb.push(_fxBuf.parts[k]);
+    tfxJson(sb.join(''));
+  }
+  function tfxJson(json) {
+    var d = null;
+    try { d = JSON.parse(json); } catch (e) { return; } /* 非法包静默（data 不变） */
+    TFX.data = d;
+    tfxApply();
+  }
+  if (!window.__CERAIL_TRADEFX__) {
+    /* 直推实参=对象（C# 裸 JSON 拼进脚本——__CERAIL__.setData 同款语义），分块路径=拼回的
+       字符串：两形都收（终审 C1——String(对象)="[object Object]" 会让实机直推全灭） */
+    var tfxEntry = function (json) {
+      if (json && typeof json === 'object') { TFX.data = json; tfxApply(); return; }
+      tfxJson(String(json == null ? '' : json));
+    };
+    /* 兜底节拍器（实机批改二批后降级为兜底：观察器当帧补画为主，此处只兜观察器盲区——
+       纯 CSS 回流不产生变更记录等 nbMount 十三轮同款场景）；trade 态每 500ms 重跑
+       tfxApply，幂等签名=稳态零 DOM 写。 */
+    try {
+      setInterval(function () {
+        try { if (TFX.data && TFX.data.mode !== 'none') tfxApply(); } catch (e) { } /* 十三批：全模式兜底——批1 的 trade 门没跟上多模式扩展=request 态 apply 错过即死到下包（开页竞态实锤） */
+      }, 500);
+    } catch (e) { }
+    tfxEntry.data = null;
+    try { Object.defineProperty(tfxEntry, 'data', { /* .data 直读 TFX.data（harness/CDP 自检口，dispInfo 先例） */
+      get: function () { return TFX.data; }, configurable: true
+    }); } catch (e) { tfxEntry.data = TFX.data; }
+    tfxEntry.__build = 'T5'; /* 进程内构建标识（CDP/日志核验部署是否生效——BepInEx 字节加载不锁文件，磁盘新≠进程新） */
+    window.__CERAIL_TRADEFX__ = tfxEntry;
+    window.__CERAIL_TRADEFX_CHUNK__ = tfxChunk;
   }
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
