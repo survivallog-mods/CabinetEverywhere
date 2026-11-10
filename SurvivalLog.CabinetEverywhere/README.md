@@ -16,7 +16,7 @@
 - **默认排除功能容器**：自制工具台、载具（购物车/自行车/汽车等）、染料桶、材料堆、厨房电器、无人机货舱/中控台等非储物容器不会混进页签；追加/排除名单可在配置里自定义。
 - **燃油发电机界面柜子页签（2026-11-07 起）**：左侧背包面板页签化（背包+带「燃料」标签的柜子），点柜中燃料整组直送发电机（与官方从背包加油同口径）；无燃料标签柜时该界面与原版一致。详见 DESIGN.md §11。
 - **暖炉界面柜子页签（2026-11-07 起）**：与燃油发电机同构移植（bagtabs 族第二页）——左侧背包面板页签化（背包+燃料标签柜），右键柜中燃料整组直送暖炉；右侧炉体面板零改动，无燃料柜时与原版一致。独立开关 EnableHeater。
-- **竖版全局物品栏（2026-11-08 起）**：染料桶/暖炉两页的左背包区可切「列表形态」——跨背包+整屋柜子同名汇总（随机属性任异各行）、全局搜索、场景预设（染料桶=8 色板筛选+主色点数排序；暖炉=固定仅可燃物+热值排序）、行三键=背包页同款（悬停信息/左键详情/右键官方口径移 1 件入染料槽或炉膛）；单图标钮与格子样式互切，格子态=现行视图原样。独立开关 EnableGlistDye/EnableGlistHeater（详见 DESIGN.md §14）。
+- **竖版全局物品栏（2026-11-08 起；2026-11-10 扩至六页）**：染料桶/暖炉/燃油发电机/篮子/老鼠笼/酿酒桶的左背包区可切「列表形态」——跨背包+整屋柜子同名汇总（随机属性任异各行）、全局搜索、行三键=背包页同款（悬停信息/**左键=官方原生详情弹窗**——四维属性+描述完整口径，背包/柜中物品都能开/右键官方口径移 1 件入目标槽）、单图标钮与格子样式互切。场景预设：染料桶=8 色板筛选+主色点数排序；暖炉/发电机=固定仅可燃物+热值排序；篮子=救助贡献分值徽章；老鼠笼=带饱腹数值的食物+🍗饱腹降序（右键进食物仓）；酿酒桶=可酿酒食物+饱腹降序+**游戏三档酒精瓶角标**（劣/普/烈换瓶换色，右键进酿酒桶）。老鼠笼/酿酒桶两页随安装即启用（无独立开关），其余页独立开关 EnableGlistDye/EnableGlistHeater 等（详见 DESIGN.md §14）。
 - **染料桶色素排序（2026-11-07 起）**：页脚与一键整理同排的排序钮回归（v1.8.10 曾撤钮重设计，此为定案）——弹窗列**全部颜色**（含未解锁），选色即按该色色素点数把背包/柜子格做**显示层排序**（有该色素的植物靠前+官方同款右下水滴点数徽章，其余沉底不出徽章）；纯显示层排序不动真实摆放，重开面板恢复官方序。颜色点数从游戏配置读取随契约下发。
 - **负重调整（2026-11-07 起）**：背包负重上限按公斤设定（0=官方原值、最高 1000kg，天赋加成照常叠加）+ 柜子负重解放开关——储物家具包负重清零（与冰箱/置物架同款官方「无负重」待遇，柜子界面负重条整行隐藏）。原独立 mod「柜子负重解放 CabinetBurden」随本批并入并退役。
 
@@ -45,8 +45,8 @@
 | General.Enabled | true | 总开关。false=移除已注入的柜子页签并停止全部注入；下次启动不加载 |
 | Access.EnableCraftSource | true | 工作台/无人机交易/无人机站/粉碎机/温室：柜子页签与制作自动取料 |
 | Access.EnableCooking | true | 烹饪界面注入柜子页签 |
-| Access.EnableRatCage | true | 老鼠笼界面注入柜子页签 |
-| Access.EnableBrew | true | 酿酒桶界面注入柜子页签 |
+| Access.EnableRatCage | true | 老鼠笼界面注入柜子页签（2026-11-10 v2.2.0 起对该页不再生效——全局物品栏随安装即启用，键保留兼容） |
+| Access.EnableBrew | true | 酿酒桶界面注入柜子页签（2026-11-10 v2.2.0 起对该页不再生效——全局物品栏随安装即启用，键保留兼容） |
 | Access.EnableDye | true | 颜料桶界面注入柜子页签 |
 | Access.EnableFuelGen | true | 燃油发电机界面柜子页签（背包+燃料标签柜，右键整组直送发电机）；false=还原官方 |
 | Access.EnableHeater | true | 暖炉界面柜子页签（与燃油发电机同构独立开关；右键整组直送暖炉）；false=还原官方 |
@@ -91,6 +91,7 @@
 
 **Features**
 - Cabinet tabs in 9 screens: workbench / drone trade / drone hub / shredder / greenhouse (tabs + auto material pulling), and cooking / rat cage / brewing / dye (tabs). All on by default.
+- List-form storage panel (global item list) on six screens: dye bucket / heater / fuel generator / rescue basket / rat cage / brewing barrel — one aggregated row per item across bag + all cabinets, global search, right-click sends 1 item to the target slot via the official move path. Per-screen presets (pigment colors / fuel / rescue score / satiety, with tier-colored bottle badges on the brewing screen).
 - Scenario views: cooking-family screens default to food-tagged cabinets + all fridges; workbench-family defaults to material/tool cabinets; trade screens default to a free tag filter dropdown. Each of the 10 screens is configurable (Food / Material / Browser).
 - Uses the game's official cabinet tag system (same tags you set in the backpack screen); dropdown selection is remembered per screen.
 - Workbench rescans and material pulling follow the current view, with frame-coalesced bag refreshes — no crafting lag even with many cabinets.

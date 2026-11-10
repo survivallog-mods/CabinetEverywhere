@@ -175,6 +175,75 @@ function check(name, ok, detail) {
     'rows=' + a.rows.length + ' truncated=' + a.truncated);
   await page.evaluate(() => { delete window.__HZ_DYEPIG__; });
 
+  /* ---- §聚合 RB-A（rat-brew glist Task1）：RatCage sat——s1>0 筛选/s1 降序/同值并/同名异值拆行 ---- */
+  await page.evaluate(() => { window.__HZ_GLISTON__ = true; window.__HZ_RBICFG__ = true; }); /* 夹具显式开（旧套件零污染） */
+  await setMockItems({
+    bag: [
+      [901, 2, 2, 7200, 0, 0, 1, 1, 0, 38, 2],
+      [902, 1, 5, 7200, 1, 0, 1, 1, 0, 15, null],
+      [903, 3, 1, 0, 2, 0, 1, 1, 0, null, 5],
+      [904, 4, 1, 0, 3, 0, 1, 1, 0, null, null],
+      [905, 7, 1, 0, 4, 0, 1, 1, 0, 0, null]
+    ],
+    '900101': [[911, 1, 3, 86400, 0, 0, 1, 1, 0, 15, null]]
+  }, [900101]);
+  await pushCtx('RatCage');
+  a = await agg('RatCage');
+  check('RB-A1-sat-filter-sort', a.rows.length === 2 && a.rows[0].cfg === 2 && a.rows[0].badge.v === 38 &&
+    a.rows[1].cfg === 1 && a.rows[1].badge.v === 15 && a.hiddenCount === 3,
+    'rows=' + JSON.stringify(a.rows.map((r) => [r.cfg, r.badge && r.badge.v])) + ' hidden=' + a.hiddenCount + '（null/0 两态都藏）');
+  check('RB-A2-sat-merge-sameval', a.rows.length === 2 && a.rows[1].total === 8 && a.rows[1].srcs.length === 2 &&
+    a.rows[1].srcs[0][0] === 'bag' && a.rows[1].srcs[0][2] === 5 && a.rows[1].srcs[1][2] === 3,
+    'row1=' + JSON.stringify(a.rows[1] && [a.rows[1].total, a.rows[1].srcs]));
+  await setMockItems({
+    bag: [
+      [921, 21, 2, 0, 0, 0, 1, 1, 0, 40, 9],
+      [922, 22, 3, 0, 1, 0, 1, 1, 0, 20, 2]
+    ]
+  }, []);
+  await pushCtx('RatCage');
+  a = await agg('RatCage');
+  check('RB-A3-sat-split-key', a.rows.length === 2 && a.rows.every((r) => r.name === '蒜蓉西兰花') &&
+    a.rows[0].badge.v === 40 && a.rows[0].total === 2 && a.rows[1].badge.v === 20 && a.rows[1].total === 3,
+    'rows=' + JSON.stringify(a.rows.map((r) => [r.cfg, r.badge && r.badge.v, r.total])));
+
+  /* ---- §聚合 RB-B（rat-brew glist Task1）：BrewPanel brew——bw 门/纯 s1 序（品质不进排序键）/
+     tier 三档（P1=0/P2=0.5：负密度=劣、0~0.5=普、≥0.5=烈）/s2 null→密度 0/同 s1 异 s2 拆行 ---- */
+  await setMockItems({
+    bag: [
+      [901, 2, 2, 0, 0, 0, 1, 1, 0, 38, 2],
+      [902, 1, 1, 0, 1, 0, 1, 1, 0, 15, 30],
+      [903, 3, 1, 0, 2, 0, 1, 1, 0, 25, -4],
+      [904, 4, 1, 0, 3, 0, 1, 1, 0, 20, 1],
+      [921, 21, 1, 0, 4, 0, 1, 1, 0, 40, 9]
+    ]
+  }, []);
+  await pushCtx('BrewPanel');
+  a = await agg('BrewPanel');
+  check('RB-B1-brew-filter-sort', a.rows.length === 3 && a.hiddenCount === 2 &&
+    a.rows[0].cfg === 2 && a.rows[1].cfg === 3 && a.rows[2].cfg === 1,
+    'rows=' + JSON.stringify(a.rows.map((r) => [r.cfg, r.badge && r.badge.v])) + ' hidden=' + a.hiddenCount);
+  check('RB-B2-brew-tier', a.rows.length === 3 && a.rows[0].badge.tier === 1 /* 2/38 普 */ &&
+    a.rows[1].badge.tier === 0 /* -4/25 劣 */ && a.rows[2].badge.tier === 2 /* 30/15 烈 */,
+    'tiers=' + JSON.stringify(a.rows.map((r) => r.badge && r.badge.tier)));
+  await setMockItems({ bag: [[905, 7, 1, 0, 0, 0, 1, 1, 0, 10, null]] }, []);
+  await pushCtx('BrewPanel');
+  a = await agg('BrewPanel');
+  check('RB-B3-brew-s2null-density0', a.rows.length === 1 && a.rows[0].badge.tier === 1 /* 0/10：P1=0 → 非<0 → 普 */,
+    'tier=' + JSON.stringify(a.rows[0] && a.rows[0].badge && a.rows[0].badge.tier));
+  await setMockItems({
+    bag: [
+      [901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2],
+      [906, 2, 1, 0, 1, 0, 1, 1, 0, 38, 30]
+    ]
+  }, []);
+  await pushCtx('BrewPanel');
+  a = await agg('BrewPanel');
+  check('RB-B4-brew-split-s2', a.rows.length === 2 && a.rows[0].badge.tier === 1 && a.rows[1].badge.tier === 2 &&
+    a.rows.every((r) => r.name === '烤肉'),
+    'rows=' + JSON.stringify(a.rows.map((r) => [r.badge && r.badge.v, r.badge && r.badge.tier])) + '（s1 并列=先见序稳定，spec 并列稳定条款）');
+  await page.evaluate(() => { delete window.__HZ_RBICFG__; delete window.__HZ_GLISTON__; }); /* 两钮皆还（B5/B6 拆净断言依赖缺省态） */
+
   /* ---- §装配 B1-B6（Task 2）：两页挂载/互切/幂等/防自激/拆净/循环 ---- */
   const showScene = async (key) => {
     await page.getByRole('button', { name: key, exact: true }).click();
@@ -214,6 +283,15 @@ function check(name, ok, detail) {
       return host ? host.innerHTML : 'NOHOST';
     }, key);
   };
+
+  /* 命令出口间谍（B/C/D 各节共用——v2.2.1 前移定义：RB-C idetail 断言先于 D 节使用） */
+  const cmdSpy = (fn) => page.evaluate(() => {
+    window.__HZ_CMD__ = [];
+    const orig = window.__CERAIL__.cmd;
+    window.__HZ_CMD_RESTORE__ = () => { window.__CERAIL__.cmd = orig; };
+    window.__CERAIL__.cmd = (op, payload) => { window.__HZ_CMD__.push([op, payload]); return orig.call(window.__CERAIL__, op, payload); };
+  }).then(() => fn()).then((r) => page.evaluate(() => window.__HZ_CMD_RESTORE__()).then(() =>
+    page.evaluate(() => window.__HZ_CMD__).then((calls) => ({ r, calls }))));
 
   /* 恢复基线 MOCK（A 系列改过）并给两页一个正常数据底座 */
   await page.evaluate((base) => window.__HZ_MOCKSET__(base), BASE_MOCK);
@@ -395,14 +473,80 @@ function check(name, ok, detail) {
   }
   await page.evaluate(() => { delete window.__HZ_DYEPIG__; window.__HZ_GLIST__ = {}; });
 
+  /* ---- §渲染 RB-C（rat-brew glist Task2）：排序牌/角标（rat 绿🍗·brew 瓶图+档色）/页脚隐藏计数/详情属性行 ---- */
+  await setMockItems({
+    bag: [
+      [901, 2, 2, 7200, 0, 0, 1, 1, 0, 38, 2],
+      [904, 4, 1, 0, 3, 0, 1, 1, 0, null, null]
+    ]
+  }, []);
+  await showScene('RatCage');
+  await glistOn('RatCage', true); await scan(); await gwait('RatCage');
+  await pushCtx('RatCage');
+  {
+    const d = frameDoc('RatCage');
+    const plaque = await d.evaluate(() => { const p = document.querySelector('#srgChips .srg-plaque'); return p ? p.textContent : ''; });
+    check('RB-C1-sat-plaque', plaque === '🍗 按饱腹度 ↓', 'plaque=' + plaque);
+    const badge = await d.evaluate(() => { const b = document.querySelector('#srgList .srg-row .srg-badge'); return b ? { txt: b.textContent, color: getComputedStyle(b).color, cls: b.className } : null; });
+    check('RB-C2-sat-badge', !!badge && badge.txt.indexOf('🍗') >= 0 && badge.txt.indexOf('38') >= 0 && /143,\s*192,\s*110/.test(badge.color) && /srg-sat/.test(badge.cls),
+      'badge=' + JSON.stringify(badge));
+    const footR = await d.evaluate(() => document.getElementById('srgFootR').textContent);
+    check('RB-C3-sat-foot-hidden', footR === '已按预设隐藏 1 种非喂鼠食物', 'footR=' + footR + '（v2.2.7：食物 tab 排猎物，藏=无饱腹+猎物）');
+    await d.evaluate(() => { try { localStorage.removeItem('srp_glist_view_RatCage'); } catch (e) { } });
+    /* 左键=官方原生详情弹窗（v2.2.1 作者令「列表所有物品都用官方弹窗」）：idetail 实例级命令
+       （ItemId+OwnerId 直调官方动作），mod 自建 srgDetail 退役不再建节点 */
+    const dr = await cmdSpy(() => d.evaluate(() => { document.querySelector('#srgList .srg-row').click(); return true; }));
+    const dc = (dr.calls || []).filter((c) => c[0] === 'idetail').pop();
+    const noModPop = await d.evaluate(() => !document.getElementById('srgDetail'));
+    await d.evaluate(() => { const e = document.getElementById('srgDetail'); if (e) e.style.display = 'none'; }); /* RED 期兜底：旧遮罩挡后续点击；GREEN 后无节点零动作 */
+    check('RB-C4-sat-official-detail-cmd', dr.r === true && !!dc && dc[1].item === 901 && dc[1].owner === 900001 && dc[1].cat === 2 && noModPop,
+      'call=' + JSON.stringify(dc) + ' noModPop=' + noModPop + '（bag 源 owner=背包主；FEFO 首行=烤肉 901）');
+  }
+  await glistOn('RatCage', false);
+
+  await setMockItems({
+    bag: [
+      [901, 2, 2, 0, 0, 0, 1, 1, 0, 38, 2],
+      [902, 1, 1, 0, 1, 0, 1, 1, 0, 15, 30],
+      [904, 4, 1, 0, 3, 0, 1, 1, 0, 20, 1]
+    ]
+  }, []);
+  await showScene('BrewPanel');
+  await glistOn('BrewPanel', true); await scan(); await gwait('BrewPanel');
+  await pushCtx('BrewPanel');
+  {
+    const d = frameDoc('BrewPanel');
+    const plaque = await d.evaluate(() => { const p = document.querySelector('#srgChips .srg-plaque'); return p ? p.textContent : ''; });
+    check('RB-C5-brew-plaque', plaque === '🍗 按饱腹度 ↓', 'plaque=' + plaque);
+    const badges = await d.evaluate(() => Array.from(document.querySelectorAll('#srgList .srg-row .srg-badge')).map((b) => ({
+      txt: b.textContent, color: getComputedStyle(b).color, ico: b.querySelector('img.srg-bico') ? b.querySelector('img.srg-bico').getAttribute('src') : ''
+    })));
+    check('RB-C6-brew-badge-tier-ico', badges.length === 2 &&
+      badges[0].txt.indexOf('38') >= 0 && /255,\s*201,\s*60/.test(badges[0].color) && badges[0].ico === 'hz-ico-putong' &&
+      badges[1].txt.indexOf('15') >= 0 && /255,\s*112,\s*134/.test(badges[1].color) && badges[1].ico === 'hz-ico-liexing',
+      'badges=' + JSON.stringify(badges));
+    const footR = await d.evaluate(() => document.getElementById('srgFootR').textContent);
+    check('RB-C7-brew-foot-hidden', footR === '已按预设隐藏 1 种不可酿物品', 'footR=' + footR);
+    const dr2 = await cmdSpy(() => d.evaluate(() => { document.querySelectorAll('#srgList .srg-row')[0].click(); return true; }));
+    const dc2 = (dr2.calls || []).filter((c) => c[0] === 'idetail').pop();
+    await d.evaluate(() => { const e = document.getElementById('srgDetail'); if (e) e.style.display = 'none'; }); /* RED 期兜底同上 */
+    check('RB-C8-brew-official-detail-cmd', dr2.r === true && !!dc2 && dc2[1].item === 901 && dc2[1].owner === 900001 && dc2[1].cat === 2,
+      'call=' + JSON.stringify(dc2) + '（首行=烤肉普档 bag 叠）');
+    /* brewIco 缺席（C# 窗口期）：角标退纯色无图不崩 */
+    await page.evaluate(() => { window.__HZ_BREWICO__ = null; });
+    await pushCtx('BrewPanel');
+    const noIco = await d.evaluate(() => {
+      const b = document.querySelector('#srgList .srg-row .srg-badge');
+      return b ? { hasImg: !!b.querySelector('img.srg-bico'), txt: b.textContent } : null;
+    });
+    check('RB-C9-brew-ico-absent-graceful', !!noIco && !noIco.hasImg && noIco.txt.indexOf('38') >= 0, 'noIco=' + JSON.stringify(noIco));
+    await page.evaluate(() => { delete window.__HZ_BREWICO__; });
+    await d.evaluate(() => { try { localStorage.removeItem('srp_glist_view_BrewPanel'); } catch (e) { } });
+  }
+  await glistOn('BrewPanel', false);
+  await page.evaluate((base) => window.__HZ_MOCKSET__(base), BASE_MOCK); /* 还基线（C 系底座复原） */
+
   /* ---- §交互 D1-D7（Task 4）：悬停 tip/左键详情/右键官方口径（heater=feed 直达、dye=bag 直回放/柜源双跳）/toast/默认菜单 ---- */
-  const cmdSpy = (fn) => page.evaluate(() => {
-    window.__HZ_CMD__ = [];
-    const orig = window.__CERAIL__.cmd;
-    window.__HZ_CMD_RESTORE__ = () => { window.__CERAIL__.cmd = orig; };
-    window.__CERAIL__.cmd = (op, payload) => { window.__HZ_CMD__.push([op, payload]); return orig.call(window.__CERAIL__, op, payload); };
-  }).then(() => fn()).then((r) => page.evaluate(() => window.__HZ_CMD_RESTORE__()).then(() =>
-    page.evaluate(() => window.__HZ_CMD__).then((calls) => ({ r, calls }))));
 
   /* Heater：木柴仅柜源（900105）、柴油仅背包 */
   await setMockItems({
@@ -434,19 +578,14 @@ function check(name, ok, detail) {
       return !e || e.style.display === 'none';
     }).catch(() => false) === true, '');
 
-    const detailOk = await (async () => {
-      await d.click('.srg-row'); await page.waitForTimeout(50);
-      const open = await d.evaluate(() => { const e = document.getElementById('srgDetail'); return !!e && e.style.display !== 'none' && e.textContent.indexOf('合计') >= 0 && e.textContent.indexOf('背包') >= 0; }).catch(() => false);
-      await page.keyboard.press('Escape'); await page.waitForTimeout(50);
-      const c1 = await d.evaluate(() => { const e = document.getElementById('srgDetail'); return !e || e.style.display === 'none'; }).catch(() => false);
-      await d.click('.srg-row'); await page.waitForTimeout(50);
-      await d.evaluate(() => { const e = document.getElementById('srgDetail'); if (e) e.click(); }); await page.waitForTimeout(50);
-      const c2 = await d.evaluate(() => { const e = document.getElementById('srgDetail'); return !e || e.style.display === 'none'; }).catch(() => false);
-      await d.click('.srg-row'); await page.waitForTimeout(50);
-      const c3 = await (async () => { const x = await d.$('#srgDtlClose'); if (!x) return false; await x.click(); await page.waitForTimeout(50); return await d.evaluate(() => { const e = document.getElementById('srgDetail'); return !e || e.style.display === 'none'; }).catch(() => false); })();
-      return open && c1 && c2 && c3;
-    })();
-    check('D2-detail-3close', detailOk === true, '');
+    /* D2（v2.2.1 改道）：左键=官方原生详情弹窗——idetail 实例级命令（ItemId+OwnerId+cfg）；
+       mod 自建 srgDetail 退役（不建节点零残留） */
+    const d2r = await cmdSpy(() => d.evaluate(() => { document.querySelector('#srgList .srg-row').click(); return true; }));
+    const d2c = (d2r.calls || []).filter((c) => c[0] === 'idetail').pop();
+    const d2no = await d.evaluate(() => !document.getElementById('srgDetail'));
+    await d.evaluate(() => { const e = document.getElementById('srgDetail'); if (e) e.style.display = 'none'; }); /* RED 期兜底同上 */
+    check('D2-heat-official-detail-cmd', d2r.r === true && !!d2c && d2c[1].item > 0 && d2c[1].owner > 0 && d2c[1].cat > 0 && d2no,
+      'call=' + JSON.stringify(d2c) + ' noModPop=' + d2no);
 
     await d.evaluate(() => { document.addEventListener('contextmenu', (e) => { window.__HZ_CTXDEF__ = e.defaultPrevented; }, { once: true }); });
     const feedRes = await cmdSpy(async () => {
@@ -512,6 +651,221 @@ function check(name, ok, detail) {
     check('D5-dye-replay-after-push', sent5.length === 1 && sent5[0][1].itemId >= 950000 && sent5[0][1].rightClick === true,
       'after=' + JSON.stringify(sent5));
   }
+
+  /* ---- §交互 RB-D（rat-brew glist Task4）：feed='click'=dye 同款回放径——bag 源直回放（RatCage）/
+     柜源 take+GLPEND 双跳落包后回放新实例（BrewPanel，Review Focus 4） ---- */
+  await setMockItems({ bag: [[901, 2, 2, 0, 0, 0, 1, 1, 0, 38, 2]] }, []);
+  await pushCtx('RatCage');
+  await showScene('RatCage'); await glistReady('RatCage');
+  {
+    const d = frameDoc('RatCage');
+    const wrapSent = (fn) => d.evaluate(() => {
+      window.__HZ_SENT__ = [];
+      const orig = core.UnitySendEvent;
+      core.UnitySendEvent = (n, p) => { window.__HZ_SENT__.push([n, p]); };
+      window.__HZ_SENT_RESTORE__ = () => { core.UnitySendEvent = orig; };
+    }).then(fn).finally(() => d.evaluate(() => window.__HZ_SENT_RESTORE__()));
+    const sentNow = () => d.evaluate(() => window.__HZ_SENT__ || []).catch(() => []);
+    const rd = await cmdSpy(() => wrapSent(async () => {
+      await d.click('.srg-row', { button: 'right' }); await page.waitForTimeout(60);
+      return true;
+    }));
+    const sentD = rd.r === true ? (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') : [];
+    const takeD = (rd.calls || []).filter((c) => c[0] === 'take');
+    check('RB-D1-rat-bag-replay', rd.r === true && sentD.length === 1 && sentD[0][1].itemId === 901 && sentD[0][1].rightClick === true && takeD.length === 0,
+      'sent=' + JSON.stringify(sentD) + ' take=' + takeD.length);
+    await glistOn('RatCage', false);
+  }
+  await setMockItems({
+    bag: [],
+    '900102': [[915, 2, 3, 36000, 0, 0, 1, 1, 0, 38, 2]]
+  }, [900102]);
+  await pushCtx('BrewPanel');
+  await showScene('BrewPanel'); await glistReady('BrewPanel');
+  {
+    const d = frameDoc('BrewPanel');
+    const wrapSent = (fn) => d.evaluate(() => {
+      window.__HZ_SENT__ = [];
+      const orig = core.UnitySendEvent;
+      core.UnitySendEvent = (n, p) => { window.__HZ_SENT__.push([n, p]); };
+      window.__HZ_SENT_RESTORE__ = () => { core.UnitySendEvent = orig; };
+    }).then(fn).finally(() => d.evaluate(() => window.__HZ_SENT_RESTORE__()));
+    const sentNow = () => d.evaluate(() => window.__HZ_SENT__ || []).catch(() => []);
+    const rd = await cmdSpy(() => wrapSent(async () => {
+      await d.click('.srg-row', { button: 'right' }); await page.waitForTimeout(900);
+      return { sentAfter: (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') };
+    }));
+    const v = rd.r && rd.r.sentAfter ? rd.r.sentAfter : [];
+    const takeD = (rd.calls || []).filter((c) => c[0] === 'take').pop();
+    check('RB-D2-brew-take-first', !!takeD && takeD[1].from === 900102 && takeD[1].all === false && JSON.stringify(takeD[1].ids) === '[915]' && v.every((c) => c[1].itemId !== 915),
+      'take=' + JSON.stringify(takeD) + ' sentIds=' + JSON.stringify(v.map((c) => c[1].itemId)));
+    check('RB-D3-brew-replay-after-push', v.length === 1 && v[0][1].itemId >= 950000 && v[0][1].rightClick === true,
+      'after=' + JSON.stringify(v));
+
+    /* RB-D4（终审 Important#1）：双跳**扩展键精确匹配**甄别同名异值变体——bag 已有同名另一档
+       （cfg2 s2=2=普），柜中右键 s2=30（烈）那行：take 落包新叠须保留 s1/s2（键 |38/30 命中）
+       回放新实例；若模拟器剥列→键 |null/null 失配→同名兜底命中 bag 首个 901（错误变体）。
+       修前 RED=回放 901，修后 GREEN=回放 ≥950000。 */
+    await setMockItems({
+      bag: [[901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2]],
+      '900102': [[915, 2, 3, 36000, 0, 0, 1, 1, 0, 38, 30]]
+    }, [900102]);
+    await pushCtx('BrewPanel');
+    const rowIdx = await d.evaluate(() => Array.from(document.querySelectorAll('.srg-row'))
+      .findIndex((r) => r.textContent.indexOf('烈') >= 0 || (r.querySelector('.srg-badge') && /255,\s*112,\s*134/.test(getComputedStyle(r.querySelector('.srg-badge')).color))));
+    const rd4 = rowIdx >= 0 ? await cmdSpy(() => wrapSent(async () => {
+      await d.click('.srg-row:nth-child(' + (rowIdx + 1) + ')', { button: 'right' });
+      await page.waitForTimeout(900);
+      return { sentAfter: (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') };
+    })) : null;
+    const v4 = rd4 && rd4.r && rd4.r.sentAfter ? rd4.r.sentAfter : [];
+    check('RB-D4-brew-key-variant-replay', rowIdx >= 0 && v4.length === 1 && v4[0][1].itemId >= 950000 && v4[0][1].rightClick === true,
+      'rowIdx=' + rowIdx + ' after=' + JSON.stringify(v4) + '（甄别：键失配兜底会回放 bag 同名 901）');
+  }
+
+  /* ---- §装配 RB-E（rat-brew glist Task4）：rail 页宿主接管/格子态 srg-plain（页脚三件保留+
+     排序钮退役=裁定#4/#6）/拆净还原（排序钮复原——harness 钮反向门） ---- */
+  {
+    const d = frameDoc('BrewPanel');
+    await glistReady('BrewPanel');
+    const listState = await d.evaluate(() => {
+      const rail = document.getElementById('srRail');
+      return { panel: !!document.getElementById('srgPanel'), railHidden: !!rail && rail.offsetParent === null };
+    });
+    check('RB-E1-list-takeover', listState.panel && listState.railHidden, JSON.stringify(listState));
+    await d.click('#srgToggle'); await page.waitForTimeout(80);
+    const gridState = await d.evaluate(() => {
+      const p = document.getElementById('srgPanel');
+      const host = document.getElementById('srp') || (document.getElementById('srRail') || {}).parentNode;
+      const sortBtn = document.getElementById('srFoodSort');
+      const store = document.getElementById('srStoreAll');
+      return {
+        gridmode: !!p && p.classList.contains('srg-gridmode'),
+        plain: !!host && host.classList.contains('srg-plain'),
+        sortHidden: !!sortBtn && sortBtn.hidden,
+        storeShown: !!store && store.offsetParent !== null,
+        railShown: !!(document.getElementById('srRail') || {}).offsetParent
+      };
+    });
+    check('RB-E2-grid-plain-foot', gridState.gridmode && gridState.plain && gridState.sortHidden && gridState.storeShown && gridState.railShown,
+      JSON.stringify(gridState));
+    await d.click('#srgToggle'); await page.waitForTimeout(80);
+    /* 拆净（harness 钮反向门=产线无此态，退役门回退面）：panel 摘除+排序钮复原+rail 复显 */
+    await glistOn('BrewPanel', false); await scan(); await pushCtx('BrewPanel'); await page.waitForTimeout(80);
+    const tornState = await d.evaluate(() => {
+      const sortBtn = document.getElementById('srFoodSort');
+      return {
+        noPanel: !document.getElementById('srgPanel'),
+        sortBack: !!sortBtn && !sortBtn.hidden,
+        railBack: !!(document.getElementById('srRail') || {}).offsetParent
+      };
+    });
+    check('RB-E3-teardown-restore', tornState.noPanel && tornState.sortBack && tornState.railBack, JSON.stringify(tornState));
+    await d.evaluate(() => { try { localStorage.removeItem('srp_glist_view_BrewPanel'); } catch (e) { } });
+  }
+  /* ---- §rat 双 tab RB-F（v2.2.7 作者令：食物 tab=排除猎物(含死体)；猎物 tab=只猎物活死都收
+     且活/死拆行；右键官方路由只认活体=笼位优先/死体落食物仓） ---- */
+  await page.evaluate(() => { window.__HZ_RBICFG__ = true; window.__HZ_GLISTON__ = true; });
+  await setMockItems({
+    bag: [
+      [901, 2, 2, 0, 0, 0, 1, 1, 0, 38, 2],
+      [923, 23, 3, 0, 1, 0, 1, 1, 0, 7, -4],
+      [925, 24, 2, 0, 2, 0, 1, 1, 0, 7, -4],
+      [904, 4, 1, 0, 3, 0, 1, 1, 0, null, null]
+    ],
+    '900102': [[924, 23, 1, 36000, 0, 0, 1, 1, 0, 7, -4]]
+  }, [900102]);
+  await showScene('RatCage');
+  await glistOn('RatCage', true); await scan(); await gwait('RatCage');
+  await pushCtx('RatCage');
+  {
+    const d = frameDoc('RatCage');
+    await d.evaluate(() => { try { window.State.mouseSlotCount = 4; window.State.mice = []; } catch (e) { } }); /* 官方页全局态：笼位 4 空 */
+    const f1 = await d.evaluate(() => ({
+      chips: Array.from(document.querySelectorAll('#srgChips .srg-chip')).map((c) => [c.textContent, c.className.indexOf('on') >= 0]),
+      rows: Array.from(document.querySelectorAll('#srgList .srg-name')).map((n) => n.textContent),
+      plaque: !!document.querySelector('#srgChips .srg-plaque')
+    }));
+    check('RB-F1-food-excludes-prey', f1.chips.length === 2 && f1.chips[0][0] === '食物' && f1.chips[0][1] === true &&
+      f1.chips[1][0] === '猎物' && f1.chips[1][1] === false &&
+      f1.rows.length === 1 && f1.rows[0] === '烤肉' && f1.plaque === true,
+      JSON.stringify(f1) + '（食物 tab 排除活/死猎物）');
+    await d.evaluate(() => { Array.from(document.querySelectorAll('#srgChips .srg-chip')).find((c) => c.textContent === '猎物').click(); });
+    await page.waitForTimeout(60);
+    const f2 = await d.evaluate(() => ({
+      rows: Array.from(document.querySelectorAll('#srgList .srg-name')).map((n) => n.textContent),
+      badge: !!document.querySelector('#srgList .srg-badge'),
+      plaque: !!document.querySelector('#srgChips .srg-plaque'),
+      hint: (document.getElementById('srgHint') || {}).textContent || '',
+      mouseOn: ((Array.from(document.querySelectorAll('#srgChips .srg-chip')).find((c) => c.textContent === '猎物') || {}).className || '').indexOf('on') >= 0
+    }));
+    check('RB-F2-prey-tab-split-rows', f2.mouseOn && f2.rows.length === 2 &&
+      f2.rows.indexOf('小家鼠') >= 0 && f2.rows.indexOf('小家鼠（死）') >= 0 && !f2.badge && !f2.plaque && f2.hint.indexOf('笼位') >= 0,
+      JSON.stringify(f2) + '（活/死异名=天然拆行；无角标无牌）');
+    /* F3 官方路由（RatCage.html onItemClick 逐字）：活猎物+笼位空=MOUSE_ADD；笼位满=ITEM_CLICK；
+       死猎物恒 ITEM_CLICK（slotFree 也不进笼位——官方 isMouse 只认活体） */
+    const wrapSent = (fn) => d.evaluate(() => {
+      window.__HZ_SENT__ = [];
+      const orig = core.UnitySendEvent;
+      core.UnitySendEvent = (n, p) => { window.__HZ_SENT__.push([n, p]); };
+      window.__HZ_SENT_RESTORE__ = () => { core.UnitySendEvent = orig; };
+    }).then(fn).finally(() => d.evaluate(() => window.__HZ_SENT_RESTORE__()));
+    const sentNow = () => d.evaluate(() => window.__HZ_SENT__ || []).catch(() => []);
+    const rowIdxOf = (nm) => d.evaluate((n) => Array.from(document.querySelectorAll('.srg-row')).findIndex((r) => r.textContent.indexOf(n) >= 0), nm).catch(() => -1);
+    const f3 = await cmdSpy(() => wrapSent(async () => {
+      const i = await rowIdxOf('小家鼠（死）'); /* 死体行：笼位空也走 ITEM_CLICK */
+      if (i < 0) return 'NOROW';
+      await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' }); await page.waitForTimeout(60); return true;
+    }));
+    const sent3 = f3.r === true ? (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') : [];
+    check('RB-F3-dead-prey-food-path', sent3.length === 1 && sent3[0][1].rightClick === true && sent3[0][1].itemId === 925,
+      'sent=' + JSON.stringify(sent3) + '（死体→食物仓，官方 isMouse 只认活体）');
+    const f4 = await cmdSpy(() => wrapSent(async () => {
+      const i = await rowIdxOf('小家鼠'); /* 活体行（不含「（死）」命中排除：findIndex 首个=小家鼠） */
+      if (i < 0) return 'NOROW';
+      await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' }); await page.waitForTimeout(60); return true;
+    }));
+    const sent4 = f4.r === true ? (await sentNow()).filter((c) => c[0] === 'MOUSE_ADD') : [];
+    check('RB-F4-live-slotfree-add', sent4.length === 1 && sent4[0][1].itemId === 923,
+      'sent=' + JSON.stringify(sent4) + '（笼位 4 空=MOUSE_ADD）');
+    await d.evaluate(() => { try { window.State.mice = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }]; } catch (e) { } });
+    const f5 = await cmdSpy(() => wrapSent(async () => {
+      const i = await rowIdxOf('小家鼠'); if (i < 0) return 'NOROW';
+      await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' }); await page.waitForTimeout(60); return true;
+    }));
+    const sent5 = f5.r === true ? (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') : [];
+    check('RB-F5-live-slotfull-food', sent5.length === 1 && sent5[0][1].rightClick === true,
+      'sent=' + JSON.stringify(sent5) + '（笼位满=ITEM_CLICK 落食物仓）');
+    await d.evaluate(() => { try { window.State.mice = []; } catch (e) { } });
+    /* F6 柜源双跳：活猎物 take+GLPEND ev=mouse 落包后 MOUSE_ADD 回放新实例 */
+    await setMockItems({ bag: [[901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2]], '900102': [[924, 23, 1, 36000, 0, 0, 1, 1, 0, 7, -4]] }, [900102]);
+    await pushCtx('RatCage');
+    await page.waitForTimeout(60);
+    const f6 = await cmdSpy(() => wrapSent(async () => {
+      const i = await rowIdxOf('小家鼠'); if (i < 0) return 'NOROW';
+      await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' });
+      await page.waitForTimeout(900);
+      return { sentAfter: (await sentNow()).filter((c) => c[0] === 'MOUSE_ADD') };
+    }));
+    const v6 = f6.r && f6.r.sentAfter ? f6.r.sentAfter : [];
+    const take6 = (f6.calls || []).filter((c) => c[0] === 'take').pop();
+    check('RB-F6-prey-take-doublehop', !!take6 && take6[1].from === 900102 && JSON.stringify(take6[1].ids) === '[924]' &&
+      v6.length === 1 && v6[0][1].itemId >= 950000,
+      'take=' + JSON.stringify(take6) + ' mouseAdd=' + JSON.stringify(v6));
+    /* F7 切回食物 tab 右键回归 ITEM_CLICK */
+    await d.evaluate(() => { Array.from(document.querySelectorAll('#srgChips .srg-chip')).find((c) => c.textContent === '食物').click(); });
+    await page.waitForTimeout(60);
+    const f7 = await cmdSpy(() => wrapSent(async () => {
+      await d.click('.srg-row', { button: 'right' }); await page.waitForTimeout(60); return true;
+    }));
+    const sent7 = f7.r === true ? (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') : [];
+    check('RB-F7-food-tab-regression', sent7.length === 1 && sent7[0][1].rightClick === true,
+      'sent=' + JSON.stringify(sent7));
+  }
+  await glistOn('RatCage', false);
+  await page.evaluate(() => { delete window.__HZ_RBICFG__; delete window.__HZ_GLISTON__; });
+
+  await page.evaluate((base) => window.__HZ_MOCKSET__(base), BASE_MOCK); /* 还基线 */
 
   /* ---- §染料预设 E1-E6（Task 5）：8色动态 chips/单选任一色命中/主色点数降序/水滴 fill=主色/隐藏提示/空板容错 ---- */
   await page.evaluate(() => {
@@ -658,10 +1012,10 @@ function check(name, ok, detail) {
     const ft = await d.evaluate(() => { const e = document.getElementById('srgToast'); return e ? e.textContent : ''; }).catch(() => '');
     check('FD2-feedfail-toast', ft.indexOf('背包已满') >= 0, ft);
     await page.evaluate(() => { window.__HZ_FEEDFAIL__ = ''; });
-    /* FD4 拆净零残留：先制造 tip/detail/toast 再关 → 四节点全无 */
+    /* FD4 拆净零残留：先制造 tip/toast 再关 → 节点全无（v2.2.1 起 srgDetail 退役不建） */
     await d.evaluate(() => { const r = document.querySelectorAll('.srg-row')[0]; if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } });
     await page.waitForTimeout(50);
-    const hadNodes = await d.evaluate(() => !!document.getElementById('srgTip') && !!document.getElementById('srgDetail') && !!document.getElementById('srgToast')).catch(() => false);
+    const hadNodes = await d.evaluate(() => !!document.getElementById('srgTip') && !!document.getElementById('srgToast')).catch(() => false);
     await glistOn('Heater', false); await scan(); await page.waitForTimeout(60);
     const residue = await d.evaluate(() => ['srgTip', 'srgDetail', 'srgToast', 'srgPanel'].filter((id) => !!document.getElementById(id))).catch(() => ['ERR']);
     check('FD4-teardown-nodes', hadNodes === true && residue.length === 0, 'had=' + hadNodes + ' residue=' + JSON.stringify(residue));
@@ -909,13 +1263,14 @@ function check(name, ok, detail) {
     check('U1-bar-colors', !!r35 && /255, 193, 7|FFC107/i.test(r35.bar) && !!r15 && /244, 67, 54|F44336/i.test(r15.bar) && !!r33 && /76, 175, 80|4CAF50/i.test(r33.bar),
       '35=' + (r35 && r35.bar) + ' 15=' + (r15 && r15.bar) + ' 33=' + (r33 && r33.bar));
     check('U3-nouses-nobadge', rowsInfo.every((r) => r.use !== null || r.name === '草药'), JSON.stringify(rowsInfo.filter((r) => r.use === null)));
-    /* U4 悬停/详情含使用次数行 */
-    await d.evaluate(() => { const r = Array.from(document.querySelectorAll('.srg-row')).find((x) => x.querySelector('.srg-use')); if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } });
+    /* U4 悬停含使用次数行（v2.2.1：详情弹窗改道官方 ItemDetailPopup——左键半截改断言 idetail
+       实例级命令；官方弹窗内容官方渲染非 harness 面） */
+    const u4r = await cmdSpy(() => d.evaluate(() => { const r = Array.from(document.querySelectorAll('.srg-row')).find((x) => x.querySelector('.srg-use')); if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } return true; }));
     await page.waitForTimeout(50);
     const tipTxt = await d.evaluate(() => { const e = document.getElementById('srgTip'); return e ? e.textContent : ''; }).catch(() => '');
-    const dtlTxt = await d.evaluate(() => { const e = document.getElementById('srgDetail'); return e ? e.textContent : ''; }).catch(() => '');
-    await page.keyboard.press('Escape'); await page.waitForTimeout(40);
-    check('U4-tip-detail-uses', tipTxt.indexOf('使用次数：3/5') >= 0 && dtlTxt.indexOf('使用次数') >= 0 && dtlTxt.indexOf('3/5') >= 0, /* 详情卡 k/v 分列：冒号不连排 */ JSON.stringify({ tip: tipTxt.slice(0, 60), dtl: (dtlTxt.match(/使用次数[^，]*|使用次数.*/g) || [dtlTxt.slice(0, 40)])[0] }));
+    const u4c = (u4r.calls || []).filter((c) => c[0] === 'idetail').pop();
+    check('U4-tip-detail-uses', tipTxt.indexOf('使用次数：3/5') >= 0 && !!u4c && u4c[1].item > 0 && u4c[1].owner > 0,
+      JSON.stringify({ tip: tipTxt.slice(0, 60), idetail: u4c }));
   }
   /* U5：max 入键——同名同次数异 max（变体边缘）拆行 */
   await setMockItems({

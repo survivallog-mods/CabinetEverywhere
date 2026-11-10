@@ -444,6 +444,9 @@
          按类型判形互斥：pig=string / canBrew=number；bw 收紧 typeof number（染料页 pig 串
          truthy 不再误读成 bw=1） */
       bw: (r.length === 16 && typeof r[15] === 'number' && r[15]) ? 1 : 0,
+      /* rat-brew v2.2.7：RatCage 页尾列 prey 三值——0 非猎物/1 活体/2 死体（C# RatPreyKind：
+         活=Prey_Rarity>0、死=同动物 Model 结构关联）。与 bw 同位数字按页消费互斥。 */
+      prey: (r.length === 16 && typeof r[15] === 'number') ? r[15] : 0,
       pig: (r.length === 16 && typeof r[15] === 'string') ? r[15] : ''
     };
   }
@@ -827,7 +830,7 @@
     /* Bug3 v1.8.2.3：物品变更类命令发出后，官方格需官方重绑才重渲染——BackpackUI 页的
        C# 侧 RefreshBag 带参不可直调，此处对当前 owner 重发 SWITCH_BAG（官方重绑=同效刷新；
        600ms=命令泵 0.5s 周期后落点）。其余 12 页走 C# RefreshActivePage（无参官方动作）。 */
-    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && op !== 'pinOrder' && op !== 'setFilter' && store.ctx && store.ctx.page === 'BackpackUI') {
+    if (op !== 'rename' && op !== 'setTags' && op !== 'rackOpen' && op !== 'pinOrder' && op !== 'setFilter' && op !== 'basketPut' && store.ctx && store.ctx.page === 'BackpackUI') {
       setTimeout(function () { try { forgeSwitchTo(st.currentId); } catch (e) { } }, 600);
     }
   }
@@ -2172,10 +2175,13 @@
     if (plainSc) {
       st.mode = 'grid'; st.global = false; st.query = ''; st.tags = [];
     }
-    /* 作者 2026-11-08 令：派送委托页去排序钮→十四批扩投送物资页=Trade 场景非 trade 态全隐 */
+    /* 作者 2026-11-08 令：派送委托页去排序钮→十四批扩投送物资页=Trade 场景非 trade 态全隐；
+       rat-brew glist（spec 裁定#4）：两页排序钮随 glist 在场退役（v14.1 旧径代码保留，仅
+       harness 反向门可达）；染料页不在此列（dye 排序钮照旧——格子态仍可用） */
     el.srFoodSort.hidden = !isSortScene() || (st.scene === 'Trade' && window.__CERAIL_TRADEFX__ &&
       window.__CERAIL_TRADEFX__.data && window.__CERAIL_TRADEFX__.data.mode !== 'trade' &&
-      window.__CERAIL_TRADEFX__.data.mode !== 'none');
+      window.__CERAIL_TRADEFX__.data.mode !== 'none') ||
+      (GLIST[st.scene] && GLIST[st.scene].retireSort && glistOwnsPage(st.scene));
     if (menuFoot) menuFoot.sync();
     if (menuFoot) menuFoot.refresh();
     /* v1.9.1 筛选下拉：FS_KEYS 两页显示（批改：Trade/DroneHub，工作台撤），其余页隐藏 */
@@ -4428,8 +4434,28 @@
     Heater: { target: '炉膛', badge: 'heat', feed: 'fuel' },
     /* 实机批改#8 追加（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）：
        炉膛/燃料槽文案随官方页（BAGTABS[].fullText 同源差异），badge/feed 全同暖炉 */
-    FuelGenerator: { target: '燃料槽', badge: 'heat', feed: 'fuel' }
+    FuelGenerator: { target: '燃料槽', badge: 'heat', feed: 'fuel' },
+    /* 篮子救援 glist（basket spec 2026-11-09，第四场景）：BackpackUI 篮子模式——门=ctx.glistOn
+       （C# 侧已含 EnableGlistBasket&&IsBasket_B，非篮子模式恒 false=本页 rail 现行行为零扰动）；
+       徽章 badge='aid'（救助贡献实时边际分，Task 6 接线）；feed='basket'（右键官方快转直放） */
+    BackpackUI: { target: '篮子', badge: 'aid', feed: 'basket' },
+    /* rat-brew glist（rat-brew spec 2026-11-09，第五/六场景）：老鼠笼/酿酒桶——宿主走 rail 页
+       默认分支（#srRail 父=染料同机制，格子态 srg-plain 页脚保留=裁定#6）；feed='click'（两页
+       官方右键语义=ITEM_CLICK{rightClick} 移 1 件进目标仓，gamekb 实证 RatCage.html:523/
+       BrewPanel.html:444——落 dye 同款默认回放分支，柜源 take+GLPEND 双跳同链）；C# 侧
+       glistOn 两页无条件恒 true（裁定#7 零配置键）；badge：rat='sat'（🍗 s1 绿）/
+       brew='brew'（游戏三档酒精瓶图+品质色，tier 不进排序键=裁定：纯 s1 降序） */
+    RatCage: { target: '食物仓', badge: 'sat', feed: 'click', retireSort: 1 },
+    BrewPanel: { target: '酿酒桶', badge: 'brew', feed: 'click', retireSort: 1 }
   };
+  /* rat-brew 品质档（brew 页角标/悬停用；色=spec §4 定稿三色，饱和度调高一档非官方原色） */
+  var GLB_TIER_TXT = ['劣质', '普通', '烈性'];
+  var GLB_TIER_C = ['#7fe05a', '#ffc93c', '#ff7086'];
+  var GLB_TIER_SHELL = [ /* 角标壳三件（color/bg/border，bg·border 同色 18%/80%——原型定稿口径） */
+    'color:#7fe05a;background:rgba(127,224,90,.18);border:1px solid rgba(127,224,90,.8)',
+    'color:#ffc93c;background:rgba(255,201,60,.18);border:1px solid rgba(255,201,60,.8)',
+    'color:#ff7086;background:rgba(255,112,134,.18);border:1px solid rgba(255,112,134,.8)'
+  ];
   var GLIST_MAX_ROWS = 300;
   function glistDyeHex(dyeId) {
     var pal = store.ctx && store.ctx.dyePal;
@@ -4446,9 +4472,16 @@
   function glistNameOf(cfgId) { var ic = ICFG[cfgId]; return ic && ic.n ? ic.n : ('#' + cfgId); }
   function glistUsesOf(r) { return (r.length > 16 && r[16] != null) ? r[16] : null; } /* v2：剩余次数（null=无该维度） */
   function glistUsesMaxOf(r) { return (r.length > 17 && r[17] != null) ? r[17] : null; }
-  function glistItemKey(r) {
+  function glistItemKey(r, sceneKey) {
     var u = glistUsesOf(r);
-    return glistNameOf(r[1]) + '|' + (u == null ? '' : 'u' + u + '/' + glistUsesMaxOf(r)) + '|' + glistSigOf(r);
+    var k = glistNameOf(r[1]) + '|' + (u == null ? '' : 'u' + u + '/' + glistUsesMaxOf(r)) + '|' + glistSigOf(r);
+    /* rat-brew 拆行键（spec 裁定#5）：同名异值不并——rat 追加 s1、brew 追加 s1/s2（tier=s2/s1
+       派生，双值齐拆才不虚标档；蒜蓉西兰花 40/20 全游戏唯一实据面）。其他场景键逐字节不变。 */
+    var D = GLIST[sceneKey];
+    if (D && (D.badge === 'sat' || D.badge === 'brew')) {
+      k += '|' + (r.length > 9 ? r[9] : null) + (D.badge === 'brew' ? '/' + (r.length > 10 ? r[10] : null) : '');
+    }
+    return k;
   } /* 合并键 v2 终案=物品名+uses/max+attrSig：同名异 cfg 变体并／次数或上限异拆（行上官方「剩余/最大」徽章明示差异，批改#4）／料理随机属性异拆；timeLeft/flags/s 瞬态全不进键 */
   function glistAggregate(sceneKey) {
     var D = GLIST[sceneKey];
@@ -4465,10 +4498,17 @@
         /* 实机批改#1（含二追）：合并键=**物品名**+随机属性 s1..s4 签名——timeLeft/flags（食物态
            位：污染/过期/临期，燃料恒 0）与同名异 cfg 变体都不拆行；随机属性任异（随性「辣/甜」类）
            仍各行。行 key 与 glistItemKey 同构（取件/回放匹配同口径）。 */
-        var mk = glistItemKey(r);
+        var mk = glistItemKey(r, sceneKey);
         var g = byKey[mk];
-        if (!g) { g = byKey[mk] = { key: mk, cfg: r[1], name: '', ico: '', total: 0, srcs: [], ord: groups.length, uses: r.length > 16 ? r[16] : null, usesMax: r.length > 17 ? r[17] : null }; groups.push(g); }
+        if (!g) { g = byKey[mk] = { key: mk, cfg: r[1], name: '', ico: '', total: 0, srcs: [], ord: groups.length, uses: r.length > 16 ? r[16] : null, usesMax: r.length > 17 ? r[17] : null, tl: 0 }; groups.push(g); }
+        /* rat-brew：行捕获实例 s1/s2（拆行键已保证组内同值，首叠即代表；badge/排序/Tier 全源此） */
+        if (D.badge === 'sat' || D.badge === 'brew') {
+          if (g.s1 === undefined) { g.s1 = (r.length > 9 ? r[9] : null); g.s2 = (r.length > 10 ? r[10] : null); }
+        }
         var n = r[2] || 0; g.total += n;
+        var ttl = r[3] || 0; /* 篮子 nowish「保质期」排序键=行内最快到期（basket spec §8 实现裁定4） */
+        if (ttl > 0 && (g.tl === 0 || ttl < g.tl)) g.tl = ttl;
+        g.val = (g.val || 0) + (r.length > 13 && r[13] != null ? r[13] : 0); /* 终审 M2：交易价值=Σ逐叠 tradeV（含使用次数折算）；短行回退 icfg.trade×total（排序侧） */
         var hit = null;
         for (var s = 0; s < g.srcs.length; s++) if (g.srcs[s][0] === ck) { hit = g.srcs[s]; break; }
         if (hit) hit[2] += n; else g.srcs.push([ck, ck === 'bag' ? '背包' : (function (c) { return c ? nm(c) : ck; })(ctnById(ck)), n]); /* 终审 M7：nm()=自定义名 overlay（srp_ctn_names 存量只读） */
@@ -4482,7 +4522,26 @@
         gr.fuel = !!(ic && ic.burn);
         if (!gr.fuel) { hidden++; continue; }
         gr.badge = { v: ic ? (ic.burnV || 0) : 0 };
-      } else {
+      } else if (D.badge === 'aid') {
+        /* 篮子救援 glist（basket spec §5.2）：全行可见零预设隐藏（筛选=chips 单选显式行为）；
+           分值徽章/排序键=ctx.basket.scores（glistRender 侧接线——聚合不掺场景态，契约数据
+           驱动徽章与排序在渲染层做，篮子内容变化即联动） */
+      } else if (D.badge === 'sat') {
+        /* rat-brew（rat v2.2.7 作者令）：聚合池=猎物（含死体，prey 1|2）或有饱腹值（s1>0，
+           官方页准入同口径）——**tab 过滤在渲染层**（GL_MEMO 按 rev 记忆，tab 切换不变 rev）；
+           饱腹 badge 全池行都给（食物 tab 排猎物后只剩食物行带角标；猎物 tab 渲染层压角标、
+           活/死异名异 cfg 天然拆行） */
+        var preyR = !!(ic && ic.prey);
+        if (!(preyR || gr.s1 > 0)) { hidden++; continue; }
+        if (gr.s1 > 0) gr.badge = { v: gr.s1 };
+      } else if (D.badge === 'brew') {
+        /* rat-brew（brew）：bw=物品级 canBrew（v14.1 icfg 尾列，BrewPanel 页推送）；可酿+有饱腹
+           才可见（官方 vatGrid canAcceptItem 同口径）；tier=v14.1 brewTierOf 垫片（s2/s1 三档，
+           s2 null→0；ctx.brewP1/P2 缺省守卫在 brewTierOf 内）——tier 只进角标不进排序键 */
+        if (!ic || !ic.bw || !(gr.s1 > 0)) { hidden++; continue; }
+        gr.tier = brewTierOf({ s1: gr.s1, s2: gr.s2, cfgId: gr.cfg });
+        gr.badge = { v: gr.s1, tier: gr.tier };
+      } else if (D.badge === 'pig') {
         var m = pigMapOf(gr.cfg), best = 0, bestId = null; /* 终审 M4：canDye 闸门不在契约（官方页模型私有）——glist 徽章/排序不设闸，右键由官方 ITEM_CLICK 裁决拒收；染料排序批 dyePts 闸门保持原面（两特性数据面不同，非矛盾） */
         for (var did in m) if (m[did] > best) { best = m[did]; bestId = did; }
         if (!bestId) { hidden++; continue; }
@@ -4493,7 +4552,7 @@
       }
       rows.push(gr);
     }
-    rows.sort(function (a, b) { return (b.badge.v - a.badge.v) || (a.ord - b.ord); });
+    rows.sort(function (a, b) { return ((b.badge ? b.badge.v : 0) - (a.badge ? a.badge.v : 0)) || (a.ord - b.ord); });
     var truncated = false;
     if (rows.length > GLIST_MAX_ROWS) { rows = rows.slice(0, GLIST_MAX_ROWS); truncated = true; }
     var out = { rows: rows, hiddenCount: hidden, truncated: truncated };
@@ -4529,6 +4588,10 @@
        实机批改#8 追加 FuelGenerator（复用暖炉），#9 起该族页 srfg 旧方案在 glist 在场时退役 */
     var bt = BAGTABS[f.key];
     if (bt) return f.doc.querySelector('.' + bt.sys + ' > .panel:not(.' + bt.right + ')');
+    /* 篮子救援 glist（basket spec §5.2）：BackpackUI 篮子模式宿主=A 侧 .bag-panel（B 侧
+       is-basket-panel=官方面板不动区）。gate 已确保只在篮子态进场（非篮子单 .bag-panel 形态
+       glistOn=false 不会走到此）；选择器兜底「无 basket 类的 bag-panel」=非篮子形态也不误占 */
+    if (f.key === 'BackpackUI') return f.doc.querySelector('.backpack-container .bag-panel:not(.is-basket-panel)');
     var rail = f.doc.getElementById('srRail'); /* DyePanel：rail 壳在位后宿主=其父（官方 bag 列） */
     return rail ? rail.parentNode : null;
   }
@@ -4592,10 +4655,29 @@
     }
     var chipsEl = p.querySelector('#srgChips'); /* 预设 chips 点击（委托，chips 随签名重写） */
     if (chipsEl) chipsEl.addEventListener('click', function (e) {
+      /* 篮子 nowish 手动排序：菜单项=选定键（localStorage 持久）；排序牌=开合菜单 */
+      var opt = e.target && e.target.closest ? e.target.closest('.srg-sortopt') : null;
+      if (opt) {
+        GLBSORT[f.key] = opt.getAttribute('data-k') || '';
+        try { localStorage.setItem('srp_glist_sort_' + f.key, GLBSORT[f.key]); } catch (e2) { }
+        glistRender(f);
+        return;
+      }
+      var sb = e.target && e.target.closest ? e.target.closest('.srg-sortbtn') : null;
+      if (sb) {
+        var mm = chipsEl.querySelector('.srg-sortmenu');
+        if (mm) mm.classList.toggle('open');
+        return;
+      }
       var chip = e.target && e.target.closest ? e.target.closest('.srg-chip') : null;
       if (!chip || chip.classList.contains('lock')) return; /* lock=固定筛选不可取消（点击无操作） */
       var c = chip.getAttribute('data-c');
-      GLCLR[f.key] = (c === '' || c == null) ? null : Number(c);
+      /* v2.2.5：非数字 tab 键（food/mouse）保留原串——染料色号/basket 类别照旧数字 */
+      var cn = Number(c);
+      var v = (c === '' || c == null) ? null : (isNaN(cn) ? c : cn);
+      /* 篮子场景单选（basket spec §5.2）：再点同枚=取消回全部（作者裁定；染料场景维持原「全部」枚回退） */
+      if (GLIST[f.key].feed === 'basket' && v !== null && GLCLR[f.key] === v) v = null;
+      GLCLR[f.key] = v;
       glistRender(f);
     });
     /* 行三键（Task 4）：事件委托挂 mod 自有 #srgList（行 innerHTML 随签名守卫重写，委托不随行重建丢） */
@@ -4604,7 +4686,7 @@
       list.addEventListener('mouseover', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistShowTip(f, e, row.getAttribute('data-key')); });
       list.addEventListener('mousemove', function (e) { glistMoveTip(f, e); });
       list.addEventListener('mouseout', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistHideTip(f); });
-      list.addEventListener('click', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistShowDetail(f, row.getAttribute('data-key')); });
+      list.addEventListener('click', function (e) { var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null; if (row) glistOpenDetail(f, row.getAttribute('data-key')); });
       list.addEventListener('contextmenu', function (e) {
         var row = e.target && e.target.closest ? e.target.closest('.srg-row') : null;
         if (!row) return;
@@ -4612,7 +4694,7 @@
         glistFeed(f, row.getAttribute('data-key'));
       });
     }
-    if (!doc.__srgEsc) { /* Esc 关详情：文档级监听需防重挂（面板重建同文档累积） */
+    if (!doc.__srgEsc) { /* v2.2.1 srgDetail 退役：Esc 监听留作旧面板残留兜底（GREEN 后无节点零动作） */
       doc.__srgEsc = true;
       doc.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
@@ -4660,7 +4742,18 @@
   function glistAttrLines(f, r) {
     var lines = [];
     if (r.uses != null && r.usesMax > 1) lines.push('使用次数：' + r.uses + '/' + r.usesMax); /* 批改#4 */
-    if (GLIST[f.key].badge === 'pig') { lines.push('颜色：' + glistDyeName(r.colorId)); lines.push('色素值（主色）：' + r.mainPts); }
+    if (GLIST[f.key].badge === 'aid') {
+      /* 篮子三态属性行（basket spec §5.2 悬停=贡献说明）：类型+实时贡献（scores 联动）/禁入 */
+      var bkt = store.ctx && store.ctx.basket, ic = ICFG[r.cfg];
+      lines.push('类型：' + (ic ? ic.cat : '—'));
+      var sc = glistAidScore(bkt, r);
+      if (sc != null) lines.push('救助贡献：+' + sc + '（' + glistAidLabel(bkt, r) + (r.uses != null && r.uses > 0 ? ' · 剩余 ' + r.uses + '/' + r.usesMax : '') + '）');
+      if (bkt && bkt.forbid && bkt.forbid.indexOf(r.cfg) >= 0) lines.push('篮子不收这件');
+    }
+    else if (GLIST[f.key].badge === 'pig') { lines.push('颜色：' + glistDyeName(r.colorId)); lines.push('色素值（主色）：' + r.mainPts); }
+    /* rat-brew（spec §5.4）：品质文字只进悬停/详情（角标上禁文字=作者令）；brew 两行、sat 单行 */
+    else if (GLIST[f.key].badge === 'sat') { lines.push('饱腹度：' + r.s1); } /* v2.2.5 直读 s1：猎物行无 badge（角标不画但悬停可看——猎物本身可食用） */
+    else if (GLIST[f.key].badge === 'brew') { lines.push('饱腹度：' + r.badge.v); lines.push('预估品质：' + GLB_TIER_TXT[(r.badge && r.badge.tier) || 0] + '（心态密度三档）'); }
     else { lines.push('热值：' + r.badge.v); lines.push('类别：可燃物'); }
     return lines;
   }
@@ -4684,25 +4777,16 @@
     t.style.left = x + 'px'; t.style.top = y + 'px';
   }
   function glistHideTip(f) { var t = f.doc.getElementById('srgTip'); if (t && t.style.display !== 'none') { t.style.display = 'none'; glW(); } }
-  function glistShowDetail(f, key) {
+  /* v2.2.1（作者令「列表所有物品都用官方原生详情弹窗」）：左键=官方 ItemDetailPopup 实例级直开
+     ——FEFO 挑中那叠（与右键同口径）→ idetail 命令（C# 直调官方动作 Ac_ItemDetailPopup_OpenUI
+     ItemId+OwnerId——官方动作原生支持任意容器归属物品=柜源行同样可开；TipsType=Default 纯查看，
+     TradeFx OpDetail §0-2 直调先例同款）。mod 自建 srgDetail（属性不全根因）整段退役。 */
+  function glistOpenDetail(f, key) {
     var r = glistRowByKey(f, key); if (!r) return;
     glistHideTip(f);
-    var ov = f.doc.getElementById('srgDetail');
-    if (!ov) { ov = f.doc.createElement('div'); ov.id = 'srgDetail'; ov.className = 'srg-detail'; f.doc.body.appendChild(ov); glW(); }
-    var rows = glistAttrLines(f, r).map(function (l) {
-      var kv = l.split('：');
-      return '<div class="srg-dtl-row"><span class="k">' + esc(kv[0]) + '</span><span class="v">' + esc(kv.slice(1).join('：')) + '</span></div>';
-    }).join('');
-    var src = ''; for (var i = 0; i < r.srcs.length; i++) src += '<div class="srg-dtl-src">' + esc(r.srcs[i][1]) + ' <b>×' + r.srcs[i][2] + '</b></div>';
-    ov.innerHTML = '<div class="srg-detail-card"><div class="srg-dtl-head">' +
-      (r.ico ? '<img src="' + esc(r.ico) + '" alt="" aria-hidden="true" style="width:26px;height:26px;object-fit:contain">' : '') +
-      '<b>' + esc(r.name) + '</b><span class="srg-dtl-close" id="srgDtlClose">×</span></div>' +
-      rows + '<div class="srg-dtl-row"><span class="k">合计数量</span><span class="v">x' + r.total + '</span></div>' + src +
-      '<div class="srg-dtl-foot">右键列表行 = 移 1 件到' + GLIST[f.key].target + '</div></div>';
-    ov.style.display = 'flex'; glW();
-    var x = ov.querySelector('#srgDtlClose');
-    if (x) x.addEventListener('click', function () { ov.style.display = 'none'; });
-    ov.onclick = function (e) { if (e.target === ov) ov.style.display = 'none'; }; /* 点空白关（卡片内冒泡除外） */
+    var pick = glistPickFefo(r, false, f.key) || glistPickFefo(r, true, f.key);
+    if (!pick) { glistToast(f, '未找到该物品的实例'); return; }
+    try { cmdOut('idetail', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id, cat: r.cfg }); } catch (e) { }
   }
   function glistToast(f, msg) {
     var t = f.doc.getElementById('srgToast');
@@ -4718,15 +4802,34 @@
       if (w && w.core && w.core.UnitySendEvent) w.core.UnitySendEvent('ITEM_CLICK', { itemId: parseInt(itemId, 10) || 0, rightClick: true });
     } catch (e) { try { console.warn('[CERail] glist 官方回放失败', e && (e.message || e)); } catch (e2) { } }
   }
+  /* v2.2.5：老鼠 tab 行官方回放=MOUSE_ADD（官方 RatCage.html onItemClick 同款事件——入笼位） */
+  function glistMouseReplay(f, itemId) {
+    try {
+      var w = f.doc.defaultView;
+      if (w && w.core && w.core.UnitySendEvent) w.core.UnitySendEvent('MOUSE_ADD', { itemId: parseInt(itemId, 10) || 0 });
+    } catch (e) { try { console.warn('[CERail] glist MOUSE_ADD 回放失败', e && (e.message || e)); } catch (e2) { } }
+  }
+  /* v2.2.5 三单#2（作者令「按官方逻辑，不要自己造」）：官方 RatCage.html onItemClick 分支逐字——
+     活鼠且笼位有空 → MOUSE_ADD 入笼位；笼位满/死鼠 → ITEM_CLICK{rightClick} 落食物仓。
+     笼位态读官方页全局 State（同 iframe 只读，mice.length/mouseSlotCount——官方页顶 var State）；
+     读不到（页面未就绪窗口）=按满位走 ITEM_CLICK（官方侧自校验）。 */
+  function glistRatSlotFree(f) {
+    try {
+      var w = f.doc.defaultView, st = w && w.State;
+      return !!(st && st.mice && st.mouseSlotCount != null && st.mice.length < st.mouseSlotCount);
+    } catch (e) { return false; }
+  }
+  function glistRowIsPrey(f, r) { return GLIST[f.key].badge === 'sat' && !!(r && ICFG[r.cfg] && ICFG[r.cfg].prey); } /* 场景守卫：prey 位与 canBrew 同位数字，仅 RatCage 消费（BrewPanel 页 r[15]=bw 不得误读）；v2.2.7 含死体（值 1|2） */
+  function glistRowIsLivePrey(f, r) { return GLIST[f.key].badge === 'sat' && !!(r && ICFG[r.cfg] && ICFG[r.cfg].prey === 1); } /* v2.2.7：MOUSE_ADD 路由只认活体（官方 isMouse 同口径——死体 ITEM_CLICK 落食物仓） */
   /* FEFO（作者 v2 终案）：行内全部候选叠按 timeLeft 升序取最快过期者（无保鲜维度=同分取先见，
      非食物恒 0=任意）；nameOnly=键失配兜底同名通道。返回命中叠 id+所在容器。 */
-  function glistPickFefo(row, nameOnly) {
+  function glistPickFefo(row, nameOnly, sceneKey) {
     var best = null, bestTl = 0, bestSrc = null;
     for (var si = 0; si < row.srcs.length; si++) {
       var arr = store.items[row.srcs[si][0]] || [];
       for (var i = 0; i < arr.length; i++) {
         var it = arr[i]; if (!it) continue;
-        if (!(nameOnly ? glistNameOf(it[1]) === row.name : glistItemKey(it) === row.key)) continue;
+        if (!(nameOnly ? glistNameOf(it[1]) === row.name : glistItemKey(it, sceneKey) === row.key)) continue;
         var tl = it[3] || 0;
         if (best === null || tl < bestTl) { best = it; bestTl = tl; bestSrc = row.srcs[si][0]; }
       }
@@ -4736,21 +4839,38 @@
   function glistFeed(f, key) {
     var r = glistRowByKey(f, key), D = GLIST[f.key];
     if (!r || !r.srcs.length) return;
-    var pick = glistPickFefo(r, false) || glistPickFefo(r, true);
+    var pick = glistPickFefo(r, false, f.key) || glistPickFefo(r, true, f.key);
     if (!pick) { glistToast(f, '未找到可用的' + r.name); return; }
     var srcName = '背包';
     for (var si2 = 0; si2 < r.srcs.length; si2++) if (r.srcs[si2][0] === pick.srcKey) srcName = r.srcs[si2][1];
     if (D.feed === 'fuel') {
       cmdOut('feed', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id });
       glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 ' + srcName + '）'); /* 送出≠已入：失败经 ctx.feedFail 面（终审 I1/I2） */
+    } else if (D.feed === 'basket') {
+      /* 禁入预检（官方 IsBasketForbidItem 口径置灰行——右键直接拒绝零 op，basket spec §5.2） */
+      var bkt = store.ctx && store.ctx.basket;
+      if (bkt && bkt.forbid && bkt.forbid.indexOf(r.cfg) >= 0) {
+        glistToast(f, '篮子不收这件：' + r.name);
+        return;
+      }
+      /* 篮子救援 glist（basket spec §5.1）：1 件直放篮子——C# 走官方快转动作（满/禁预检+
+         官方校验全在 C# 侧；柜源不落包直达由 C# 拆件中转，对玩家=一步）。失败经 ctx.feedFail
+         （glistSettle 优先面，fuel 同款）；不 forge SWITCH_BAG（篮子模式重绑语义异形，官方
+         快转动作自带官方链刷新） */
+      cmdOut('basketPut', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id });
+      glistToast(f, '已放 1 件 ' + r.name + ' → 篮子（取自 ' + srcName + '）');
     } else if (pick.srcKey === 'bag') {
-      glistDyeReplay(f, pick.id);
-      glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 背包）'); /* 拒收由官方飘字裁决（I2：不预支成功话术） */
+      /* v2.2.5 三单#2：官方路由逐字（RatCage.html onItemClick）——活猎物+笼位有空=MOUSE_ADD
+         入笼位；笼位满/死猎物=ITEM_CLICK rightClick 落食物仓（官方侧自校验飘字）；食物行同径 */
+      var livePreyBag = glistRowIsLivePrey(f, r) && glistRatSlotFree(f);
+      if (livePreyBag) { glistMouseReplay(f, pick.id); glistToast(f, '已移 1 件 ' + r.name + ' → 笼位（取自 背包）'); }
+      else { glistDyeReplay(f, pick.id); glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 背包）'); }
     } else {
       var q = GLPENDQ[f.key] || (GLPENDQ[f.key] = []);
-      if (q.length < 8) q.push({ key: r.key, cfg: r.cfg, name: r.name, at: Date.now() });
+      var ev2 = (glistRowIsLivePrey(f, r) && glistRatSlotFree(f)) ? 'mouse' : 'item';
+      if (q.length < 8) q.push({ key: r.key, cfg: r.cfg, name: r.name, at: Date.now(), ev: ev2 });
       cmdOut('take', { ids: [pick.id], from: Number(pick.srcKey), all: false });
-      glistToast(f, '正在取 1 件 ' + r.name + '（取自 ' + srcName + '）→ ' + D.target);
+      glistToast(f, '正在取 1 件 ' + r.name + '（取自 ' + srcName + '）→ ' + (ev2 === 'mouse' ? '笼位' : D.target));
     }
   }
   function glistPump(f) { /* 契约落地后消费待回放队列（双跳第二拍；合并键匹配+超时面） */
@@ -4761,12 +4881,12 @@
       if (Date.now() - pend.at > 5000) { glistToast(f, '取件超时：' + pend.name + ' 仍在柜中（背包满或通道断）'); continue; } /* 终审 I2：超时不再静默 */
       var hit = null, hitTl = 0;
       for (var j = 0; j < arr.length; j++) { /* FEFO：同键多叠取最快过期 */
-        var it2 = arr[j]; if (!it2 || glistItemKey(it2) !== pend.key) continue;
+        var it2 = arr[j]; if (!it2 || glistItemKey(it2, f.key) !== pend.key) continue;
         var tl2 = it2[3] || 0;
         if (hit === null || tl2 < hitTl) { hit = it2[0]; hitTl = tl2; }
       }
       if (hit == null) for (var j2 = 0; j2 < arr.length; j2++) if (arr[j2] && glistNameOf(arr[j2][1]) === pend.name) { hit = arr[j2][0]; break; }
-      if (hit != null) glistDyeReplay(f, hit);
+      if (hit != null) { if (pend.ev === 'mouse') glistMouseReplay(f, hit); else glistDyeReplay(f, hit); } /* v2.2.5：GLPEND ev 分派（老鼠 tab 柜源双跳第二拍） */
       else keep.push(pend); /* 未落包：留队等下一拍 */
     }
     GLPENDQ[f.key] = keep;
@@ -4785,6 +4905,16 @@
     if (GLIST[f.key].badge === 'heat') { /* 暖炉/发电机口径（spec §5.3）：固定筛选不可取消（lock）+常驻排序牌 */
       return '<span class="srg-chip on lock">🔥 仅可燃物</span><span class="srg-plaque">🔥 按热值 ↓</span>';
     }
+    if (GLIST[f.key].badge === 'aid') return glistBasketChips(f); /* 篮子三态（basket spec §5.2） */
+    /* rat-brew（spec §5.3）：brew 无 chips 仅常驻排序牌；rat=双 tab 单选（作者令 v2.2.5：
+       食物/老鼠，默认食物——食物=排除猎物+饱腹降序牌；老鼠=只猎物先见序无牌） */
+    if (GLIST[f.key].badge === 'sat') {
+      var onFood = GLCLR[f.key] !== 'mouse';
+      return '<span class="srg-chip' + (onFood ? ' on' : '') + '" data-c="food">食物</span>' +
+        '<span class="srg-chip' + (!onFood ? ' on' : '') + '" data-c="mouse">猎物</span>' +
+        (onFood ? '<span class="srg-plaque">🍗 按饱腹度 ↓</span>' : '');
+    }
+    if (GLIST[f.key].badge === 'brew') return '<span class="srg-plaque">🍗 按饱腹度 ↓</span>';
     if (GLIST[f.key].badge !== 'pig') return '';
     var pal = (store.ctx && store.ctx.dyePal) || [];
     var sel = GLCLR[f.key];
@@ -4796,9 +4926,127 @@
     return h + '<span class="srg-plaque">💧 按色素值 ↓</span>';
   }
   function glistBadgeHtml(key, r) {
+    if (GLIST[key].badge === 'aid') { /* 篮子：分值徽章=ctx.basket.scores（渲染层接，篮子内容变化即联动 21→6）——
+       先于 !r.badge 守卫：aid 行聚合无 badge（分值属场景态非物品属性） */
+      var bkt = store.ctx && store.ctx.basket;
+      var sc = glistAidScore(bkt, r);
+      if (sc == null) return '';
+      return '<span class="srg-badge srg-aid" title="救助贡献 +' + sc + ' · ' + esc(glistAidLabel(bkt, r)) + '">+' + sc + '</span>';
+    }
     if (!r.badge) return '';
     if (GLIST[key].badge === 'pig') return '<span class="srg-badge srg-pig" style="color:' + esc(r.badge.hex || '#fff') + '">' + dyeDropSvg(r.badge.hex || '#fff') + r.badge.v + '</span>';
+    /* rat-brew：rat=🍗 数值绿（FBCOLOR.sat 全 mod 饱腹惯例色）；brew=游戏三档酒精瓶实物图
+       （ctx.brewIco[tier]，缺省=窗口期无图纯色）+档色壳（spec §4 定稿三色，饱和度调高一档） */
+    if (GLIST[key].badge === 'sat') {
+      /* v2.2.5 三单修订：老鼠 tab 压角标（猎物在此 tab 是「老鼠」不是「食物」）；食物 tab 含猎物全池角标 */
+      if (GLCLR[key] === 'mouse') return '';
+      return '<span class="srg-badge srg-sat">🍗 ' + r.badge.v + '</span>';
+    }
+    if (GLIST[key].badge === 'brew') {
+      var t = r.badge.tier || 0;
+      var bico = (store.ctx && store.ctx.brewIco && store.ctx.brewIco[t]) ? '<img class="srg-bico" src="' + esc(store.ctx.brewIco[t]) + '" alt="" aria-hidden="true" draggable="false">' : '';
+      return '<span class="srg-badge srg-brew" style="' + GLB_TIER_SHELL[t] + '">' + bico + r.badge.v + '</span>';
+    }
     return '<span class="srg-badge srg-heat">🔥 ' + r.badge.v + '</span>';
+  }
+  /* ---- 篮子救援 glist 三态 chips/排序（basket spec §5.2；作者裁定 2026-11-09：
+     有许愿=许愿类别单选+贡献排序牌常驻；无许愿=9 固定分类+手动排序六键；垂危=食物+饱腹）---- */
+  var GLBSORT = {}; /* sceneKey -> nowish 手动排序键（''=原始序；localStorage srp_glist_sort_<scene> 持久） */
+  var GLB_SORT_KEYS = [['sat', '饱腹'], ['mind', '心态'], ['en', '精力'], ['hp', '生命'], ['shelf', '保质期'], ['value', '交易价值']];
+  var GLB_NOWISH_CATS = [[0, '全部'], [1, '食物'], [9, '材料'], [5, '日用品'], [13, '燃料'], [2, '药品'], [3, '书刊'], [6, '工具'], [10, '种子']];
+  function glistBasketChips(f) {
+    var b = store.ctx && store.ctx.basket;
+    if (!b) return '';
+    var sel = glistBSel(f), h = '', i;
+    if (b.mode === 'nowish') {
+      for (i = 0; i < GLB_NOWISH_CATS.length; i++) {
+        var c = GLB_NOWISH_CATS[i];
+        var on = (c[0] === 0 && sel == null) || sel === c[0];
+        /* 全部=data-c 空串（染料先例；终审 I3：data-c="0" 会把 GLCLR 置 0 滤空 catId===0） */
+        h += '<span class="srg-chip' + (on ? ' on' : '') + '" data-c="' + (c[0] === 0 ? '' : c[0]) + '">' + c[1] + '</span>';
+      }
+      var k = glistBSort(f.key), kn = '';
+      for (i = 0; i < GLB_SORT_KEYS.length; i++) if (GLB_SORT_KEYS[i][0] === k) kn = GLB_SORT_KEYS[i][1];
+      h += '<span class="srg-plaque srg-sortbtn" data-k="' + k + '" title="选择排序方式">' + (kn ? kn + ' ↓' : '排序 ▾') + '</span>';
+      h += '<span class="srg-sortmenu" id="srgSortMenu">';
+      for (i = 0; i < GLB_SORT_KEYS.length; i++) h += '<span class="srg-sortopt" data-k="' + GLB_SORT_KEYS[i][0] + '">' + GLB_SORT_KEYS[i][1] + '</span>';
+      return h + '</span>';
+    }
+    /* wish/dying：chips=ctx（wish=今日许愿+⚠危机枚；dying=C# 给的食物枚）；单选再点同枚取消回全部 */
+    for (i = 0; i < (b.chips || []).length; i++) {
+      var ch = b.chips[i];
+      h += '<span class="srg-chip' + (sel === ch.id ? ' on' : '') + (ch.warn ? ' warn' : '') + '" data-c="' + ch.id + '">' +
+        (ch.warn ? '⚠ ' : '') + esc(ch.name || ('#' + ch.id)) + '</span>';
+    }
+    if (b.mode === 'dying') h += '<span class="srg-plaque">🍗 按饱腹 ↓</span>';
+    else if (b.scores && Object.keys(b.scores).length) h += '<span class="srg-plaque">❤ 按救助贡献 ↓</span>';
+    return h;
+  }
+  /* sel 池校验（终审 I3b）：GLCLR 跨态残留（换日换池/wish→nowish）不在当前类别池=视为全部
+     ——防「无 chip 高亮但列表被旧类别过滤」的不明短列表 */
+  function glistBSel(f) {
+    var sel = GLCLR[f.key];
+    if (sel == null) return null;
+    var b = store.ctx && store.ctx.basket;
+    if (!b) return null;
+    if (b.mode === 'nowish') {
+      for (var i = 0; i < GLB_NOWISH_CATS.length; i++) if (GLB_NOWISH_CATS[i][0] === sel) return sel;
+      return null;
+    }
+    var chips = b.chips || [];
+    for (var j = 0; j < chips.length; j++) if (chips[j].id === sel) return sel;
+    return null;
+  }
+  function glistBSort(key) {
+    if (GLBSORT[key] === undefined) {
+      var v = '';
+      try { v = localStorage.getItem('srp_glist_sort_' + key) || ''; } catch (e) { }
+      GLBSORT[key] = v;
+    }
+    return GLBSORT[key];
+  }
+  /* 行分值键（实机批改#1）：无 uses=纯 cfgId；有 uses="cfg|u<uses>/<usesMax>"——多次使用物品
+     剩余次数异=分值异=拆行（glistItemKey 合并键同口径，C# BasketGlist.KindKey 同构） */
+  function glistAidScoreKey(r) {
+    return (r.uses != null && r.uses > 0) ? r.cfg + '|u' + r.uses + '/' + (r.usesMax != null ? r.usesMax : 0) : String(r.cfg);
+  }
+  function glistAidScore(bkt, r) { return bkt && bkt.scores ? bkt.scores[glistAidScoreKey(r)] : null; }
+  /* 贡献说明（徽章/悬停共用）：命中今日许愿/危机枚/非想要折算三档口径 */
+  function glistAidLabel(bkt, r) {
+    var ic = ICFG[r.cfg], cat = ic ? ic.catId : 0, chips = (bkt && bkt.chips) || [];
+    for (var i = 0; i < chips.length; i++) if (chips[i].id === cat) return chips[i].warn ? '危机求助' : '今日想要';
+    return '非想要 · 低折算';
+  }
+  /* aid 行集后处理：类别单选过滤 + 三态排序（wish=贡献降序无分垫底 / dying=饱腹降序 /
+     nowish=手动六键，shelf 升序其余降序，''=原始序） */
+  function glistBasketRows(f, rows) {
+    var b = store.ctx && store.ctx.basket;
+    if (!b) return rows;
+    var sel = glistBSel(f), out = [], i;
+    for (i = 0; i < rows.length; i++) {
+      var ic = ICFG[rows[i].cfg];
+      if (sel != null && (!ic || ic.catId !== sel)) continue;
+      out.push(rows[i]);
+    }
+    var scores = b.scores || {};
+    if (b.mode === 'wish' && Object.keys(scores).length) {
+      out.sort(function (a, c) { return ((glistAidScore(b, c) != null ? glistAidScore(b, c) : -1) - (glistAidScore(b, a) != null ? glistAidScore(b, a) : -1)) || (a.ord - c.ord); });
+    } else if (b.mode === 'dying') {
+      out.sort(function (a, c) { var va = ICFG[a.cfg] ? ICFG[a.cfg].v1 : 0, vc = ICFG[c.cfg] ? ICFG[c.cfg].v1 : 0; return (vc - va) || (a.ord - c.ord); });
+    } else if (b.mode === 'nowish') {
+      var k = glistBSort(f.key);
+      if (k === 'shelf') out.sort(function (a, c) { var va = a.tl || Infinity, vc = c.tl || Infinity; return (va - vc) || (a.ord - c.ord); });
+      else if (k) {
+        var vi = { sat: 'v1', mind: 'v2', en: 'v3', hp: 'v5' }[k];
+        if (vi) out.sort(function (a, c) { var va = ICFG[a.cfg] ? ICFG[a.cfg][vi] : 0, vc = ICFG[c.cfg] ? ICFG[c.cfg][vi] : 0; return (vc - va) || (a.ord - c.ord); });
+        else if (k === 'value') out.sort(function (a, c) {
+          var va = a.val > 0 ? a.val : (ICFG[a.cfg] ? ICFG[a.cfg].trade : 0) * a.total;
+          var vc = c.val > 0 ? c.val : (ICFG[c.cfg] ? ICFG[c.cfg].trade : 0) * c.total;
+          return (vc - va) || (a.ord - c.ord);
+        });
+      }
+    }
+    return out;
   }
   function glistRender(f) {
     var p = f.doc.getElementById('srgPanel');
@@ -4811,7 +5059,24 @@
       var cr = []; for (var ci = 0; ci < rows.length; ci++) if (rows[ci].pig && rows[ci].pig[String(GLCLR[f.key])] > 0) cr.push(rows[ci]);
       rows = cr;
     }
+    /* 篮子三态：类别单选过滤+排序（basket spec §5.2；置于搜索过滤前=先类别后搜索同染料序） */
+    if (GLIST[f.key].badge === 'aid') rows = glistBasketRows(f, rows);
+    /* rat 双 tab（v2.2.7 作者令）：食物 tab=排除猎物（含死体）；猎物 tab=只猎物（活死都收，
+       活/死异名异 cfg 天然拆行）+压角标。渲染层过滤（GL_MEMO 按 rev 记忆不随 tab 失效）。
+       计数本地变量（不写 a.hiddenCount——记忆对象禁污染）供 footR 换算 */
+    var rbFoot = -1, rbPreyShown = 0; /* -1=非 rat 场景 */
+    if (GLIST[f.key].badge === 'sat') {
+      var poolN = rows.length, rbPreyN2 = 0;
+      rows = rows.filter(function (r2) {
+        var p2 = !!(ICFG[r2.cfg] && ICFG[r2.cfg].prey);
+        if (GLCLR[f.key] === 'mouse') { if (p2) rbPreyN2++; return p2; }
+        return !p2;
+      });
+      if (GLCLR[f.key] === 'mouse') { rbFoot = (poolN - rbPreyN2) + a.hiddenCount; rbPreyShown = rbPreyN2; }
+      else rbFoot = (poolN - (rows.length)) + a.hiddenCount; /* food tab 藏=池内猎物行+无饱腹聚合计 */
+    }
     if (q) { var fr = []; for (var i = 0; i < rows.length; i++) if (rows[i].name && rows[i].name.indexOf(q) >= 0) fr.push(rows[i]); rows = fr; }
+    var bkt = GLIST[f.key].badge === 'aid' ? (store.ctx && store.ctx.basket) : null; /* 禁入表（行置灰+右键拒绝） */
     var h = '';
     for (var j = 0; j < rows.length; j++) {
       var r = rows[j], src = '';
@@ -4820,7 +5085,9 @@
         src += (k ? ' · ' : '') + '<span' + (s[0] === 'bag' ? ' class="bag"' : '') + '>' + esc(s[1]) + '</span>×' + s[2];
       }
       if (r.srcs.length > 3) src += ' · <span class="more">等 ' + r.srcs.length + ' 处</span>';
-      h += '<div class="srg-row" data-i="' + j + '" data-key="' + esc(r.key) + '">' +
+      var dimCls = (bkt && bkt.forbid && bkt.forbid.indexOf(r.cfg) >= 0) ? ' srg-dim' : ''; /* 禁入（官方红叹号口径） */
+      var catAttr = bkt ? ' data-cat="' + (ICFG[r.cfg] ? ICFG[r.cfg].catId : 0) + '"' : '';
+      h += '<div class="srg-row' + dimCls + '" data-i="' + j + '" data-key="' + esc(r.key) + '"' + catAttr + ' title="' + (dimCls ? '篮子不收这件' : '') + '">' +
         '<div class="srg-ico' + (r.fuel ? ' is-fuel' : '') + '">' + (r.ico ? '<img src="' + esc(r.ico) + '" alt="" aria-hidden="true" draggable="false" style="width:26px;height:26px;object-fit:contain;pointer-events:none">' : '') + glistUsesHtml(r) + '</div>' +
         '<div class="srg-main"><div class="srg-name">' + (r.colorId != null && r.badge && r.badge.hex ? '<i class="srg-cdot" style="background:' + esc(r.badge.hex) + '"></i>' : '') + esc(r.name) + '</div>' +
         '<div class="srg-src">' + src + '</div></div>' +
@@ -4830,16 +5097,27 @@
     var pieces = 0, srcSet = {};
     for (var m = 0; m < rows.length; m++) { pieces += rows[m].total; for (var s2 = 0; s2 < rows[m].srcs.length; s2++) srcSet[rows[m].srcs[s2][0]] = 1; }
     var footL = '<b>' + rows.length + '</b> 种 · <b>' + pieces + '</b> 件 · 来源 <b>' + Object.keys(srcSet).length + '</b> 处（含背包）';
-    var footR = a.truncated ? '已截断显示前 ' + GLIST_MAX_ROWS + ' 种'
-      : (a.hiddenCount > 0 ? (f.key === 'Heater' ? '非燃料 ' + a.hiddenCount + ' 种已按场景预设隐藏' : '已按预设隐藏 ' + a.hiddenCount + ' 种无色素物品') : '');
+    /* 隐藏计数文案（v2.2.5 起改 if 链——四层嵌套三元退役，终审 Minor 顺手了结） */
+    var footR;
+    if (a.truncated) footR = '已截断显示前 ' + GLIST_MAX_ROWS + ' 种';
+    else if (f.key === 'RatCage' && GLCLR[f.key] === 'mouse' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非猎物物品';
+    else if (f.key === 'RatCage' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非喂鼠食物';
+    else if (f.key === 'Heater' && a.hiddenCount > 0) footR = '非燃料 ' + a.hiddenCount + ' 种已按场景预设隐藏';
+    else if (f.key === 'BrewPanel' && a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种不可酿物品';
+    else if (a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种无色素物品';
+    else footR = '';
     var chips = glistChipsHtml(f); /* 染料预设 chips（Heater 桌牌 Task 6）——进签名随选变色重渲 */
-    var sig = chips + '\u0001' + h + '\u0001' + footL + '\u0001' + footR;
+    /* v2.2.5：rat 双 tab 提示行随 tab 换右键目标——老鼠 tab=官方路由（笼位优先，满入食物仓） */
+    var hintTxt = '';
+    if (GLIST[f.key].badge === 'sat') hintTxt = '悬停=物品信息 · 左键=详情 · 右键行=移 1 件' + (GLCLR[f.key] === 'mouse' ? '至笼位（满则食物仓）' : '至' + GLIST[f.key].target) + ' · 搜索即时过滤';
+    var sig = chips + '\u0001' + h + '\u0001' + footL + '\u0001' + footR + '\u0001' + hintTxt;
     if (GL_SIG[f.key] === sig) return;
     GL_SIG[f.key] = sig;
     var ch = f.doc.getElementById('srgChips'); if (ch && ch.__srgChips !== chips) { ch.__srgChips = chips; ch.innerHTML = chips; glW(); } /* 终审 M6：expando 标记比对（innerHTML 读回=序列化形态，同 __srgIcon 铁律） */
     var list = f.doc.getElementById('srgList'); if (list) { list.innerHTML = h; glW(); }
     var fl = f.doc.getElementById('srgFootL'); if (fl) { fl.innerHTML = footL; glW(); }
     var frr = f.doc.getElementById('srgFootR'); if (frr) { frr.textContent = footR; glW(); }
+    if (hintTxt) { var he = f.doc.getElementById('srgHint'); if (he && he.textContent !== hintTxt) { he.textContent = hintTxt; glW(); } }
   }
   function glistApply(f) {
     var host = glistHost(f); if (!host) return;
@@ -5005,7 +5283,9 @@
           var fp = FRAMES[fi].doc.getElementById('srgPanel');
           if (fp && !fp.classList.contains('srg-gridmode')) {
             var bt = btOf(store.ctx.page);
-            glistToast(FRAMES[fi], ff === 'full' ? (bt ? bt.fullText : '料槽已满') : (FG_FAIL_TEXT[ff] || '转移失败'));
+            /* 篮子场景失败码走篮子口径文案（basket spec §5.1 四码；其余页原路） */
+            if (store.ctx.basket) glistToast(FRAMES[fi], ({ full: '篮子满了，放不下了', forbid: '篮子不收这件', bagfull: '背包满了，先腾出空位', noitem: '物品已经不在了', nomove: '没能放进篮子' })[ff] || '转移失败');
+            else glistToast(FRAMES[fi], ff === 'full' ? (bt ? bt.fullText : '料槽已满') : (FG_FAIL_TEXT[ff] || '转移失败'));
             store.ctx.feedFail = '';
             break;
           }

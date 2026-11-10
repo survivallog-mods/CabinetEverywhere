@@ -760,6 +760,15 @@ internal static class RailUi
     private static readonly string[] _gkDyeKeys = { "DyePanel", "Dye", "UI_Dye", "WebUI_Dye" };
     private static readonly string[] _gkHeaterKeys = { "Heater", "UI_Heater", "WebUI_Heater" };
     private static readonly string[] _gkFuelGenKeys = { "FuelGenerator", "UI_FuelGenerator", "WebUI_FuelGenerator" }; // 批改#8：燃油发电机复用暖炉（搜索框键盘门同开）
+    // 篮子救援 glist（basket spec）：BackpackUI 篮子模式——iframe id 实测 'Backpack'（ID_ALIAS
+    // 归一，findings §6），真名置首旧变体兜底；**门=篮子态在场（BasketGlist.BasketOn，含
+    // cfg+IsBasket_B），普通背包页不开键盘门**（与 ctx.glistOn 同口径）
+    private static readonly string[] _gkBasketKeys = { "Backpack", "BackpackUI", "UI_Backpack", "WebUI_BackpackUI" };
+    // rat-brew glist（rat-brew spec 裁定#7 零配置键）：第五/六场景——老鼠笼/酿酒桶，页活即开
+    // （无 cfg 门）。真名置首（批改#12f 定谳：官方页 id=场景名本体），旧变体兜底；实机 30s
+    // 遥测倾倒自校准（PageMap dump 为准）。
+    private static readonly string[] _gkRatKeys = { "RatCage", "UI_RatCage", "WebUI_RatCage" };
+    private static readonly string[] _gkBrewKeys = { "BrewPanel", "Brew", "UI_Brew", "WebUI_Brew" };
     internal static void GlistKeyboardTick()
     {
         var now = UnityEngine.Time.unscaledTime;
@@ -817,6 +826,8 @@ internal static class RailUi
                 foreach (var k in _gkDyeKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
                 foreach (var k in _gkHeaterKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
                 foreach (var k in _gkFuelGenKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
+                foreach (var k in _gkRatKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
+                foreach (var k in _gkBrewKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
                 CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：门未开；页键全景 " + keys);
             }
             catch { }
@@ -838,7 +849,10 @@ internal static class RailUi
         bool active =
             (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
             (CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false && GlistAnyPageActive(layer, _gkHeaterKeys)) ||
-            (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys));
+            (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys)) ||
+            (CabinetEverywherePlugin.EnableGlistBasket?.Value != false && BasketGlist.BasketOn && GlistAnyPageActive(layer, _gkBasketKeys)) ||
+            (GlistAnyPageActive(layer, _gkRatKeys)) || /* rat-brew：零配置键=页活即开（spec 裁定#7） */
+            (GlistAnyPageActive(layer, _gkBrewKeys));
         if (active)
         {
             bool first = !_gkHanded;

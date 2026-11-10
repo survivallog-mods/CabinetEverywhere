@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
 
     internal static ManualLogSource Log;
 
@@ -90,6 +90,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 竖版全局物品栏（v1.9.0 global-storage-list）：染料桶/暖炉两页先行——左背包区换列表态全局
     // 物品栏（列表/格子单图标互切，格子态=现行视图原样）；与 bagtabs/rail 壳共存互不干扰
     internal static ConfigEntry<bool> EnableGlistDye, EnableGlistHeater, EnableGlistFuelGen;
+    // 篮子救援 glist（basket spec 2026-11-09）：BackpackUI 篮子模式第四场景——背包侧换列表态
+    // 全局物品栏（需求类别单选筛选+救助贡献实时边际分排序+右键直放篮子；无许愿=固定9分类+
+    // 手动排序）；非篮子模式零扰动（glistOn 随篮子态门控）
+    internal static ConfigEntry<bool> EnableGlistBasket;
 
     internal static volatile bool Rerun = true;
 
@@ -206,6 +210,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             "暖炉界面竖版全局物品栏：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入炉膛），单图标钮与格子样式互切；false=还原现行样式（与染料桶同构、独立开关）。");
         EnableGlistFuelGen = Config.Bind("Access", "EnableGlistFuelGen", true,
             "燃油发电机界面竖版全局物品栏（批改#8：复用暖炉同构）：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入燃料槽），单图标钮与格子样式互切；false=还原现行样式（独立开关）。");
+        EnableGlistBasket = Config.Bind("Access", "EnableGlistBasket", true,
+            "二楼篮子救援竖版全局物品栏（第四场景，仅篮子窗口生效）：跨背包+整屋柜子的汇总列表（今日许愿类别单选筛选+救助贡献实时分值排序+右键直放1件进篮子；无许愿时9分类筛选+手动排序），单图标钮与格子样式互切；false=篮子界面还原官方。");
 
         System.EventHandler reload = (object s, System.EventArgs e) => { Rerun = true; };
         IncludeFurnitureIds.SettingChanged += reload;
@@ -219,6 +225,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableGlistDye.SettingChanged += reload;     /* v1.9.0 glist：门变更走慢道重收敛（拆装对称） */
         EnableGlistHeater.SettingChanged += reload;
         EnableGlistFuelGen.SettingChanged += reload; /* 批改#8：发电机页同构 */
+        EnableGlistBasket.SettingChanged += reload;  /* 篮子场景同款：门变更慢道重收敛（拆装对称） */
         ViewCooking.SettingChanged += reload;
         ViewRatCage.SettingChanged += reload;
         ViewBrewPanel.SettingChanged += reload;
@@ -434,6 +441,10 @@ internal sealed class AccessTicker : MonoBehaviour
         // TradeFx 批1：交易页数值（A3 chips/A4 天平数字）0.5s 轮询——签名门控在 TradeFx.Poll
         // 首行（RailUi.Enabled 门+静置零重算；推送=TabGate 式独立通道 __CERAIL_TRADEFX__）
         TradeFx.Poll();
+        // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式 0.5s 轮询——篮子态门+签名门控
+        // 在 BasketGlist.Poll 首行；产出 BasketJson/Dirty 由 RailData 契约（ctx.basket）携带推出，
+        // 非独立通道；须先于 RailUi.Tick（同帧 BuildJson 取到新鲜值）
+        BasketGlist.Poll();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
         // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：

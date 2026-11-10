@@ -230,7 +230,13 @@ window.__HZ_READY__ = function () {
       for (var tk = srcT.length - 1; tk >= 0; tk--) {
         if (!TAKE_IDS[srcT[tk][0]]) continue;
         var nT = payload.all ? srcT[tk][2] : 1;
-        MOCK.items.bag.push([950000 + (++TAKE_SEQ), srcT[tk][1], nT, srcT[tk][3], 0, 3, 1, 1, 0]);
+        /* 终审 Important#1 保真修正（2026-11-10 rat-brew）：落包新叠**整行克隆源叠**（实例
+           s1..s4/attrSig/uses 全随件走=C# OpTake 实义；旧 9 列硬造=rat/brew 扩展键 |s1/s2 剥失
+           →glistPump 精确键恒失配滑入姓名兜底=同名异值变体可能回放错件（RB-D4 钉死））。
+           只覆写 id/数量/坐标；w/h/flags 沿源叠原值。 */
+        var cpT = srcT[tk].slice();
+        cpT[0] = 950000 + (++TAKE_SEQ); cpT[2] = nT; cpT[4] = 0; cpT[5] = 3;
+        MOCK.items.bag.push(cpT);
         srcT[tk][2] -= nT;
         if (srcT[tk][2] <= 0) srcT.splice(tk, 1);
         movedT++;
@@ -359,6 +365,17 @@ window.__HZ_READY__ = function () {
     /* glist（v1.9.0）：ctx.glistOn 页条件字段夹具钮——undefined=字段缺席（C# 缺席语义）、
        true/false=显式门；正式门=C# EnableGlistDye/Heater（T7 接线），__HZ_GLIST__ 钮为覆盖位 */
     if (key === 'DyePanel' || key === 'Heater' || key === 'FuelGenerator') { if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; }
+    /* rat-brew glist（spec 2026-11-09 裁定#7）：产线 C# 无条件恒 true（零配置键）——夹具走
+       dye 族三态钮（undefined=字段缺席/true/false 显式）：旧路径套件（brew-tier 测保留的
+       v14.1 DISP 径）缺省不设=glist 不进场零扰动；RB 系置 true 断言新径 */
+    if (key === 'RatCage' || key === 'BrewPanel') { if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; }
+    /* rat-brew glist：brewIco 页条件字段（C# BrewPanel 页推 [劣15505,普15504,烈15506] WebIcon）。
+       __HZ_BREWICO__：undefined=默认三假 URL / 数组=整段替换 / null=缺席（窗口期角标无图面） */
+    if (key === 'BrewPanel') {
+      if (window.__HZ_BREWICO__ === null) { /* 缺席：不设字段 */ }
+      else if (window.__HZ_BREWICO__ !== undefined) ctx.brewIco = window.__HZ_BREWICO__;
+      else ctx.brewIco = ['hz-ico-lie', 'hz-ico-putong', 'hz-ico-liexing'];
+    }
     if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.heaterOn = window.__HZ_HTON__ !== false; }
     /* dye-pigment-sort：DyePanel 页条件字段 dyePal（C# ctx 页条件先例 tradePrefs 同源）。三态：
        undefined=默认板 / 数组=测试板 / null=模拟 C# 缺席（配置未就绪窗口——字段整个不下发） */
@@ -366,6 +383,18 @@ window.__HZ_READY__ = function () {
       if (window.__HZ_DYEPAL__ === null) { /* 缺席：不设字段 */ }
       else if (window.__HZ_DYEPAL__ !== undefined) ctx.dyePal = window.__HZ_DYEPAL__;
       else ctx.dyePal = [[3, '红', '#e05555', 1, 1], [5, '蓝', '#6fc7c9', 1, 2], [9, '黄', '#f0b03c', 1, 3]];
+    }
+    /* 篮子救援 glist（basket spec §5.4）：__HZ_BASKETMODE__ 置位=BackpackUI 帧换篮子夹具
+       （show 内换 src，帧身份不变=无双帧同键竞态）+ ctx 带 glistOn/basket 段。__HZ_BASKET__：
+       undefined=默认 wish 态 mock / 对象=整段替换 / null=模拟 C# 缺席（字段整个不下发）；
+       __HZ_GLISTON__ 覆写门（false=cfg 关断言用） */
+    if (key === 'BackpackUI' && window.__HZ_BASKETMODE__) {
+      if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; else ctx.glistOn = true;
+      if (window.__HZ_BASKET__ === null) { /* 缺席：不设字段 */ }
+      else if (window.__HZ_BASKET__ !== undefined) ctx.basket = window.__HZ_BASKET__;
+      else ctx.basket = { mode: 'wish', chips: [{ id: 9, name: '材料', warn: false }, { id: 2, name: '药品', warn: true }],
+        scores: { 5: 21, 6: 6, 12: 15 }, forbid: [8] };
+      ctx.feedFail = window.__HZ_FEEDFAIL__ || '';
     }
     return ctx;
   }
@@ -445,6 +474,24 @@ window.__HZ_READY__ = function () {
       var FB = { 10: [1, 600], 11: [1, 900] };
       j.icfg = j.icfg.map(function (r) { var f = FB[r[0]] || [0, 0]; return r.concat([0, f[0], f[1]]); });
     } else {
+      /* rat-brew glist：同名异值拆行夹具（蒜蓉西兰花双版本——游戏实据 Config_Item 12133/13156，
+         40/20 饱腹两套同名列）。**__HZ_RBICFG__ 显式开**（旧套件冻结 12 行基座不污染——brew-tier
+         S1 逐行宽断言）。置于 canBrew 尾列映射之前=两 cfg 同吃到尾列（brew 页 bw=0 → 不可酿
+         隐藏面顺带可测；rat 页无尾列保持 14 列）。cfg23 小家鼠=rat 双 tab 夹具（Prey_Rarity>0
+         实据 30000）。 */
+      if ((key === 'RatCage' || key === 'BrewPanel') && window.__HZ_RBICFG__) {
+        j.icfg = j.icfg.concat([
+          [21, '蒜蓉西兰花', ICO, 30, 20, 1, 4, '食材', 0, 40, 9, 0, 0, 0],
+          [22, '蒜蓉西兰花', ICO, 14, 20, 1, 4, '食材', 0, 20, 2, 0, 0, 0]
+        ]);
+        if (key === 'RatCage') j.icfg.push([23, '小家鼠', ICO, 1, 1, 1, 2, '食材', 0, 7, -4, 0, 0, 0], [24, '小家鼠（死）', ICO, 1, 1, 1, 2, '食材', 0, 7, -4, 0, 0, 0]);
+      }
+      /* rat-brew v2.2.7：RatCage 页尾列 prey 三值（C# RatPreyKind 同形状=0 非猎物/1 活体/2 死体
+         ——死体=同动物 Model 结构关联）。cfg23 小家鼠(活 pr=1)/cfg24 小家鼠死体(pr=2)随 RBICFG 并入。 */
+      if (key === 'RatCage') {
+        var PR = { 23: 1, 24: 2 };
+        j.icfg = j.icfg.map(function (r) { return r.concat([0, PR[r[0]] || 0]); });
+      }
       /* v14 brew 页尾列 canBrew（C# BuildIcfgRow brewCols 同形状）：夹具基座 14 列
          （冻结形状缺 uses 尾列）——补 [uses 占位 0, canBrew] 两列=C# 真推送 16 列行，
          canBrew 落在下标 15 与 C# 一致。可酿=cfg1 香米/2 烤肉/3 咖啡/7 净水（食物 cat1）。 */
@@ -699,6 +746,16 @@ window.__HZ_READY__ = function () {
   var current = null;
   function show(key) {
     current = key;
+    /* 篮子救援 glist：__HZ_BASKETMODE__ 置位时 BackpackUI 帧换篮子夹具（帧身份不变）；
+       复位时换回常规夹具。换 src 后文档重建，docReady 轮询自然覆盖新文档。 */
+    if (key === 'BackpackUI') {
+      var f = frames[key];
+      var wantBasket = !!window.__HZ_BASKETMODE__;
+      var srcBasket = /BasketBackpack\.html$/.test(f.getAttribute('src') || '');
+      if (wantBasket !== srcBasket) {
+        f.src = wantBasket ? './fixtures/BasketBackpack.html' : './fixtures/BackpackUI.html';
+      }
+    }
     SCENE_KEYS.forEach(function (k) {
       frames[k].style.display = k === key ? 'block' : 'none';
       btns[k].className = k === key ? 'active' : '';

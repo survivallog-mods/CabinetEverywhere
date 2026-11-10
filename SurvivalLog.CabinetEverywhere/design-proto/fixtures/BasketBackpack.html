@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>背包·篮子模式（静态夹具）</title>
+<!-- 篮子救援 glist 夹具（basket spec §5.4）：官方 BackpackUI 篮子模式结构静态拷贝——
+     A 侧 .bag-panel（背包列，glist 宿主）+ B 侧 .bag-panel.is-basket-panel（篮子，官方面板
+     不动区）。类名/结构对齐官方 BackpackUI.html 模板段（4062 起两 .bag-panel v-for side），
+     去 Vue 逻辑留静态；harness 经 __HZ_BASKETMODE__ 把 BackpackUI 帧切到本夹具（帧身份
+     不变=无双帧同键竞态），ctx 由 root harness 注 page='BackpackUI'+basket 段。 -->
+<style>
+:root{
+  --warm-gold:#e8b04b; --text-main:#fcfcfc; --text-dark:#c0c0c0;
+  --border-light:rgba(255,255,255,.18); --border-color:rgba(255,255,255,.12);
+  --grid-bg:rgba(20,15,12,.85); --slot-border:rgba(255,255,255,.1);
+  --slot:38px; --gap:5px;
+}
+*{box-sizing:border-box;}
+body{margin:0;background-color:transparent;color:var(--text-main);
+  font-family:'Segoe UI',"Microsoft YaHei",sans-serif;user-select:none;overflow:hidden;
+  display:flex;justify-content:center;align-items:center;min-height:100vh;text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.backpack-container{display:flex;gap:14px;align-items:flex-start;padding:14px;
+  background:rgba(10,8,6,.35);border-radius:12px;border:1px solid var(--border-color);}
+.bag-panel{background:linear-gradient(180deg,rgba(55,48,44,.85) 0%,rgba(33,27,24,.95) 100%);
+  border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:12px;display:flex;flex-direction:column;
+  box-shadow:inset 0 2px 10px rgba(0,0,0,.4),0 4px 15px rgba(0,0,0,.2);}
+.bag-panel.is-basket-panel{min-width:280px;}
+.header{margin-bottom:8px;}
+.panel-title{font-size:14px;font-weight:bold;color:var(--warm-gold);letter-spacing:1px;
+  text-shadow:0 0 10px rgba(232,176,75,.4);display:flex;align-items:center;}
+.panel-title::before{content:'';width:4px;height:14px;background:var(--warm-gold);margin-right:7px;
+  border-radius:2px;box-shadow:0 0 8px rgba(232,176,75,.8);}
+.toolbar{display:flex;gap:6px;margin-bottom:8px;}
+.toolbar .tb-btn{padding:3px 9px;font-size:11px;border-radius:6px;background:rgba(20,15,12,.55);
+  border:1px solid var(--border-color);color:var(--text-dark);}
+.grid-wrapper{padding:0;}
+.grid-container{background-color:var(--grid-bg);padding:10px;border-radius:8px;position:relative;
+  display:grid;gap:var(--gap);border:1px solid var(--border-color);
+  box-shadow:inset 0 5px 20px rgba(0,0,0,.8);width:fit-content;
+  grid-template-columns:repeat(10, var(--slot));grid-auto-rows:var(--slot);}
+.slot{width:var(--slot);height:var(--slot);background-color:rgba(12,9,8,.8);
+  border:1px solid var(--slot-border);border-radius:4px;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);}
+.weight-bar{margin-top:8px;font-size:11px;color:var(--text-dark);}
+/* 篮子侧（官方面板不动区——glist 不碰，断言「B 侧零改动」的基准件） */
+.basket-count-section{font-size:11px;color:var(--text-dark);margin-bottom:8px;}
+.basket-count-value{color:#fff;font-weight:bold;}
+.wish-section{margin-top:10px;font-size:11px;}
+.wish-label{color:var(--warm-gold);margin-right:6px;}
+.wish-chips{display:inline-flex;gap:5px;}
+.wish-chip{padding:2px 8px;border-radius:6px;border:1px solid var(--border-color);
+  background:rgba(20,15,12,.55);color:var(--text-dark);}
+.wish-chip.hit{border-color:rgba(232,176,75,.7);color:var(--warm-gold);}
+.rescue-bar-row{margin-top:8px;}
+.rescue-bar-label{font-size:11px;color:var(--text-dark);margin-right:6px;}
+.rescue-nums{color:#fff;font-family:Consolas,monospace;font-weight:bold;}
+.rescue-nums .plus{color:#7fae62;}
+.tier-chip{margin-left:6px;padding:1px 7px;border-radius:6px;font-size:10px;
+  border:1px solid rgba(232,176,75,.6);color:var(--warm-gold);}
+.basket-footer{margin-top:10px;}
+.basket-footer-hint{font-size:10px;color:#8e857d;margin-bottom:6px;}
+.basket-send-btn{width:100%;padding:8px;border-radius:8px;font-size:13px;font-weight:bold;
+  color:#241a08;background:linear-gradient(180deg,#e8b04b,#c8873a);border:none;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="backpack-container">
+
+  <!-- A 侧：玩家背包（glist 宿主列） -->
+  <section class="bag-panel" id="bagPanelA">
+    <div class="header"><div class="panel-title">背包</div></div>
+    <div class="toolbar">
+      <span class="tb-btn">排序</span><span class="tb-btn">一键入库</span><span class="tb-btn">一键整理</span>
+    </div>
+    <div class="grid-wrapper">
+      <div class="grid-container" id="bagGrid">
+        <div class="grid-bg">
+          <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+          <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+          <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+          <div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div><div class="slot"></div>
+        </div>
+      </div>
+    </div>
+    <div class="weight-bar">负重 12.0 / 60.0 kg</div>
+  </section>
+
+  <!-- B 侧：篮子（官方面板不动区） -->
+  <section class="bag-panel is-basket-panel" id="bagPanelB">
+    <div class="header"><div class="panel-title">篮子</div></div>
+    <div class="basket-count-section">篮子容量 <span class="basket-count-value">1</span> 件</div>
+    <div class="grid-wrapper">
+      <div class="grid-container" id="basketGrid" style="grid-template-columns:repeat(6, var(--slot));">
+        <div class="slot"></div><div class="slot"></div><div class="slot"></div>
+        <div class="slot"></div><div class="slot"></div><div class="slot"></div>
+      </div>
+    </div>
+    <div class="wish-section">
+      <span class="wish-label">他最想要</span>
+      <span class="wish-chips">
+        <span class="wish-chip hit">材料</span>
+      </span>
+      <div class="rescue-bar-row">
+        <span class="rescue-bar-label">救助进度</span>
+        <span class="rescue-nums">21/500 <span class="plus">+21</span></span>
+        <span class="tier-chip">资格</span>
+      </div>
+    </div>
+    <div class="basket-footer">
+      <div class="basket-footer-hint">已放 1 件,关掉下次也能继续</div>
+      <button class="basket-send-btn" type="button">送出</button>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

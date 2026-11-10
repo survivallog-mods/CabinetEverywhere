@@ -143,14 +143,15 @@
 
 **暖炉同构扩页（2026-11-07 暖炉移植批）**：SCENES.Heater 为第 14 个装配场景（bagtabs 族第二页）——同一 ensureBagtabs 四件装配，页差异全走 JS BAGTABS 页描述符：宿主选择器 .heater-system > .panel:not(.heater-panel)、cfg 门 ctx.heaterOn（Access.EnableHeater）、满员文案「炉膛已满」（页官方 warningFuelFull 同词）。右侧炉体面板（炉门火舆 SVG/点火钮/供暖读数）零改动；官方 tooltip 元素 id 页异（#fuelTooltip，发电机=#recipeTooltip）。视觉规范与 §0b 逐条同款。
 
-## 0b-glist. 竖版全局物品栏（2026-11-08 v1.9.0；spec=docs/superpowers/specs/2026-11-07-global-storage-list-design.md，先行=DyePanel+Heater 两页，交易点待定）
+## 0b-glist. 竖版全局物品栏（2026-11-08 v1.9.0；spec=docs/superpowers/specs/2026-11-07-global-storage-list-design.md + 2026-11-09-basket-glist-design.md + 2026-11-09-rat-brew-glist-design.md——第四场景=BackpackUI 篮子模式 v2.1.0；第五/六场景=RatCage/BrewPanel v2.2.0）
 
 第 15/16 个装配场景上的**左面板列表形态**。批改#8（2026-11-08）起新增 **FuelGenerator 页**
 （作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；批改#9 起格子态语义重定
 （见下「格子态」）。JS `GLIST` 页描述符：
 `{DyePanel:{target:'染料槽',badge:'pig',feed:'dye'}, Heater:{target:'炉膛',badge:'heat',feed:'fuel'},
-FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}}`（bagtabs 族宿主选择器走 `BAGTABS`
-描述符两件套统一取）。装配链：`ensureMountedFrame` 顶挂点 →
+FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}, BackpackUI:{target:'篮子',badge:'aid',feed:'basket'},
+RatCage:{target:'食物仓',badge:'sat',feed:'click',retireSort:1}, BrewPanel:{target:'酿酒桶',badge:'brew',feed:'click',retireSort:1}}`
+（bagtabs 族宿主选择器走 `BAGTABS` 描述符两件套统一取；RatCage/BrewPanel=rail 页走染料默认宿主分支）。装配链：`ensureMountedFrame` 顶挂点 →
 `glistFrame{glistBuild→glistApply→glistRender→glistPump}`，`setData` 尾 `glistSettle` 随契约重驱。
 
 - **宿主与 DOM**：Heater/FuelGenerator=官方左背包面板（`.heater-system`/`.generator-system >
@@ -180,13 +181,24 @@ FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}}`（bagtabs 族宿�
 - **聚合**：`glistAggregate(sceneKey)` 纯函数——契约 v4 全屋快照（bag+全部白名单柜）按
   **v2 作者终案键=物品名+uses+attrSig** 归组（2026-11-08 四轮实机对谈定：无次数物品同名并（同名异 cfg 变体并）/有次数物品（非料理食物/药物/书籍）同名同次数并/料理 attrSig 异拆；timeLeft/flags/s 瞬态不进键——实机三连返工教训：flags=食物态位、s 值乘使用次数；**右键取物 FEFO**=行内候选叠 timeLeft 升序最快过期先出，跨背包/柜选叠）（§3-6 旧约），srcs 背包恒首，Dye 主色=最高点数（官方 mainPoints
   口径）+dyePal hex，Heater 徽章=burnValue；场景排序降序+并列稳定+300 截断。
-- **行三键**（§0-4 修订条款）：悬停 `#srgTip`（跟随+边缘翻转）/左键 `#srgDetail`（Esc/点空白/×）/
+- **行三键**（§0-4 修订条款）：悬停 `#srgTip`（跟随+边缘翻转）/左键=**官方原生详情弹窗**
+  （v2.2.3 作者令「列表所有物品都用官方弹窗」：FEFO 挑中那叠 → `idetail{owner,item,cat}` 命令 →
+  C# 直调官方动作 `Ac_ItemDetailPopup_OpenUI`（ItemId+OwnerId **实例级**——官方动作自带 OwnerId
+  字段=任意容器归属物品均可开，柜源行同样成立；TipsType=Default 纯查看；TradeFx OpDetail §0-2
+  直调先例同款）。官方 ItemDetailPopup 官方渲染（四维属性卡+描述+实例词条），mod 自建 `#srgDetail`
+  **整段退役**（属性不全根因——只显示场景单维）/
   **右键=官方口径移 1 件**：Heater/FuelGenerator=`feed{owner,item}`（C# OpFeed 页感知两态机）；
-  Dye bag 源=页面官方 `core.UnitySendEvent('ITEM_CLICK',{itemId,rightClick:true})` 直回放；Dye 柜源=
+  各页 bag 源=页面官方 `core.UnitySendEvent('ITEM_CLICK',{itemId,rightClick:true})` 直回放；柜源=
   `take{ids,all:false}`（C# 第一叠拆 1 件柜→包）+`GLPEND` 队列**契约推送落地后**回放（glistPump，
   5s 过期）——双跳时序防线。
 - **预设**：染料=dyePal 动态 8 色板 chips 单选（命中=任一色点数>0）+「💧 按色素值 ↓」常驻
-  （水滴=官方 dropSvg 随主色 hex）；暖炉/发电机=「🔥 仅可燃物」lock+「🔥 按热值 ↓」常驻。
+  （水滴=官方 dropSvg 随主色 hex）；暖炉/发电机=「🔥 仅可燃物」lock+「🔥 按热值 ↓」常驻；
+  老鼠笼=**双 tab 单选**（v2.2.5→v2.2.7 演进）：食物（默认，**排除猎物**含死体）/猎物
+  （prey 三值：1 活体=Prey_Rarity>0 / 2 死体=同动物 Model 结构关联——活死都收，异名异 cfg
+  天然拆行，压角标）；**右键=官方 onItemClick 分支逐字且只认活体**（活猎物+笼位空→MOUSE_ADD
+  入笼位；笼位满/死猎物→ITEM_CLICK rightClick 落食物仓；笼位态读页面全局 State 只读；柜源
+  GLPEND ev 随路由分派）——路由按行不按 tab；
+  酿酒桶=无 chips 仅常驻牌。tab 过滤在渲染层（GL_MEMO 按 rev 记忆不随 tab 失效）。
 - **键盘门（C#）**：`GlistKeyboardTick`——Dye/Heater/FuelGenerator 页激活且 cfg 开：
   `WebUILayer.SetKeyboardEnabled(true)`+`Input.imeCompositionMode=On`（中文 IME；官方全局
   KeyboardEnabled=0 白名单制，页面 SEARCH_FOCUS 事件不够——PlanPick 实证方案）；页关/cfg 关
@@ -198,6 +210,70 @@ FuelGenerator:{target:'燃料槽',badge:'heat',feed:'fuel'}}`（bagtabs 族宿�
 - harness：`tools/railui-harness-tests/harness-glist.cjs` 126 断言（聚合/装配互切/渲染搜索/三键含
   take 模拟器全链/染料预设/暖炉预设/ctx 门/键盘协议/uses 徽章/版式契约 L 系/旧方案退役+格子态
   原版 GE/发电机 GF 系）。
+
+### 0b-4b. 第四场景：BackpackUI 篮子模式（2026-11-09 v2.1.0；spec=2026-11-09-basket-glist-design.md）
+
+二楼吊篮救援（NeighborRescue，女大学生/打工仔两吊篮家具）A 侧背包列接管。**门=ctx.glistOn**
+（C# 侧 `EnableGlistBasket && IsBasket_B`——普通背包模式恒 false=本页 rail 现行行为零扰动，
+teardown 快速门无面板零写离场）；宿主=A 侧 `.bag-panel:not(.is-basket-panel)`（B 侧官方
+篮子面板不动区）；列表↔格子单图标钮（默认列表）。
+
+- **数据**：C# `BasketGlist.Poll`（AccessTicker 0.5s，RailUi.Tick 前）→ wishJson/snap/B 侧
+  逐件签名门控 → `ctx.basket={mode,chips,scores,forbid}` 页条件字段（dyePal 先例）；
+  `BasketGlist.Dirty` 并入 `ItemsDirty`（愿望/危机变化而物品不变也重推，推出即清）。
+- **分值**：官方直调差分（`NeighborRules.CalcSendProgress`/`CalcCrisisResolveProgress`）
+  逐行「下一件实时边际分」（篮子内容变化即联动，作者实测锚 21/6=类别级降档）；
+  **SelfCheck**=官方函数对篮内现有内容直算 vs wishJson gain 对账 |Δ|≤0.5，超差 warn-once
+  （按窗去重）+scores 置空=JS 降级形态（chips 留、徽章/排序牌隐）。参数直读
+  `NeighborWishSnap`（wishJson 不带折算率——builder check 更正）。
+- **chips 三态**（作者裁定）：wish=今日许愿类别单选（再点同枚取消回全部）+⚠危机枚+
+  「❤ 按救助贡献 ↓」常驻牌；nowish（第三段无许愿）=9 固定分类+手动排序钮六键
+  （sat/mind/en/hp/shelf/value；shelf=行内最快到期升序、value=行总价，localStorage
+  `srp_glist_sort_<scene>` 持久）；dying=食物+「🍗 按饱腹 ↓」。聚合 aid 分支=全行可见
+  零预设隐藏（排序在渲染层 `glistBasketRows`，场景态不进聚合纯函数）。
+- **右键**：drain op `basketPut{owner,item}`——目标=OwnerIdRP_B 状态权威；背包源直发官方
+  `Ac_BackpackUI_QuickTransferItem`；柜源=SplitItem 拆 1→silent 柜→包→按 cfg 落包重解析→
+  官方快转（feed 两跳同款；**不 forge SWITCH_BAG**——官方快转自带官方链刷新）。禁入
+  （IsBasketForbidItem）行置灰+红叹号、右键零 op toast；满/禁/失物/失败四码→ctx.feedFail
+  篮子口径文案。
+- **键盘门**：`_gkBasketKeys`（iframe 真名 'Backpack' 置首）+门=`EnableGlistBasket&&BasketOn`
+  （与 ctx.glistOn 同口径）。
+- harness：`harness-basket-glist.cjs` 29 断言 + 夹具 `fixtures/BasketBackpack.html`（root
+  harness `__HZ_BASKETMODE__` 换 src 不换帧身份；`__HZ_BASKET__` 三态旋钮）；纯逻辑单测
+  `tools/basket-glist-test`（ModeOf 三态/SelfCheckOk/BuildJson 契约形状+注入红线）16 例。
+  away 态不存在（窗口打不开）；危机/dying 仅 harness 验收（作者存档不可造）。
+
+### 0b-4c. 第五/六场景：RatCage 老鼠笼 / BrewPanel 酿酒桶（2026-11-10 v2.2.0；spec=2026-11-09-rat-brew-glist-design.md）
+
+两 rail 页背包侧接管（染料默认宿主分支：#srRail 父 #srp 首子；格子态=srg-plain 简洁态，
+**页脚三件保留**=格数/📦入库/整理——作者裁定照染料页；排序钮退役见下）。**零新增配置键**
+（作者裁定#7「安装了 mod 就默认启用」）：C# glistOn 两页恒 true；既有 `EnableRatCage`/
+`EnableBrew` 对这两页失效（键保留兼容）；harness 反向门=`__HZ_GLISTON__`（夹具三态钮，
+v14.1 旧径仅此可达）。
+
+- **聚合 sat/brew 分支**：筛选=行实例 s1>0（rat——官方 RatCage canAcceptItem satiety>0 同口径）/
+  icfg `bw`+s1>0（brew——官方 vatGrid canBrew 同口径）；badge={v:s1}（通用 badge.v 降序=纯饱腹
+  序+并列稳定，**tier 不进排序键**）；brew tier=v14.1 `brewTierOf` 垫片（s2/s1 vs ctx.brewP1/P2）。
+  s1 总量口径（v2.2.4 西瓜汁单定谳）=单次浮点×剩余次数后**向零截断**（与游戏实际结算同式；
+  旧「round(单次)×次数」=弹窗显示算式已废——弹窗单次显示本身 floor，食物仓实入=浮点总量）。
+- **拆行键**（作者裁定#5）：合并键追加角标数值维度——rat `+s1`、brew `+s1/s2`（同名异值不并，
+  蒜蓉西兰花 40/20 全游戏唯一 rat 页实据；可酿物品零碰撞）；其他场景键逐字节不变；
+  `glistItemKey(r,sceneKey)` 签名扩（aggregate/feed/pump 三调用点同传）。
+- **角标**：rat=`🍗 N` 绿 #8fc06e（srg-sat）；brew=游戏三档酒精瓶实物图（`ctx.brewIco[tier]`
+  WebIcon 15505/15504/15506，C# 静态缓存任一缺席整字段不下发→角标退纯色无图）+档色壳
+  `GLB_TIER_SHELL`（劣 #7fe05a/普 #ffc93c/烈 #ff7086，色相照官方品质条饱和度+一档；品质
+  文字只进悬停/详情）。
+- **右键**：feed='click' 落染料同款默认回放径——bag 源 `ITEM_CLICK{rightClick:true}` 直回放
+  （两页官方源码实证右键=移 1 件进目标仓）；柜源 take 拆 1 件+GLPEND 双跳落包后回放；FEFO 同链。
+- **退役门**：`GLIST[].retireSort` 两页置位——srFoodSort 随 glist 在场恒隐（render 门
+  `glistOwnsPage` 联动；v14.1 排序钮收敛/品质角标/置灰旧径代码保留，反向门可达）；染料页
+  排序钮不在此列。
+- **键盘门**：`_gkRatKeys`（RatCage 真名置首）/_gkBrewKeys（BrewPanel 置首）——零配置键=
+  页活即开（无 cfg 门），30s 遥测倾倒含两键组。
+- harness：harness-glist RB 系列 23 断言（RB-A/B 聚合 7+RB-C 渲染 9+RB-D 右键 4（含 D4 双跳
+  扩展键变体甄别——take 模拟器整行克隆保真）+RB-E 装配 3）；
+  夹具 `__HZ_RBICFG__`（蒜蓉西兰花双 cfg 拆行专用）/`__HZ_BREWICO__`（三态：默认假 URL/
+  替换/缺席）。
 
 ## 0c. TradeFx 交易页数值（2026-11-09 v2.0.0 终态；spec=docs/superpowers/specs/2026-11-08-tradefx-design.md）
 

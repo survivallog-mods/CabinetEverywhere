@@ -465,8 +465,9 @@ internal static class RailSortMath
                    ③作者「菌菇饭单次 28」=round(24×1.15)=27.6→28（对账实例 24 实锤）。
                    PC EatValues 的 Gain（BasePermille/satFood/eff/comfort）详情**不叠**——
                    第九轮整管线全叠（牛肉面 25→45 错）。滋养只乘熟食=PC if(HasInstanceValues)
-                   同分支。角标=round(单次值)×UseTimes（作者算式：弹窗数×剩余次数，
-                   先舍入再乘——27.6→28×3=84 而非 82.8→83）。 */
+                   同分支。〔2026-11-10 更正：总量算式=单次浮点×UseTimes 后截断（西瓜汁单定谳，
+                   见下方现行公式注释）——旧「round(单次)×UseTimes」为角标时代对齐弹窗显示的
+                   显示算式，弹窗单次显示本身 floor，与实际结算（浮点总量）差一个取整位。〕 */
                 float[] vd = new float[5];
                 bool cooked = false;
                 try
@@ -500,8 +501,12 @@ internal static class RailSortMath
                 for (int q = 0; q < 5; q++) perOnce[q] = vd[q] * (cooked ? 1f + nourish : 1f);
                 for (int i = 0; i < 4; i++)
                 {
-                    int per = (int)Math.Round(perOnce[EatIndex[i]], MidpointRounding.AwayFromZero);
-                    int v = per * uses; /* 弹窗整数×剩余次数（作者算式逐字） */
+                    /* 2026-11-10 实机对账定谳（作者单：西瓜汁实例 25.5/次×4 剩余——官方弹窗单次
+                       显示=floor→25（ItemDetailPopup formatAttr 实证）、老鼠笼食物仓实入=25.5×4=102
+                       浮点总量不预取整；旧式 round(25.5)=26×4=104 虚高）。总量=**单次浮点×剩余次数
+                       后截断**（C# (int) 向零截断，与游戏结算同式；旧「round 先取整再乘」=DISP 角标
+                       时代对齐弹窗显示的算式——旧例 27.6×3 实为 82 而非 84）。 */
+                    int v = (int)(perOnce[EatIndex[i]] * uses);
                     if (v != 0) n.Stats[i] = v;
                 }
                 Vouch(cfg, it, vd, cooked, nourish, perOnce, uses, usesMax, n); /* 60045/60093 全链路一行对账（仅首次遇到该组合时打） */

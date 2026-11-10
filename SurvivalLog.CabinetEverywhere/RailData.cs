@@ -273,7 +273,8 @@ internal static class RailData
     /// </summary>
     internal static bool ItemsDirty()
     {
-        return ComputeSig() != _lastSig || _forcePending || _tidyFailPending;
+        // 篮子救援 glist：愿望/危机/篮内变化沿并入（物品不变时 ctx.basket 也要重推；推出即清 @:584）
+        return ComputeSig() != _lastSig || _forcePending || _tidyFailPending || BasketGlist.Dirty;
     }
 
     /* ================= 快通道签名（2026-11-04 Bug4「无人机交易一键整理响应 2s+」排查） =================
@@ -498,6 +499,21 @@ internal static class RailData
         // 批改#8（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；同构挂 EnableFuelGen
         if (sc?.Page == "FuelGenerator")
             sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
+        // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式第四场景——glistOn 由篮子态门控
+        //（BasketOn 已含 cfg+窗活+IsBasket_B，此处不重复 AND）；ctx.basket 段随行（缺省=键不在场，
+        // JS 判键存在性=篮子数据就绪与否的唯一口径，dyePal 先例）。愿望/危机变化而物品不变时
+        // 由 BasketGlist.Dirty 并入 ItemsDirty 触发重推（推出即清）
+        if (sc?.Page == "BackpackUI")
+        {
+            sb.Append(",\"glistOn\":").Append(BasketGlist.BasketOn ? "true" : "false");
+            if (BasketGlist.BasketJson != null)
+                sb.Append(",\"basket\":").Append(BasketGlist.BasketJson);
+        }
+        // rat-brew glist（rat-brew spec 2026-11-09 裁定#7）：第五/六场景——老鼠笼/酿酒桶。
+        // **零新增配置键**（作者令「安装了 mod 就默认启用」）：glistOn 恒 true；既有 EnableRatCage/
+        // EnableBrew 键不再作用于这两页（键保留兼容防配置文件报缺——JS 侧装配/退役门=glistGate 同源）。
+        if (sc?.Page == "RatCage" || sc?.Page == "BrewPanel")
+            sb.Append(",\"glistOn\":true");
         // dyePal（染料桶色素排序批）：颜色板页条件字段——DyePaletteRules.PanelDyeItems（官方面板
         // 序，全颜色含未解锁）+ PanelDyeHex（平行 hex）+ 染料物品本地化名（ItemDict）。spike v3
         // 实证：ColorCount=8（20363-20370），名称走染料物品自身（ColorShowKeys=StateXX 非显示名）。
@@ -506,6 +522,16 @@ internal static class RailData
         {
             var pal = DyePalJson();
             if (!string.IsNullOrEmpty(pal)) sb.Append(",\"dyePal\":").Append(pal);
+        }
+        // rat-brew glist：brewIco 页条件字段（仅 BrewPanel 页）——游戏三档酒精瓶实物图=物品级
+        // WebIcon（15505 劣质青绿液/15504 普通橙黄液/15506 烈性红液，Config_Item dump 实证=
+        // 酿酒产物三档物品本体，档位语义游戏自画）。角标随档换瓶（spec §4 定稿：图标+档色双通道）。
+        // 静态缓存（配置表运行期不变，_icfgFuelCache 先例）；任一读不到=整字段缺席（JS 角标退
+        // 纯色无图不崩——dyePal「板未就绪不下发」同口径）。
+        if (sc?.Page == "BrewPanel")
+        {
+            var bico = BrewIcoJson();
+            if (!string.IsNullOrEmpty(bico)) sb.Append(",\"brewIco\":").Append(bico);
         }
         sb.Append('}');
         sb.Append(",\"bag\":").Append(bagOwner);
@@ -541,10 +567,13 @@ internal static class RailData
         bool fuelCols = sc?.Page == "FuelGenerator" || sc?.Page == "Heater"; // 尾列仅 bagtabs 族两页（其他页推送形状不变——spec 约束；暖炉移植批补：角标/右键预检同源消费 ICFG.burn，漏此=暖炉页角标全灭+预检误拒）
         bool brewCols = sc?.Page == "BrewPanel";     // 酿酒桶页专属尾列 canBrew（brew spec §5.1，同约束）
         bool dyeCols = sc?.Page == "DyePanel";       // 染料桶页专属尾列 pig 串（dye-pigment-sort spec §5.1，同约束；JS normIcfg 按类型判形与 canBrew 数字同宽互斥）
+        // rat-brew v2.2.5：老鼠笼页专属尾列 prey（Config_Item.Prey_Rarity>0=活体猎物——全表 23 件
+        // 核验：鼠/蛇/鸟/兔等活体全>0、死体与料理全 0，物品级标志照 canBrew 同纪律；双 tab 筛选用）
+        bool ratCols = sc?.Page == "RatCage";
         for (int i = 0; i < icfgOrder.Count; i++)
         {
             if (i > 0) sb.Append(',');
-            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols, dyeCols));
+            sb.Append(IcfgRow(icfgOrder[i], itemDict, fuelCols, brewCols, dyeCols, ratCols));
         }
         sb.Append(']');
 
@@ -570,6 +599,7 @@ internal static class RailData
         _forcePending = false;
         _tidyFailPending = false; // 推出即清（一次性标志）
         _feedFailPending = null;  // 同上（feed 失败码随本包带出即清）
+        BasketGlist.Dirty = false; // 篮子沿同款：ctx.basket 已随本包带出即清（ItemsDirty 并入位）
         _rev++;
         _lastSig = ComputeSig();
         /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
@@ -603,17 +633,20 @@ internal static class RailData
     /// dyeCols=true（染料桶页专属，dye-pigment-sort spec §5.1）：行尾追加 pig 打包串一列
     /// （"[[colorId,points],…]"，无色素="[]"；JS normIcfg 按类型判形——与 canBrew 数字同宽互斥），
     /// 独立缓存 _icfgDyeCache——同上分键防串形。
+    /// ratCols=true（老鼠笼页专属，rat-brew v2.2.5）：行尾追加 prey(0/1) 一列（Prey_Rarity>0），
+    /// 独立缓存 _icfgRatCache——同上分键防串形（与 canBrew 同位数字、按页消费互斥）。
     /// </summary>
-    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
+    internal static string IcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict = null, bool fuelCols = false, bool brewCols = false, bool dyeCols = false, bool ratCols = false)
     {
-        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : (dyeCols ? _icfgDyeCache : _icfgCache));
+        var cache = fuelCols ? _icfgFuelCache : (brewCols ? _icfgBrewCache : (dyeCols ? _icfgDyeCache : (ratCols ? _icfgRatCache : _icfgCache)));
         if (cache.TryGetValue(cfgId, out var row)) return row;
-        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols, dyeCols);
+        row = BuildIcfgRow(cfgId, itemDict, fuelCols, brewCols, dyeCols, ratCols);
         if (row == null) // 未就绪窗口：不缓存，等下周期（占位行补页专属尾列，形状与本页真行一致）
             // 终审 Minor4：尾列必须拼在行括号内（旧写法 ,0,0 落在 ] 外=非法形状，normRows 数组过滤侥幸无症状）
             return fuelCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0,0]"
                 : (brewCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]"
-                : (dyeCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",\"[]\"]" : PlaceholderIcfgRow(cfgId)));
+                : (dyeCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",\"[]\"]"
+                : (ratCols ? PlaceholderIcfgRow(cfgId).TrimEnd(']') + ",0]" : PlaceholderIcfgRow(cfgId))));
         cache[cfgId] = row;
         return row;
     }
@@ -628,6 +661,69 @@ internal static class RailData
     internal static Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> ItemDict()
     {
         try { return BagTable.Cm()?._Config_Item_Dict; } catch { return null; }
+    }
+
+    /// <summary>契约柜 ownerId 清单（篮子救援 glist：差分候选 cfg 枚举用，CollectCfgIds 同域只读）。</summary>
+    internal static List<long> CtnOwnerIds()
+    {
+        var ids = new List<long>(_ctn.Count);
+        for (int i = 0; i < _ctn.Count; i++) ids.Add(_ctn[i].OwnerId);
+        return ids;
+    }
+
+    /// <summary>背包+契约柜在场 cfg 全集（篮子救援 glist 禁入表候选；OwnerCache 白名单
+    /// 只读枚举——绝不 foreach OwnerCache 本身，CollectOwnerCfgIds 同纪律）。</summary>
+    internal static List<int> BasketCfgIds()
+    {
+        var order = new List<int>();
+        var seen = new HashSet<int>();
+        var oc = ItemMgr()?.OwnerCache;
+        if (oc == null) return order;
+        CollectOwnerCfgIds(oc, ResolveBagOwner(null), seen, order);
+        var owners = CtnOwnerIds();
+        for (int i = 0; i < owners.Count; i++) CollectOwnerCfgIds(oc, owners[i], seen, order);
+        return order;
+    }
+
+    /// <summary>背包+契约柜在场（cfg,uses,usesMax) 去重三元组（篮子救援 glist 逐行边际分候选行
+    /// ——实机批改#1：多次使用物品剩余次数异=分值异=拆行，glistItemKey 合并键同口径；
+    /// uses/usesMax=Data_Item 原值，键口径在 BasketGlist.KindKey 归一）。</summary>
+    internal static List<(int Cfg, int Uses, int UsesMax)> BasketKindRows()
+    {
+        var order = new List<(int, int, int)>();
+        var seen = new HashSet<(int, int, int)>();
+        var oc = ItemMgr()?.OwnerCache;
+        if (oc == null) return order;
+        var owners = CtnOwnerIds();
+        CollectKindRows(oc, ResolveBagOwner(null), seen, order);
+        for (int i = 0; i < owners.Count; i++) CollectKindRows(oc, owners[i], seen, order);
+        return order;
+    }
+
+    private static void CollectKindRows(
+        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
+        long owner, HashSet<(int, int, int)> seen, List<(int, int, int)> order)
+    {
+        if (owner <= 0) return;
+        Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
+        try { if (!oc.TryGetValue(owner, out inner)) return; } catch { return; }
+        if (inner == null) return;
+        try
+        {
+            foreach (var pair in inner)
+            {
+                var it = pair.Value;
+                if (it == null) continue;
+                int cfg = 0, ut = 0, mt = 0;
+                try { cfg = it.ItemConfigId; } catch { }
+                try { ut = it.UseTimes; } catch { }
+                try { mt = it.MaxUseTimes; } catch { }
+                if (cfg <= 0) continue;
+                var k = (cfg, mt > 0 ? Math.Max(1, ut) : 0, mt);
+                if (seen.Add(k)) order.Add(k);
+            }
+        }
+        catch { }
     }
 
     /// <summary>容器显示名：T7 接线——RailCommands.LoadNames()（cerail_names.json 改名持久化）优先，契约名兜底。</summary>
@@ -905,7 +1001,7 @@ internal static class RailData
     /// 返回 null = cfgId 查不到 Config_Item（含配置表未就绪窗口）——调用方（IcfgRow）不缓存，
     /// 直接出占位行，防未就绪首包把 "?" 负缓存整会话（评审 Important 1）。
     /// </summary>
-    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false, bool dyeCols = false)
+    private static string BuildIcfgRow(int cfgId, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict, bool fuelCols = false, bool brewCols = false, bool dyeCols = false, bool ratCols = false)
     {
         var cm = BagTable.Cm();
         if (itemDict == null) { itemDict = cm?._Config_Item_Dict; }
@@ -963,6 +1059,14 @@ internal static class RailData
         if (dyeCols)
         {
             sb.Remove(sb.Length - 1, 1).Append(",\"").Append(EscapeJs(DyePigOf(cfgId))).Append("\"]");
+        }
+        /* 老鼠笼页专属尾列（rat-brew v2.2.5；v2.2.7 作者令改「猎物」含死体）：prey 三值——
+           0=非猎物 / 1=活体（Prey_Rarity>0，gamekb 全表 23 件核验）/ 2=死体（与活体**同动物
+           Model 预制体**结构关联——7 种死体一一对应活体，料理用 Furniture 模型不撞；腐烂链
+           活体→肥料不可用作判定）。**禁止**从 Category/SubCategory/名字推导。读不到=0。 */
+        if (ratCols)
+        {
+            sb.Remove(sb.Length - 1, 1).Append(',').Append(RatPreyKind(cfgId)).Append(']');
         }
         return sb.ToString();
     }
@@ -1025,6 +1129,79 @@ internal static class RailData
                   .Append(",1,").Append(i + 1).Append(']');
             }
             return sb.Append(']').ToString();
+        }
+        catch { return ""; }
+    }
+
+    private static string _brewIcoCache; /* rat-brew glist：三档酒精瓶 WebIcon JSON（静态配置一次读，_icfgFuelCache 先例；失败不缓存=下包重试） */
+    private static HashSet<int> _ratPreyLive;   /* 活猎物 cfgId（Prey_Rarity>0） */
+    private static HashSet<string> _ratPreyModels; /* 活猎物动物 Model 预制体 → 死体关联键 */
+    private static HashSet<int> _ratPreyDead;   /* 死体猎物 cfgId（同 Model 结构关联） */
+    private static object _ratPreySrc;          /* 索引源字典引用（配置表恒定，防重建） */
+
+    /// <summary>rat-brew v2.2.7：cfgId → 猎物三值（0 非猎物/1 活体/2 死体）。活=Prey_Rarity>0；
+    /// 死体=与活体同动物 Model（结构关联非名字推导——gamekb 7 种死体全对上，腐烂链活体→肥料
+    /// 不可用）。索引懒建一次（_perfectIds 同款源引用守卫）。</summary>
+    private static int RatPreyKind(int cfgId)
+    {
+        try
+        {
+            var dict = ItemDict();
+            if (dict == null || dict.Count == 0) return 0;
+            if (!ReferenceEquals(_ratPreySrc, dict))
+            {
+                var live = new HashSet<int>();
+                var models = new HashSet<string>();
+                var dead = new HashSet<int>();
+                foreach (var kv in dict)
+                {
+                    var it = kv.Value;
+                    if (it == null) continue;
+                    try
+                    {
+                        if (it.Prey_Rarity > 0) { live.Add(kv.Key); var m = it.Model; if (!string.IsNullOrEmpty(m)) models.Add(m); }
+                    }
+                    catch { }
+                }
+                foreach (var kv in dict)
+                {
+                    var it = kv.Value;
+                    if (it == null || live.Contains(kv.Key)) continue;
+                    try { if (!string.IsNullOrEmpty(it.Model) && models.Contains(it.Model)) dead.Add(kv.Key); } catch { }
+                }
+                _ratPreyLive = live; _ratPreyModels = models; _ratPreyDead = dead; _ratPreySrc = dict;
+            }
+            if (_ratPreyLive.Contains(cfgId)) return 1;
+            if (_ratPreyDead.Contains(cfgId)) return 2;
+            return 0;
+        }
+        catch { return 0; }
+    }
+    /// <summary>brewIco 页条件字段 JSON（["劣","普","烈"] 三 WebIcon；空串=任一缺席整字段不下发——
+    /// JS 角标退纯色无图不崩）。序=JS GLB_TIER 档序；物品 15505/15504/15506=酿酒产物三档
+    /// 物品本体（Config_Item dump 实证，rat-brew spec §4）。</summary>
+    private static string BrewIcoJson()
+    {
+        if (_brewIcoCache != null) return _brewIcoCache;
+        try
+        {
+            var dict = ItemDict();
+            if (dict == null || dict.Count == 0) return "";
+            int[] ids = { 15505, 15504, 15506 };
+            var urls = new string[3];
+            for (var i = 0; i < 3; i++)
+            {
+                try { dict.TryGetValue(ids[i], out var bic); urls[i] = bic?.WebIcon; } catch { }
+                if (string.IsNullOrEmpty(urls[i])) return "";
+            }
+            var sb = new StringBuilder("[");
+            for (var i = 0; i < 3; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append('"').Append(EscapeJs(urls[i])).Append('"');
+            }
+            _brewIcoCache = sb.Append(']').ToString();
+            return _brewIcoCache;
         }
         catch { return ""; }
     }
@@ -1337,6 +1514,7 @@ internal static class RailData
     private static readonly Dictionary<int, string> _icfgFuelCache = new(); // 燃油发电机页 16 列行（尾列 burnable/burnValue，spec §5.3——与 14 列缓存分键防串形）
     private static readonly Dictionary<int, string> _icfgBrewCache = new(); // 酿酒桶页 15 列行（尾列 canBrew，brew spec §5.1——同上分键防串形）
     private static readonly Dictionary<int, string> _icfgDyeCache = new(); // 染料桶页行（尾列 pig 打包串，dye-pigment-sort spec §5.1——同上分键防串形）
+    private static readonly Dictionary<int, string> _icfgRatCache = new(); // 老鼠笼页行（尾列 prey，rat-brew v2.2.5——同上分键防串形）
 
     /// <summary>EscapeJs：JSON 字符串字面量转义（TagFilter 私有实现的共享复制，计划 Step 3 允许复制）。</summary>
     internal static string EscapeJs(string s)

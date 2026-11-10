@@ -230,6 +230,7 @@ internal static class RailCommands
             case "feed": OpFeed(c); break; // 燃油发电机柜中燃料直送（两跳，见 OpFeed 注释）
             case "switchBag": OpSwitchBag(c); break; // 九验收：柜签=官方背包数据切换（官方网格/拖拽/详情/悬浮全原生，见 OpSwitchBag 注释）
             case "refreshBag": OpRefreshBag(); break; // glist 批改#9：格子态官方刷新杠杆（switchBag 同值守卫早退不覆盖——见 OpRefreshBag 注释）
+            case "basketPut": OpBasketPut(c); break; // 篮子救援 glist：右键 1 件直放篮子（最终入篮=官方快转动作，见 OpBasketPut 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -240,6 +241,7 @@ internal static class RailCommands
             case "ping": OpPing(c); break; // v1.8.10 十三批四追：心跳自愈；六追后升级为通道对照实验（微包回执）：ExecuteJavaScript 大包（62KB 契约）实测零达而 drain（33B）恒达——长度丢弃假说验证
             case "report": OpReport(c); break; // TradeFx 批1：JS 侧 missing 探针上报（纯日志零副作用——游戏改版定位「哪个依赖部件没了」）
             case "detail": OpDetail(c); break; // TradeFx 批2（A5）：货架/格子点击 → 官方物品详情弹窗
+            case "idetail": OpIDetail(c); break; // glist v2.2.1：行左键 → 官方详情弹窗（实例级，任意容器归属）
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
         }
     }
@@ -527,6 +529,23 @@ internal static class RailCommands
         }
         catch (Exception e) { WarnOnce("fx:detail", "[TradeFx] 详情弹窗失败: " + e.Message); }
     }
+
+    /// <summary>idetail：glist v2.2.1——列表行左键 → 官方物品详情弹窗（**实例级**：ItemId+OwnerId
+    /// 直开——官方动作原生带 OwnerId 字段=任意容器归属物品均可开，柜源行同样成立；作者令
+    /// 「列表所有物品都用官方原生详情弹窗」）。TipsType=Default 纯查看（零使用/购买钮语义风险；
+    /// 背包同款 UseByBag 可后续实机裁定切换）。参形=OpDetail 同款 13 位（dump @130893：
+    /// ItemId/OwnerId/ItemConfigId/Discount/TipsType/ShopShowHour/TimeScale/ShopConfigId/
+    /// SourceFurnitureId/SourceRect×4）。</summary>
+    private static void OpIDetail(Cmd c)
+    {
+        if (c.Item <= 0 || c.Owner < 0) return;
+        try
+        {
+            GameCore.HotUpdate.ReduxUI.Ac_ItemDetailPopup_OpenUI.SendAction(
+                c.Item, c.Owner, (int)c.Cat, 1f, (GameCore.HotUpdate.TipsType)0, -1, 1f, 0, 0L, 0f, 0f, 0f, 0f);
+        }
+        catch (Exception e) { WarnOnce("g:idetail", "[CERail] glist 官方详情弹窗失败: " + e.Message); }
+    }
     private static void OpTidy(Cmd c)
     {
         if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] tidy 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
@@ -713,6 +732,141 @@ internal static class RailCommands
     private static void OpRefreshBag()
     {
         try { RailData.RefreshActivePage(); VLog("refreshBag", "活跃页官方刷新（glist 格子态）"); } catch (Exception e) { WarnOnce("refresh:fail", "refreshBag 异常: " + e.Message); }
+    }
+
+    /// <summary>basketPut{owner,item}（篮子救援 glist 右键）：1 件直放篮子（basket spec §5.1）。
+    /// 目标 owner=State_Web_BackpackUI.OwnerIdRP_B（状态权威直读，不信 JS 传值）；源=背包或白名单柜。
+    /// **最终入篮恒走官方快转动作** Ac_BackpackUI_QuickTransferItem（官方校验+B 侧格/救助进度
+    /// RecomputeBasketPreview 官方链全刷新——TryQuickMoveItems 直写篮容器会绕开官方 reducer
+    /// 使官方愿望条/B 侧停留旧值）：背包源=直发；柜源=SplitItem 拆 1 → TryQuickMoveItems 柜→包
+    /// （silent，feed 两跳同款）→ 落包按 cfg 重解析 → 官方快转。满/禁入预检→MarkFeedFail
+    /// （noitem/forbid/full/nomove 四码，ctx.feedFail 一次性回执，JS toast 官方口径文案）。</summary>
+    private static void OpBasketPut(Cmd c)
+    {
+        var st = BasketGlist.State();
+        long basket = 0;
+        try { basket = st?.OwnerIdRP_B?.Value ?? 0; } catch { }
+        bool isBasket = false;
+        try { isBasket = st != null && st.IsBasket_B != null && st.IsBasket_B.Value; } catch { }
+        if (!isBasket || basket <= 0) { WarnOnce("basketput:nobasket", "basketPut 丢弃：篮子态不在场"); return; }
+
+        long bag = RailData.BagOwner();
+        var im = RailData.ItemMgr();
+        if (bag <= 0 || im == null) { RailData.MarkFeedFail("noitem"); return; }
+
+        bool fromBag = c.Owner == bag;
+        if (!fromBag && !Whitelisted(c.Owner))
+        {
+            CabinetEverywherePlugin.Log.LogWarning($"[CERail] basketPut 丢弃：owner={c.Owner} 不在白名单（红线2）");
+            return;
+        }
+        var srcInner = OwnerItems(im, c.Owner);
+        var src = ItemOf(srcInner, c.Item);
+        if (src == null) { RailData.MarkFeedFail("noitem"); return; }
+
+        // 禁入预检（官方 IsBasketForbidItem 口径——截图红叹号同源）
+        int cfgId = 0;
+        try { cfgId = src.ItemConfigId; } catch { }
+        try { if (GameCore.HotUpdate.NeighborRules.IsBasketForbidItem(cfgId)) { RailData.MarkFeedFail("forbid"); return; } } catch { }
+
+        // 容量预检：件数（叠数）≥max 且篮内无同 cfg 叠（并入不增件）→ full
+        int maxItems = 5;
+        try { maxItems = Math.Max(1, GameCore.HotUpdate.GameKey.GlobalSetting_Neighbor_BasketMaxItems); } catch { }
+        int basketStacks = 0; bool hasSameCfg = false;
+        try
+        {
+            var b = st.ItemDataList_B;
+            if (b != null)
+            {
+                basketStacks = b.Count;
+                for (int i = 0; i < b.Count; i++)
+                {
+                    var bi = b[i];
+                    int bc = 0;
+                    try { bc = bi?.ItemConfigId ?? 0; } catch { }
+                    if (bc == cfgId && cfgId > 0) { hasSameCfg = true; break; }
+                }
+            }
+        }
+        catch { }
+        if (basketStacks >= maxItems && !hasSameCfg) { RailData.MarkFeedFail("full"); VLog(c.Op, $"full：{basketStacks}/{maxItems} cfg={cfgId}"); return; }
+
+        if (fromBag)
+        {
+            // 终审 I1：包源同拆 1 件（count>1 → SplitItem；官方快转若为整叠语义，不拆=整叠入篮
+            // 违反「右键 1 件」口径，且与柜源行为不一致）
+            int srcCount = 0;
+            try { srcCount = src.ItemCount; } catch { }
+            long pieceId = c.Item;
+            if (srcCount > 1)
+            {
+                var split = TrySplit(im, c.Item);
+                if (split > 0) pieceId = split;
+            }
+            SendQuickTransfer(pieceId);
+        }
+        else
+        {
+            // 柜源两跳（OpFeed 同款纪律）：拆 1 件柜→包（silent）→ 落包定位 → 官方快转入篮。
+            // 终审 I2：落包定位=InstanceId 优先（拆件未并包叠时直用）；已并叠（包内同 cfg 叠
+            // 有余量）时对并叠再拆 1 件发拆出叠——cfg-first 直发整叠=OpFeed 终审 Important2
+            // 已修掉的「错喂整叠」模式，不回潮
+            var batch = new Il2CppSystem.Collections.Generic.List<long>();
+            AddTakeOne(im, srcInner, c.Item, batch);
+            if (batch.Count == 0) { RailData.MarkFeedFail("noitem"); return; }
+            int moved = im.TryQuickMoveItems(batch, c.Owner, bag, SilentQuickMove, false);
+            if (moved <= 0)
+            {
+                // 终审 I4：柜→包失败主因=背包满——源叠仍在柜=bagfull（OpFeed :619 同口径），否则 noitem
+                bool stillInCabinet = ItemOf(OwnerItems(im, c.Owner), c.Item) != null;
+                RailData.MarkFeedFail(stillInCabinet ? "bagfull" : "noitem");
+                VLog(c.Op, $"柜→包失败 cfg={cfgId} {(stillInCabinet ? "bagfull" : "noitem")}");
+                return;
+            }
+            var bagInner = OwnerItems(im, bag);
+            long target = 0;
+            if (ItemOf(bagInner, batch[0]) != null) target = batch[0]; /* 拆件独立存活：直用 */
+            if (target <= 0)
+            {
+                foreach (var pair in bagInner) /* 已并叠：找到并叠后再拆 1 件 */
+                {
+                    var it = pair.Value;
+                    if (it == null) continue;
+                    int bc = 0;
+                    try { bc = it.ItemConfigId; } catch { }
+                    if (bc == cfgId) { try { target = it.InstanceId; } catch { } break; }
+                }
+                if (target > 0)
+                {
+                    int mergedCount = 0;
+                    try { mergedCount = ItemOf(bagInner, target)?.ItemCount ?? 0; } catch { }
+                    if (mergedCount > 1)
+                    {
+                        var split = TrySplit(im, target);
+                        if (split > 0) target = split;
+                    }
+                }
+            }
+            if (target <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            SendQuickTransfer(target);
+        }
+        VLog(c.Op, $"owner={c.Owner} item={c.Item} cfg={cfgId} 件={basketStacks}/{maxItems}{(hasSameCfg ? " 并叠" : "")}");
+
+        static void SendQuickTransfer(long itemId)
+        {
+            try { GameCore.HotUpdate.ReduxUI.Ac_BackpackUI_QuickTransferItem.SendAction(itemId); }
+            catch (Exception e) { RailData.MarkFeedFail("nomove"); WarnOnce("basketput:send", "QuickTransferItem 发送失败: " + e.Message); }
+        }
+
+        static long TrySplit(GameCore.HotUpdate.Battle.Logic.ItemManager im, long id)
+        {
+            try
+            {
+                var split = im.SplitItem(id, 1);
+                return split?.InstanceId ?? 0;
+            }
+            catch { return 0; }
+        }
     }
 
     /// <summary>
