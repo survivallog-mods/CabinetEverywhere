@@ -405,8 +405,35 @@ internal static class RailUi
     /// 当场生效）。= 本机 Vuplex/Il2Cpp 组合下**单参重载静默丢弃**（bootstrap 早期窗口偶达
     /// =会话时好时坏的假象来源）。修=统一带回调（回调体空转，红线1 不碰数据）。
     /// </summary>
+    /// <summary>入库任务进度小包（方案 A 交互终案）：几十字节直推 __CERAIL__.storeProg
+    /// （Root 文档模态进度弹窗的更新口）。必须走带回调重载（v1.8.10 铁证：单参无回调
+    /// ExecuteJavaScript 本机静默丢弃——_pushAckCb 复用同纪律）；~12 次/s（DriveStoreTask
+    /// 每 5 帧）+完成时 100% 一次。WebView 不在场=静默跳过（进度条缺席无害，任务照常）。</summary>
+    internal static void PushStoreProg(int done, int total)
+    {
+        try
+        {
+            var web = GetWebView();
+            if (web == null) return;
+            if (_pushAckCb == null)
+                _pushAckCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(PushAck));
+            web.ExecuteJavaScript("window.__CERAIL__&&__CERAIL__.storeProg(" + done + "," + total + ")", _pushAckCb);
+        }
+        catch { }
+    }
+
+    /// <summary>上次全量推送时刻（ms，Environment.TickCount64）——余波节流用（见 PushIfDue 头注释）。</summary>
+    private static long _lastPushMs;
+
     private static int PushIfDue(Vuplex.WebView.IWebView web)
     {
+        if (RailCommands.StoreTaskActive) return -1; // 入库任务在途：闸住全量重推（Tick/FastPoll 双通道一收口——任务每帧搬几件，不闸=每帧 136KB BuildJson+下发；完成时 FinishStoreTask 收尾一次推）
+        // 余波节流（2026-11-11 慢动作终案）：入库后游戏自身系统（机器人整理/并叠等）会连续动物品
+        // （实测物品行 1492→1496→1493 逐包变）→ 每次结构变化=129KB 全量重推，8+ 连发=1MB 下发+
+        // JS 全量渲染×8=游戏慢动作数秒。600ms 节流把连发合并到 2-3 包（哨兵/页面切换最多迟 600ms 无感）。
+        long nowMs = System.Environment.TickCount64;
+        if (nowMs - _lastPushMs < 600 && _lastPushMs != 0) return -1;
         string page = RailData.ActivePage();
         bool pageChanged = !string.Equals(page, _lastPage, StringComparison.Ordinal);
         if (!pageChanged && !RailData.ItemsDirty()) return -1;
@@ -456,6 +483,7 @@ internal static class RailUi
             }
         }
         _lastPage = page;
+        _lastPushMs = nowMs; // 余波节流基准（本次推送时刻，见头注释）
 
         // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
         if (CabinetEverywherePlugin.Verbose?.Value == true)

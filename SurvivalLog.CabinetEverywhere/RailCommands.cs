@@ -207,6 +207,7 @@ internal static class RailCommands
                 if (CabinetEverywherePlugin.Verbose?.Value == true || tPush > 150)
                     CabinetEverywherePlugin.Log.LogInfo($"[CERail] 命令泵本帧执行 {executed} 条（余量 {Pending.Count}）→ ForceRepublish {tPush}ms（>150ms 常驻打印）");
             }
+            if (_storeTask != null) DriveStoreTask(); // 方案 A 终案：入库任务每帧一步（收尾自带哨兵+推送收口）
         }
         catch (Exception e)
         {
@@ -234,6 +235,7 @@ internal static class RailCommands
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
+            case "storeAbort": AbortStoreTask(); break; // 玩家 ✕ 关进度弹窗：中止剩余搬运（B 款可关闭批）
             case "rename": OpRename(c); break;
             case "setTags": OpSetTags(c); break;
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
@@ -977,13 +979,73 @@ internal static class RailCommands
     /// 「只能放材料类」的硬限制仍由 TryQuickMoveItems 兜底，T14 校准）。</summary>
     private const int RackRouteTag = 1012;
 
+    /// <summary>每帧搬运件数上限（2026-11-11 提速终案）：实测铁律=凑满逻辑受顺延探测拖累
+    /// （258 帧/261 件≈1 件/帧，67 次 0 件调用在探满柜）——上限提到 12 件/帧（弹窗模态期间
+    /// 玩家看进度条不看游戏帧率，掉帧可接受）+ 桶级饱和标记（整桶 0 件=柜满，后续帧直接跳过
+    /// 该柜不再逐帧重试）→ 261 件 ≈ 25-40 帧 ≈ 2-3s。</summary>
+    private const int StoreBatchPerFrame = 12;
+
+    /// <summary>storeAll 跨帧任务（方案 A 终案，头注释见 OpStoreAll）：Pump 每帧驱动一步
+    /// （DriveStoreTask），LastIds/LastCab=上帧批与柜（本帧首结算差量）。TotalStacks=进度
+    /// 分母（初始可路由叠+配置查无叠），进度分子=TotalStacks-Pending.Count（每帧 RemoveAll
+    /// 后的即时值），每 5 帧小包直推 __CERAIL__.storeProg（模态进度弹窗，交互终案）。</summary>
+    private sealed class StoreAllTask
+    {
+        public long Bag;
+        public GameCore.HotUpdate.Battle.Logic.ItemManager Im;
+        public List<CabinetCatalog.ContainerInst> Cabs;
+        public List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>> CabRules;
+        public List<bool> CabEmpty;
+        public List<(long id, GameCore.HotUpdate.Config_Item ic, float days, int cnt, int next)> Pending;
+        public List<(int k, int cab)> LastIds; // 上帧批（pending 下标+所试柜）→ 本帧首结算差量
+        public bool[] CabSaturated; // 桶级饱和（提速终案：整桶结算 0 件=柜满，MatchCab 跳过不再逐帧重试探测）
+        public int ScanFrom; // 扫描游标（提速批：连续帧同柜时从上次位置续扫，不每帧从头全扫——600 叠全扫≈1.5ms/帧省掉）
+        public Il2CppSystem.Collections.Generic.List<long> Batch;
+        public int MovedStacks, MovedTotal, LeftStacks, TotalStacks, Calls, MatchCalls, Steps;
+        public long TSnap; public System.Diagnostics.Stopwatch Sw;
+    }
+    private static StoreAllTask _storeTask;
+    /// <summary>入库任务在途（RailUi.PushIfDue 闸门用：任务期间压住 FastPoll/Tick 全量重推，
+    /// 防每帧搬运各触发一次 136KB BuildJson+下发——完成时收尾一次性推）。</summary>
+    internal static bool StoreTaskActive => _storeTask != null;
+    /// <summary>中止入库任务（storeAbort 命令=玩家 ✕ 关弹窗；OnWorldRebind 换档同口）：
+    /// 走 FinishStoreTask 正式收口（部分已入库不可回滚——剩余留背包；收尾推送+哨兵+汇总日志照发，
+    /// 哨兵对已关窗/已换档的 JS 无消费方=无害）。</summary>
+    internal static void AbortStoreTask()
+    {
+        var t = _storeTask;
+        if (t != null) FinishStoreTask(t, "手动中止（✕ 关闭）");
+    }
+
+    /// <summary>
+    /// 2026-11-11 终案（方案 A：跨帧小批后台任务）：实机日志实锤卡顿根因=官方 TryQuickMoveItems
+    /// 逐件 Notify 广播×订阅者全量活的**平方成本**（157 件 3.6s 单帧阻塞、54 件 179ms——
+    /// C# 批量化只减 interop 边界，减不了官方内部风暴）。TAG_PUT_IN 官方事件重放路实测零效
+    /// （官方按钮 core.UnitySendEvent 页内直发，postMessage 跨帧路由不认该 type——SORT_BACKPACK
+    /// 在白名单故整理可用，教训存档）。终案=OpStoreAll 拆成**跨帧任务**（Pump 每帧驱动）：
+    /// 每帧仅 ≤StoreBatchPerFrame 件小批一柜一次调用（小批区线性价），主帧每帧 ~13ms 不掉帧、
+    /// 不切页玩家零打扰（该干嘛干嘛）；任务期间 PushIfDue 闸住（FastPoll/Tick 双通道）防每帧
+    /// 全量重推，完成后 RefreshActivePage+ForceRepublish 一次性收口 + storeAllDone 哨兵包
+    /// （RailData.MarkStoreDone→ctx 一次性带出即清，lastTidyFail 同款先例）：JS settleXfer
+    /// 收到哨兵才解除 hold 结算差量 toast、入库按钮恢复。JS 侧任务期间禁用按钮（storeBtnBusy）。
+    /// </summary>
     private static void OpStoreAll(Cmd c)
     {
+        // 早退哨兵（交互终案兜底）：JS 弹窗在 cmdOut 后即开，任何不建任务的早退必须发哨兵包
+        // （MarkStoreDone+ForceRepublish）关掉进度弹窗——探险模式无柜早退曾致 0% 悬挂（作者实测）。
+        void Bail(string warnKey, string warnMsg, string vlog)
+        {
+            WarnOnce(warnKey, warnMsg);
+            VLog(c.Op, vlog);
+            RailData.MarkStoreDone();
+            RailData.ForceRepublish();
+        }
+        if (_storeTask != null) { WarnOnce("storeAll:busy", "storeAll 丢弃：入库任务进行中（按钮应已禁用，防御）"); return; }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         long bag = RailData.BagOwner();
-        if (bag <= 0) { WarnOnce("storeAll:nobag", "storeAll 丢弃：背包 owner 不可得"); return; }
+        if (bag <= 0) { Bail("storeAll:nobag", "storeAll 丢弃：背包 owner 不可得", "无背包 owner，弹窗哨兵收口"); return; }
         var im = RailData.ItemMgr();
-        if (im == null) { WarnOnce("storeAll:noim", "storeAll 丢弃：ItemManager 不可得"); return; }
+        if (im == null) { Bail("storeAll:noim", "storeAll 丢弃：ItemManager 不可得", "无 ItemManager，弹窗哨兵收口"); return; }
 
         var cabs = new List<CabinetCatalog.ContainerInst>();
         var cabRules = new List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>>();
@@ -1001,7 +1063,7 @@ internal static class RailCommands
             cabRules.Add(ruleArg);
             cabEmpty.Add(rule.Count == 0); // 构造期标记（代理侧 Count 不可靠，头注释）
         }
-        if (cabs.Count == 0) { VLog(c.Op, "无有效柜候选（order 空/全非法），背包原样"); return; }
+        if (cabs.Count == 0) { Bail("storeAll:nocabs", "storeAll 丢弃：无有效柜候选（探险模式？）", "无有效柜候选（order 空/全非法/探险模式），背包原样｜弹窗哨兵收口"); return; }
 
         var inner = OwnerItems(im, bag);
 
@@ -1039,10 +1101,9 @@ internal static class RailCommands
         }
         long tSnap = sw.ElapsedMilliseconds;
 
-        // 可路由队列：ic 解析（cfgId 本地缓存，同 cfgId 只查一次 ItemCfg——旧版每叠各查一次
-        // 的 interop 读收窄为去重后次数）。next=下一候选柜下标（顺延游标），-1=终局标记
-        // （已放置/无匹配柜），轮末统一压缩（组间 RemoveAt 会致下标漂移，故先标后压）。
-        int movedStacks = 0, movedTotal = 0, leftStacks = 0, calls = 0, matchCalls = 0;
+        // 可路由队列：ic 解析（cfgId 本地缓存，同 cfgId 只查一次 ItemCfg）。next=下一候选柜下标
+        // （顺延游标），-1=终局标记（已放置/无匹配柜），帧内统一压缩（先标后压防下标漂移）。
+        int leftStacks = 0;
         var icCache = new Dictionary<int, GameCore.HotUpdate.Config_Item>();
         var pending = new List<(long id, GameCore.HotUpdate.Config_Item ic, float days, int cnt, int next)>();
         foreach (var (id, cfg, cnt, days) in snapshot)
@@ -1055,60 +1116,129 @@ internal static class RailCommands
             if (ic == null) { leftStacks++; continue; } // 配置查无：无法路由 → 留背包（红线4 同口径）
             pending.Add((id, ic, days, cnt, 0));
         }
-
-        var batch = new Il2CppSystem.Collections.Generic.List<long>();
-        var groups = new Dictionary<int, List<int>>(); // 柜下标 → pending 下标集（每轮按「各自下一候选柜」分组）
-        while (pending.Count > 0)
+        if (pending.Count == 0)
         {
-            inner = OwnerItems(im, bag); // 轮首刷新（见头注释）
-            if (inner == null) break; // 背包字典不可得（理论不至）：保守终止，剩余按未移动留背包
-            groups.Clear();
-            bool anyGroup = false;
-            for (int k = 0; k < pending.Count; k++)
+            VLog(c.Op, $"cabs={cabs.Count} 入库 0 叠/0 件，留背包 {leftStacks} 叠（无可路由物品）");
+            RailData.MarkStoreDone(); // 哨兵收口（背包空/全配置查无：进度弹窗直落完成态）
+            RailData.ForceRepublish();
+            return;
+        }
+
+        _storeTask = new StoreAllTask
+        {
+            Bag = bag, Im = im, Cabs = cabs, CabRules = cabRules, CabEmpty = cabEmpty,
+            Pending = pending, Batch = new Il2CppSystem.Collections.Generic.List<long>(),
+            CabSaturated = new bool[cabs.Count],
+            LeftStacks = leftStacks, TotalStacks = leftStacks + pending.Count, TSnap = tSnap, Sw = sw,
+        };
+        VLog(c.Op, $"任务启动：柜 {cabs.Count} 叠 {pending.Count}（每帧 ≤{StoreBatchPerFrame} 件分帧，完成时哨兵包收口）");
+    }
+
+    /// <summary>入库任务每帧一步（Pump 尾部调用）：①结算上帧批（count 差量：placed 终局/放不下
+    /// 顺延游标）→ ②压缩终局+完成判定 → ③扫描找本帧批（首个活叠的匹配柜 j0，收同柜活叠
+    /// ≤N 个；其余叠不动——扫描期不推进游标，只有「试过放不下」才推进）→ ④一柜一次调用发批。
+    /// 扫描 O(活叠) 次 Matches/帧（实测 2182 次仅数 ms，微秒级/帧）。</summary>
+    private static void DriveStoreTask()
+    {
+        var t = _storeTask;
+        if (t == null) return;
+        try
+        {
+            t.Steps++;
+            var inner = OwnerItems(t.Im, t.Bag);
+            if (inner == null) { FinishStoreTask(t, "背包字典不可得（保守终止）"); return; }
+            if (t.LastIds != null)
             {
-                var p = pending[k];
-                if (p.next < 0) continue;
-                int j = p.next;
-                while (j < cabs.Count && !MatchCab(cabRules, cabEmpty, j, p.ic, p.days, ref matchCalls)) j++; // §4.7：官方判定
-                if (j >= cabs.Count) { p.next = -1; pending[k] = p; leftStacks++; continue; } // 无匹配/全满：终局留背包
-                p.next = j + 1; pending[k] = p;
-                if (!groups.TryGetValue(j, out var g)) { g = new List<int>(); groups[j] = g; }
-                g.Add(k);
-            }
-            foreach (var kv in groups)
-            {
-                var ids = kv.Value;
-                batch.Clear();
-                for (int x = 0; x < ids.Count; x++) batch.Add(pending[ids[x]].id);
-                calls++;
-                im.TryQuickMoveItems(batch, bag, cabs[kv.Key].OwnerId, SilentQuickMove, false);
-                for (int x = 0; x < ids.Count; x++) // 结算：件数差量（只标 -1 不 Remove，防组间下标漂移）
+                var anyOk = new Dictionary<int, bool>(); // cab → 本批该柜有无吸收（提速终案：全无=饱和）
+                for (int x = 0; x < t.LastIds.Count; x++)
                 {
-                    int k = ids[x];
-                    var p = pending[k];
+                    int k = t.LastIds[x].k, cab = t.LastIds[x].cab;
+                    var p = t.Pending[k];
                     int now = 0;
                     try { now = ItemOf(inner, p.id)?.ItemCount ?? 0; } catch { }
-                    if (now < p.cnt) { movedStacks++; movedTotal += p.cnt - now; p.next = -1; pending[k] = p; }
-                    // 件数不变=该柜放不下：next 已推进到 j+1，下轮顺延下一个同标签柜
+                    if (now < p.cnt) { t.MovedStacks++; t.MovedTotal += p.cnt - now; p.next = -1; anyOk[cab] = true; } // 件数减少=有吸收即 placed（部分吸收不顺延，旧 moved>0 语义）
+                    else { p.next = cab + 1; anyOk[cab] = anyOk.GetValueOrDefault(cab); } // 纹丝不动=放不下：顺延游标推进（anyOk 保持既有值/缺省 false）
+                    t.Pending[k] = p;
                 }
-                anyGroup = true;
+                foreach (var kv2 in anyOk)
+                    if (!kv2.Value) t.CabSaturated[kv2.Key] = true; // 整柜零吸收=满：后续帧跳过（省逐帧探测）
+                t.LastIds = null;
             }
-            pending.RemoveAll(p => p.next < 0); // 轮末压缩（placed + 无匹配柜终局叠）
-            if (!anyGroup) break; // 本轮无可试柜（全部终局）：防死循环兜底
+            t.Pending.RemoveAll(p => p.next < 0);
+            if (t.Pending.Count == 0) { FinishStoreTask(t, null); return; }
+            if (t.Steps % 3 == 0) RailUi.PushStoreProg(t.TotalStacks - t.Pending.Count, t.TotalStacks); // 进度小包（~20 次/s，提速批加密）
+            // 扫描（提速终案：环形游标+**跨柜分桶凑满**——旧「一柜一批」实测 191 调用/207 件≈1 件/帧，
+            // 游标窗口内同柜叠稀疏=批恒凑不满，192 帧×40ms=7.6s 主因；改按柜分桶凑满 StoreBatchPerFrame
+            // 件止（帧内每桶一次调用 1-3 次），帧数 ~207/4≈55 → ~2.4s）
+            int n = t.Pending.Count;
+            var buckets = new Dictionary<int, List<int>>();
+            int gathered = 0, lastK = -1;
+            for (int pass = 0; pass < n && gathered < StoreBatchPerFrame; pass++)
+            {
+                int k = (t.ScanFrom + pass) % n;
+                var p = t.Pending[k];
+                if (p.next < 0) continue;
+                int j = p.next;
+                while (j < t.Cabs.Count && !MatchCab(t.CabRules, t.CabEmpty, t.CabSaturated, j, p.ic, p.days, ref t.MatchCalls)) j++; // §4.7：官方判定（含饱和跳过）
+                if (j >= t.Cabs.Count) { p.next = -1; t.Pending[k] = p; t.LeftStacks++; continue; } // 无匹配柜：终局留背包
+                if (!buckets.TryGetValue(j, out var g)) { g = new List<int>(); buckets[j] = g; }
+                g.Add(k); gathered++; lastK = k;
+            }
+            if (gathered == 0)
+            {
+                t.ScanFrom = 0;
+                t.Pending.RemoveAll(p => p.next < 0);
+                if (t.Pending.Count == 0) FinishStoreTask(t, null);
+                return;
+            }
+            t.ScanFrom = (lastK + 1) % n;
+            t.LastIds = new List<(int, int)>(gathered);
+            foreach (var kv in buckets)
+            {
+                t.Batch.Clear();
+                for (int x = 0; x < kv.Value.Count; x++) t.Batch.Add(t.Pending[kv.Value[x]].id);
+                t.Calls++;
+                t.Im.TryQuickMoveItems(t.Batch, t.Bag, t.Cabs[kv.Key].OwnerId, SilentQuickMove, false);
+                for (int x = 0; x < kv.Value.Count; x++) t.LastIds.Add((kv.Value[x], kv.Key));
+            }
         }
-        long tMove = sw.ElapsedMilliseconds;
-        VLog(c.Op, $"cabs={cabs.Count} 入库 {movedStacks} 叠/{movedTotal} 件，留背包 {leftStacks} 叠" +
-            $"｜性能 快照 {tSnap}ms 路由+移动 {tMove - tSnap}ms Matches {matchCalls} 次 TryQuickMoveItems {calls} 次");
+        catch (Exception e)
+        {
+            WarnOnce("storeAll:drive", "入库任务步进异常（终止）: " + e.Message);
+            FinishStoreTask(t, "异常终止");
+        }
+    }
+
+    /// <summary>任务收尾（正常/异常同口）：先清任务（PushIfDue 闸门开）→ 哨兵+官方页刷+重推
+    /// 一次性收口（任务期间被闸住的全量推送在此补上）→ 汇总 VLog（总时长/帧数/调用次数）。</summary>
+    private static void FinishStoreTask(StoreAllTask t, string abort)
+    {
+        _storeTask = null;
+        RailUi.PushStoreProg(t.TotalStacks, t.TotalStacks); // 进度 100%（弹窗转完成态由哨兵包驱动）
+        RailData.MarkStoreDone();     // ctx.storeAllDone 哨兵（JS settleXfer 解除 hold+弹窗结果态）
+        RailData.RefreshActivePage(); // 官方格刷（任务期间官方直调零推送的补口）
+        RailData.ForceRepublish();    // mod 契约重推（闸门已开，下一周期出包）
+        if (abort != null) WarnOnce("storeAll:abort", "入库任务提前终止：" + abort);
+        VLog("storeAll", $"cabs={t.Cabs.Count} 入库 {t.MovedStacks} 叠/{t.MovedTotal} 件，留背包 {t.LeftStacks} 叠" +
+            $"｜性能 快照 {t.TSnap}ms 任务 {t.Sw.ElapsedMilliseconds - t.TSnap}ms/{t.Steps} 帧 均 {t.MovedStacks / Math.Max(1, t.Steps)} 件/帧" +
+            $" 饱和柜 {CountTrue(t.CabSaturated)}/{t.Cabs.Count} Matches {t.MatchCalls} 次 TryQuickMoveItems {t.Calls} 次");
+    }
+
+    private static int CountTrue(bool[] a)
+    {
+        int n = 0;
+        for (int i = 0; i < a.Length; i++) if (a[i]) n++;
+        return n;
     }
 
     /// <summary>官方标签判定（storeAll 路由）：FurnitureTagRules.Matches(rule, cfg, remainDays,
     /// PutIn)——官方「按标签存取」同一函数，mod 零自建映射（头注释匹配批）。空 rule 柜（无标签）
     /// 不入路由；官方调用异常按不匹配保守处理（不阻断整批）。</summary>
     private static bool MatchCab(
-        List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>> cabRules, List<bool> cabEmpty,
+        List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>> cabRules, List<bool> cabEmpty, bool[] cabSat,
         int j, GameCore.HotUpdate.Config_Item ic, float remainDays, ref int matchCalls)
     {
-        if (cabEmpty[j]) return false;
+        if (cabEmpty[j] || cabSat[j]) return false; // 无标签柜不入路由（§4.7）；饱和柜跳过（提速终案）
         matchCalls++;
         try
         {

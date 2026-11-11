@@ -142,7 +142,14 @@ internal static class CabinetCatalog
 
             int mapId = am.GetHomeMapId();
             var agentList = am.agentList;
-            if (agentList == null || agentList.Count == 0) return;
+            if (agentList == null || agentList.Count == 0)
+            {
+                // 空=无家具可枚举（探险/换图边缘态）：清空产出而非保留旧缓存——旧缓存会让契约
+                // ctn 恒带家的柜子（探险模式入库按钮不隐藏、点了任务空转的路由，作者实测 2026-11-11）
+                _allContainers = new List<ContainerInst>();
+                _homeInstances = new List<ContainerInst>();
+                return;
+            }
 
             var cm = BagTable.Cm();
             var dict = BagTable.FurnDict(cm);

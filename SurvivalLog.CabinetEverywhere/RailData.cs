@@ -340,8 +340,10 @@ internal static class RailData
     {
         _bagOwner = 0;
         _bagCalLogged = false;
+        RailGround.Reset(); // 地面：家图判定缓存随档失效（mapId→IsHomeMap 语义换档变）
         _forcePending = true;
         _tidyFailPending = false;
+        RailCommands.AbortStoreTask(); // 入库任务基于旧 OwnerCache 快照，换档后无意义：静默丢弃（方案 A 终案）
         _lastSig = long.MinValue;   // 首包必推（与静态初值同款）
         try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
     }
@@ -351,6 +353,12 @@ internal static class RailData
     {
         _forcePending = true;
     }
+
+    /// <summary>storeAll 跨帧任务完成哨兵（方案 A 终案，RailCommands.FinishStoreTask 置位）：
+    /// BuildJson ctx.storeAllDone 带出即清（lastTidyFail 同款一次性语义）——JS settleXfer
+    /// 收到哨兵包才解除 hold 结算差量 toast+恢复入库按钮。</summary>
+    private static bool _storeDonePending;
+    internal static void MarkStoreDone() => _storeDonePending = true;
 
     /// <summary>tidy 失败标记（RailCommands.OpTidy 置位）：下一包 ctx.lastTidyFail=true 带出即清（T12 toast 消费）。</summary>
     internal static void ReportTidyFail()
@@ -479,6 +487,9 @@ internal static class RailData
         // sortBy 回执（一次性标志：[key,ok,moved,skip]；JS settle toast——治「排序不生效静默」）
         // T7 增补：tidy 失败一次性标志（推出即清；早退分支不清——等有包可推时再带出）
         sb.Append(",\"lastTidyFail\":").Append(_tidyFailPending ? "true" : "false");
+        // storeAll 任务完成哨兵（方案 A 终案）：JS settleXfer 靠它解除 hold（带出即清，与 lastTidyFail 同点位）
+        sb.Append(",\"storeAllDone\":").Append(_storeDonePending ? "true" : "false");
+        _storeDonePending = false;
         // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
         sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
         // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版

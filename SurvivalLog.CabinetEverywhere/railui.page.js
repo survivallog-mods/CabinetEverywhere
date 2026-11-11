@@ -871,6 +871,9 @@
   }
   function settleXfer() {
     if (!XFER) return;
+    /* storeAll 在途（方案 A 跨帧任务）：只有携带完成哨兵（ctx.storeAllDone）的包才结算——
+       任务期间被 PushIfDue 闸住理论上无中间包，此判为 mock/异常路径的兜底 */
+    if (XFER.hold && !(store.ctx && store.ctx.storeAllDone)) return;
     var x = XFER; XFER = null;
     /* tidy（T12 §4.6）：失败路先行——ctx.lastTidyFail（T7 一次性标志，C# 推出即清）在该包
        到达 → toast「本界面暂不支持整理」（降级文案），不差量、不误报成功；消费即 JS 侧
@@ -922,10 +925,11 @@
       if (movedP > 0) {
         var msg = '已入库 ' + movedP + ' 件 → ' + parts.join(' · ') + (hit > 4 ? ' 等' : '');
         if (bagSt.p) msg += '；' + bagSt.p + ' 件无匹配柜或柜已满，留在背包';
-        toast(msg);
+        storeProgDone(msg);
       } else {
-        toast(bagSt.p + ' 件无匹配柜或柜已满，留在背包');
+        storeProgDone(bagSt.p + ' 件无匹配柜或柜已满，留在背包');
       }
+      storeBtnBusy(false); /* 完成哨兵结算处恢复入库按钮（armStoreAll 置 busy 的对称收口） */
       return;
     }
     /* putAll/takeAll 差量尾部（「已放入/已取出 N 件（cat）」族文案）随中段三按钮
@@ -970,19 +974,130 @@
      v1.8.2：rack 左面板 sbStoreAll 入口随官方化退役（整理柜场景无入库按钮——背包在
      左段官方面板，放入走官方流程；spec §4.6 v13 裁定）。 */
   function openStoreConfirm() {
+    if (!store.ctn.length) { toast('当前没有可用的柜子'); return; } /* 探险模式无柜（按钮置灰的兜底） */
     if (!bagArr().length) { toast('背包是空的'); return; }
     closePops('store');
     closeMidMenus();
     el.srStoreConfirm.hidden = false;
     el.srStoreText.innerHTML = storeConfirmText();
   }
-  /* 确认入库：弹窗关 → arm（bag+order 全量柜快照）→ 命令入队等回推。 */
+  /* 确认入库：弹窗关 → arm（bag+order 全量柜快照）→ 官方事件链逐柜重放（armStoreAll）。 */
   function goStoreAll() {
     el.srStoreConfirm.hidden = true;
-    var order = storeAllOrder(), snaps = {};
+    armStoreAll(storeAllOrder());
+  }
+  /* 一键入库执行体（2026-11-11 方案 A 终案）：arm（bag+order 全量柜快照）→ cmdOut('storeAll')
+     → C# 跨帧任务逐帧小批搬运（每帧 ≤4 件一柜一次调用——小批线性价区，主帧 ~13ms 不掉帧、
+     不切页玩家零打扰；任务期间 PushIfDue 闸住推送，完成时 ctx.storeAllDone 哨兵包收口）。
+     JS 侧：按钮 busy 态防重入（storeBtnBusy），settleXfer 收哨兵才结算差量 toast+恢复按钮。
+     教训存档：TAG_PUT_IN 官方事件重放路（SWITCH_BAG+TAG_PUT_IN 逐柜 forgePost）实测零效
+     ——官方按钮 core.UnitySendEvent 页内直发，postMessage 跨帧路由不认该 type（SORT_BACKPACK
+     在官方白名单故整理可用，TAG_PUT_IN 不在）——勿再走。 */
+  function armStoreAll(order) {
+    var snaps = {};
     for (var i = 0; i < order.length; i++) snaps[order[i]] = snapOwner(order[i]);
-    XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps };
+    XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps, hold: true };
     cmdOut('storeAll', { order: order });
+    storeProgShow();
+    storeBtnBusy(true);
+  }
+  /* ---- 模态进度弹窗（方案 A 交互终案 + 2026-11-11 B 款样式/可关闭批，Root 常驻文档）----
+     B 款（作者选定）：旋转状态环📦 + 大号百分比 + 细进度条，配色=游戏官方（暗棕 #241b05 底 +
+     琥珀金 #FFC107/#b8830a + 完成态绿 #6dd47e）。右上 ✕ 常驻可关（玩家实报「100% 后卡死无法关闭」
+     ——在途关闭发 storeAbort 中止 C# 剩余搬运，完成态纯关窗）；100% 后 3s 无哨兵自动转完成态关窗
+     （storeProgAutoDone 兜底）；通道 3s 无包自动关（storeProgWatch）。进度更新口=__CERAIL__.storeProg。 */
+  var PROG = null, PROG_FED = false, PROG_DONE = false;
+  function storeProgShow() {
+    if (!PROG) {
+      PROG = document.createElement('div');
+      PROG.id = 'srStoreProg';
+      PROG.style.cssText = 'position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-family:sans-serif';
+      PROG.innerHTML =
+        '<style>@keyframes srProgSpin{to{transform:rotate(360deg)}}</style>' +
+        '<div style="background:linear-gradient(180deg,#332609,#241b05);border:1px solid #5c470f;border-radius:14px;padding:20px 22px 16px;min-width:300px;max-width:480px;position:relative;box-shadow:0 10px 32px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,224,102,.12);text-align:center;color:#e8e8e8">' +
+        '<div id="srProgX" title="关闭（入库中关闭将中止剩余部分）" style="position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;color:#8a8a8a;text-align:center;line-height:24px;font-size:13px;cursor:pointer;border:1px solid #4a3a10;background:#241b05">✕</div>' +
+        '<div id="srProgRing" style="width:44px;height:44px;margin:0 auto 10px;border-radius:50%;border:2px solid rgba(255,193,7,.35);border-top-color:#FFC107;display:flex;align-items:center;justify-content:center;font-size:19px;background:rgba(255,193,7,.06);animation:srProgSpin 1.8s linear infinite">📦</div>' +
+        '<div id="srStoreHead" style="font-size:14.5px;color:#FFC107;font-weight:600">正在入库</div>' +
+        '<div id="srStorePct" style="font-size:26px;font-weight:600;color:#FFE066;margin:6px 0 10px;font-variant-numeric:tabular-nums">0%</div>' +
+        '<div style="height:8px;border-radius:4px;background:#191206;overflow:hidden">' +
+        '<div id="srStoreBar" style="height:100%;border-radius:4px;background:linear-gradient(90deg,#b8830a,#FFC107 60%,#FFE066);box-shadow:0 0 10px rgba(255,193,7,.5);width:0%;transition:width .15s"></div></div>' +
+        '<div id="srProgMeta" style="display:flex;justify-content:center;gap:18px;margin-top:10px;font-size:12px;color:#a8925a"></div>' +
+        '<div id="srProgRes" style="display:none;margin-top:10px;font-size:12.5px;color:#ddd;line-height:1.6;white-space:normal"></div>' +
+        '</div>';
+      document.body.appendChild(PROG);
+      document.getElementById('srProgX').onclick = storeProgClose;
+    }
+    /* 复位进行态（上一轮完成态的绿样式清掉） */
+    var ring0 = document.getElementById('srProgRing');
+    ring0.innerHTML = '📦';
+    ring0.style.animation = 'srProgSpin 1.8s linear infinite';
+    ring0.style.border = '2px solid rgba(255,193,7,.35)';
+    ring0.style.borderTopColor = '#FFC107';
+    var h0 = document.getElementById('srStoreHead');
+    h0.textContent = '正在入库'; h0.style.color = '#FFC107';
+    document.getElementById('srStorePct').style.color = '#FFE066';
+    document.getElementById('srStoreBar').style.background = 'linear-gradient(90deg,#b8830a,#FFC107 60%,#FFE066)';
+    document.getElementById('srProgRes').style.display = 'none';
+    PROG.style.display = 'flex';
+    PROG_FED = false; PROG_DONE = false;
+    storeProgSet(0, 1);
+    setTimeout(storeProgWatch, 3000); /* 通道兜底：3s 内一个包都没来（命令未达 C#）=自动关窗防悬挂 */
+  }
+  function storeProgWatch() {
+    if (PROG && PROG.style.display !== 'none' && !PROG_FED) {
+      PROG.style.display = 'none';
+      toast('入库未响应（命令通道异常），请重试');
+    }
+  }
+  /* 手动关闭（✕）：完成态=纯关窗；在途=关窗+storeAbort 中止 C# 剩余搬运（已入库部分不可回滚，
+     剩余留背包）——玩家实报「100% 后卡死无法关闭」的根治出口。 */
+  function storeProgClose() {
+    if (PROG) PROG.style.display = 'none';
+    if (XFER && XFER.hold) { cmdOut('storeAbort', {}); XFER = null; }
+    storeBtnBusy(false);
+  }
+  function storeProgSet(done, total) {
+    PROG_FED = true; /* 任何进度/哨兵包到达=通道健康（含 C# 早退哨兵——进度条 0% 但会立刻落完成态） */
+    var bar = document.getElementById('srStoreBar'), pct = document.getElementById('srStorePct'), meta = document.getElementById('srProgMeta');
+    var v = total > 0 ? Math.min(100, Math.round(done * 100 / total)) : 100;
+    if (bar) bar.style.width = v + '%';
+    if (pct) pct.textContent = v + '%';
+    if (meta && total > 0) meta.innerHTML = '<span>已处理 <b style="color:#FFE066">' + done + '</b> 叠</span><span>剩余 <b style="color:#FFE066">' + Math.max(0, total - done) + '</b> 叠</span>';
+    if (v >= 100 && !PROG_DONE) setTimeout(storeProgAutoDone, 3000); /* 100% 后哨兵 3s 未到=自动完成态（防卡死兜底） */
+  }
+  function storeProgAutoDone() {
+    if (PROG && PROG.style.display !== 'none' && !PROG_DONE) storeProgDone('入库已完成');
+  }
+  /* 完成态（哨兵包结算处调用 / autoDone 兜底）：环停转 ✅ 绿 + 结果文案，800ms 自动收窗；
+     弹窗缺席（异常/换页重载路径）退 toast 兜底。 */
+  function storeProgDone(msg) {
+    PROG_DONE = true;
+    if (!PROG) { toast(msg); return; }
+    storeProgSet(1, 1);
+    var ring = document.getElementById('srProgRing');
+    if (ring) { ring.innerHTML = '✅'; ring.style.animation = 'none'; ring.style.border = '2px solid rgba(109,212,126,.4)'; }
+    var h = document.getElementById('srStoreHead');
+    if (h) { h.textContent = '入库完成'; h.style.color = '#6dd47e'; }
+    var pct = document.getElementById('srStorePct');
+    if (pct) pct.style.color = '#6dd47e';
+    var bar = document.getElementById('srStoreBar');
+    if (bar) bar.style.background = 'linear-gradient(90deg,#3f7a4c,#6dd47e)';
+    var res = document.getElementById('srProgRes');
+    if (res) { res.style.display = 'block'; res.innerHTML = msg; }
+    setTimeout(function () { if (PROG && PROG_DONE) PROG.style.display = 'none'; }, 800);
+  }
+  /* 入库按钮 busy 态（两入口按钮：rail 主侧栏 srStoreAll 纯文本 / 原生页 toolbar srnStoreBtn
+     span 结构——NB.doc 为 iframe 文档，装配态才在）。恢复=完成哨兵包结算处（settleXfer）。 */
+  function storeBtnBusy(on) {
+    if (el.srStoreAll) { el.srStoreAll.disabled = on; el.srStoreAll.textContent = on ? '⏳ 入库中…' : '📦 一键入库'; }
+    try {
+      var nb = NB.doc && NB.doc.getElementById('srnStoreBtn');
+      if (nb) {
+        nb.disabled = on;
+        var lbl = nb.querySelector('span:last-child');
+        if (lbl) lbl.textContent = on ? '入库中…' : '一键入库';
+      }
+    } catch (e) { }
   }
 
   /* ================= T12 一键整理（tidy：同名叠合并+差量 toast+降级分支） =================
@@ -2206,7 +2321,10 @@
        入库按钮在左侧背包面板底部，T10 装配、T11 接线）；整理 hidden 规则同款（全库视图
        隐藏=对象不明），行为 T12 已接（srTidy→goTidy(st.currentId)） */
     el.srTidy.hidden = !!st.global && !st.plainBag;
-    el.srStoreAll.hidden = st.plainBag ? false : (st.currentId !== store.bag || (store.ctx && store.ctx.family === 'rack'));
+    el.srStoreAll.hidden = (st.plainBag ? false : (st.currentId !== store.bag || (store.ctx && store.ctx.family === 'rack'))) || !store.ctn.length;
+    /* 探险模式无柜可入（AllContainers 空=契约 ctn 空）：按钮直接隐藏+置灰双保险（作者令
+       2026-11-11：去掉即可——旧缓存路 C# 侧已同步修为清空产出，此处兜底） */
+    el.srStoreAll.disabled = !store.ctn.length;
     el.srCols.textContent = COLS + ' 列';
     el.srCap.textContent = ' · ' + (st.global ? totalCap() + ' 格' : c.cap + ' 格');
     /* 副标标签段：容器标签视图（官方 tagId 查名 ∪ 自定义词 overlay，fix-2 tagNamesOf）
@@ -3548,6 +3666,13 @@
       NB.doc = doc; NB2.doc = doc;
       nbSide(doc, pp.bag, true);   /* 袋侧：排序+入库（取用形态不在场即摘） */
       nbSide(doc, pp.ctn, false);  /* 柜侧：仅排序（v1.8.6） */
+      /* 探险模式无柜：入库按钮隐藏+置灰（render el.srStoreAll 同款口径；每 scan 周期对账=按钮被
+         官方重绘重建后自愈；XFER.hold 任务在途段让位 storeBtnBusy 不碰） */
+      var nbStore = doc.getElementById('srnStoreBtn');
+      if (nbStore && !(XFER && XFER.kind === 'storeAll' && XFER.hold)) {
+        nbStore.disabled = !store.ctn.length;
+        nbStore.style.display = store.ctn.length ? '' : 'none';
+      }
       /* v1.8.8 原生页恒显滚动指示轨：滚动器（v1.8.13 起官方父层 .grid-wrapper，滚动事件/
          scrollTop/scrollHeight 在它上；格本体已非滚动器=恒 0 会钉死 thumb）右缘；fixed 贴视口
          （官方宿主层级不可控，不动官方 position）；工厂按 trackId 幂等，每周期重挂补位
@@ -3697,6 +3822,7 @@
     if (p2) p2.hidden = true;
     var cf = doc.getElementById('srnConfirm');
     if (!cf) return;
+    if (!store.ctn.length) { toast('当前没有可用的柜子'); return; } /* 探险模式无柜（nb 入口同款兜底） */
     if (!bagArr().length) { toast('背包是空的'); return; } /* §4.6：空背包 toast 不弹窗 */
     cf.innerHTML = '<div class="srn-cf-head">一键入库</div><div class="srn-cf-body"></div>' +
       '<div class="srn-cf-foot"><button type="button" class="srn-cf-cancel">取消</button>' +
@@ -3706,11 +3832,9 @@
     cf.querySelector('.srn-cf-cancel').onclick = function () { cf.hidden = true; };
     cf.querySelector('.srn-cf-go').onclick = function () {
       cf.hidden = true;
-      /* goStoreAll 同款 arm+cmd（rail 弹窗元素在原生页不存在，故独立收口） */
-      var order = storeAllOrder(), snaps = {};
-      for (var i = 0; i < order.length; i++) snaps[order[i]] = snapOwner(order[i]);
-      XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps };
-      cmdOut('storeAll', { order: order }); /* settleXfer 差量汇总 toast → toast() 兜底落本页 */
+      /* goStoreAll 同款官方事件链（rail 弹窗元素在原生页不存在，故独立收口；
+      settleXfer 差量汇总 toast → toast() 兜底落本页） */
+      armStoreAll(storeAllOrder());
     };
   }
   /* 数值角标（v13.5 同款 overlay；挂官方 .grid-container 内 pointer-events:none，跟随官方
@@ -5904,6 +6028,7 @@
 
   /* ---- __CERAIL__ 契约壳（T2 定面；T3 填实 setData/mount；T5 填实 drain/cmd）---- */
   window.__CERAIL__ = {
+    storeProg: function (done, total) { storeProgSet(done, total); }, /* 入库进度小包入口（C# PushStoreProg，模态进度弹窗） */
     dispInfo: function () { return { choice: DISP.choice, owner: DISP.owner, model: DISP.model ? DISP.model.kind : null, items: DISP.model ? DISP.model.items.length : 0, ct: { choice: DISP_CT.choice, owner: DISP_CT.owner, items: DISP_CT.model ? DISP_CT.model.items.length : 0 }, nb: { bag: NB.fsort, ctn: NB2.fsort } }; },
     brewTier: function (row) { return brewTierOf(row); }, /* v14 自检口（dispInfo 先例）：harness §1 三档派生/阈值兜底断言用 */
     /* dye-pigment-sort 自检口（brewTier 先例）：points/norm=harness §1 判形取值断言；
