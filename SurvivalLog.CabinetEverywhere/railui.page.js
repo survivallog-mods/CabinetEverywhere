@@ -1267,9 +1267,9 @@
     return null;
   }
   function isFilterScene() { return !!FS_KEYS[st.scene]; }
-  function filterSelKey() { return 'srp_filter_' + st.scene; }
-  function loadFilterSel() {
-    try { var v = localStorage.getItem(filterSelKey()); return (v == null || v === '') ? '0' : String(v); } catch (e) { return '0'; }
+  function filterSelKey(scene) { return 'srp_filter_' + (scene || st.scene); }
+  function loadFilterSel(scene) {
+    try { var v = localStorage.getItem(filterSelKey(scene)); return (v == null || v === '') ? '0' : String(v); } catch (e) { return '0'; }
   }
   function saveFilterSel(sel) {
     try { if (sel === '0' || sel == null) localStorage.removeItem(filterSelKey()); else localStorage.setItem(filterSelKey(), String(sel)); } catch (e) { }
@@ -1384,6 +1384,72 @@
       mo.observe(bar, { attributes: true, attributeFilter: ['style'] });
       mo.observe(doc.getElementById('bagTabPinned') || bar, { childList: true });
       dhStripGuardApply(doc);
+    } catch (e) { }
+  }
+  /* ================= 批改（2026-11-11 作者实报）：Trade 零命中「空页签栏+背包页签」守卫 =================
+     病根：交易页筛选选到无柜命中的分类（如「种子」但无柜打种子标签）→ C# TabGate 收窄后
+     bag.tabs 仅剩背包（index 0=player）→ 官方 Vue v-if="bag.tabs.length > 1"
+     （Trade.html .bag-tabs 模板）把整栏**真拆**（对照 DroneHub=display:none 藏栏可还原）→
+     #srTabs 槽空=页签区整片消失（作者截图实锤）。
+     修=DroneHub 守卫同口径的呈现层补：官方同款占位栏（.bag-tabs/.bag-tab-pinned/.bag-tab
+     官方类名，同文档吃官方 CSS）+背包页签按钮（名取页面 Vue setupState.bag.tabs[0] 真值，
+     player 页签官方本就无计数尾；单页签恒 active=CSS cursor:default 天然指示器态）。
+     纯呈现零数据伪造（C# 状态数组始终真实）；条件与 dhStripGuardApply 同语义：筛选激活
+     （sel!=='0'）才补，未筛选=官方 ≤1 无栏的原生语义不干预。真栏在场/重建（DEADHOST
+     取件路）即拆占位让位——守卫在 ensureTabsInSlot 槽检查前跑=真栏永不被占位栏挡住救援。
+     attach=#srTabs childList 观察器（Vue 拆真栏即触发补栏，零 500ms 空窗；占位自触发=已在
+     早退）+scanFrames 500ms 拍兜底（observe 标记随 iframe 重载自然重挂）。 */
+  function tradePhFind(slot) {
+    try { return slot.querySelector('.bag-tabs[data-srtabsph]') || null; } catch (e) { return null; }
+  }
+  function tradePhDrop(ph) { try { if (ph && ph.parentNode) ph.parentNode.removeChild(ph); } catch (e) { } }
+  function tradeTabsGuard(key, doc, slot) {
+    try {
+      var ph = tradePhFind(slot);
+      if (key !== 'Trade') { tradePhDrop(ph); return; }
+      /* 真栏在场（槽内/文档/脱文档原宿主——含 v-if 翻回重建的新件）=占位让位 */
+      var real = slot.querySelector('.bag-tabs:not([data-srtabsph])')
+        || doc.querySelector('.bag-tabs:not([data-srtabsph])');
+      if (!real) {
+        var dh = DEADHOST[key];
+        if (dh && !dh.isConnected && dh.ownerDocument === doc) {
+          try { real = dh.querySelector('.bag-tabs') || null; } catch (e) { real = null; }
+        }
+      }
+      if (real) { tradePhDrop(ph); return; }
+      if (loadFilterSel(key) === '0') { tradePhDrop(ph); return; } /* 未筛选：官方 ≤1 收栏=原生语义，不干预 */
+      var su = nbVueSu(doc), bag = su && su.bag;
+      var t0 = bag && Array.isArray(bag.tabs) && bag.tabs.length === 1 ? bag.tabs[0] : null;
+      if (!t0 || !t0.player) { tradePhDrop(ph); return; } /* 非零命中单背包态（数组未建/pin 恒留多签）不补 */
+      if (!ph) {
+        ph = doc.createElement('div');
+        ph.className = 'bag-tabs';
+        ph.setAttribute('data-srtabsph', '1');
+        var pin = doc.createElement('div');
+        pin.className = 'bag-tab-pinned';
+        var btn = doc.createElement('button');
+        btn.className = 'bag-tab active';
+        btn.type = 'button';
+        pin.appendChild(btn);
+        ph.appendChild(pin);
+        slot.appendChild(ph);
+      }
+      var btn = ph.querySelector('.bag-tab');
+      var nm = t0.name != null ? String(t0.name) : '背包';
+      if (btn.textContent !== nm) btn.textContent = nm;
+    } catch (e) { }
+  }
+  function tradeGuardAttach(doc) {
+    try {
+      if (!doc || doc.__srTradeGuard) return;
+      var slot = doc.getElementById('srTabs');
+      if (!slot) return;
+      doc.__srTradeGuard = true;
+      var mo = new (doc.defaultView.MutationObserver || MutationObserver)(function () {
+        if (tradePhFind(slot)) return; /* 占位自触发：已在=零动作 */
+        tradeTabsGuard('Trade', doc, slot);
+      });
+      mo.observe(slot, { childList: true });
     } catch (e) { }
   }
   function fsortLabel(k) {
@@ -2490,6 +2556,8 @@
     });
     /* 批改四轮②：DroneHub 零命中栏守卫（幂等挂一次；官方每次收栏即还原空栏+背包页签） */
     if (st.scene === 'DroneHub') dhStripGuardAttach(d);
+    /* 批改（2026-11-11）：Trade 零命中守卫（Vue v-if 真拆栏→占位栏补；slot 观察器即时触发） */
+    if (st.scene === 'Trade') tradeGuardAttach(d);
     /* T9 重绑幂等门：rail 节点已带监听器（首次 bind 挂过，节点未换）→ 引用表重收即可，
        不再重挂（addEventListener 重复挂会让 contextmenu/drag/dblclick 双发）。
        mount 路（全新 DOM）无标记 → 正常挂全量。 */
@@ -3966,6 +4034,8 @@
       var slot = doc.getElementById('srTabs');
       if (!slot) return;
       armTabScrollFollow(slot); /* 十二批：官方重建→rAF 回滚活动页签（真件在槽的早退路同样要布防） */
+      /* Trade 零命中守卫先于槽检查（真栏在场即拆占位让位；占位在场=真栏必不在，槽检查早退无害） */
+      if (f.key === 'Trade') tradeTabsGuard(f.key, doc, slot);
       if (slot.querySelector(sc.tabs)) return; /* 真件已在槽内（#bagTabs/.left-tabs/.bag-tabs 均容器内可查） */
       var t = sc.tabs.charAt(0) === '#'
         ? doc.getElementById(sc.tabs.slice(1))
