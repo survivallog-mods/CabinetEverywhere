@@ -3775,6 +3775,10 @@
      修法=官方每轮 syncSlotHeight 之后**微任务级跟校**（MutationObserver 盯官方内联写
      [slot.height/panel.top/slot.marginTop] + nbMount 500ms 周期兜底；写全部幂等签名守卫
      =值差>0.5px 才写，防自激铁律同 §0b-glist）：
+     ⓪ A marginTop 滚动偏移剥离（2026-11-11 作者实报「右键转移物品后背包和柜子都变得很小」）：
+       官方 gridMid 读 .grid-container rect，壳 cap 滚动层内随 scrollTop 上移 ⇒ delta 注入
+       滚动量 ⇒ mA.mt=max(0,delta) 把 A 顶推 ≈ scrollTop、② 再把 B 对齐沉底的 A=变形锁死
+       （harness-bp-shrink-repro3）；剥离=双侧 rect 各补回 scrollTop 按官方同式重推 A.mt；
      ① A 预留改「钳后行数」口径：effX=min(rows,CAPR)、extra=(effMax-effRows)*CELL ⇒ 跨
        页签 slot 高恒定（=chrome+effMax*CELL，面板 top/整页 zoom 随之稳定），panel.top=
        extra/2=可见窗口在预留内居中；
@@ -3815,18 +3819,47 @@
       var ph = aPanel.offsetHeight;
       if (!ph) return 0;
       var writes = 0;
+      var appZ = doc.getElementById('app');
+      var zm = (appZ && parseFloat(appZ.style.zoom)) || 1;
+      /* ⓪ A marginTop 滚动偏移剥离（作者实报 2026-11-11「右键转移物品后背包和柜子都变得很小」）：
+         官方 syncSlotHeight 的 gridMid 读 .grid-container rect——在壳 cap（NATIVE_BP_CSS 560px
+         滚动层）内 rect 随 scrollTop 上移 ⇒ delta 被注入滚动量；refit（转移后 canTag/规则片/
+         gridRows 等 watch 晚一拍回推）时 mA.mt=max(0,delta) 把 A 顶推 ≈ scrollTop（harness-
+         bp-shrink-repro3 实测：50 行包滚底 A.mt=1207px/ct 1934px/zoom 0.55 双面板沉底缩扁），
+         ② 再把 B 对齐到沉底的 A=变形态锁死（滚回顶再 refit 才自愈）。
+         修=**记忆式剥离**：只在官方重写 A.mt 的那一拍（style≠上次记忆值）把已知的滚动偏差
+         （aWrap.scrollTop−bWrap.scrollTop）从官方刚写的值里减掉（max(0,·) 与官方同夹）。
+         不做无滚动几何重推——官方 delta 依赖其 panel.top=maxRows 居中体制（跨页签 A 内容中点
+         恒定=mt 稳定的根基），① 已把 panel.top 改钳后口径，重推会在高袋页签间跳 mt（tab-align
+         harness P1 实锤 A 117px/zoom 跳变）。记忆门=幂等：本 tick 剥过/官方未重写=零动作；
+         scrollTop=0 时剥离量 0=逐字坍缩回官方原值零扰动。B 侧滚动（sB>0）使官方 delta 偏小、
+         max(0,·) 夹掉的部分无法还原=维持官方原值不放大（罕见路，与旧行为一致）。 */
+      if (bSlot) {
+        var bPanel0 = bSlot.querySelector('.bag-panel');
+        var bWrap0 = bPanel0 && bPanel0.querySelector('.grid-wrapper');
+        if (bPanel0 && bWrap0) {
+          var curAMt = aSlot.style.marginTop || '';
+          if (curAMt !== aSlot.__srAMt) { /* 官方（重）写沿：仅此拍剥离一次 */
+            var bias = aWrap.scrollTop - bWrap0.scrollTop;
+            var mtVal = parseFloat(curAMt) || 0;
+            var wantAM = Math.max(0, Math.round((mtVal - bias) * 10) / 10);
+            if (Math.abs(mtVal - wantAM) > 0.05) {
+              aSlot.style.marginTop = wantAM + 'px'; writes++;
+            }
+            aSlot.__srAMt = aSlot.style.marginTop || '';
+          }
+        }
+      }
       /* ① 预留/居中（钳后口径；官方值同=零写） */
       var wantH = ph + extra;
       if (Math.abs((parseFloat(aSlot.style.height) || 0) - wantH) > 0.5) { aSlot.style.height = wantH + 'px'; writes++; }
       var wantT = extra / 2;
       if (Math.abs((parseFloat(aPanel.style.top) || 0) - wantT) > 0.5) { aPanel.style.top = wantT + 'px'; writes++; }
-      /* ② B 可见窗口对齐（相对量：官方写什么 marginTop 都能叠校到位） */
+      /* ② B 可见窗口对齐（相对量：官方写什么 marginTop 都能叠校到位；zm 已在 ⓪ 前取） */
       if (bSlot) {
         var bPanel = bSlot.querySelector('.bag-panel');
         var bWrap = bPanel && bPanel.querySelector('.grid-wrapper');
         if (bPanel && bWrap) {
-          var app = doc.getElementById('app');
-          var zm = (app && parseFloat(app.style.zoom)) || 1;
           var ar = aWrap.getBoundingClientRect(), br = bWrap.getBoundingClientRect();
           var d = ((br.top + br.bottom) - (ar.top + ar.bottom)) / 2 / zm;
           if (Math.abs(d) > 0.5) {
