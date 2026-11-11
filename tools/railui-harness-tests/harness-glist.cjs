@@ -316,9 +316,8 @@ function check(name, ok, detail) {
     await page.waitForTimeout(60);
     const gridVis = await d.evaluate((k) => {
       const p = document.getElementById('srgPanel');
-      const cur = k === 'Heater'
-        ? document.querySelector('.heater-system > .panel:not(.heater-panel)') && document.getElementById('backpackGrid')
-        : document.getElementById('srRail');
+      /* 2026-11-12 rail 化：Heater 格子态=官方格在 rail 壳内（官方 .panel 已被 #srp 替换） */
+      const cur = document.getElementById('backpackGrid') || document.getElementById('srRail');
       return { gridmode: !!p && p.classList.contains('srg-gridmode'), curShown: !!cur && cur.offsetParent !== null, iconList: (document.getElementById('srgToggle').textContent || '').trim() === '☰' };
     }, KEY).catch(() => ({ gridmode: false, curShown: false, iconList: false }));
     check('B2-' + KEY + '-grid-mode', c1 && gridVis.gridmode && gridVis.curShown && gridVis.iconList,
@@ -1033,33 +1032,38 @@ function check(name, ok, detail) {
     await d.fill('#srgQ', '');
     /* GE：切格子态→refreshBag 官方刷新杠杆（批改#9：#2 旧杠杆 switchBag 同值守卫早退在「官方
        状态已在背包」时哑火且不覆盖染料——正身=裸命令→C# RefreshActivePage 按页派 Ac_*_RefreshBag）
-       + 格子态=原版面板（旧方案退役：无页签/无包装层/锁解除/官方格可见——作者裁定批改#9） */
+       + 格子态=rail 壳 srg-plain（染料桶格子界面复用批 2026-11-12：#srp 替换官方 .panel，
+       官方金标题+信息条+官方格+页脚一键入库/一键整理，样式底色统一——染料桶同款） */
     const ge = await cmdSpy(async () => { await d.click('#srgToggle'); await page.waitForTimeout(60); return true; });
     const rb = (ge.calls || []).filter((c) => c[0] === 'refreshBag').pop();
     check('GE-grid-refresh-refreshbag', !!rb, JSON.stringify(ge.calls));
     const gv = await d.evaluate(() => {
-      const host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
+      const srp = document.getElementById('srp');
       const grid = document.getElementById('backpackGrid');
-      const own = document.getElementById('srgGridScroll');
-      return { srfg: !!document.getElementById('srfgTabs'), oldWrap: !!document.getElementById('srfgGridScroll'),
-        ownWrap: !!own, wrapOv: own ? getComputedStyle(own).overflowY : '-',
-        lock: host ? (host.style.height || '(none)') : 'NOHOST', gridShown: !!grid && grid.offsetParent !== null };
+      return { srp: !!srp, plain: srp ? srp.classList.contains('srg-plain') : false,
+        srfg: !!document.getElementById('srfgTabs'), oldWrap: !!document.getElementById('srfgGridScroll'),
+        gridInRail: !!(grid && grid.closest('.sr-gridhost')),
+        gridShown: !!grid && grid.offsetParent !== null };
     }).catch(() => null);
-    /* 批改#11 契约：格子态=官方外观（无页签/无旧包装层）+778 锁两态自持+自持滚窗（官方机页
-       格无原生滚，12×25 大包必须滚窗——作者实报「完全不能滚，压根没有滚动条」） */
-    check('GE-grid-vanilla', !!gv && !gv.srfg && !gv.oldWrap && gv.ownWrap && gv.wrapOv === 'auto' &&
-      /778/.test(gv.lock) && gv.gridShown, JSON.stringify(gv));
-    /* 12j：按钮底边对齐标题行下标 + 暖炉信息条补齐发电机款（官方两页异款=作者实报不一致根源） */
+    /* 批改#11 → 2026-11-12 契约演进：格子态=rail 壳 srg-plain（滚窗/778 锁退役——rail 壳
+       自带 778 plain 高与格区滚动，染料桶同机制） */
+    check('GE-grid-rail-plain', !!gv && gv.srp && gv.plain && !gv.srfg && !gv.oldWrap &&
+      gv.gridInRail && gv.gridShown, JSON.stringify(gv));
+    /* 12j：srg-plain 态标题=静态「角色背包」+信息条在场（rail 同 CSS=两页同款；旧官方
+       panel-title/info-bar 异款问题随 rail 化根除） */
     const gja = await d.evaluate(() => {
-      const host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
-      const t = host ? host.querySelector('.panel-title') : null;
-      const info = document.getElementById('bagInfoBar');
-      const b = document.getElementById('srgToggle');
-      if (!t || !info || !b) return null;
-      const tr = t.getBoundingClientRect(), ir = info.getBoundingClientRect(), br = b.getBoundingClientRect();
-      return { btnAlignTitleB: Math.abs(br.bottom - tr.bottom) <= 3, infoH: Math.round(ir.height) };
+      const rail = document.getElementById('srRail');
+      const t = rail ? rail.querySelector('.sr-title') : null;
+      const sub = rail ? rail.querySelector('.sr-headtxt > .sr-sub') : null;
+      const store = rail ? rail.querySelector('.srStoreAll, #srStoreAll') : null;
+      const tidy = rail ? rail.querySelector('#srTidy') : null;
+      if (!t || !sub) return null;
+      return { title: t.textContent || '-', sub: sub.textContent || '-',
+        subD: getComputedStyle(sub).display, subH: Math.round(sub.getBoundingClientRect().height),
+        storeBtn: !!store, tidyBtn: !!tidy };
     }).catch(() => null);
-    check('GE-12j-btn-align-info', !!gja && gja.btnAlignTitleB && gja.infoH >= 28, JSON.stringify(gja));
+    check('GE-12j-btn-align-info', !!gja && gja.title === '角色背包' && /^空间： \d+ \/ \d+$/.test(gja.sub) &&
+      gja.subD !== 'none' && gja.subH >= 28 && gja.storeBtn && gja.tidyBtn, JSON.stringify(gja));
     await d.click('#srgToggle'); await page.waitForTimeout(60);
   }
 
@@ -1370,25 +1374,26 @@ function check(name, ok, detail) {
   }, null);
   await showScene('Heater'); await glistReady('Heater');
   await frameDoc('Heater').fill('#srgQ', '').catch(() => { }); await page.waitForTimeout(60); /* S4 键盘测试残留查询 'd' 清场（GLQ 过滤=0 行假错） */
-  await pushCtx('Heater'); await scan(); await page.waitForTimeout(100); /* 喂合成燃料数据+促 fgSettle 落 778 锁后再探 */
+  await pushCtx('Heater'); await scan(); await page.waitForTimeout(100); /* 喂合成燃料数据+促装配落定后再探 */
   const hbox = await frameDoc('Heater').evaluate(() => {
-    const host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
+    /* 2026-11-12 rail 化：宿主=#srp（官方 .panel 已被替换——染料桶同路，816 铁约束接管 778 锁） */
+    const host = document.getElementById('srp');
     const p = document.getElementById('srgPanel'), l = document.getElementById('srgList');
     if (!host || !p || !l) return null;
     const hr = host.getBoundingClientRect(), pr = p.getBoundingClientRect();
     return {
-      lock: host.style.height || '(none)', hostH: host.clientHeight, hostB: Math.round(hr.bottom),
+      hostH: host.clientHeight, hostB: Math.round(hr.bottom),
       pw: p.offsetWidth, ph: p.offsetHeight, pb: Math.round(pr.bottom),
       rows: document.querySelectorAll('.srg-row').length,
       scroll: l.scrollHeight - l.clientHeight,
       gridmode: p.classList.contains('srg-gridmode'),
-      srfgTabs: !!document.getElementById('srfgTabs'), srfgOn: host.classList.contains('srfg-on')
+      srfgTabs: !!document.getElementById('srfgTabs')
     };
   }).catch(() => null);
-  check('L5-heater-fill-host', !!hbox && /778/.test(hbox.lock) && !hbox.gridmode &&
-    hbox.pw === 616 && Math.abs(hbox.ph - (hbox.hostH - 30)) <= 2 && hbox.ph < 816,
+  check('L5-heater-fill-host', !!hbox && !hbox.gridmode &&
+    hbox.pw === 616 && Math.abs(hbox.ph - 816) <= 1, /* 染料桶 L2 同口径：816 铁约束盒 */
     JSON.stringify(hbox));
-  check('L5-heater-old-scheme-retired', !!hbox && hbox.srfgTabs === false && hbox.srfgOn === false, /* 批改#9：glist 在场=srfg 退役（锁由 glistApply 自持同值 778） */
+  check('L5-heater-old-scheme-retired', !!hbox && hbox.srfgTabs === false, /* 批改#9：glist 在场=srfg 退役（2026-11-12 起 rail 壳在场） */
     JSON.stringify(hbox));
   check('L7-heater-no-escape', !!hbox && hbox.pb <= hbox.hostB + 1 && hbox.rows > 0 && hbox.scroll > 0,
     JSON.stringify(hbox));
@@ -1414,9 +1419,9 @@ function check(name, ok, detail) {
   await page.evaluate(() => { window.__HZ_GLIST__ = {}; });
 
   /* ---- §GF 燃油发电机（批改#8：复用暖炉——作者令「两页基本一致，都是可燃物加入燃料槽」）----
-     同构面全查：装配六段/旧方案退役（无 srfg 三件+无 srfg-on）/glist 自持 778 锁+srg-fill 填满/
-     60 燃料行内滚/格子态=原版+refreshBag 杠杆/拆净还原。数据法同 L5（cfg10/11×uses 变体，
-     pushCtx 给发电机页补燃料尾列）。 */
+     同构面全查：装配六段/旧方案退役（无 srfg 三件）/2026-11-12 rail 化后宿主=#srp（816 铁约束）
+     /60 燃料行内滚/格子态=rail 壳 srg-plain+refreshBag 杠杆/拆净还原（rail 卸载+srfg 复活）。
+     数据法同 L5（cfg10/11×uses 变体，pushCtx 给发电机页补燃料尾列）。 */
   await setMockItems({
     bag: Array.from({ length: 60 }, function (x, i) {
       i++;
@@ -1430,59 +1435,59 @@ function check(name, ok, detail) {
   {
     const d = frameDoc('FuelGenerator');
     const fx = await d.evaluate(() => {
-      const host = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+      const host = document.getElementById('srp'); /* 2026-11-12 rail 化：宿主=#srp（官方 .panel 已被替换） */
       const p = document.getElementById('srgPanel'), l = document.getElementById('srgList');
       if (!host || !p || !l) return null;
       const hr = host.getBoundingClientRect(), pr = p.getBoundingClientRect();
       return {
         segs: ['srgHead', 'srgSearch', 'srgChips', 'srgHint', 'srgList', 'srgFootL'].every((id) => !!document.getElementById(id)),
-        cssInj: !!document.getElementById('srpRail'), /* 批改#10：glistBuild 自保注入（本帧干净首挂=#srpRail 在场即证注入路；旧路 ensureBagtabs 已被退役抑制） */
+        cssInj: !!document.getElementById('srpRail'), /* 批改#10：glistBuild 自保注入（rail mount 注入亦同锚） */
         title: (document.querySelector('#srgHead .srg-title') || {}).textContent || '',
-        lock: host.style.height || '(none)', hostH: host.clientHeight, srfgTabs: !!document.getElementById('srfgTabs'),
-        srfgOn: host.classList.contains('srfg-on'), pw: p.offsetWidth, ph: p.offsetHeight,
+        railIn: !!document.getElementById('srRail'),
+        pw: p.offsetWidth, ph: p.offsetHeight,
         pb: Math.round(pr.bottom), hostB: Math.round(hr.bottom),
         rows: document.querySelectorAll('.srg-row').length, scroll: l.scrollHeight - l.clientHeight,
+        srfgTabs: !!document.getElementById('srfgTabs'),
         hint: (document.getElementById('srgHint') || {}).textContent || '',
         chip: (document.querySelector('#srgChips .srg-chip') || {}).textContent || ''
       };
     }).catch(() => null);
     check('GF1-mount-six-segments', !!fx && fx.segs && fx.title.indexOf('全局物品栏') >= 0, JSON.stringify(fx && [fx.segs, fx.title]));
     check('GF1-css-injected', !!fx && fx.cssInj === true, 'cssInj=' + (fx && fx.cssInj)); /* 批改#10 回归锚：无样式文本流缺陷 */
-    check('GF2-old-scheme-retired', !!fx && fx.srfgTabs === false && fx.srfgOn === false, JSON.stringify(fx && [fx.srfgTabs, fx.srfgOn]));
-    check('GF3-fill-locked-host', !!fx && /778/.test(fx.lock) && fx.pw === 616 && Math.abs(fx.ph - (fx.hostH - 30)) <= 2,
-      JSON.stringify(fx && [fx.lock, fx.pw, fx.ph, fx.hostH]));
+    check('GF2-old-scheme-retired', !!fx && fx.srfgTabs === false && fx.railIn === true, JSON.stringify(fx && [fx.srfgTabs, fx.railIn]));
+    check('GF3-fill-locked-host', !!fx && fx.pw === 616 && Math.abs(fx.ph - 816) <= 1,
+      JSON.stringify(fx && [fx.pw, fx.ph]));
     check('GF4-rows-scroll-noescape', !!fx && fx.rows === 60 && fx.scroll > 0 && fx.pb <= fx.hostB + 1,
       JSON.stringify(fx && [fx.rows, fx.scroll, fx.pb, fx.hostB]));
     check('GF5-scene-preset', !!fx && fx.hint.indexOf('燃料槽') >= 0 && fx.chip.indexOf('仅可燃物') >= 0,
       JSON.stringify(fx && [fx.hint, fx.chip]));
-    /* GF6 格子态：refreshBag 杠杆 + 原版面板（无页签/官方格可见/锁解除） */
+    /* GF6 格子态：refreshBag 杠杆 + rail 壳 srg-plain（格进 .sr-gridhost、srfg 无） */
     const gsp = await cmdSpy(async () => { await d.click('#srgToggle'); await page.waitForTimeout(80); return true; });
     const rbk = (gsp.calls || []).filter((c) => c[0] === 'refreshBag').pop();
     const gv = await d.evaluate(() => {
-      const host = document.querySelector('.generator-system > .panel:not(.gen-panel)');
+      const srp = document.getElementById('srp');
       const grid = document.getElementById('backpackGrid');
-      const own = document.getElementById('srgGridScroll');
-      return { srfg: !!document.getElementById('srfgTabs'), oldWrap: !!document.getElementById('srfgGridScroll'),
-        ownWrap: !!own, wrapOv: own ? getComputedStyle(own).overflowY : '-',
-        lock: host ? (host.style.height || '(none)') : 'NOHOST', gridShown: !!grid && grid.offsetParent !== null,
+      return { srp: !!srp, plain: srp ? srp.classList.contains('srg-plain') : false,
+        srfg: !!document.getElementById('srfgTabs'), oldWrap: !!document.getElementById('srfgGridScroll'),
+        gridInRail: !!(grid && grid.closest('.sr-gridhost')), gridShown: !!grid && grid.offsetParent !== null,
         gridmode: (document.getElementById('srgPanel') || {}).className || 'NOPANEL' };
     }).catch(() => null);
-    check('GF6-grid-vanilla-refreshbag', !!gv && !!rbk && !gv.srfg && !gv.oldWrap && gv.ownWrap && gv.wrapOv === 'auto' &&
-      /778/.test(gv.lock) && gv.gridShown && /srg-gridmode/.test(gv.gridmode),
+    check('GF6-grid-rail-plain-refreshbag', !!gv && !!rbk && gv.srp && gv.plain && !gv.srfg && !gv.oldWrap &&
+      gv.gridInRail && gv.gridShown && /srg-gridmode/.test(gv.gridmode),
       JSON.stringify({ rb: !!rbk, gv }));
     await d.click('#srgToggle'); await page.waitForTimeout(60);
-    /* GF7 拆净：面板移除+自持滚窗拆净（格还原原位）；宿主还原=锁无或**旧方案按设计复活**
+    /* GF7 拆净：glist 面板移除+rail 卸载（官方 .panel 还原、格搬回原位）+旧方案按设计复活
        （fgSettle 自愈回装 srfg 并自上 778 锁——门关=柜子页签方案原路回归，作者批改#9 的 cfg 回退面） */
     await glistOn('FuelGenerator', false); await scan(); await page.waitForTimeout(80);
     const td = await d.evaluate(() => {
       const host = document.querySelector('.generator-system > .panel:not(.gen-panel)');
       const grid = document.getElementById('backpackGrid');
-      return { panel: !!document.getElementById('srgPanel'), ownWrap: !!document.getElementById('srgGridScroll'),
-        gridNaked: !!grid && grid.parentNode.id !== 'srgGridScroll',
-        lock: host ? (host.style.height || '(none)') : 'NOHOST',
-        srfgBack: !!document.getElementById('srfgTabs') };
+      return { panel: !!document.getElementById('srgPanel'), railGone: !document.getElementById('srp'),
+        hostBack: !!host, gridHome: !!(host && grid && host.contains(grid)), /* srfg 复活按 v1.8.14 设计把格包进自持滚窗——宿主子树内即归位 */
+        srfgBack: !!document.getElementById('srfgTabs'),
+        lock: host ? (host.style.height || '(none)') : 'NOHOST' };
     }).catch(() => null);
-    check('GF7-teardown-restores', !!td && td.panel === false && !td.ownWrap && td.gridNaked &&
+    check('GF7-teardown-restores', !!td && td.panel === false && td.railGone && td.hostBack && td.gridHome &&
       (td.lock === '(none)' || (td.srfgBack && /778/.test(td.lock))),
       JSON.stringify(td));
   }
