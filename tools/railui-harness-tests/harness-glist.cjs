@@ -1030,6 +1030,30 @@ function check(name, ok, detail) {
     }).catch(() => null);
     check('FD5-glg-rehydrate', !!rehyd && rehyd.v === '木柴' && rehyd.rows.length === 1 && rehyd.rows[0] === '木柴', JSON.stringify(rehyd));
     await d.fill('#srgQ', '');
+    /* FD6 在途去重（实机批改 2026-11-12「连点报物品已不在柜中」）：同键两叠行内快速连点 3 次
+       ——无新包窗口内 FEFO 只能各发一次（第 3 次在途全占=拦截 toast）；解锁（超时兜底）后恢复 */
+    await setMockItems({ bag: [[972, 11, 5, 0, 0, 0, 1, 1, 0], [973, 11, 3, 0, 1, 0, 1, 1, 0]] }, [900105]);
+    await pushCtx('Heater'); await scan(); await gwait('Heater'); await page.waitForTimeout(80);
+    const burst = await cmdSpy(async () => {
+      const idx = await d.evaluate(() => Array.from(document.querySelectorAll('.srg-row')).findIndex((r) => r.textContent.indexOf('柴油') >= 0)).catch(() => -1);
+      if (idx < 0) return 'NOROW';
+      for (let i = 0; i < 3; i++) { await d.click('.srg-row:nth-child(' + (idx + 1) + ')', { button: 'right' }); await page.waitForTimeout(30); }
+      return true;
+    });
+    const feeds = (burst.calls || []).filter((c) => c[0] === 'feed');
+    const burstToast = await d.evaluate(() => { const t = document.getElementById('srgToast'); return t ? t.textContent : ''; }).catch(() => '');
+    const idsUnique = feeds.length === 2 && feeds[0][1].item !== feeds[1][1].item;
+    check('FD6-burst-no-dup-feed', burst.r === true && idsUnique, JSON.stringify(feeds.map((c) => c[1].item)));
+    check('FD6-burst-busy-toast', burstToast.indexOf('还在转移中') >= 0, burstToast);
+    await page.waitForTimeout(2600); await scan(); await page.waitForTimeout(80); /* 超时兜底解锁 */
+    const resume = await cmdSpy(async () => {
+      const idx = await d.evaluate(() => Array.from(document.querySelectorAll('.srg-row')).findIndex((r) => r.textContent.indexOf('柴油') >= 0)).catch(() => -1);
+      if (idx < 0) return 'NOROW';
+      await d.click('.srg-row:nth-child(' + (idx + 1) + ')', { button: 'right' }); await page.waitForTimeout(40);
+      return true;
+    });
+    check('FD6-unlock-resume', resume.r === true && (resume.calls || []).some((c) => c[0] === 'feed'),
+      JSON.stringify((resume.calls || []).map((c) => c[0])));
     /* GE：切格子态→refreshBag 官方刷新杠杆（批改#9：#2 旧杠杆 switchBag 同值守卫早退在「官方
        状态已在背包」时哑火且不覆盖染料——正身=裸命令→C# RefreshActivePage 按页派 Ac_*_RefreshBag）
        + 格子态=rail 壳 srg-plain（染料桶格子界面复用批 2026-11-12：#srp 替换官方 .panel，

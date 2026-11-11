@@ -5093,13 +5093,17 @@
   function glistRowIsPrey(f, r) { return GLIST[f.key].badge === 'sat' && !!(r && ICFG[r.cfg] && ICFG[r.cfg].prey); } /* 场景守卫：prey 位与 canBrew 同位数字，仅 RatCage 消费（BrewPanel 页 r[15]=bw 不得误读）；v2.2.7 含死体（值 1|2） */
   function glistRowIsLivePrey(f, r) { return GLIST[f.key].badge === 'sat' && !!(r && ICFG[r.cfg] && ICFG[r.cfg].prey === 1); } /* v2.2.7：MOUSE_ADD 路由只认活体（官方 isMouse 同口径——死体 ITEM_CLICK 落食物仓） */
   /* FEFO（作者 v2 终案）：行内全部候选叠按 timeLeft 升序取最快过期者（无保鲜维度=同分取先见，
-     非食物恒 0=任意）；nameOnly=键失配兜底同名通道。返回命中叠 id+所在容器。 */
+     非食物恒 0=任意）；nameOnly=键失配兜底同名通道。返回命中叠 id+所在容器。
+     在途跳过（实机批改 2026-11-12「连点报物品已不在柜中」）：命令已发未结算的叠 id 先行剔除
+     ——旧快照里同叠还在，重选重发=C# 侧 ItemOf 已查无=MarkFeedFail("noitem") 假报。 */
   function glistPickFefo(row, nameOnly, sceneKey) {
     var best = null, bestTl = 0, bestSrc = null;
+    var infl = GLINF[sceneKey] && GLINF[sceneKey].ids;
     for (var si = 0; si < row.srcs.length; si++) {
       var arr = store.items[row.srcs[si][0]] || [];
       for (var i = 0; i < arr.length; i++) {
         var it = arr[i]; if (!it) continue;
+        if (infl && infl[it[0]]) continue;
         if (!(nameOnly ? glistNameOf(it[1]) === row.name : glistItemKey(it, sceneKey) === row.key)) continue;
         var tl = it[3] || 0;
         if (best === null || tl < bestTl) { best = it; bestTl = tl; bestSrc = row.srcs[si][0]; }
@@ -5107,14 +5111,33 @@
     }
     return best === null ? null : { id: best[0], srcKey: bestSrc };
   }
+  /* 在途实例登记（同上批改）：sceneKey -> {ids:{id:1}, rev, at}——cmdOut 发出即记；解锁=新包
+     （rev 推进，600ms 让过命令 drain 周期防竞态）或 2500ms 超时兜底（推送丢失不死锁）。 */
+  var GLINF = {};
+  function glInflightSweep(key) {
+    var inf = GLINF[key];
+    if (!inf || !inf.at) return;
+    var age = Date.now() - inf.at;
+    if ((store.rev !== inf.rev && age > 600) || age > 2500) { inf.ids = {}; inf.at = 0; inf.rev = store.rev; }
+  }
   function glistFeed(f, key) {
+    glInflightSweep(f.key);
     var r = glistRowByKey(f, key), D = GLIST[f.key];
     if (!r || !r.srcs.length) return;
     var pick = glistPickFefo(r, false, f.key) || glistPickFefo(r, true, f.key);
-    if (!pick) { glistToast(f, '未找到可用的' + r.name); return; }
+    if (!pick) {
+      var infBusy = GLINF[f.key] && GLINF[f.key].at;
+      glistToast(f, infBusy ? '上一件还在转移中，稍候再点' : '未找到可用的' + r.name);
+      return;
+    }
     var srcName = '背包';
     for (var si2 = 0; si2 < r.srcs.length; si2++) if (r.srcs[si2][0] === pick.srcKey) srcName = r.srcs[si2][1];
+    var inf = GLINF[f.key] || (GLINF[f.key] = { ids: {}, rev: store.rev, at: 0 });
+    /* 在途登记只覆盖 cmdOut 三路（feed/basketPut/take——经 C# 队列+推送往返，窗口内重发同叠=
+       noitem 假报）；bag 源官方回放（ITEM_CLICK/MOUSE_ADD）即时直达不登记（RB-F6 教训：
+       误登记会把后续行选叠挤到异键上，且官方对失效 id 自校验无 mod 文案） */
     if (D.feed === 'fuel') {
+      inf.ids[pick.id] = 1; inf.at = Date.now(); inf.rev = store.rev;
       cmdOut('feed', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id });
       glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 ' + srcName + '）'); /* 送出≠已入：失败经 ctx.feedFail 面（终审 I1/I2） */
     } else if (D.feed === 'basket') {
@@ -5128,6 +5151,7 @@
          官方校验全在 C# 侧；柜源不落包直达由 C# 拆件中转，对玩家=一步）。失败经 ctx.feedFail
          （glistSettle 优先面，fuel 同款）；不 forge SWITCH_BAG（篮子模式重绑语义异形，官方
          快转动作自带官方链刷新） */
+      inf.ids[pick.id] = 1; inf.at = Date.now(); inf.rev = store.rev;
       cmdOut('basketPut', { owner: pick.srcKey === 'bag' ? store.bag : Number(pick.srcKey), item: pick.id });
       glistToast(f, '已放 1 件 ' + r.name + ' → 篮子（取自 ' + srcName + '）');
     } else if (pick.srcKey === 'bag') {
@@ -5140,6 +5164,7 @@
       var q = GLPENDQ[f.key] || (GLPENDQ[f.key] = []);
       var ev2 = (glistRowIsLivePrey(f, r) && glistRatSlotFree(f)) ? 'mouse' : 'item';
       if (q.length < 8) q.push({ key: r.key, cfg: r.cfg, name: r.name, at: Date.now(), ev: ev2 });
+      inf.ids[pick.id] = 1; inf.at = Date.now(); inf.rev = store.rev; /* 柜源 take 第一跳在途（第二拍 GLPEND 落包自清） */
       cmdOut('take', { ids: [pick.id], from: Number(pick.srcKey), all: false });
       glistToast(f, '正在取 1 件 ' + r.name + '（取自 ' + srcName + '）→ ' + (ev2 === 'mouse' ? '笼位' : D.target));
     }
@@ -5518,6 +5543,7 @@
     if (!GLIST[f.key]) return;
     if (!glistGate(f.key)) { glistTeardown(f); return; }
     if (!glistHost(f)) return;
+    glInflightSweep(f.key); /* 在途到期解锁（新包落地/超时兜底）——巡帧驱动，glistFeed 入口自扫为辅 */
     glistBuild(f);
     glistApply(f);
     glistRender(f);
