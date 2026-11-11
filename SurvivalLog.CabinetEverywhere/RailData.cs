@@ -304,6 +304,9 @@ internal static class RailData
             for (int i = 0; i < ctn.Count; i++)
                 sig = sig * 31 + InnerCountFast(oc, ctn[i].OwnerId);
         }
+        // 地面（家内掉落）每帧纪律：只 1 次 _dropItems.Count（O(1) 零分配零地图判定——
+        // 含野外=超集，误触发无害）；家图过滤/逐件读留给 0.5s 通道（RailGround 头注释）
+        sig = sig * 31 + RailGround.FastCount();
         if (sig == _lastFastSig) return false;
         _lastFastSig = sig;
         return true;
@@ -455,6 +458,9 @@ internal static class RailData
         var sc = ActiveScene();
         long rackOwner = RackOwnerOf(sc);
 
+        // 地面（家内掉落）快照（地面/门口袋扩展批）：一次取、ctn/items/icfg 三段共用
+        var gdrops = RailGround.HomeDrops();
+
         // icfg 行收集：本轮 items 出现过的 cfgId（懒缓存行字符串，IcfgRow 出）
         var icfgOrder = new List<int>();
         var icfgSeen = new HashSet<int>();
@@ -559,6 +565,14 @@ internal static class RailData
             for (int t = 0; t < m.TagIds.Length; t++) sb.Append(',').Append(m.TagIds[t]);
             sb.Append(']');
         }
+
+        // 地面（家内掉落）虚拟容器（地面/门口袋扩展批）：有物才现——0.5s 动态判定（不入
+        // _ctn 5s 元数据通道=掉落/拾取即时跟页）；kind 'g'/cap 0（地面无格语义，件数看行）
+        if (gdrops.Count > 0)
+        {
+            sb.Append(",[").Append(RailGround.OwnerId).Append(",\"").Append(EscapeJs(RailGround.CtnName))
+              .Append("\",\"g\",0]");
+        }
         sb.Append(']');
 
         // ---- lib：标签库透传（T6 裁定 3：dim/order/icon/color 原样，C# 不分组）----
@@ -573,6 +587,7 @@ internal static class RailData
 
         // 第一遍：收集 cfgId（浅走：只读 ItemConfigId）
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);
+        RailGround.CollectCfgIds(gdrops, icfgSeen, icfgOrder); // 地面段同遍（icfg 懒缓存共用）
 
         sb.Append(",\"icfg\":[");
         bool fuelCols = sc?.Page == "FuelGenerator" || sc?.Page == "Heater"; // 尾列仅 bagtabs 族两页（其他页推送形状不变——spec 约束；暖炉移植批补：角标/右键预检同源消费 ICFG.burn，漏此=暖炉页角标全灭+预检误拒）
@@ -602,6 +617,14 @@ internal static class RailData
         {
             sb.Append(",\"").Append(ownerIds[i]).Append("\":");
             n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene);
+            itemRows += n;
+        }
+        // 地面段（虚拟键 RailGround.OwnerId；行 id=ItemData.InstanceId——idetail/词条同源，
+        // 取物命令按物品 id 反查 DropItem 实体）。伪坐标 UniformWidth 列（渲染层平铺不消费）
+        if (gdrops.Count > 0)
+        {
+            sb.Append(",\"").Append(RailGround.OwnerId).Append("\":");
+            n = RailGround.AppendItems(sb, gdrops, itemDict, nowHours, tradeScene, RailUi.UniformWidth);
             itemRows += n;
         }
         sb.Append('}');
@@ -915,12 +938,35 @@ internal static class RailData
             {
                 var it = pair.Value;
                 if (it == null) continue;
-                long id = 0; int cfg = 0, count = 0, timeLeft = 0, x = 0, y = 0, w = 1, h = 1;
+                int x = 0, y = 0;
+                try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
+                AppendItemRow(sb, it, x, y, itemDict, nowHours, tradeScene, ref rows);
+            }
+        }
+        catch { }
+        sb.Append(']');
+        return rows;
+    }
+
+    /// <summary>
+    /// 单件行体（地面/门口袋扩展批抽公共）：包内物品（AppendOwnerItems）与家内地面掉落
+    /// （RailGround.AppendItems）同构行 [id,cfg,count,timeLeft,x,y,w,h,flags,s1..s4,trade,
+    /// days,attrSig,uses,useMax]；x/y 由调用方给（包内=BagPos；地面=伪坐标）。rows 兼作
+    /// 行间逗号门与计数（行首逗号=rows&gt;0，行尾 rows++）——与抽取前 AppendOwnerItems
+    /// 逐字等价。InstanceId 读不到=不输出（调用方 rows 不变）。
+    /// </summary>
+    internal static void AppendItemRow(
+        StringBuilder sb, GameCore.HotUpdate.Battle.Logic.ItemData it, int x, int y,
+        Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
+        float nowHours, bool tradeScene, ref int rows)
+    {
+        try
+        {
+            long id = 0; int cfg = 0, count = 0, timeLeft = 0, w = 1, h = 1;
                 bool polluted = false;
                 try { id = it.InstanceId; } catch { }
-                if (id <= 0) continue; // findings §7：物品唯一 id = ItemData.InstanceId（无 LogicId 字段）
+                if (id <= 0) return; // findings §7：物品唯一 id = ItemData.InstanceId（无 LogicId 字段）
                 try { cfg = it.ItemConfigId; count = it.ItemCount; timeLeft = it.TimeLeft; polluted = it.Polluted; } catch { }
-                try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
                 try { w = it.ItemSize.x; h = it.ItemSize.y; } catch { }
                 if (w <= 0) w = 1;
                 if (h <= 0) h = 1;
@@ -970,11 +1016,8 @@ internal static class RailData
                   .Append(',').Append(usesMaxVal.HasValue ? usesMaxVal.Value.ToString(CultureInfo.InvariantCulture) : "null") /* v2：useMax（徽章「剩余/最大」+键） */
                   .Append(']');
                 rows++;
-            }
         }
         catch { }
-        sb.Append(']');
-        return rows;
     }
 
     private static string NumOrNull(int? v) => v.HasValue ? v.Value.ToString(CultureInfo.InvariantCulture) : "null";
@@ -1396,6 +1439,8 @@ internal static class RailData
             for (int i = 0; i < ctn.Count; i++)
                 sig = SigOwner(oc, ctn[i].OwnerId, sig);
         }
+        // 地面（家内掉落）：行数+Σcount+首末 id（SigOwner 同形；掉落/拾取/腐败转换触发重推）
+        sig = RailGround.SigOf(sig);
         return sig;
     }
 

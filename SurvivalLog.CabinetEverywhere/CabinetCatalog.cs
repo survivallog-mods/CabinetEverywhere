@@ -267,6 +267,40 @@ internal static class CabinetCatalog
                     CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 全楼层补充 " + extraNames.Count + " 个（不在原生'当前楼层'枚举内）：" + string.Join("、", extraNames));
             }
 
+            // 门口购物袋（DoorBox，地面/门口袋扩展批 2026-11-11）：物品挂合成 owner 常量
+            // VehicleConfig.GetBoxOwnerId（ShrinkDrop ③④ 同源；官方 IsDoorBoxTabReady 实证
+            // OwnerCache[boxOwnerId] 有条目）——白名单/取放全走既有 OwnerCache 路，零新数据路径。
+            // BagCache 现值==DoorBoxBagId(1023) 才收=袋子在场判据（空袋官方自毁
+            // RunDoorBoxEmptyCheck 后条目消失，5s 扫描自然跟随）。ConfigId=0：不进 ConfigIds
+            // →不进 HomeInstances 直达注入（官方袋子自有 UI 不碰，保守）；cap 走 CapCells 的
+            // BagCache 兜底路（1023 包 12×10）。只进 all（glist/筛选可见）。
+            try
+            {
+                var boxCache = RailData.ItemState()?.BagCache;
+                if (boxCache != null)
+                {
+                    int boxMax = 0;
+                    try { boxMax = GameCore.HotUpdate.VehicleConfig.DoorBoxMaxCount; } catch { boxMax = 2; }
+                    for (int b = 0; b < boxMax; b++)
+                    {
+                        long boxOwner = 0;
+                        try { boxOwner = GameCore.HotUpdate.VehicleConfig.GetBoxOwnerId(b); } catch { }
+                        if (boxOwner <= 0) continue;
+                        int cur = 0;
+                        try { if (!boxCache.TryGetValue(boxOwner, out cur) || cur != GameCore.HotUpdate.VehicleConfig.DoorBoxBagId) continue; }
+                        catch { continue; }
+                        all.Add(new ContainerInst
+                        {
+                            OwnerId = boxOwner,
+                            ConfigId = 0,
+                            Name = "购物塑料袋" + (b == 0 ? "①" : "②"),
+                            Kind = 'c',
+                        });
+                    }
+                }
+            }
+            catch (Exception e) { WarnOnce("doorbox", "门口购物袋收录失败: " + e.Message); }
+
             int prevN = _homeInstances.Count;
             _homeInstances = fresh;
             _allContainers = all;

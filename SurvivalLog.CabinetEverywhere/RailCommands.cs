@@ -257,6 +257,14 @@ internal static class RailCommands
         if (bag <= 0) { WarnOnce("take:nobag", "take 丢弃：背包 owner 不可得"); return; }
         if (!Whitelisted(c.From)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] take 丢弃：from={c.From} 不在白名单（红线2）"); return; }
         if (c.From == bag) return; // JS 侧已防（背包组跳过）；防御性 no-op
+        // 地面源（地面/门口袋扩展批）：物品不在 OwnerCache——官方 TryPickupItem(dropInstanceId,
+        // ownerId) 实体拾取。all:false 地面无「拆 1 件」（拾取按实体整叠）=成功 1 件即停、整叠捡。
+        if (c.From == RailGround.OwnerId)
+        {
+            int picked = RailGround.TakeToBag(c.Ids, bag, !c.All);
+            VLog(c.Op, $"ground→bag all={c.All} picked={picked}");
+            return;
+        }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("take:noim", "take 丢弃：ItemManager 不可得"); return; }
 
@@ -293,6 +301,7 @@ internal static class RailCommands
         if (bag <= 0) { WarnOnce("put:nobag", "put 丢弃：背包 owner 不可得"); return; }
         if (!Whitelisted(c.To)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] put 丢弃：to={c.To} 不在白名单（红线2）"); return; }
         if (c.To == bag) return;
+        if (c.To == RailGround.OwnerId) { WarnOnce("put:ground", "put 丢弃：地面为只取源（丢弃走官方背包「丢弃」）"); return; }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("put:noim", "put 丢弃：ItemManager 不可得"); return; }
 
@@ -327,6 +336,13 @@ internal static class RailCommands
         if (bag <= 0) { WarnOnce("takeAll:nobag", "takeAll 丢弃：背包 owner 不可得"); return; }
         if (!Whitelisted(c.From)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] takeAll 丢弃：from={c.From} 不在白名单（红线2）"); return; }
         if (c.From == bag) return;
+        // 地面源（地面/门口袋扩展批）：逐件 TryPickupItem 尽力捡（背包满/负重拒=停在该件）
+        if (c.From == RailGround.OwnerId)
+        {
+            int picked = RailGround.TakeAllToBag(bag);
+            VLog(c.Op, $"ground→bag picked={picked}");
+            return;
+        }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("takeAll:noim", "takeAll 丢弃：ItemManager 不可得"); return; }
         bool ok = im.TryMoveBagAll(c.From, bag, true);
@@ -340,6 +356,7 @@ internal static class RailCommands
         if (bag <= 0) { WarnOnce("putAll:nobag", "putAll 丢弃：背包 owner 不可得"); return; }
         if (!Whitelisted(c.To)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] putAll 丢弃：to={c.To} 不在白名单（红线2）"); return; }
         if (c.To == bag) return;
+        if (c.To == RailGround.OwnerId) { WarnOnce("putAll:ground", "putAll 丢弃：地面为只取源"); return; }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("putAll:noim", "putAll 丢弃：ItemManager 不可得"); return; }
         bool ok = im.TryMoveBagAll(bag, c.To, true);
@@ -354,6 +371,7 @@ internal static class RailCommands
         long other = toBag ? c.From : c.To;
         if (!Whitelisted(other)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] {(toBag ? "takeCat" : "putCat")} 丢弃：owner={other} 不在白名单（红线2）"); return; }
         if (other == bag || c.Cat <= 0) return;
+        if (other == RailGround.OwnerId) { WarnOnce("cat:ground", "takeCat/putCat 丢弃：地面为只取源（分类取暂不支持，行右键 take 可用）"); return; }
 
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("cat:noim", "takeCat/putCat 丢弃：ItemManager 不可得"); return; }
@@ -394,6 +412,7 @@ internal static class RailCommands
         if (bag <= 0) { WarnOnce("putTag:nobag", "putTag 丢弃：背包 owner 不可得"); return; }
         if (!Whitelisted(c.To)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] putTag 丢弃：to={c.To} 不在白名单（红线2）"); return; }
         if (c.To == bag) return;
+        if (c.To == RailGround.OwnerId) { WarnOnce("putTag:ground", "putTag 丢弃：地面为只取源"); return; }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("putTag:noim", "putTag 丢弃：ItemManager 不可得"); return; }
 
@@ -551,6 +570,7 @@ internal static class RailCommands
     private static void OpTidy(Cmd c)
     {
         if (!Whitelisted(c.Owner)) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] tidy 丢弃：owner={c.Owner} 不在白名单（红线2）"); return; }
+        if (c.Owner == RailGround.OwnerId) { RailData.ReportTidyFail(); WarnOnce("tidy:ground", "tidy 丢弃：地面无包格（官方 Sort/Merge 不适用）——已置失败标记"); return; }
         var im = RailData.ItemMgr();
         if (im == null)
         {
@@ -604,6 +624,7 @@ internal static class RailCommands
         if (im == null) { WarnOnce("feed:noim", "feed 丢弃：ItemManager 不可得"); return; }
 
         var src = ItemOf(OwnerItems(im, c.Owner), c.Item);
+        if (src == null && c.Owner == RailGround.OwnerId) src = RailGround.FindItem(c.Item); // 地面源：物品不在 OwnerCache，按行 id 反查 DropItem.Item（批改 2026-11-12）
         if (src == null) { RailData.MarkFeedFail("noitem"); return; }
 
         // ① burnable 权威校验（dump @40395 Config_Item.Burnable）
@@ -628,7 +649,18 @@ internal static class RailCommands
 
         // ③ 第一跳：柜→背包（整叠，silent=不弹官方 toast——结果经数据回推自渲染）。
         //    glist 背包源（fromBag）：物品已在包，本跳整体跳过直落 ④ 重解析。
-        if (!fromBag)
+        //    地面源（批改 2026-11-12）：官方实体拾取（整叠 TryPickupItem）替代搬运——
+        //    失败=背包满/负重拒（bagfull 口径）；成功后 ④ 重解析天然处理并叠。
+        if (!fromBag && c.Owner == RailGround.OwnerId)
+        {
+            if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
+            {
+                RailData.MarkFeedFail("bagfull");
+                VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）");
+                return;
+            }
+        }
+        else if (!fromBag)
         {
             var batch = new Il2CppSystem.Collections.Generic.List<long>();
             batch.Add(c.Item);
@@ -693,6 +725,7 @@ internal static class RailCommands
             CabinetEverywherePlugin.Log.LogWarning($"[CERail] switchBag 丢弃：owner={owner} 不在白名单（红线2）");
             return;
         }
+        if (owner == RailGround.OwnerId) { WarnOnce("switch:ground", "switchBag 丢弃：地面无官方网格可切（行右键 take 取物）"); return; }
         /* bagtabs 族按页派发（暖炉移植批）：State_Web_Heater 与 State_Web_FuelGenerator 同构
            （BagOwnerId 同 ReactiveProperty<long> + Ac_Heater_RefreshBag 同名动作族）——官方状态
            直写语义两页一致；default=首发页燃油发电机。 */
@@ -764,6 +797,7 @@ internal static class RailCommands
         }
         var srcInner = OwnerItems(im, c.Owner);
         var src = ItemOf(srcInner, c.Item);
+        if (src == null && c.Owner == RailGround.OwnerId) src = RailGround.FindItem(c.Item); // 地面源：反查 DropItem.Item（批改 2026-11-12）
         if (src == null) { RailData.MarkFeedFail("noitem"); return; }
 
         // 禁入预检（官方 IsBasketForbidItem 口径——截图红叹号同源）
@@ -792,6 +826,43 @@ internal static class RailCommands
         }
         catch { }
         if (basketStacks >= maxItems && !hasSameCfg) { RailData.MarkFeedFail("full"); VLog(c.Op, $"full：{basketStacks}/{maxItems} cfg={cfgId}"); return; }
+
+        // 地面源（批改 2026-11-12）：官方实体拾取整叠入包（TryPickupItem）→ 包内定位
+        //（原 id 优先/cfg 兜底——并叠处理）→ 拆 1 件官方快转入篮（右键 1 件口径，柜源同语义）
+        if (c.Owner == RailGround.OwnerId)
+        {
+            if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
+            {
+                RailData.MarkFeedFail("bagfull");
+                VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）");
+                return;
+            }
+            var bagInnerG = OwnerItems(im, bag);
+            long pieceG = 0;
+            if (ItemOf(bagInnerG, c.Item) != null) pieceG = c.Item;
+            if (pieceG <= 0 && bagInnerG != null)
+            {
+                try
+                {
+                    foreach (var pair in bagInnerG) // 已并叠：按 cfg 找目标叠
+                    {
+                        var it2 = pair.Value;
+                        if (it2 == null) continue;
+                        int bc = 0;
+                        try { bc = it2.ItemConfigId; } catch { }
+                        if (bc == cfgId) { try { pieceG = it2.InstanceId; } catch { } break; }
+                    }
+                }
+                catch { }
+            }
+            if (pieceG <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败（地面）"); return; }
+            int cntG = 0;
+            try { cntG = ItemOf(bagInnerG, pieceG)?.ItemCount ?? 0; } catch { }
+            if (cntG > 1) { var sp = TrySplit(im, pieceG); if (sp > 0) pieceG = sp; } // 整叠入包后拆 1 件
+            SendQuickTransfer(pieceG);
+            VLog(c.Op, $"ground→basket piece={pieceG}（拾取→定位→拆1→快转）");
+            return;
+        }
 
         if (fromBag)
         {
@@ -1343,9 +1414,12 @@ internal static class RailCommands
 
     // ================= 取用 / 校验助手 =================
 
-    /// <summary>白名单（红线2）：ownerId ∈ CabinetCatalog.AllContainers ∪ 背包 owner。</summary>
+    /// <summary>白名单（红线2）：ownerId ∈ CabinetCatalog.AllContainers ∪ 背包 owner ∪ 地面虚拟键。</summary>
     private static bool Whitelisted(long id)
     {
+        // 地面虚拟容器键=-101（负常量）——**必须先于 id<=0 负数门**（2026-11-12 实机日志实锤：
+        // 排在门后恒 false，take/feed 全被「不在白名单」拒）。只取源（take/takeAll），put 族各 op 自行拒。
+        if (id == RailGround.OwnerId) return true;
         if (id <= 0) return false;
         if (id == RailData.BagOwner()) return true;
         var all = CabinetCatalog.AllContainers;
