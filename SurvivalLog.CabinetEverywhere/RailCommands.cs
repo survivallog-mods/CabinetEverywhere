@@ -948,26 +948,58 @@ internal static class RailCommands
 
 
     /// <summary>
-    /// storeAll{order}：§4.7 一键入库路由——背包逐叠：物品分类名 → 按 order 顺序找「柜官方标签名
-    /// 含该分类名」的柜 TryQuickMoveItems 逐叠放入，柜满（moved==0）顺延下一个同标签柜，
-    /// 无匹配/全满留背包。order 内非白名单 id 跳过+警告（order 来自 JS 页签顺序）。
-    /// 材料架伪标签不入路由（TagIds 只含官方；架子官方类型限制由 TryQuickMoveItems 自行兜底，T14 校准）。
+    /// storeAll{order}：§4.7 一键入库路由——背包快照后：物品命中标签集 → 按 order 顺序找「柜官方
+    /// 标签名与之有交集」的柜，**按柜分批** TryQuickMoveItems 整批放入，柜满（叠件数纹丝不动）顺延
+    /// 下一个匹配柜，无匹配/全满留背包。order 内非白名单 id 跳过+警告（order 来自 JS 页签顺序）。
+    /// 材料架补「材料」伪标签入路由（CabinetCatalog.IsMaterialRack 语义：架子不能打标签但只收材料，
+    /// JS 筛选侧同款伪标签口径；架子官方类型限制仍由 TryQuickMoveItems 自行兜底，T14 校准）。
+    /// 2026-11-11 性能批（背包物品多时一键入库卡顿）：旧版逐叠逐柜试放=interop 调用最坏 O(叠数×柜数)
+    /// 且每叠触发一轮官方 OnQuickMoveItem(s) 事件广播，全在一帧内=主帧冻结。本版改 OpPutTag:419 同款
+    /// 「先收集后整批」形态：路由在托管侧完成（cfgId→命中标签集本地缓存，同 cfgId 只查一次配置表），
+    /// 每柜一批一次调用；顺延判定=批后查叠现 ItemCount 比快照（件数减少=有吸收即视为已放置，部分
+    /// 吸收不再顺延——对齐旧 moved&gt;0 即 break 语义），纹丝不动的叠 next 推进后下轮顺延。
+    /// 每轮轮首重取 OwnerCache 背包字典（防引用被整替后 ItemOf 恒 miss 误判整批移走）。
+    /// 尾行三段计时（快照/路由+移动/调用次数，Bug4 tidy 计时先例）=收益验收观测点。
+    /// 2026-11-11 匹配批（材料架收不进+部分食物/花朵无标签可命中）：旧版「分类名==标签名」精确匹配
+    /// 漏两大域——①分类是粗粒度（23 类）而官方标签是细粒度（33 个：食物域细分 15 个），打细分标签
+    /// （主食/肉类/蛋奶/…）的柜收不进任何「食物」类物品；②花卉/投掷物/陷阱等六类无同名标签永不
+    /// 命中。修法（作者裁定：与官方按标签存取同口径）=**直调官方权威判定**
+    /// FurnitureTagRules.Matches(rule, cfg, remainDays, PutIn)（dump.cs@111363，官方按标签存取
+    /// 同一函数：菜品/食材/即食/防御耗材走官方 _dishIds/_miscIds/DefenseSupplyItemIds 缓存，
+    /// 需冷藏走 remainDays&lt;NeedsColdMaxDays(10) 的运行时判定）——mod 侧分类↔标签映射表整体
+    /// 退役，官方判什么就是什么。remainDays=RailSortMath.DaysLeftOf 同源（TimeLeft 游戏小时÷24；
+    /// 不腐传 float.MaxValue=永不满足「会变坏」、过期传 0）。材料架 rule=[1012 TagMaterial]
+    /// （RackRouteTag）；无标签柜不入路由（§4.7 原语义，cabEmpty 构造期标记——IReadOnlyList
+    /// 代理无 Count 可靠值，T14 校准注释同款）。
     /// </summary>
+    /// <summary>材料架路由 rule：官方 TagMaterial 常量（FurnitureTagRules.TagMaterial=1012）——
+    /// 架子不能打标签（TagIds 恒空）但只收材料，官方 Evaluate 对 1012 的判定=材料域（架子
+    /// 「只能放材料类」的硬限制仍由 TryQuickMoveItems 兜底，T14 校准）。</summary>
+    private const int RackRouteTag = 1012;
+
     private static void OpStoreAll(Cmd c)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         long bag = RailData.BagOwner();
         if (bag <= 0) { WarnOnce("storeAll:nobag", "storeAll 丢弃：背包 owner 不可得"); return; }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("storeAll:noim", "storeAll 丢弃：ItemManager 不可得"); return; }
 
         var cabs = new List<CabinetCatalog.ContainerInst>();
-        var cabNames = new List<HashSet<string>>();
+        var cabRules = new List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>>();
+        var cabEmpty = new List<bool>();
         foreach (var id in c.Order)
         {
             var inst = ContainerOf(id);
             if (inst == null) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] storeAll：order 内 owner={id} 不在白名单，跳过（红线2）"); continue; }
+            var rule = new Il2CppSystem.Collections.Generic.List<int>();
+            if (inst.IsMaterialRack) rule.Add(RackRouteTag); // 架子路由 rule（头注释匹配批）
+            else for (int t = 0; t < inst.TagIds.Length; t++) rule.Add(inst.TagIds[t]);
+            var ruleArg = rule.TryCast<Il2CppSystem.Collections.Generic.IReadOnlyList<int>>();
+            if (ruleArg == null) { WarnOnce("storeAll:cast", "List<int>→IReadOnlyList<int> 代理转换失败，柜出局 owner=" + id); continue; } // OpSetTags 同款纪律
             cabs.Add(inst);
-            cabNames.Add(TagNamesOfIds(inst.TagIds));
+            cabRules.Add(ruleArg);
+            cabEmpty.Add(rule.Count == 0); // 构造期标记（代理侧 Count 不可靠，头注释）
         }
         if (cabs.Count == 0) { VLog(c.Op, "无有效柜候选（order 空/全非法），背包原样"); return; }
 
@@ -975,9 +1007,11 @@ internal static class RailCommands
 
         // 快照后路由（评审 Important 2）：TryQuickMoveItems 整叠吸收即 Remove 字典项，
         // 在 il2cpp 字典枚举中途调用会触发枚举器版本检查抛 InvalidOperationException
-        // （被 catch 吞掉 → 入库只到第一叠成功为止）。先把背包快照为托管 List(id+cfg)，
+        // （被 catch 吞掉 → 入库只到第一叠成功为止）。先把背包快照为托管 List(id+cfg+count+保质天数)
+        // ——count 供批后顺延判定（件数差量），remainDays 供官方 Matches 的需冷藏判定，
         // 路由决策与移动都基于快照（OpCat/OpPutTag 先收集后移动的同一形态）。
-        var snapshot = new List<(long id, int cfg)>();
+        var snapshot = new List<(long id, int cfg, int cnt, float days)>();
+        float nowHours = RailSortMath.NowHours();
         if (inner != null)
         {
             try
@@ -986,34 +1020,102 @@ internal static class RailCommands
                 {
                     var it = pair.Value;
                     if (it == null) continue;
-                    long id = 0; int cfg = 0;
-                    try { id = it.InstanceId; cfg = it.ItemConfigId; } catch { }
-                    if (id > 0) snapshot.Add((id, cfg));
+                    long id = 0; int cfg = 0, cnt = 0;
+                    try { id = it.InstanceId; cfg = it.ItemConfigId; cnt = it.ItemCount; } catch { }
+                    if (id <= 0) continue;
+                    // remainDays 口径（头注释匹配批）：正常=剩余天，过期=0（会变坏），不腐/冻结=MaxValue
+                    float days = float.MaxValue;
+                    try
+                    {
+                        var di = RailSortMath.DaysLeftOf(ItemCfg(cfg), it, nowHours);
+                        if (di.IsExpired) days = di.HasNumber ? 0f : float.MaxValue; // 过期无计=不腐兜底
+                        else if (di.HasNumber) days = di.Days;
+                    }
+                    catch { }
+                    snapshot.Add((id, cfg, cnt, days));
                 }
             }
             catch (Exception e) { WarnOnce("storeAll:snap", "背包快照异常: " + e.Message); }
         }
+        long tSnap = sw.ElapsedMilliseconds;
+
+        // 可路由队列：ic 解析（cfgId 本地缓存，同 cfgId 只查一次 ItemCfg——旧版每叠各查一次
+        // 的 interop 读收窄为去重后次数）。next=下一候选柜下标（顺延游标），-1=终局标记
+        // （已放置/无匹配柜），轮末统一压缩（组间 RemoveAt 会致下标漂移，故先标后压）。
+        int movedStacks = 0, movedTotal = 0, leftStacks = 0, calls = 0, matchCalls = 0;
+        var icCache = new Dictionary<int, GameCore.HotUpdate.Config_Item>();
+        var pending = new List<(long id, GameCore.HotUpdate.Config_Item ic, float days, int cnt, int next)>();
+        foreach (var (id, cfg, cnt, days) in snapshot)
+        {
+            if (!icCache.TryGetValue(cfg, out var ic) || ic == null)
+            {
+                ic = ItemCfg(cfg);
+                icCache[cfg] = ic;
+            }
+            if (ic == null) { leftStacks++; continue; } // 配置查无：无法路由 → 留背包（红线4 同口径）
+            pending.Add((id, ic, days, cnt, 0));
+        }
 
         var batch = new Il2CppSystem.Collections.Generic.List<long>();
-        int movedStacks = 0, movedTotal = 0, leftStacks = 0;
-        foreach (var (id, cfg) in snapshot)
+        var groups = new Dictionary<int, List<int>>(); // 柜下标 → pending 下标集（每轮按「各自下一候选柜」分组）
+        while (pending.Count > 0)
         {
-            var ic = ItemCfg(cfg);
-            if (ic == null) { leftStacks++; continue; } // 配置查无：无法路由 → 留背包（红线4 同口径）
-            string catName = RailData.CategoryName(ic.Category);
-
-            bool placed = false;
-            for (int i = 0; i < cabs.Count; i++)
+            inner = OwnerItems(im, bag); // 轮首刷新（见头注释）
+            if (inner == null) break; // 背包字典不可得（理论不至）：保守终止，剩余按未移动留背包
+            groups.Clear();
+            bool anyGroup = false;
+            for (int k = 0; k < pending.Count; k++)
             {
-                if (!cabNames[i].Contains(catName)) continue; // §4.7：分类名↔柜标签名匹配
-                batch.Clear();
-                batch.Add(id);
-                int moved = im.TryQuickMoveItems(batch, bag, cabs[i].OwnerId, SilentQuickMove, false);
-                if (moved > 0) { placed = true; movedStacks++; movedTotal += moved; break; } // 柜满顺延
+                var p = pending[k];
+                if (p.next < 0) continue;
+                int j = p.next;
+                while (j < cabs.Count && !MatchCab(cabRules, cabEmpty, j, p.ic, p.days, ref matchCalls)) j++; // §4.7：官方判定
+                if (j >= cabs.Count) { p.next = -1; pending[k] = p; leftStacks++; continue; } // 无匹配/全满：终局留背包
+                p.next = j + 1; pending[k] = p;
+                if (!groups.TryGetValue(j, out var g)) { g = new List<int>(); groups[j] = g; }
+                g.Add(k);
             }
-            if (!placed) leftStacks++; // 无匹配/全满：留背包（§4.7）
+            foreach (var kv in groups)
+            {
+                var ids = kv.Value;
+                batch.Clear();
+                for (int x = 0; x < ids.Count; x++) batch.Add(pending[ids[x]].id);
+                calls++;
+                im.TryQuickMoveItems(batch, bag, cabs[kv.Key].OwnerId, SilentQuickMove, false);
+                for (int x = 0; x < ids.Count; x++) // 结算：件数差量（只标 -1 不 Remove，防组间下标漂移）
+                {
+                    int k = ids[x];
+                    var p = pending[k];
+                    int now = 0;
+                    try { now = ItemOf(inner, p.id)?.ItemCount ?? 0; } catch { }
+                    if (now < p.cnt) { movedStacks++; movedTotal += p.cnt - now; p.next = -1; pending[k] = p; }
+                    // 件数不变=该柜放不下：next 已推进到 j+1，下轮顺延下一个同标签柜
+                }
+                anyGroup = true;
+            }
+            pending.RemoveAll(p => p.next < 0); // 轮末压缩（placed + 无匹配柜终局叠）
+            if (!anyGroup) break; // 本轮无可试柜（全部终局）：防死循环兜底
         }
-        VLog(c.Op, $"cabs={cabs.Count} 入库 {movedStacks} 叠/{movedTotal} 件，留背包 {leftStacks} 叠");
+        long tMove = sw.ElapsedMilliseconds;
+        VLog(c.Op, $"cabs={cabs.Count} 入库 {movedStacks} 叠/{movedTotal} 件，留背包 {leftStacks} 叠" +
+            $"｜性能 快照 {tSnap}ms 路由+移动 {tMove - tSnap}ms Matches {matchCalls} 次 TryQuickMoveItems {calls} 次");
+    }
+
+    /// <summary>官方标签判定（storeAll 路由）：FurnitureTagRules.Matches(rule, cfg, remainDays,
+    /// PutIn)——官方「按标签存取」同一函数，mod 零自建映射（头注释匹配批）。空 rule 柜（无标签）
+    /// 不入路由；官方调用异常按不匹配保守处理（不阻断整批）。</summary>
+    private static bool MatchCab(
+        List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>> cabRules, List<bool> cabEmpty,
+        int j, GameCore.HotUpdate.Config_Item ic, float remainDays, ref int matchCalls)
+    {
+        if (cabEmpty[j]) return false;
+        matchCalls++;
+        try
+        {
+            return GameCore.HotUpdate.FurnitureTagRules.Matches(
+                cabRules[j], ic, remainDays, GameCore.HotUpdate.FurnitureTagMatchPurpose.PutIn);
+        }
+        catch (Exception e) { WarnOnce("storeAll:match", "官方 Matches 调用异常: " + e.Message); return false; }
     }
 
     /// <summary>
