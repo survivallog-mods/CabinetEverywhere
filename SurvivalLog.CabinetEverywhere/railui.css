@@ -583,3 +583,10 @@ img.cfx-dicon{width:14px;height:14px;object-fit:contain;margin-right:3px;vertica
 .srg-sortmenu.open{display:flex}
 .srg-sortopt{padding:4px 10px;font-size:11px;border-radius:5px;color:#d8cfc4;cursor:pointer;white-space:nowrap}
 .srg-sortopt:hover{background:rgba(251,176,52,.14);color:#fbb034}
+
+/* ==== inherit 皮肤对冲（2026-11-12 groundDock 锚点继承批，railui.page.js 表头【inherit】段）====
+   ToolTable 壳 wrap 继承官方 .backpack-panel 类（官方 webui-grounddock 锚点 /
+   syncPanelHeight 面板高同步的查询标记）——官方 .backpack-panel 面板皮肤（@ToolTable.html @90：
+   flex column 居中 + padding/背景/边框/圆角/阴影）随之涂到壳上，此处归零还原壳原貌
+   （#srp id 优先级恒胜官方类规则）。position:relative 保留（id 形态 proxy 的定位基）。 */
+#srp.backpack-panel{display:block;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
