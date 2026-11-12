@@ -113,6 +113,10 @@ internal static class RailUi
     /// Tick 首行主线程帧内消费重算——改键当帧落笔，不等 5s 慢通道。</summary>
     internal static volatile bool SizeDirty;
     private static readonly Dictionary<int, int> _nativeH = new(); // 会话首见即原生高（0=恢复原生语义的数据源）
+    // 尺寸守卫缓存（读档掉物品修复 2026-11-12）：SizeEnginePoll 每轮确认的包尺寸目标
+    // （宽度段记 w+当时高；高度段随后覆盖高——ShrinkDrop 未竟包钉当前值，慢通道收敛后覆盖）。
+    // 读档表重载/异步洗表后帧级守卫（SizeGuardFrame）据此当帧写回，物品校验窗口 5s→1 帧。
+    private static readonly Dictionary<int, int[]> _appliedSize = new();
 
     /// <summary>工作台抽屉三档全局包（2026-11-06 终案）：5010[8×5]/5012[8×6]/5013[8×7] 升级链，
     /// 不挂任何家具（Config_Furniture 零引用实锤）、全工作台共享互通（作者实测「四台抽屉通」）。
@@ -194,7 +198,9 @@ internal static class RailUi
                     var size = bag.Size;
                     if (size == null || size.Count < 2) continue;
                     int cw = size[0];
-                    if (cw <= 0 || cw == w) continue;
+                    if (cw <= 0) continue;
+                    _appliedSize[bagId] = new[] { w, size[1] }; // 守卫缓存：宽=目标（写后/已达标），高先记现值（高度段覆盖）
+                    if (cw == w) continue;
                     size[0] = w; // 直写宽（高不动）
                     changed++;
                     detail.Add(bagId + "(" + BagTable.Name(bag) + ")" + cw + "→" + w);
@@ -218,11 +224,18 @@ internal static class RailUi
                     if (curH <= 0) continue;
                     int nativeH = NativeHeightOf(bagId, curH);
                     int want = tgt == 0 ? nativeH : tgt; // 0=恢复原生（会话首见缓存）
-                    if (want == curH) continue;
+                    if (want == curH)
+                    {
+                        if (_appliedSize.TryGetValue(bagId, out var rec)) rec[1] = want; // 已达标：守卫缓存高对齐
+                        else _appliedSize[bagId] = new[] { size[0], want };
+                        continue;
+                    }
                     // 缩高=先掉后缩（spec §8：ShrinkDrop 官方掉落编排成功才落笔；false=本轮放弃
                     // 签名不记下轮重试——位置不可得/掉落失败等，零物品损失）
                     if (want < curH && !ShrinkDrop.Process(bagId, want)) { _sizeSig = ""; shrinkPending++; continue; }
                     size[1] = want;
+                    if (_appliedSize.TryGetValue(bagId, out var rec2)) rec2[1] = want;
+                    else _appliedSize[bagId] = new[] { size[0], want };
                     hChanged++;
                     hDetail.Add(bagId + "(" + BagTable.Name(bag) + ")" + curH + "→" + want);
                 }
@@ -304,6 +317,70 @@ internal static class RailUi
     }
 
     /// <summary>
+    /// 读档启动族抢写（SizeGuardHook prefix 调，2026-11-12 读档掉物品修复）：清签名+守卫缓存
+    /// →柜子名单/场景实例重扫（AfterAgent 起家具已建，柜子包进目标集）→SizeEnginePoll 全量写表。
+    /// 必须先于 ItemManager.StartBattle 体内的 LoadItemsFromSave（物品逐件 AddItem 按当时表值
+    /// 校验 BagPos，越界即 TryDropOverflowItemData 官方掉落）。幂等：三 prefix 重复进入零写。
+    /// </summary>
+    internal static void ReapplyOnBattleStart()
+    {
+        _sizeSig = "";
+        _appliedSize.Clear();
+        try { CabinetCatalog.RebuildConfigIds(); } catch { } // 配置层名单幂等重扫（未就绪=SizeEnginePoll 内部自判）
+        try { CabinetCatalog.RefreshHomeInstances(); } catch { } // 家具未建时扫空无害（后续 prefix/慢通道补）
+        SizeEnginePoll();
+    }
+
+    /// <summary>守卫告警节流（60s）：官方异步洗表若持续，防每帧刷屏。</summary>
+    private static long _sizeGuardLastLog;
+
+    /// <summary>
+    /// 帧级尺寸守卫（FastPoll 调）：逐包比对守卫缓存与 Config_Bag 现值，被官方表重载洗回
+    /// 原生（读档后异步发生，日志 1771→1801 间隔实证）则当帧写回+索引失效+刷新活跃页。
+    /// 洗表→写回窗口=1 帧，物品校验（读档加载/开柜/腐烂轮询）几乎不可能命中。
+    /// 稳态纯比较零写（~30 包×2 次 int 读，interop 开销可忽略）。表未就绪/缓存空=秒退。
+    /// </summary>
+    internal static void SizeGuardFrame()
+    {
+        if (_appliedSize.Count == 0) return;
+        try
+        {
+            var cm = BagTable.Cm();
+            var bags = BagTable.BagDict(cm);
+            if (bags == null || bags.Count == 0) return;
+            int fixedCount = 0;
+            var fixedNames = new List<string>();
+            foreach (var kv in _appliedSize)
+            {
+                try
+                {
+                    if (!bags.TryGetValue(kv.Key, out var bag) || bag == null) continue;
+                    var size = bag.Size;
+                    if (size == null || size.Count < 2) continue;
+                    var want = kv.Value;
+                    if (size[0] == want[0] && size[1] == want[1]) continue;
+                    size[0] = want[0];
+                    size[1] = want[1];
+                    fixedCount++;
+                    if (fixedNames.Count < 8) fixedNames.Add(kv.Key + "(" + BagTable.Name(bag) + ")");
+                }
+                catch { }
+            }
+            if (fixedCount == 0) return;
+            try { BagTable.InvalidateBagSizeIndex(cm, new List<string>()); } catch { }
+            RefreshAfterSizeWrite();
+            var now = DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond;
+            if (now - _sizeGuardLastLog < 60) return;
+            _sizeGuardLastLog = now;
+            CabinetEverywherePlugin.Log.LogWarning(
+                "[CERail] SizeGuard：官方表重载把 " + fixedCount + " 包尺寸洗回原生，已当帧写回（" +
+                string.Join("、", fixedNames) + (fixedCount > fixedNames.Count ? " 等" : "") +
+                "）——读档掉物品修复（抢写钩 SizeGuardHook + 本帧守卫双保险）");
+        }
+        catch { }
+    }
+
+    /// <summary>
     /// 尺寸改写后的立即生效链（spec §2 硬验收：不允许变形/闪烁/延迟）：
     /// ①官方活跃页刷新 Ra_RefreshBag（重建态=重读尺寸，官方路径零闪烁——Bug3 以来验证的机制）；
     /// ②BackpackUI 补 Ac_Item_RefreshAllBagViews（其 RefreshBag 需 Redux 对象，见 RailData.RefreshActivePage 注）；
@@ -362,6 +439,7 @@ internal static class RailUi
                 RailData.OnWorldRebind();
                 _lastPage = null; /* 视为新开机：首个场景必推 */
                 _sizeSig = "";    /* 终审 I2：读档/切场景表重载会还原 Config_Bag——签名复位保证下一轮幂等重写（宽高同管） */
+                _appliedSize.Clear(); /* 换档包集合可能变：守卫缓存随签名同清（StartBattle prefix 抢写已先行重建） */
             }
 
             // 门控①：无 rail 场景不推（清 _lastPage：重开场景时视为 page 变化必推一包）
@@ -505,6 +583,7 @@ internal static class RailUi
     internal static void FastPoll()
     {
         if (!Enabled) return;
+        SizeGuardFrame(); // 帧级尺寸守卫（读档掉物品修复）：表被官方异步洗回原生→当帧写回
         try
         {
             if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
