@@ -64,6 +64,11 @@ CabinetEverywhere）的下一步：把**高度维度**并入本 mod 的 SizeEngi
 
 ## 4. 名单（86 包全量归类，2026-11-05 表快照）
 
+> **2026-11-12 修订（作者令）**：材料架 110009 开放高度（新增 [Rail] Height_110009，默认 0=原生 12）；
+> 宽度仍原生 20 不进 12 统一（宽=每行可放件数，收窄=砍容量）。行数=包高由
+> MaterialRackRowBuilder.GetRackBagSize 实时直读实证（反汇编 RVA 0x2C61360）；防变形=railui.css
+> 注入 #rackBody max-height:668px+纵向滚动。详见 DESIGN.md §12.1。
+
 ### 4.1 高度可调（24 包 → 15 个面板条目）
 
 | 面板条目 | cfg 键 [Rail] | 默认 | 包（原生宽x高） |

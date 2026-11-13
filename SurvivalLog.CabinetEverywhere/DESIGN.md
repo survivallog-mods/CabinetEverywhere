@@ -987,6 +987,24 @@ spec=docs/superpowers/specs/2026-11-07-bag-height-design.md；计划=docs/superp
 - 名单与排除全集（86 包归类/柜子1-2-3 摘除缘由/材料架宽高全原生）见 spec §4；
   harness=harness-height.cjs（12/12）。
 
+### 12.1 材料架高度（2026-11-12 作者令开禁，spec §4.3「宽高全原生」据此修订）
+
+- **行数=包高实锤**：`MaterialRackRowBuilder.GetRackBagSize`（il2cpp 反汇编，RVA 0x2C61360）=
+  Get_Config_Furniture(205).BagId → Get_Config_Bag(110009).Size → `Size[0]=rowLength(20)`/
+  `Size[1]=rowCount(12)` **实时直读表**；`BuildRows` 物品行/锁定行后**空行垫底补齐到 rowCount**
+  （尾部循环 sub r15d, count；jle 跳过）。110009 仅家具 205 引用（Config_Furniture 全表交叉），
+  零共包。行渲染纯数据驱动（webui-rackrows.js render 签名重建、行高恒 ROW_H 52+gap 4）。
+- **改动**：HeightByBag 收 `Height_110009`（默认 0=原生 12，MaxHeight 夹/缩高走 ShrinkDrop/
+  SettingChanged 帧级/读档 SizeGuard 全继承）；宽度段 `bagId != RackBagId` 跳过——宽 20=
+  每行可放件数（cap=20÷材料宽），统一 12=砍容量，**不进宽度目标集**；守卫缓存记 [20,H]
+  （高度段 else 分支用 size[0] 现值，SizeGuardFrame 写回不误改宽）。
+- **防变形**（硬验收）：官方面板 MaterialRack.html 按原生 12 行×864 视口设计、`#rackBody` 无
+  滚动——行数>~14 时 createViewportFit 整页 zoom&lt;1 缩小=变形；railui.css 末段注入
+  `#rackBody{max-height:668px;overflow-y:auto}`（668=12×52+11×4 原生包络：≤12 行零滚动条
+  零视觉差，>12 行出 8px 滚动条；行宽 440<460-8 无横向挤压）。其余五处共用行视图的页签
+  （ToolTable/Shredder/DroneHub/TradeUI/GreenhouseBuild）官方自带 overflow-y:auto，天然不变形。
+  即时刷新链现成：RefreshActivePage case "MaterialRack"→Ac_MaterialRack_RefreshBag。
+
 ## 13. 负重改写（BagBurden，2026-11-07——背包负重调整新增 + 原独立 mod CabinetBurden 并回）
 
 - **[Burden] 两键**：`BackpackBurden`（公斤，0=官方原值，0~1000，写表=kg×1000；9 个可穿背包

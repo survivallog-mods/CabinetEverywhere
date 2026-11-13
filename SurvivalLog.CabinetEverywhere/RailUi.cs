@@ -123,6 +123,12 @@ internal static class RailUi
     /// 宽随 cfg 统一；高/档位不动（升级链照常）。下轮换档配置表重建→5s 幂等重写自动收敛。</summary>
     internal static readonly int[] DrawerBagIds = { 5010, 5012, 5013 };
 
+    /// <summary>材料架包（家具 205 专属，零共包）：宽 20=每行可放件数（cap=20÷材料宽）、
+    /// 高 12=材料行数（MaterialRackRowBuilder.GetRackBagSize 反汇编实证实时直读 Size[0]/[1]，
+    /// 空行垫底补齐到包高）。2026-11-12 作者令开高度（Height_110009）；宽**不进 12 统一**
+    /// ——收窄=砍每行件数容量，SizeEnginePoll 宽度段对它跳过。</summary>
+    internal const int RackBagId = 110009;
+
     internal static void SizeEnginePoll()
     {
         const int w = UniformWidth; // 宽恒 12（UniformBagWidth 键退役，spec §2）
@@ -176,9 +182,11 @@ internal static class RailUi
                 if (!targets.Contains(bagId)) targets.Add(bagId);
             // 高度修改批 §6.2：24 静态包并进宽度目标集（**绕过 skip**，白名单包含优先语义同 ⑤）——
             // 载具 1021/1022 原生宽 5/10 随批首次收 12；背包链原生 12 幂等零写。
+            // 材料架 110009 例外（2026-11-12 高度批）：只并进高度段、不进宽度目标——
+            // 宽 20=每行可放件数（cap=20÷材料宽），统一 12=砍容量。
             var heightBags = new List<int>(HeightTargetBags());
             foreach (var bagId in heightBags)
-                if (!targets.Contains(bagId)) targets.Add(bagId);
+                if (bagId != RackBagId && !targets.Contains(bagId)) targets.Add(bagId);
             targets.Sort();
             skipped.Sort(string.CompareOrdinal);
             // 签名含高度映射（cfg 值变即重算）：bagId:want 串（want<0=不在名单占位）
@@ -255,8 +263,8 @@ internal static class RailUi
                     ? $"[CERail] SizeEngine：宽 {w} 列/高改写 {changed} 包：" + string.Join("、", detail)
                     : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标"
                       + (shrinkPending > 0 ? $"（另有 {shrinkPending} 包缩高待处理，每 5s 重试——见 ShrinkDrop 日志）" : ""))
-                + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架不动；高度=15键解析(0=原生/MaxHeight夹/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
+                    + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
+                    + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架宽 20 不动（高可调，Height_110009）；高度=16键解析(0=原生/MaxHeight夹/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
         }
         catch (Exception e)
         {
@@ -264,7 +272,7 @@ internal static class RailUi
         }
     }
 
-    /// <summary>高度段静态名单（spec §4.1）：背包链 9 + 单包键 12 + 抽屉三档 3 = 24 包（顺序即处理序）。</summary>
+    /// <summary>高度段静态名单（spec §4.1 + 2026-11-12 材料架批）：背包链 9 + 单包键 13（含材料架 110009）+ 抽屉三档 3 = 25 包（顺序即处理序）。</summary>
     private static IEnumerable<int> HeightTargetBags()
     {
         foreach (var id in CabinetEverywherePlugin.BackpackBagIds) yield return id;

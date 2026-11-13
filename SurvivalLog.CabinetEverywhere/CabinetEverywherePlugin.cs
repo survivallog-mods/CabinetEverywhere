@@ -68,7 +68,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<int> BackpackHeight;   // 背包链 9 包统一行数（天赋换包链必须同高，spec §7）
     internal static ConfigEntry<int> DrawerHeight;     // 工作台抽屉基准行数：三档=H/H+1/H+2（升级链保留）
     internal static ConfigEntry<int> MaxHeight;        // 高度防呆上限（0=不封顶自担）
-    internal static Dictionary<int, ConfigEntry<int>> HeightByBag; // 12 个单包键（置物架4+工具柜1+冰箱4+载具3）
+    internal static Dictionary<int, ConfigEntry<int>> HeightByBag; // 13 个单包键（置物架4+工具柜1+冰箱4+载具3+材料架1）
     internal static readonly int[] BackpackBagIds = { 1, 2, 5, 6, 7, 8, 9, 10, 11 }; // 天赋链（含 2 登山包/8 仓管初始）
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 12 统一（默认 1009 中控台）。
@@ -118,7 +118,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
         ApplyWebViewScrollbarEnv();
         ApplyRemoteDebugEnv();
-        // ==== 高度修改批 15 键（spec §4.1 逐字；全部默认 0=恢复原生；宽度恒 12 不可改）====
+        // ==== 高度修改批 15 键（spec §4.1 逐字；全部默认 0=恢复原生；宽度恒 12 不可改——
+        // 材料架 110009 例外：2026-11-12 作者令开高度，宽保持原生 20=每行件数，不进宽度统一）====
         BackpackHeight = Config.Bind("Rail", "BackpackHeight", 0,
             "背包行数（普通背包/野外登山包/仓管背包，含天赋加行链共 9 包统一——换包逻辑要求链上同高；原生 18；0=恢复原生）。宽度恒 12。");
         HeightByBag = new Dictionary<int, ConfigEntry<int>>
@@ -135,6 +136,11 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             { 1021,   Config.Bind("Rail", "Height_1021",   0, "自行车车筐行数（原生 4；0=恢复原生）。宽恒 12。") },
             { 1022,   Config.Bind("Rail", "Height_1022",   0, "小汽车后备箱行数（原生 8；0=恢复原生）。宽恒 12。") },
             { 1023,   Config.Bind("Rail", "Height_1023",   0, "SUV后备箱行数（与门口塑料袋共用包——运行时指派，表无引用；原生 10；0=恢复原生）。宽恒 12。") },
+            // 材料架高度批（2026-11-12 作者令）：110009 宽 20=每行可放件数（行长÷材料宽=cap），
+            // 高 12=材料行数（MaterialRackRowBuilder.GetRackBagSize 反汇编实证实时直读 Size）。
+            // 只开高度——宽保持 20（SizeEnginePoll 宽度段跳过），行数>12 由注入 CSS 给官方面板
+            // rackBody 加纵向滚动（原生 12 行内零滚动条零视觉差）。
+            { 110009, Config.Bind("Rail", "Height_110009", 0, "材料架行数（家具 205 专属包，原生 12；0=恢复原生）。宽恒 20=每行可放件数，不可改；超过 12 行后官方面板右栏纵向滚动。") },
         };
         DrawerHeight = Config.Bind("Rail", "DrawerHeight", 0,
             "工作台抽屉基准行数：三档=H/H+1/H+2（工作台升级加行语义保留；原生链 5/6/7；0=恢复原生链）。宽恒 12。");

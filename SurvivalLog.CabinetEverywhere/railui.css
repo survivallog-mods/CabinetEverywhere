@@ -590,3 +590,14 @@ img.cfx-dicon{width:14px;height:14px;object-fit:contain;margin-right:3px;vertica
    flex column 居中 + padding/背景/边框/圆角/阴影）随之涂到壳上，此处归零还原壳原貌
    （#srp id 优先级恒胜官方类规则）。position:relative 保留（id 形态 proxy 的定位基）。 */
 #srp.backpack-panel{display:block;padding:0;border:0;border-radius:0;background:none;box-shadow:none}
+
+/* ==== 材料架高度防变形（2026-11-12 材料架高度批：Height_110009 行数>12 时官方面板右栏纵向滚动）====
+   官方 MaterialRack.html 按原生 12 行×864 视口设计、rackBody 无滚动（.rack-system 高出视口即
+   createViewportFit 整页 zoom<1 缩小=变形）。行视图纯数据驱动（webui-rackrows.js render 签名
+   重建、行高恒 52+gap4），滚动不破坏布局。668px=12×52+11×4 原生包络：≤12 行零滚动条零视觉差，
+   >12 行出 8px 经典滚动条（行宽 440 < 内容余量 460-8，无横向挤压）。
+   本规则随 injectRailStyle 注入各 rail 场景 iframe——#rackBody 仅材料架页存在，其余页零命中。 */
+#rackBody{max-height:668px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+#rackBody::-webkit-scrollbar{width:8px}
+#rackBody::-webkit-scrollbar-track{background:transparent}
+#rackBody::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
