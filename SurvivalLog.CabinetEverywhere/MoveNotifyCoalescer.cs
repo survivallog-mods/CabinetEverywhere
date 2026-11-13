@@ -79,11 +79,16 @@ internal static class MoveNotifyCoalescer
                      })
                 patched += PatchWindow(h, im, name);
 
-            // ①（V1.2）无参窗：DropAllFromBag=全部丢弃真正的逐件循环（V1.1 误包 RA_DiscardAll——它只
-            // 弹确认框，执行在确认回调后的另一帧，窗外静默失效）+ 批量拾取 OnRequestPickAll。
-            // 无 from/to 参数可注入 → 批末走空对兜底（见 Exit）。
-            patched += PatchWindowNp(h, typeof(GameCore.HotUpdate.Battle.Logic.DropItemManager), "DropAllFromBag");
-            patched += PatchWindowNp(h, typeof(GameCore.HotUpdate.Battle.Logic.DropItemManager), "OnRequestPickAll");
+            // ①（V1.3）无参窗：批量拾取三入口（OnRequestPickAll 官方列表全拾 + OnGroundDockPick
+            // 脚边横排批拾 + OnGroundDockPickTo 拾入指定包——实测 142s 卡死：mod 侧栏拾取/脚边
+            // 拾取不走已包的搬运窗，每件 21015 全链放行）。无参 → 批末走空对兜底（见 Exit）。
+            foreach (var name in new[] { "OnRequestPickAll", "OnGroundDockPick", "OnGroundDockPickTo" })
+                patched += PatchWindowNp(h, typeof(GameCore.HotUpdate.Battle.Logic.DropItemManager), name);
+
+            // ①（V1.3）全部丢弃专用窗：DropAllFromBag(long ownerId)（V1.1 误包 RA_DiscardAll 弹框帧）。
+            // 带 ownerId 注入 → 记 (ownerId,ownerId) 对 → 批末 SyncBothBags(owner,owner) 整包追平
+            // Data 层（V1.2 实测显示不更新：3002/3005 被吞后 Redux Data 无增量，仅刷视图无效）
+            patched += PatchWindowOwner(h, typeof(GameCore.HotUpdate.Battle.Logic.DropItemManager), "DropAllFromBag");
 
             if (patched < 4) { CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] 关键方法缺失过多（游戏改版？），未装：patched=" + patched); return; }
             _installed = true;
@@ -138,6 +143,25 @@ internal static class MoveNotifyCoalescer
             var m = AccessTools.Method(type, method);
             if (m == null) return 0;
             var prefix = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(EnterPrefixNp));
+            var fin = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(ExitFinalizer));
+            h.Patch(m, prefix: prefix, finalizer: fin);
+            return 1;
+        }
+        catch (Exception e)
+        {
+            CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] " + method + " 未挂上: " + e.Message);
+            return 0;
+        }
+    }
+
+    /// <summary>丢弃专用窗（参数名 ownerId 注入 → 自环对 → 批末 SyncBothBags 追平 Data 层）。</summary>
+    private static int PatchWindowOwner(Harmony h, System.Type type, string method)
+    {
+        try
+        {
+            var m = AccessTools.Method(type, method);
+            if (m == null) return 0;
+            var prefix = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(EnterPrefixOwner));
             var fin = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(ExitFinalizer));
             h.Patch(m, prefix: prefix, finalizer: fin);
             return 1;
@@ -208,6 +232,28 @@ internal static class MoveNotifyCoalescer
         EnterWindow();
     }
 
+    /// <summary>丢弃专用窗（DropAllFromBag(long ownerId)：记自环对，批末 SyncBothBags 追平 Data 层）。</summary>
+    private static void EnterPrefixOwner(long ownerId)
+    {
+        EnterWindow();
+        NotePair(ownerId, ownerId);
+    }
+
+    /// <summary>mod 侧手工窗（RailGround 拾取循环直调）：进窗+记背包自环对。</summary>
+    internal static void ManualEnter(long bagOwner)
+    {
+        if (!_installed) return;
+        EnterWindow();
+        NotePair(bagOwner, bagOwner);
+    }
+
+    /// <summary>mod 侧手工窗收尾（finally 调；未装时零动作）。</summary>
+    internal static void ManualExit()
+    {
+        if (!_installed) return;
+        Exit();
+    }
+
     private static void EnterWindow()
     {
         if (_depth == 0)
@@ -246,7 +292,16 @@ internal static class MoveNotifyCoalescer
         var swallowedAny = _swallowAdd > 0 || _swallowDel > 0 || _swallowSync > 0 || _swallowRefresh > 0;
         if (flushed == 0 && swallowedAny)
         {
-            try { GameCore.HotUpdate.ReduxUI.Ac_Item_RefreshAllBagViews.SendAction(); flushed = -1; }
+            // 空对兜底（V1.3 升级）：3002/3005 被吞=Redux Data 层无增量——仅刷视图不够（丢弃实测
+            // 显示不更新）。对背包 owner 发 (bag,bag) 自环 SyncBothBags=官方 3031 整包→Data 层
+            // 权威追平（OnSyncBagItems→Ac_Item_SyncBagItems→Redux 整包替换），再整刷一次视图。
+            try
+            {
+                long bag = RailData.BagOwner();
+                if (bag > 0 && im != null) im.SyncBothBags(bag, bag);
+                GameCore.HotUpdate.ReduxUI.Ac_Item_RefreshAllBagViews.SendAction();
+                flushed = -1;
+            }
             catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] 空对兜底刷新失败: " + e.Message); }
         }
         // 21015 补发：窗内每件全量脚边同步被吞 → 批末 PushGroundDock 一次（幂等全量，含最新地面态）
