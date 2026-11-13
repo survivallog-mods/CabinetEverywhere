@@ -77,6 +77,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<int> BackpackBurden;   // 背包负重上限（公斤，0=官方原值，0~1000，写表=kg×1000）
     internal static ConfigEntry<bool> CabinetUnburden; // 柜子负重解放：true=家具储物包负重清零；false=还原
     internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
+    // 搬运通知合并（2026-11-13 方案 A·V1，PERF_NOTES.md 拆账终审）：批量搬运期间静默界面逐件
+    // 刷新（每搬一件=官方整包重建界面 JSON=扩容后批量搬运秒级冻结主因，占 65-80%），批末走
+    // 官方 SyncBothBags 整包同步一次=状态完全追平（官方 ExecuteMoveBag 批末同构）。
+    internal static ConfigEntry<bool> EnableMoveCoalescer;
     internal static ConfigEntry<int> RemoteDebugPort; // v1.8.10 八追：>0=WebView2 附加 --remote-debugging-port（断流现场 CDP 取证，默认关）
     internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
 
@@ -104,6 +108,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Enabled = Config.Bind("General", "Enabled", true,
             "总开关：false=对称移除白名单注入并停写停注入；下次启动不加载。");
         Enabled.SettingChanged += (object s0, System.EventArgs e0) => { Rerun = true; };
+        EnableMoveCoalescer = Config.Bind("Perf", "EnableMoveCoalescer", true,
+            "批量搬运通知合并：搬运期间暂缓界面逐件刷新（每搬一件官方会整包重建一次界面 JSON——扩容后批量搬运秒级冻结的主因），搬运结束一次性整包同步。false=回原行为。重启生效。");
         PerfDiag.Install(Config, Log); // [PERFDIAG] 临时诊断（PERF_NOTES.md 验证后删除）：独立挂载，不受 General.Enabled 影响
         // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
         // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
@@ -279,6 +285,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 尺寸抢写钩（读档掉物品修复 2026-11-12）：读档表回原生+物品按原生校验越界官方掉落
         // ——ItemManager 启动族 prefix 抢写 + 帧级 SizeGuard 守卫（RailUi.FastPoll）
         SizeGuardHook.Install();
+        // 搬运通知合并（2026-11-13 方案 A·V1）：批量搬运批末整包同步——治全部存入/取出等
+        // 批量搬运的秒级单帧冻结（PERF_NOTES.md 拆账：每件 3002/3005→BuildBagJson 整包重建占 65-80%）
+        MoveNotifyCoalescer.Install();
     }
 
     /// <summary>

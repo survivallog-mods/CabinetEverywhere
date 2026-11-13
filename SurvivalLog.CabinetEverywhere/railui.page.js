@@ -2352,8 +2352,16 @@
   }
 
   /* ---- 主渲染（Produces：render）——setData 到达/视图态变化后全量刷新 ---- */
+  var RENDER_SIG = ''; /* [PERF-C3] 内容签名门：rev+全部视图态未变=输出必然相同，跳过全量管线 */
   function render() {
     if (!el.rail || !store.ctx) return; /* 未挂载或数据未到：不动（装配后数据先到也能补渲染） */
+    /* [PERF-C3] 数据 rev+视图态全量指纹：同指纹=渲染输出必然一致（render 是全量纯计算，
+       rev 是 C# 侧结构签名——同 rev 必同数据），跳过过滤+排序+整表 innerHTML 重建+双强制
+       布局（实测开界面时每 0.5s 一拍的周期性顿挫即此路径无门空转）。视图态变化（切页签/
+       排序/搜索/选择）自然换指纹照常渲染。 */
+    var _sig = (store.rev || 0) + '|' + st.scene + '|' + st.currentId + '|' + st.mode + '|' + st.global + '|' + st.query + '|' + (st.tags ? st.tags.join(',') : '') + '|' + st.sort + '|' + st.sel + '|' + st.plainBag;
+    if (_sig === RENDER_SIG) return;
+    RENDER_SIG = _sig;
     /* v1.8.2.5 plainbag（整理物资/材料架 背包侧）：固定背包视图——柜签/搜索/标签/排序/
        列表切换全部隐藏（CSS），页脚=一键整理+一键入库，标题=背包名+格数 */
     if (st.plainBag) {

@@ -208,6 +208,13 @@ internal static class RailCommands
                     CabinetEverywherePlugin.Log.LogInfo($"[CERail] 命令泵本帧执行 {executed} 条（余量 {Pending.Count}）→ ForceRepublish {tPush}ms（>150ms 常驻打印）");
             }
             if (_storeTask != null) DriveStoreTask(); // 方案 A 终案：入库任务每帧一步（收尾自带哨兵+推送收口）
+            if (_storeFlushPending)
+            {
+                // [PERF-C1] 入库收尾的官方整页刷新+重推延一帧落地（FinishStoreTask 拆帧，见其注释）
+                _storeFlushPending = false;
+                RailData.RefreshActivePage();
+                RailData.ForceRepublish();
+            }
         }
         catch (Exception e)
         {
@@ -1076,6 +1083,7 @@ internal static class RailCommands
         public long TSnap; public System.Diagnostics.Stopwatch Sw;
     }
     private static StoreAllTask _storeTask;
+    private static bool _storeFlushPending; // [PERF-C1] 收尾帧拆开：官方刷新+重推延一帧（FinishStoreTask 置位，Pump 消费）
     /// <summary>入库任务在途（RailUi.PushIfDue 闸门用：任务期间压住 FastPoll/Tick 全量重推，
     /// 防每帧搬运各触发一次 136KB BuildJson+下发——完成时收尾一次性推）。</summary>
     internal static bool StoreTaskActive => _storeTask != null;
@@ -1123,6 +1131,7 @@ internal static class RailCommands
         var cabEmpty = new List<bool>();
         foreach (var id in c.Order)
         {
+            if (id == RailGround.OwnerId) continue; // [PERF-C2] 地面虚拟容器不入柜路由（JS order 混入 -101 → 白名单拒+8 次警告）
             var inst = ContainerOf(id);
             if (inst == null) { CabinetEverywherePlugin.Log.LogWarning($"[CERail] storeAll：order 内 owner={id} 不在白名单，跳过（红线2）"); continue; }
             var rule = new Il2CppSystem.Collections.Generic.List<int>();
@@ -1287,8 +1296,10 @@ internal static class RailCommands
         _storeTask = null;
         RailUi.PushStoreProg(t.TotalStacks, t.TotalStacks); // 进度 100%（弹窗转完成态由哨兵包驱动）
         RailData.MarkStoreDone();     // ctx.storeAllDone 哨兵（JS settleXfer 解除 hold+弹窗结果态）
-        RailData.RefreshActivePage(); // 官方格刷（任务期间官方直调零推送的补口）
-        RailData.ForceRepublish();    // mod 契约重推（闸门已开，下一周期出包）
+        // [PERF-C1 收尾帧拆开] 官方整页刷新+ForceRepublish 延到 Pump 下一帧——收尾帧实测
+        // 402~411ms（哨兵+官方整页重建+BuildJson 130KB 三件同帧），拆开后收尾帧≈1ms
+        _storeFlushPending = true;
+        if (abort != null) WarnOnce("storeAll:abort", "入库任务提前终止：" + abort);
         if (abort != null) WarnOnce("storeAll:abort", "入库任务提前终止：" + abort);
         VLog("storeAll", $"cabs={t.Cabs.Count} 入库 {t.MovedStacks} 叠/{t.MovedTotal} 件，留背包 {t.LeftStacks} 叠" +
             $"｜性能 快照 {t.TSnap}ms 任务 {t.Sw.ElapsedMilliseconds - t.TSnap}ms/{t.Steps} 帧 均 {t.MovedStacks / Math.Max(1, t.Steps)} 件/帧" +
