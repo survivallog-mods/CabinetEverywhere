@@ -514,6 +514,10 @@ internal static class RailUi
     /// <summary>上次全量推送时刻（ms，Environment.TickCount64）——余波节流用（见 PushIfDue 头注释）。</summary>
     private static long _lastPushMs;
 
+    // [PERFDIAG] 卡顿现场行取数（PERF_NOTES.md 验证后删除）
+    internal static long LastPushAgoMs => _lastPushMs == 0 ? -1 : System.Environment.TickCount64 - _lastPushMs;
+    internal static int LastPushLen { get; private set; }
+
     private static int PushIfDue(Vuplex.WebView.IWebView web)
     {
         if (RailCommands.StoreTaskActive) return -1; // 入库任务在途：闸住全量重推（Tick/FastPoll 双通道一收口——任务每帧搬几件，不闸=每帧 136KB BuildJson+下发；完成时 FinishStoreTask 收尾一次推）
@@ -572,6 +576,7 @@ internal static class RailUi
         }
         _lastPage = page;
         _lastPushMs = nowMs; // 余波节流基准（本次推送时刻，见头注释）
+        LastPushLen = json.Length; // [PERFDIAG] 卡顿现场行取数
 
         // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
         if (CabinetEverywherePlugin.Verbose?.Value == true)

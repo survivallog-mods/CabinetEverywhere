@@ -48,11 +48,19 @@ internal static class PerfDiag
     {
         try
         {
-            if (System.Threading.Interlocked.Increment(ref _excTotal) > 2_000_000) return; // 熔断：总量封顶后不再分型
+            long n = System.Threading.Interlocked.Increment(ref _excTotal);
+            if (n > 2_000_000) return; // 熔断：总量封顶后不再分型
             ExcByType.AddOrUpdate(e.Exception?.GetType().Name ?? "?", 1, (_, c) => c + 1);
+            if ((n & 127) == 0) // [PERFDIAG] 每 128 次采 1 条堆栈（≈20s 一条 @6次/s），定位后台异常来源
+            {
+                var st = e.Exception?.StackTrace;
+                if (!string.IsNullOrEmpty(st))
+                    _excSample = (e.Exception?.GetType().Name ?? "?") + " @ " + st.Replace("\r", "").Replace("\n", " <= ");
+            }
         }
         catch { /* [PERFDIAG] 诊断自身绝不抛 */ }
     }
+    internal static string _excSample; // 最近一次采样堆栈（Report 输出后清）
 
     internal static void Install(ConfigFile cfg, ManualLogSource log)
     {
@@ -104,6 +112,8 @@ internal static class PerfDiag
         private float _next;
         private int _frames, _slow50, _slow100;
         private float _sumDt, _maxDt;
+        private float _lastSlowAt = float.NegativeInfinity; // [PERFDIAG] 慢帧实时行限流（≥1s 一条，防连环卡顿刷屏）
+        private int _g0, _g1, _g2;
 
         public void Update()
         {
@@ -111,12 +121,32 @@ internal static class PerfDiag
             _frames++; _sumDt += dt;
             if (dt > _maxDt) _maxDt = dt;
             if (dt > 0.05f) _slow50++;
-            if (dt > 0.1f) _slow100++;
+            if (dt > 0.1f)
+            {
+                _slow100++;
+                float now0 = Time.unscaledTime;
+                if (now0 - _lastSlowAt >= 1f) { _lastSlowAt = now0; try { SlowFrame(dt); } catch { /* [PERFDIAG] */ } }
+            }
             float now = Time.unscaledTime;
             if (now < _next) return;
             _next = now + Math.Clamp(ReportSec?.Value ?? 10, 3, 60);
             try { Report(); } catch { /* [PERFDIAG] */ }
             _frames = 0; _slow50 = 0; _slow100 = 0; _sumDt = 0f; _maxDt = 0f;
+        }
+
+        /// <summary>[PERFDIAG] 卡顿帧现场行（>100ms 且距上条≥1s）：页面/rail/队列/入库/最近推送——回溯定位用。</summary>
+        private void SlowFrame(float dt)
+        {
+            string page = "?"; bool railOn = false; int q = 0; bool store = false;
+            try { page = RailData.ActivePage() ?? "-"; } catch { }
+            try { railOn = RailData.AnyRailSceneActive(); } catch { }
+            try { q = RailCommands.QueueDepth; store = RailCommands.StoreTaskActive; } catch { }
+            long ago = -1; int len = 0;
+            try { ago = RailUi.LastPushAgoMs; len = RailUi.LastPushLen; } catch { }
+            _log.LogWarning(string.Format(CultureInfo.InvariantCulture,
+                "[PERFDIAG] 卡顿帧 {0:0}ms｜页={1} rail={2} 队列={3} 入库={4} 上次推送={5}KB/{6}s前",
+                dt * 1000f, page, railOn ? "On" : "Off", q, store ? "On" : "Off", len / 1024,
+                ago < 0 ? "-" : (ago / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)));
         }
 
         private void Report()
@@ -137,6 +167,15 @@ internal static class PerfDiag
             {
                 long t; string top = TopN(ExcByType, 3, out t);
                 sb.Append("｜first-chance ").Append(t).Append("：").Append(top);
+            }
+            int gc0 = System.GC.CollectionCount(0) - _g0, gc1 = System.GC.CollectionCount(1) - _g1, gc2 = System.GC.CollectionCount(2) - _g2;
+            _g0 = System.GC.CollectionCount(0); _g1 = System.GC.CollectionCount(1); _g2 = System.GC.CollectionCount(2);
+            if (gc0 > 0 || gc1 > 0 || gc2 > 0) // [PERFDIAG] GC 压力观察（大包推送/interop 包装分配）
+                sb.Append("｜GC 0:").Append(gc0).Append(" 1:").Append(gc1).Append(" 2:").Append(gc2);
+            if (!string.IsNullOrEmpty(_excSample))
+            {
+                sb.Append("｜异常样本 ").Append(_excSample.Length > 260 ? _excSample.Substring(0, 260) : _excSample);
+                _excSample = null;
             }
             Swallowed.Clear();
             ExcByType.Clear(); // 窗口增量口径
