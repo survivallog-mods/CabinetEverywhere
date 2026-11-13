@@ -177,21 +177,26 @@ internal static class RailGround
         if (dim == null) return 0;
         var drops = HomeDrops(); // 快照：拾取中实体出列不迭代原表
         int picked = 0;
-        foreach (var id in itemIds)
+        MoveNotifyCoalescer.ManualEnter(bagOwner); // [PERF-V1.3] 逐件拾取无窗=每件 21015 全链放行（142s 卡死），手工包窗
+        try
         {
-            GameCore.HotUpdate.Battle.Logic.DropItem hit = null;
-            foreach (var d in drops)
+            foreach (var id in itemIds)
             {
-                var it = SafeItem(d);
-                long iid = 0;
-                try { iid = it?.InstanceId ?? 0; } catch { }
-                if (iid == id) { hit = d; break; }
+                GameCore.HotUpdate.Battle.Logic.DropItem hit = null;
+                foreach (var d in drops)
+                {
+                    var it = SafeItem(d);
+                    long iid = 0;
+                    try { iid = it?.InstanceId ?? 0; } catch { }
+                    if (iid == id) { hit = d; break; }
+                }
+                if (hit == null) continue;
+                try { int n; if (dim.TryPickupItem(hit.InstanceId, bagOwner, out n, false)) picked++; }
+                catch { }
+                if (firstOnly && picked > 0) break;
             }
-            if (hit == null) continue;
-            try { int n; if (dim.TryPickupItem(hit.InstanceId, bagOwner, out n, false)) picked++; }
-            catch { }
-            if (firstOnly && picked > 0) break;
         }
+        finally { MoveNotifyCoalescer.ManualExit(); }
         return picked;
     }
 
@@ -218,14 +223,19 @@ internal static class RailGround
         if (dim == null) return 0;
         var drops = HomeDrops();
         int picked = 0;
-        foreach (var d in drops)
+        MoveNotifyCoalescer.ManualEnter(bagOwner); // [PERF-V1.3] 同 TakeToBag：批量拾取包窗
+        try
         {
-            long did = 0;
-            try { did = d.InstanceId; } catch { }
-            if (did == 0) continue;
-            try { int n; if (dim.TryPickupItem(did, bagOwner, out n, false)) picked++; }
-            catch { }
+            foreach (var d in drops)
+            {
+                long did = 0;
+                try { did = d.InstanceId; } catch { }
+                if (did == 0) continue;
+                try { int n; if (dim.TryPickupItem(did, bagOwner, out n, false)) picked++; }
+                catch { }
+            }
         }
+        finally { MoveNotifyCoalescer.ManualExit(); }
         return picked;
     }
 
