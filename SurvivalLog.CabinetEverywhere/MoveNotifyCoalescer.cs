@@ -39,7 +39,7 @@ internal static class MoveNotifyCoalescer
     private static int _depth;
     private static bool Active => _depth > 0;
     private static readonly Dictionary<long, HashSet<long>> _pairs = new();
-    private static long _swallowAdd, _swallowDel, _swallowSync; // 窗内累计（日志对账）
+    private static long _swallowAdd, _swallowDel, _swallowSync, _swallowRefresh; // 窗内累计（日志对账）
     private static System.Diagnostics.Stopwatch _windowSw;
     private static long _windows, _lastLogMs; // 累计窗数/日志限频
 
@@ -59,10 +59,13 @@ internal static class MoveNotifyCoalescer
             var im = typeof(GameCore.HotUpdate.Battle.Logic.ItemManager);
             int patched = 0;
 
-            // ② 静默面：LogicAdapter 三处理器（零参/简参 prefix=最稳注入）
+            // ② 静默面：LogicAdapter 四处理器（零参/简参 prefix=最稳注入）
+            // 3027 OnRefreshAllBagViews（V1.1）：物资架路径每件一发（OnMaterialRackItemLeft 批内逐件，
+            // 实测 MaterialRack 338ms）——窗内静默，批末兜底刷一次（幂等全刷）
             patched += Patch0(h, la, "AddOrNotifyItem", nameof(SwallowAdd));
             patched += Patch0(h, la, "DelItem", nameof(SwallowDel));
             patched += Patch0(h, la, "OnSyncBagItems", nameof(SwallowSync)); // prefix 内额外记 (from,to)
+            patched += Patch0(h, la, "OnRefreshAllBagViews", nameof(SwallowRefresh));
 
             // ① 包窗面：ItemManager 七入口（参数名实证统一 fromOwnerId/toOwnerId）
             foreach (var name in new[]
@@ -71,6 +74,12 @@ internal static class MoveNotifyCoalescer
                          "OnMoveBagByCategory", "OnMoveBagByTag", "OnQuickMoveItems", "OnQuickMoveItemsWithFallback",
                      })
                 patched += PatchWindow(h, im, name);
+
+            // ①（V1.1）无参窗三入口：背包全部丢弃（RA_DiscardAll reducer，实测 91s 冻结——丢弃不走
+            // 搬运 API，通知风暴无窗放行）+ 批量拾取（DropItemManager.OnRequestPickAll，拾取链
+            // 逐件 3002/3033/2020/21001 同样无窗）。无 from/to 参数可注入 → 批末走空对兜底（见 Exit）。
+            patched += PatchWindowNp(h, typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_BackpackUI), "RA_DiscardAll");
+            patched += PatchWindowNp(h, typeof(GameCore.HotUpdate.Battle.Logic.DropItemManager), "OnRequestPickAll");
 
             if (patched < 4) { CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] 关键方法缺失过多（游戏改版？），未装：patched=" + patched); return; }
             _installed = true;
@@ -117,6 +126,25 @@ internal static class MoveNotifyCoalescer
         }
     }
 
+    /// <summary>无参窗（丢弃/批量拾取入口：无 fromOwnerId 可注入，批末走空对兜底刷新）。</summary>
+    private static int PatchWindowNp(Harmony h, System.Type type, string method)
+    {
+        try
+        {
+            var m = AccessTools.Method(type, method);
+            if (m == null) return 0;
+            var prefix = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(EnterPrefixNp));
+            var fin = new HarmonyMethod(typeof(MoveNotifyCoalescer), nameof(ExitFinalizer));
+            h.Patch(m, prefix: prefix, finalizer: fin);
+            return 1;
+        }
+        catch (Exception e)
+        {
+            CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] " + method + " 未挂上: " + e.Message);
+            return 0;
+        }
+    }
+
     // ---- ② 静默 prefix（窗内吞调用；窗外零动作直通） ----
 
     private static bool SwallowAdd()
@@ -141,6 +169,13 @@ internal static class MoveNotifyCoalescer
         return false;
     }
 
+    private static bool SwallowRefresh()
+    {
+        if (!Active) return true;
+        _swallowRefresh++;
+        return false; // 3027：窗内逐件全刷静默（物资架路径每件一发），批末兜底刷一次
+    }
+
     private static void NotePair(long from, long to)
     {
         if (from <= 0 || to <= 0) return;
@@ -152,13 +187,24 @@ internal static class MoveNotifyCoalescer
 
     private static void EnterPrefix(long fromOwnerId, long toOwnerId)
     {
+        EnterWindow();
+        NotePair(fromOwnerId, toOwnerId);
+    }
+
+    /// <summary>无参窗入口（丢弃/批量拾取：批末走空对兜底）。</summary>
+    private static void EnterPrefixNp()
+    {
+        EnterWindow();
+    }
+
+    private static void EnterWindow()
+    {
         if (_depth == 0)
         {
-            _swallowAdd = _swallowDel = _swallowSync = 0;
+            _swallowAdd = _swallowDel = _swallowSync = _swallowRefresh = 0;
             _windowSw = System.Diagnostics.Stopwatch.StartNew();
         }
         _depth++;
-        NotePair(fromOwnerId, toOwnerId);
     }
 
     private static void ExitFinalizer(Exception __exception)
@@ -172,7 +218,9 @@ internal static class MoveNotifyCoalescer
         if (_depth <= 0) return;
         if (--_depth > 0) return; // 嵌套批：内层退出不开闸
 
-        // 归零：补发——每对 (from,to) 走官方整包同步（此刻 Active=false，3031 畅通）
+        // 归零：补发——每对 (from,to) 走官方整包同步（此刻 Active=false，3031 畅通）；
+        // 吞过通知但无 (from,to)（丢弃/批量拾取窗）→ 空对兜底：官方整刷动作一次（3027 请求版，
+        // 与 RefreshAllBagViews 幂等全刷同效——按 ItemManager 权威数据重建全部背包视图）
         var im = RailData.ItemMgr();
         int flushed = 0;
         if (im != null && _pairs.Count > 0)
@@ -184,6 +232,12 @@ internal static class MoveNotifyCoalescer
                     catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] 补发失败 from=" + kv.Key + " to=" + to + ": " + e.Message); }
                 }
         }
+        var swallowedAny = _swallowAdd > 0 || _swallowDel > 0 || _swallowSync > 0 || _swallowRefresh > 0;
+        if (flushed == 0 && swallowedAny)
+        {
+            try { GameCore.HotUpdate.ReduxUI.Ac_Item_RefreshAllBagViews.SendAction(); flushed = -1; }
+            catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CE.搬运合并] 空对兜底刷新失败: " + e.Message); }
+        }
         _pairs.Clear();
         _windows++;
         _windowSw?.Stop();
@@ -194,7 +248,7 @@ internal static class MoveNotifyCoalescer
         {
             _lastLogMs = nowMs;
             CabinetEverywherePlugin.Log.LogInfo(
-                $"[CE.搬运合并] 窗 {_windowSw?.ElapsedMilliseconds ?? 0}ms：拦 3002×{_swallowAdd} 3005×{_swallowDel} 3031×{_swallowSync}，批末整包同步 {flushed} 对（累计 {_windows} 窗）");
+                $"[CE.搬运合并] 窗 {_windowSw?.ElapsedMilliseconds ?? 0}ms：拦 3002×{_swallowAdd} 3005×{_swallowDel} 3031×{_swallowSync} 3027×{_swallowRefresh}，批末同步 {(flushed < 0 ? "整刷兜底" : flushed + " 对")}（累计 {_windows} 窗）");
         }
     }
 }
