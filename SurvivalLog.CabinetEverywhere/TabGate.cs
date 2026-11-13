@@ -427,7 +427,7 @@ internal static class TabGate
     private static bool SafeActive(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t)
     {
         try { return rus.IsUIActive(t); }
-        catch { return false; }
+        catch (Exception e) { PerfDiag.Swallow("tabs.IsUIActive:" + e.GetType().Name); return false; } // [PERFDIAG]
     }
 
     // ---- DroneHub（bag 族 ownerId 制：移出+排序即可，无 Index/Active 平移） ----

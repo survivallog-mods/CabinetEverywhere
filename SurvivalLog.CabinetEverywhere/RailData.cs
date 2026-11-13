@@ -97,7 +97,7 @@ internal static class RailData
         if (rus == null) return false;
         foreach (var sc in Scenes)
         {
-            try { if (rus.IsUIActive(sc.UiType)) return true; } catch { }
+            try { if (rus.IsUIActive(sc.UiType)) return true; } catch (Exception e) { PerfDiag.Swallow("rus.IsUIActive:" + e.GetType().Name); } // [PERFDIAG]
         }
         return false;
     }
@@ -319,7 +319,7 @@ internal static class RailData
     {
         if (owner <= 0) return 0;
         try { return oc.TryGetValue(owner, out var inner) && inner != null ? inner.Count : 0; }
-        catch { return 0; }
+        catch (Exception e) { PerfDiag.Swallow("owner.count:" + e.GetType().Name); return 0; } // [PERFDIAG]
     }
 
     /* ================= 世界重绑（2026-11-01 第十二轮：作者「退主菜单重读档后排序彻底失效」
@@ -776,7 +776,7 @@ internal static class RailData
         if (rus == null) return null;
         foreach (var sc in Scenes)
         {
-            try { if (rus.IsUIActive(sc.UiType)) return sc; } catch { }
+            try { if (rus.IsUIActive(sc.UiType)) return sc; } catch (Exception e) { PerfDiag.Swallow("rus.IsUIActive:" + e.GetType().Name); } // [PERFDIAG]
         }
         return null;
     }
@@ -818,7 +818,7 @@ internal static class RailData
                     _ => 0,
                 };
             }
-            catch { }
+            catch (Exception e) { PerfDiag.Swallow("resolveBagOwner.state:" + e.GetType().Name); } // [PERFDIAG]
             if (v > 0)
             {
                 if (_bagOwner != v && CabinetEverywherePlugin.Verbose?.Value == true)
@@ -851,7 +851,7 @@ internal static class RailData
                 return pid;
             }
         }
-        catch { }
+        catch (Exception e) { PerfDiag.Swallow("resolveBagOwner.playerId:" + e.GetType().Name); } // [PERFDIAG]
         return _bagOwner > 0 ? _bagOwner : 0;
     }
 
@@ -1531,7 +1531,7 @@ internal static class RailData
                 return null;
             return GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance;
         }
-        catch { return null; }
+        catch (Exception e) { PerfDiag.Swallow("rus.singleton:" + e.GetType().Name); return null; } // [PERFDIAG]
     }
 
     private static GameCore.HotUpdate.Battle.Logic.BattleLogicWorld LogicWorld()
@@ -1542,7 +1542,7 @@ internal static class RailData
                 return null;
             return GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.Instance;
         }
-        catch { return null; }
+        catch (Exception e) { PerfDiag.Swallow("world.singleton:" + e.GetType().Name); return null; } // [PERFDIAG]
     }
 
     internal static GameCore.HotUpdate.ReduxUI.State_Data_Item ItemState() // 高度修改批：ShrinkDrop 共用（BagCache/OwnerCache 只读入口）

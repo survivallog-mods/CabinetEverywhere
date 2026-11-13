@@ -103,7 +103,7 @@ internal static class TradeTabs
 
     private static bool SafeActive(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t)
     {
-        try { return rus.IsUIActive(t); } catch { return false; }
+        try { return rus.IsUIActive(t); } catch (Exception e) { PerfDiag.Swallow("tabs.IsUIActive:" + e.GetType().Name); return false; } // [PERFDIAG]
     }
 
     /// <summary>

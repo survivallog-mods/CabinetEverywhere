@@ -277,7 +277,7 @@ internal static class TabInjector
     private static bool SafeActive(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t)
     {
         try { return rus.IsUIActive(t); }
-        catch { return false; }
+        catch (Exception e) { PerfDiag.Swallow("tabs.IsUIActive:" + e.GetType().Name); return false; } // [PERFDIAG]
     }
 
     // bag 族四状态同构（dump.cs：BagOwnerId=ReactiveProperty<long>，active 容器）——重载小面

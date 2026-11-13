@@ -102,7 +102,7 @@ internal static class RailGround
             var all = World()?._DropItemManager?._dropItems;
             return all != null ? all.Count : 0;
         }
-        catch { return 0; }
+        catch (Exception e) { PerfDiag.Swallow("ground.fastcount:" + e.GetType().Name); return 0; } // [PERFDIAG]
     }
 
     /// <summary>签名项（SigOwner 同形）：家内行数+Σcount+首末物品 id（0.5s 通道，逐件读 2 字段）。</summary>

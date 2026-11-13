@@ -104,6 +104,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Enabled = Config.Bind("General", "Enabled", true,
             "总开关：false=对称移除白名单注入并停写停注入；下次启动不加载。");
         Enabled.SettingChanged += (object s0, System.EventArgs e0) => { Rerun = true; };
+        PerfDiag.Install(Config, Log); // [PERFDIAG] 临时诊断（PERF_NOTES.md 验证后删除）：独立挂载，不受 General.Enabled 影响
         // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
         // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
         // 由原生重建清除（与 Filter 同策略，不主动清）。
@@ -380,7 +381,7 @@ internal sealed class AccessTicker : MonoBehaviour
             TradeFx.FastPoll();
             Tick(Time.deltaTime);
         }
-        catch { /* 单帧异常不终止轮询 */ }
+        catch (Exception e) { PerfDiag.Swallow("ticker.Update:" + e.GetType().Name); /* 单帧异常不终止轮询 [PERFDIAG] */ }
     }
 
     private void Tick(float dt)

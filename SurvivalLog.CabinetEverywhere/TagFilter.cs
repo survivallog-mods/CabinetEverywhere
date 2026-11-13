@@ -49,7 +49,7 @@ internal static class TagFilter
         if (web == null) return;
         try
         {
-            web.ExecuteJavaScript(BootstrapJs);
+            if (!PerfDiag.R8Off) web.ExecuteJavaScript(BootstrapJs); // [PERFDIAG] R8 A/B：true=停每 5s 全量 JS 重注
             var json = BuildDataJson();
             if (json != null)
                 web.ExecuteJavaScript("window.__SLTF__&&window.__SLTF__.setData(" + json + ")");

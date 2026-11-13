@@ -46,6 +46,7 @@ internal static class TradeTabKeyFix
     internal static void Install()
     {
         if (_installed) return;
+        if (PerfDiag.R4Off) { CabinetEverywherePlugin.Log.LogInfo("[PERFDIAG] R4 开关=true：HotKeyManager.Update 跳板未装（交易页 A/D 修复停用）"); return; } // [PERFDIAG] R4 A/B
         try
         {
             var original = HarmonyLib.AccessTools.Method(

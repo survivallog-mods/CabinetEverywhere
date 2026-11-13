@@ -350,6 +350,7 @@ internal static class RailUi
     /// </summary>
     internal static void SizeGuardFrame()
     {
+        if (PerfDiag.R1Off) return; // [PERFDIAG] R1 A/B：true=停用帧级读检（5s 慢通道+StartBattle 抢写仍在）
         if (_appliedSize.Count == 0) return;
         try
         {
@@ -372,7 +373,7 @@ internal static class RailUi
                     fixedCount++;
                     if (fixedNames.Count < 8) fixedNames.Add(kv.Key + "(" + BagTable.Name(bag) + ")");
                 }
-                catch { }
+                catch (Exception e) { PerfDiag.Swallow("sizeguard.bag:" + e.GetType().Name); } // [PERFDIAG]
             }
             if (fixedCount == 0) return;
             try { BagTable.InvalidateBagSizeIndex(cm, new List<string>()); } catch { }
@@ -385,7 +386,7 @@ internal static class RailUi
                 string.Join("、", fixedNames) + (fixedCount > fixedNames.Count ? " 等" : "") +
                 "）——读档掉物品修复（抢写钩 SizeGuardHook + 本帧守卫双保险）");
         }
-        catch { }
+        catch (Exception e) { PerfDiag.Swallow("sizeguard.frame:" + e.GetType().Name); } // [PERFDIAG]
     }
 
     /// <summary>
@@ -477,6 +478,7 @@ internal static class RailUi
         }
         catch (Exception e)
         {
+            PerfDiag.Swallow("railui.tick"); // [PERFDIAG]
             WarnOnce("tick", "rail 数据推送失败: " + e.Message);
         }
     }
@@ -601,7 +603,7 @@ internal static class RailUi
             // Pump 消化=端到端≈2 帧。原路径 drain@0.5s Tick + Pump@下轮 Tick=固定 0.5~1s 量化延迟）。
             // drain() 空队列=微 JS 调用零成本（ping 通道实验实证小包恒达先例）
             RailCommands.Pump();
-            if (RailData.AnyRailSceneActive() && RailCommands.QueueDepth < RailCommands.MaxQueued)
+            if (!PerfDiag.R3Off && RailData.AnyRailSceneActive() && RailCommands.QueueDepth < RailCommands.MaxQueued) // [PERFDIAG] R3 A/B：true=停每帧 drain（保留 0.5s Tick 的 drain）
             {
                 var webC = GetWebView();
                 if (webC != null)
@@ -628,6 +630,7 @@ internal static class RailUi
         }
         catch (Exception e)
         {
+            PerfDiag.Swallow("railui.fastpoll"); // [PERFDIAG]
             WarnOnce("fastpoll", "快通道推送失败: " + e.Message);
         }
     }
@@ -854,7 +857,7 @@ internal static class RailUi
             var prefab = layer?.canvasWebViewPrefab;
             return prefab?.WebView;
         }
-        catch { return null; }
+        catch (Exception e) { PerfDiag.Swallow("webview.get:" + e.GetType().Name); return null; } // [PERFDIAG]
     }
 
     // ==== glist 键盘门（实机批改#5，2026-11-08）：搜索框可输入 + 中文 IME ====
@@ -886,13 +889,14 @@ internal static class RailUi
     private static readonly string[] _gkBrewKeys = { "BrewPanel", "Brew", "UI_Brew", "WebUI_Brew" };
     internal static void GlistKeyboardTick()
     {
+        if (PerfDiag.R5Off) return; // [PERFDIAG] R5 A/B：true=停键盘门（相关页搜索框不可输入）
         var now = UnityEngine.Time.unscaledTime;
         if (_gkHanded && now < _gkNext)
         {
             /* 批改#12c 快速路（帧级差分实锤：暖炉搜索键全到/染料桶 0 键——染料页存在页面级
                原生压关，0.3s 节流重申打不过每帧压关者）：非求值帧只做**每帧重申开**（幂等轻量），
                状态求值/日志/IME prev 采样仍 0.3s 节流。 */
-            try { _gkLayer?.SetKeyboardEnabled(true); } catch { }
+            try { _gkLayer?.SetKeyboardEnabled(true); } catch (Exception e) { PerfDiag.Swallow("gk.reassert:" + e.GetType().Name); } // [PERFDIAG]
             return;
         }
         if (now < _gkNext) return;
@@ -920,7 +924,7 @@ internal static class RailUi
             if (GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
                 layer = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance?.GetWebUILayer();
         }
-        catch { layer = null; }
+        catch (Exception e) { PerfDiag.Swallow("gk.layer:" + e.GetType().Name); layer = null; } // [PERFDIAG]
         if (layer == null)
         {
             if (_gkHanded) GlistKeyboardReturn();
@@ -1042,7 +1046,7 @@ internal static class RailUi
     }
     private static bool GlistAnyPageActive(GameCore.HotUpdate.ReduxUI.WebUILayer layer, string[] keys)
     {
-        foreach (var k in keys) { try { if (layer.IsPageActive(k)) return true; } catch { } }
+        foreach (var k in keys) { try { if (layer.IsPageActive(k)) return true; } catch (Exception e) { PerfDiag.Swallow("gk.ispageactive:" + e.GetType().Name); } } // [PERFDIAG]
         return false;
     }
     internal static Vuplex.WebView.IWebView ActiveWebView => GetWebView(); // v1.8.10 十三批六追：OpPing 通道对照实验用（微包回执）

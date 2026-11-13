@@ -136,7 +136,7 @@ internal static class DrawerTabs
 
     private static bool SafeActive(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t)
     {
-        try { return rus.IsUIActive(t); } catch { return false; }
+        try { return rus.IsUIActive(t); } catch (Exception e) { PerfDiag.Swallow("tabs.IsUIActive:" + e.GetType().Name); return false; } // [PERFDIAG]
     }
 
     // ---- owner 发现（实机修正：首轮 BagCache 枚举静默零命中——Il2Cpp 字典 KeyValuePair
