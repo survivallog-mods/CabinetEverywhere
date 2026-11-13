@@ -1211,6 +1211,7 @@ internal static class RailCommands
             CabSaturated = new bool[cabs.Count],
             LeftStacks = leftStacks, TotalStacks = leftStacks + pending.Count, TSnap = tSnap, Sw = sw,
         };
+        MoveNotifyCoalescer.ManualEnter(bag); // [PERF-V1.4] 任务级大窗：每帧小批各自开窗=每帧窗尾整包补发（实测入库回归变卡）——大窗包全程，收尾 FinishStoreTask 一次性补发
         VLog(c.Op, $"任务启动：柜 {cabs.Count} 叠 {pending.Count}（每帧 ≤{StoreBatchPerFrame} 件分帧，完成时哨兵包收口）");
     }
 
@@ -1294,6 +1295,7 @@ internal static class RailCommands
     private static void FinishStoreTask(StoreAllTask t, string abort)
     {
         _storeTask = null;
+        MoveNotifyCoalescer.ManualExit(); // [PERF-V1.4] 任务级大窗收口：此处才做批末整包补发（SyncBothBags 追平 Data 层）
         RailUi.PushStoreProg(t.TotalStacks, t.TotalStacks); // 进度 100%（弹窗转完成态由哨兵包驱动）
         RailData.MarkStoreDone();     // ctx.storeAllDone 哨兵（JS settleXfer 解除 hold+弹窗结果态）
         // [PERF-C1 收尾帧拆开] 官方整页刷新+ForceRepublish 延到 Pump 下一帧——收尾帧实测
