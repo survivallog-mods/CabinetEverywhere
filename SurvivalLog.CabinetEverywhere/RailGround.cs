@@ -117,12 +117,13 @@ internal static class RailGround
         RailData.MarkGlobalDirty();
     }
 
-    /// <summary>行拼装（RailData.AppendItemRow 行体）：伪坐标按 colWidth 列顺序填充。</summary>
+    /// <summary>行拼装（RailData.AppendItemRow 行体）：伪坐标按 colWidth 列顺序填充。
+    /// flt=列表页/吊栏行筛选（数据链瘦身 §C——地面行同谓词参与；Drop 由调用方置 true，地面非当前柜）。</summary>
     internal static int AppendItems(
         System.Text.StringBuilder sb,
         List<GameCore.HotUpdate.Battle.Logic.DropItem> drops,
         Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
-        float nowHours, bool tradeScene, int colWidth)
+        float nowHours, bool tradeScene, int colWidth, RailData.RowFilterCtx flt)
     {
         int rows = 0, col = 0, row = 0;
         if (colWidth <= 0) colWidth = 12;
@@ -136,7 +137,7 @@ internal static class RailGround
             if (w <= 0) w = 1;
             if (h <= 0) h = 1;
             if (col + w > colWidth) { col = 0; row++; } // 换行（伪布局，渲染层不消费）
-            RailData.AppendItemRow(sb, it, col, row, itemDict, nowHours, tradeScene, ref rows, null); // 地面行不参与列表页筛选（量小，JS 端照旧按谓词藏）
+            RailData.AppendItemRow(sb, it, col, row, itemDict, nowHours, tradeScene, ref rows, flt); // 地面行同谓词参与（flt 由调用方置 Drop=true——地面非当前柜）
             col += w;
         }
         sb.Append(']');

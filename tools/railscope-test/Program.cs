@@ -101,8 +101,26 @@ bool Seq(List<long> a, params long[] e) { return a.Count == e.Length && Enumerab
     Ok(u.Count == 8, "g17_模式未知按 8 分类兜底");
 }
 {
-    Ok(RailGlistRule.KindKey(42, null, null, "") == "42|u-/-|", "g18_种类键无uses");
-    Ok(RailGlistRule.KindKey(42, 3, 5, "1|2|0|0|0") == "42|u3/5|1|2|0|0|0", "g19_种类键含uses与词条");
+    Ok(RailGlistRule.KindKey("木板", null, null, "") == "木板|u-/-|", "g18_种类键=物品名+uses", RailGlistRule.KindKey("木板", null, null, ""));
+    Ok(RailGlistRule.KindKey("面包", 3, 5, "1|2|0|0|0") == "面包|u3/5|1|2|0|0|0", "g19_种类键含uses与词条", RailGlistRule.KindKey("面包", 3, 5, "1|2|0|0|0"));
+    Ok(RailGlistRule.KindKey("面包", 3, 5, "1|2|0|0|0") != RailGlistRule.KindKey("硬面包", 3, 5, "1|2|0|0|0"), "g20_不同名分键（cfg 口径回归修复）");
+}
+
+// ---- 挪位忽略缓存 RailMoveCache（3002 纯挪位/纯缓变抑制——恢复旧 SigOwner「位置不入变化检测」裁定）----
+{
+    var m = new RailMoveCache();
+    Ok(!m.NoteIgnoreable(100, 7, 42, 3), "m01_首见=实质变化");
+    Ok(m.NoteIgnoreable(100, 7, 42, 3), "m02_同柜同物同数=纯挪位/缓变，忽略");
+    Ok(m.NoteIgnoreable(100, 7, 42, 3), "m03_重复通知仍忽略（幂等）");
+    Ok(!m.NoteIgnoreable(100, 7, 42, 4), "m04_数量变=实质变化");
+    Ok(!m.NoteIgnoreable(100, 7, 43, 4), "m05_配置变=实质变化");
+    Ok(!m.NoteIgnoreable(100, 8, 43, 4), "m06_换柜=实质变化");
+    Ok(m.NoteIgnoreable(100, 8, 43, 4), "m07_稳定后继续忽略");
+    m.Remove(100);
+    Ok(!m.NoteIgnoreable(100, 8, 43, 4), "m08_删除后重见=实质变化（新增路径）");
+    m.Clear();
+    Ok(!m.NoteIgnoreable(200, 1, 1, 1), "m09_清空后重见=实质变化（换档路径）");
+    Ok(!m.NoteIgnoreable(0, 1, 1, 1) && !m.NoteIgnoreable(-5, 1, 1, 1), "m10_非正id不入缓存");
 }
 
 // ---- 一键入库结果 RailStoreRes（Task 4）----

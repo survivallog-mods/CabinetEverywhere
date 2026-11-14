@@ -71,9 +71,21 @@ internal static class ItemChangeSignal
 
     // ---- prefix：只标记，永不拦截（void 返回）----
 
+    // 挪位忽略缓存（RailMoveCache）：恢复旧 SigOwner 裁定「同容器挪动物位不触发重推」——
+    // 3002 携新 BagPos 必至，(owner,cfg,count) 三元组不变=纯挪位/纯缓变，忽略。
+    private static readonly RailMoveCache _move = new();
+    internal static void ResetMoveCache() => _move.Clear();
+
     private static void PreAdd(GameCore.HotUpdate.ItemDataDto data)
     {
-        try { RailData.MarkOwnerDirty(data?.OwnerId ?? 0); }
+        try
+        {
+            if (data == null) { RailData.MarkGlobalDirty(); return; }
+            long id = 0, owner = 0; int cfg = 0, count = 0;
+            try { id = data.InstanceId; owner = data.OwnerId; cfg = data.ItemConfigId; count = data.ItemCount; } catch { }
+            if (id > 0 && _move.NoteIgnoreable(id, owner, cfg, count)) return; // 纯挪位/纯缓变：旧签名口径本就不重推
+            RailData.MarkOwnerDirty(owner);
+        }
         catch { RailData.MarkGlobalDirty(); }
     }
 
@@ -81,6 +93,7 @@ internal static class ItemChangeSignal
     {
         long owner = 0;
         try { owner = RailData.ItemMgr()?.GetItemData(id)?.OwnerId ?? 0; } catch { }
+        _move.Remove(id);
         if (owner > 0) RailData.MarkOwnerDirty(owner);
         else RailData.MarkGlobalDirty(); // 已被移出索引/异常：全局脏兜底（代价=一次重建比对）
     }

@@ -386,7 +386,7 @@ internal sealed class AccessTicker : MonoBehaviour
             // 瞬帧注入与首推数据都取到新名单（新放柜子打好标签即显，零陈旧）。
             if (CabinetEverywherePlugin.Enabled == null || CabinetEverywherePlugin.Enabled.Value)
             {
-                string openPage = RailData.ActivePage();
+                string openPage = RailData.ActivePageCached();
                 if (!string.Equals(openPage, _lastOpenPage, StringComparison.Ordinal))
                 {
                     _lastOpenPage = openPage;
@@ -453,7 +453,7 @@ internal sealed class AccessTicker : MonoBehaviour
         BasketGlist.Poll();
         // 筛选通道（§F 改造）：探活注入一次+名单变化才推数据——仅储物界面打开时跑（全关零注入
         // 零推送；原「每 5s 重注 65KB 脚本+直推」退役）
-        if (CabinetEverywherePlugin.FilterEnable.Value && RailData.AnyRailSceneActive())
+        if (CabinetEverywherePlugin.FilterEnable.Value && RailData.AnyRailSceneActiveCached())
             TagFilter.Tick();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
