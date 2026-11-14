@@ -253,9 +253,11 @@ internal static class ToolTablePruner
         };
     }
 
-    /// <summary>与 tagfilter.page.js viewAllows 同语义：Browser 全留；Material=材料/工具标签+材料架；
+    /// <summary>与 tagfilter.page.js viewAllows 同语义：Browser 全留；Material=材料/工具/燃料标签+材料架；
     /// Food=食物域(dim1-4)。ownerId 不在容器表（背包/抽屉/未知）→ 留（JS 对 undefined 同样放行）。
-    /// v1.9.1 批改：筛选下拉撤出工作台（作者令「只有交易界面、调度机队显示」），sel 接线随撤。</summary>
+    /// v1.9.1 批改：筛选下拉撤出工作台（作者令「只有交易界面、调度机队显示」），sel 接线随撤。
+    /// 燃料标签放行（2026-11-14）：工作台 Material 视图剪燃料柜=燃烧瓶等燃料配方取不到料
+    ///（TabGate.JudgeInst 不同步——bag 族 Material 视图无制作取料语义，维持原谓词）。</summary>
     private static bool Allows(string view, RegEntry e, TagContext ctx, out string why)
     {
         why = "browser全留";
@@ -269,7 +271,8 @@ internal static class ToolTablePruner
             if (inst.IsMaterialRack) { why = "材料架伪标签"; return true; }
             if (ctx.MatTagId != 0 && Array.IndexOf(inst.TagIds, ctx.MatTagId) >= 0) { why = "材料标签"; return true; }
             if (ctx.ToolTagId != 0 && Array.IndexOf(inst.TagIds, ctx.ToolTagId) >= 0) { why = "工具标签"; return true; }
-            why = "无材料/工具标签";
+            if (ctx.FuelTagId != 0 && Array.IndexOf(inst.TagIds, ctx.FuelTagId) >= 0) { why = "燃料标签"; return true; }
+            why = "无材料/工具/燃料标签";
             return false;
         }
 
@@ -295,11 +298,12 @@ internal static class ToolTablePruner
     private static void Log(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.工作台] " + msg);
     private static void LogDetail(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.工作台.明细] " + msg);
 
-    /// <summary>标签上下文（材料/工具标签 id + 食物域判定），每轮对账时重建（标签库极小，开销可忽略）。</summary>
+    /// <summary>标签上下文（材料/工具/燃料标签 id + 食物域判定），每轮对账时重建（标签库极小，开销可忽略）。</summary>
     private sealed class TagContext
     {
         public int MatTagId;
         public int ToolTagId;
+        public int FuelTagId;
         private HashSet<int> _foodTags;
 
         public static TagContext Build()
@@ -320,6 +324,7 @@ internal static class ToolTablePruner
                         {
                             if (t.IconKey == "material") ctx.MatTagId = t.ID;
                             if (t.IconKey == "tool") ctx.ToolTagId = t.ID;
+                            if (t.IconKey == "fuel") ctx.FuelTagId = t.ID;
                             if (t.Dim >= 1 && t.Dim <= 4) food.Add(t.ID);
                         }
                         catch { }
