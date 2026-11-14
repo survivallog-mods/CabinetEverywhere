@@ -43,16 +43,20 @@ internal static class PageKeepAlive
             var h = new Harmony("com.local.survivallog.cabineteverywhere.pagekeepalive");
             var layer = typeof(GameCore.HotUpdate.ReduxUI.WebUILayer);
 
-            // 方法解析：AccessTools.Method 带参数类型在 Il2Cpp 下解析失败（首装实锤：日志
-            // 「不可达，未装」）——改 OpenTrace 探针同款：GetDeclaredMethods 按名+形参匹配。
+            // 方法解析（两轮实锤）：①AccessTools.Method 带参数类型失败；②typeof(System.Type)
+            // 形参比对失败——Il2Cpp 互操作程序集里 Type 形参是 Il2CppSystem.Type 包装，托管
+            // System.Type 恒不等（日志 rm=True ld=False）。定案：按形参类型 Name 字符串匹配；
+            // prefix 形参也用 Il2CppSystem.Type（与互操作签名一致，Harmony 按名绑定才成立）。
             System.Reflection.MethodBase rm = null, ld = null;
             foreach (var m in AccessTools.GetDeclaredMethods(layer))
             {
                 var n = m?.Name;
                 if (n != "RemovePage" && n != "LoadPage") continue;
                 var ps = m.GetParameters();
-                if (n == "RemovePage" && ps.Length == 1 && ps[0].ParameterType == typeof(string)) rm = m;
-                if (n == "LoadPage" && ps.Length == 1 && ps[0].ParameterType == typeof(System.Type)) ld = m;
+                if (ps.Length != 1) continue;
+                var pn = ps[0].ParameterType.Name;
+                if (n == "RemovePage" && pn == "String") rm = m;
+                if (n == "LoadPage" && pn == "Type") ld = m;
             }
             if (rm == null || ld == null)
             {
@@ -113,15 +117,16 @@ internal static class PageKeepAlive
         }
     }
 
-    /// <summary>开页拦截：缓存命中 → ShowPage + PageMap 取回 vm（跳过 LoadPage 原体重建）。</summary>
+    /// <summary>开页拦截：缓存命中 → ShowPage + PageMap 取回 vm（跳过 LoadPage 原体重建）。
+    /// uiType=Il2CppSystem.Type（互操作签名）；类名比对（Name 无命名空间，足够判 WebUI_BackpackUI）。</summary>
     private static bool PreLoadPage(
         GameCore.HotUpdate.ReduxUI.WebUILayer __instance,
-        System.Type uiType,
+        Il2CppSystem.Type uiType,
         ref GameCore.HotUpdate.ReduxUI.WebUIVm __result)
     {
         try
         {
-            if (!_cached || uiType != typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)) return true;
+            if (!_cached || uiType == null || uiType.Name != "WebUI_BackpackUI") return true;
             var map = AccessTools.Field(typeof(GameCore.HotUpdate.ReduxUI.WebUILayer), "PageMap")
                 ?.GetValue(__instance) as Il2CppSystem.Collections.Generic.Dictionary<string, GameCore.HotUpdate.ReduxUI.WebUIVm>;
             if (map == null || !map.TryGetValue(PageId, out var vm) || vm == null)
