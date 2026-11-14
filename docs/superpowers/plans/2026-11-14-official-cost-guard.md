@@ -51,12 +51,13 @@
 - Modify: `SurvivalLog.CabinetEverywhere/MoveNotifyCoalescer.cs`（Exit 收尾路径）
 
 **Interfaces:**
-- Consumes: MoveNotifyCoalescer 既有 `_pairs`（from,to 集合）与 Exit() 收尾。
-- Produces: `TryIncrementalCatchup()`——BackpackUI 活跃时对每对 (from,to) 发 `Ac_Item_MoveBag.SendAction(from,to)`（Data 层 O(1)@151819）+ `Ac_BackpackUI_ToOther.SendAction(...)`（视图 O(1)，**Step 1 先核 SendAction 签名**）；失败/签名不符 → 返 false 走原 SyncBothBags 整包（红线兜底）。
+- Consumes: MoveNotifyCoalescer 既有吞窗 prefix（SwallowAdd/SwallowDel 持有被吞 dto/id）与 Exit() 收尾。
+- Produces: **Data 层 O(1) 原样转发**——SwallowAdd/SwallowDel 在吞 LogicAdapter 处理器的同时，把官方本要转发的数据层动作直接发出：`Ac_Item_AddOrNotify.SendAction(dto)` / `Ac_Item_Del.SendAction(id)`（公开静态；Data 处理器 @151744 小改）。视图层：JS 乐观更新（railui.page.js 对官方 Vue 列表按 mod 推送差量搬移，官方拖拽同款原理）；JS 未就绪/不匹配 → 维持批末 SyncBothBags 整包兜底（V1.2 红线）。
 
-- [ ] **Step 1: dump 核对** `Ac_BackpackUI_ToOther.SendAction` 参数（Ac 类字段@115191 区段）；不符预期（无公开 SendAction/参数对不上）→ 本 Task 降级为「仅 Data 层 O(1)+视图整包」或整体放弃，记台账。
-- [ ] **Step 2: 实现**——Exit() 内：若 `RailData.ActivePage()=="BackpackUI"` 且 TryIncrementalCatchup 成功 → 跳过该对的 SyncBothBags（空对兜底/21015 地面补发逻辑不动）；任一对失败 → 全部退回原整包路径。
-- [ ] **Step 3: 构建 + 全套件** → Commit `perf：单件右键移动批末追平改官方拖拽同款 O(1) 动作对（Ac_Item_MoveBag=Data层0x70B + Ac_BackpackUI_ToOther=视图0x40B），替代整包 SyncBothBags（P11 地板 150-500ms 的构成）；失败兜底回整包（V1.2 红线）`
+- [ ] **Step 1: dump 核对** `Ac_Item_AddOrNotify.SendAction`/`Ac_Item_Del.SendAction` 参数形状（130227/130648 区段；预期带 ItemDataDto/long）。
+- [ ] **Step 2: C# 实现**——SwallowAdd/SwallowDel 吞时转发 Data 动作（cfg 开关 EnableMoveCoalescer 关闭时窗不存在=原样）；Exit()：BackpackUI 页且 JS 乐观就绪（mod 探针标志）→ 跳过该对 SyncBothBags；否则原整包。
+- [ ] **Step 3: JS 实现**——setData 差量：BackpackUI 活跃时对比前后包 bag/B柜行，官方 Vue bagA/bagB 列表按 (id) 搬移/增删（乐观 splice，不触官方全量刷新）；任何不匹配（行数对不上/官方结构变）→ 置回退标志，下窗走整包。
+- [ ] **Step 4: 构建 + JS 语法检查 + 全套件** → Commit `perf：单件移动批末追平 O(1) 化——吞 LogicAdapter 重建链的同时原样转发数据层动作（Ac_Item_AddOrNotify/Ac_Item_Del），视图由 JS 乐观搬移（官方拖拽同原理）；不匹配兜底回整包（V1.2 红线）`
 
 ### Task 3: mod 整理改造（弃官方 SORT 重放）
 
