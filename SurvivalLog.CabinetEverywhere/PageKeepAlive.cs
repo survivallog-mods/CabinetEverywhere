@@ -43,11 +43,20 @@ internal static class PageKeepAlive
             var h = new Harmony("com.local.survivallog.cabineteverywhere.pagekeepalive");
             var layer = typeof(GameCore.HotUpdate.ReduxUI.WebUILayer);
 
-            var rm = AccessTools.Method(layer, "RemovePage");
-            var ld = AccessTools.Method(layer, "LoadPage", new[] { typeof(System.Type) });
+            // 方法解析：AccessTools.Method 带参数类型在 Il2Cpp 下解析失败（首装实锤：日志
+            // 「不可达，未装」）——改 OpenTrace 探针同款：GetDeclaredMethods 按名+形参匹配。
+            System.Reflection.MethodBase rm = null, ld = null;
+            foreach (var m in AccessTools.GetDeclaredMethods(layer))
+            {
+                var n = m?.Name;
+                if (n != "RemovePage" && n != "LoadPage") continue;
+                var ps = m.GetParameters();
+                if (n == "RemovePage" && ps.Length == 1 && ps[0].ParameterType == typeof(string)) rm = m;
+                if (n == "LoadPage" && ps.Length == 1 && ps[0].ParameterType == typeof(System.Type)) ld = m;
+            }
             if (rm == null || ld == null)
             {
-                CabinetEverywherePlugin.Log.LogWarning("[CE.页面常驻] RemovePage/LoadPage 不可达，未装（零影响）");
+                CabinetEverywherePlugin.Log.LogWarning("[CE.页面常驻] 方法解析失败 rm=" + (rm != null) + " ld=" + (ld != null) + "，未装（零影响）");
                 return;
             }
             h.Patch(rm, prefix: new HarmonyMethod(typeof(PageKeepAlive), nameof(PreRemovePage)));
