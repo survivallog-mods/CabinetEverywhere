@@ -6104,6 +6104,11 @@
       strip = doc.createElement('div');
       strip.className = 'cfx-rewards';
       strip.dataset.cfxSig = sig;
+      /* 整条吞点击：条带铺满行宽（css flex-basis:100% 换行到行下），标题/间隙/右侧空白若
+         冒泡到官方 .sup-row 的 onClick=selectDispatch=误触选中委托→切派送 phase（SwitchTradeToDispatchAsync
+         等页挂载重建，实机 2026-11-14 与页签补挂竞争：70080ms 单帧卡死+C# 页表与 DOM 脱节 wedged）。
+         冒泡序=图标 handler（更深）先行，本层再拦，官方行永不可达（与 B8 挂在整 cell 同策略）。 */
+      strip.addEventListener('click', function (e) { e.stopPropagation(); });
       var title = doc.createElement('span');
       title.className = 'cfx-rewards-title';
       title.textContent = '回报';
