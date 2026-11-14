@@ -145,7 +145,11 @@ internal static class RailData
                 case "Heater": GameCore.HotUpdate.ReduxUI.Ac_Heater_RefreshBag.SendAction(); break;
             }
         }
-        catch (Exception e) { /* 刷新失败无害：下一周期数据门自然补 */ }
+        catch (Exception e)
+        {
+            /* 失败无害：下一周期数据门自然补——Debug 级留痕（默认不显示，排查时开 Console 调试级可见） */
+            CabinetEverywherePlugin.Log?.LogDebug("[CERail] 官方页刷新动作失败（无害）: " + e.GetType().Name + " " + e.Message);
+        }
     }
 
     /// <summary>
@@ -1800,7 +1804,7 @@ internal static class RailData
         var cm = BagTable.Cm();
         if (cm != null)
         {
-            object pigTable = null; System.Reflection.PropertyInfo pigProp = null; // v3 起 typed 路负责取值——反射仅留属性名普查（表类型对账）
+            // v3 起 typed 路负责取值——反射仅留属性名普查（表类型对账；pigTable/pigProp 死变量随警告清理删除）
             try
             {
                 foreach (var p in cm.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
