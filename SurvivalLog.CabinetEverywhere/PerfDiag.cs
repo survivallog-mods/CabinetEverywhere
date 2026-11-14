@@ -114,10 +114,22 @@ internal static class PerfDiag
         private float _sumDt, _maxDt;
         private float _lastSlowAt = float.NegativeInfinity; // [PERFDIAG] 慢帧实时行限流（≥1s 一条，防连环卡顿刷屏）
         private int _g0, _g1, _g2;
+        private int _pf0, _pf1, _pf2; // [PERFDIAG][v7] 上一帧 GC 计数（帧内增量用）
+        private bool _otInstalled; // [PERFDIAG][OpenTrace] 首帧一次性安装
 
         public void Update()
         {
+            // [PERFDIAG][OpenTrace] 首帧安装（插件 Load 期过早：其他插件强制类初始化会经 hook 重入递归）
+            if (!_otInstalled)
+            {
+                _otInstalled = true;
+                try { OpenTrace.Install(); } catch { /* [PERFDIAG] */ }
+            }
             float dt = Time.unscaledDeltaTime; // [PERFDIAG] 每帧一次读+三次比较，零分配
+            // [PERFDIAG] 帧内 GC 增量（v7：巨帧定责——巨帧当帧 GC 计数跳变=GC 停世界实锤）
+            int fgc0 = System.GC.CollectionCount(0), fgc1 = System.GC.CollectionCount(1), fgc2 = System.GC.CollectionCount(2);
+            int d0 = fgc0 - _pf0, d1 = fgc1 - _pf1, d2 = fgc2 - _pf2;
+            _pf0 = fgc0; _pf1 = fgc1; _pf2 = fgc2;
             _frames++; _sumDt += dt;
             if (dt > _maxDt) _maxDt = dt;
             if (dt > 0.05f) _slow50++;
@@ -125,7 +137,7 @@ internal static class PerfDiag
             {
                 _slow100++;
                 float now0 = Time.unscaledTime;
-                if (now0 - _lastSlowAt >= 1f) { _lastSlowAt = now0; try { SlowFrame(dt); } catch { /* [PERFDIAG] */ } }
+                if (now0 - _lastSlowAt >= 1f) { _lastSlowAt = now0; try { SlowFrame(dt, d0, d1, d2); } catch { /* [PERFDIAG] */ } }
             }
             float now = Time.unscaledTime;
             if (now < _next) return;
@@ -134,8 +146,9 @@ internal static class PerfDiag
             _frames = 0; _slow50 = 0; _slow100 = 0; _sumDt = 0f; _maxDt = 0f;
         }
 
-        /// <summary>[PERFDIAG] 卡顿帧现场行（>100ms 且距上条≥1s）：页面/rail/队列/入库/最近推送——回溯定位用。</summary>
-        private void SlowFrame(float dt)
+        /// <summary>[PERFDIAG] 卡顿帧现场行（>100ms 且距上条≥1s）：页面/rail/队列/入库/最近推送——回溯定位用。
+        /// v7：附当帧 GC 代际增量（d0/d1/d2）——巨帧内 GC 跳变=GC 停世界定责。</summary>
+        private void SlowFrame(float dt, int d0, int d1, int d2)
         {
             string page = "?"; bool railOn = false; int q = 0; bool store = false;
             try { page = RailData.ActivePage() ?? "-"; } catch { }
@@ -143,10 +156,15 @@ internal static class PerfDiag
             try { q = RailCommands.QueueDepth; store = RailCommands.StoreTaskActive; } catch { }
             long ago = -1; int len = 0;
             try { ago = RailUi.LastPushAgoMs; len = RailUi.LastPushLen; } catch { }
+            // [PERFDIAG][OpenTrace] 本窗口（距上次消费）>2ms 的官方方法耗时排行——打开链定责
+            string hot = null;
+            try { hot = OpenTrace.TakeTop(8); } catch { }
             _log.LogWarning(string.Format(CultureInfo.InvariantCulture,
-                "[PERFDIAG] 卡顿帧 {0:0}ms｜页={1} rail={2} 队列={3} 入库={4} 上次推送={5}KB/{6}s前",
+                "[PERFDIAG] 卡顿帧 {0:0}ms｜页={1} rail={2} 队列={3} 入库={4} 上次推送={5}KB/{6}s前｜GC帧内+{7}/{8}/{9}{10}{11}",
                 dt * 1000f, page, railOn ? "On" : "Off", q, store ? "On" : "Off", len / 1024,
-                ago < 0 ? "-" : (ago / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)));
+                ago < 0 ? "-" : (ago / 1000.0).ToString("0.0", CultureInfo.InvariantCulture),
+                d0, d1, d2,
+                hot == null ? "" : "｜耗时 ", hot ?? ""));
         }
 
         private void Report()
@@ -179,6 +197,7 @@ internal static class PerfDiag
             }
             Swallowed.Clear();
             ExcByType.Clear(); // 窗口增量口径
+            try { OpenTrace.Window.Clear(); } catch { } // [PERFDIAG][OpenTrace] 非卡顿窗口兜底清零（SlowFrame 已消费则空操作）
             _log.LogInfo(sb.ToString());
         }
     }

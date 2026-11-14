@@ -111,6 +111,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableMoveCoalescer = Config.Bind("Perf", "EnableMoveCoalescer", true,
             "批量搬运通知合并：搬运期间暂缓界面逐件刷新（每搬一件官方会整包重建一次界面 JSON——扩容后批量搬运秒级冻结的主因），搬运结束一次性整包同步。false=回原行为。重启生效。");
         PerfDiag.Install(Config, Log); // [PERFDIAG] 临时诊断（PERF_NOTES.md 验证后删除）：独立挂载，不受 General.Enabled 影响
+        // [PERFDIAG][OpenTrace] 打开链计时探针（P1 打开巨帧定责，验证后删）——安装挪至 PerfDiagTicker
+        // 首帧：插件 Load 期挂 hook 后，其他插件 Load 期强制类初始化会经 hook 重入 cctor 递归栈溢出
         // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
         // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
         // 由原生重建清除（与 Filter 同策略，不主动清）。
