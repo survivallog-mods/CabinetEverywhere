@@ -511,6 +511,11 @@ internal static class RailData
     private static bool _storeDonePending;
     internal static void MarkStoreDone() => _storeDonePending = true;
 
+    /// <summary>storeAll 结果 JSON（FinishStoreTask 置）：ctx.storeAllRes 带出即清（数据链瘦身 §E
+    /// ——逐柜件数+留背包件数，JS 差量快照结算退役）。空/异常=null。</summary>
+    private static string _storeResPending;
+    internal static void SetStoreAllRes(string json) => _storeResPending = json;
+
     /// <summary>tidy 失败标记（RailCommands.OpTidy 置位）：下一包 ctx.lastTidyFail=true 带出即清（T12 toast 消费）。</summary>
     internal static void ReportTidyFail()
     {
@@ -644,6 +649,8 @@ internal static class RailData
         // storeAll 任务完成哨兵（方案 A 终案）：JS settleXfer 靠它解除 hold（带出即清，与 lastTidyFail 同点位）
         sb.Append(",\"storeAllDone\":").Append(_storeDonePending ? "true" : "false");
         _storeDonePending = false;
+        sb.Append(",\"storeAllRes\":").Append(string.IsNullOrEmpty(_storeResPending) ? "null" : _storeResPending);
+        _storeResPending = null;
         // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
         sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
         // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版

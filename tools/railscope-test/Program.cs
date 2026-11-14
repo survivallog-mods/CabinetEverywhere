@@ -105,5 +105,13 @@ bool Seq(List<long> a, params long[] e) { return a.Count == e.Length && Enumerab
     Ok(RailGlistRule.KindKey(42, 3, 5, "1|2|0|0|0") == "42|u3/5|1|2|0|0|0", "g19_种类键含uses与词条");
 }
 
+// ---- 一键入库结果 RailStoreRes（Task 4）----
+{
+    Ok(RailStoreRes.Build(new (long, long)[0], 0) == "{\"cabs\":[],\"left\":0}", "r01_空结果");
+    Ok(RailStoreRes.Build(new[] { (5L, 3L), (7L, 0L), (9L, 12L) }, 4)
+       == "{\"cabs\":[[5,3],[9,12]],\"left\":4}", "r02_跳过零件柜保持序", RailStoreRes.Build(new[] { (5L, 3L), (7L, 0L), (9L, 12L) }, 4));
+    Ok(RailStoreRes.Build(new[] { (5L, 1L) }, 99).Contains("\"left\":99"), "r03_留背包件数");
+}
+
 Console.WriteLine($"\n{passed} passed, {failures} failed");
 return failures == 0 ? 0 : 1;

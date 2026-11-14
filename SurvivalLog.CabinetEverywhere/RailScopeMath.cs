@@ -116,3 +116,24 @@ internal static class RailGlistRule
            + "/" + (usesMax.HasValue ? usesMax.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")
            + "|" + attrSig;
 }
+
+/// <summary>一键入库结果 JSON（spec 2026-11-14-rail-data-slim-design §E，纯逻辑）：
+/// {"cabs":[[ownerId,件数]…],"left":留背包件数}——零件柜不输出，序=order 序。</summary>
+internal static class RailStoreRes
+{
+    public static string Build((long owner, long pieces)[] cabs, long left)
+    {
+        var sb = new System.Text.StringBuilder(64);
+        sb.Append("{\"cabs\":[");
+        bool first = true;
+        foreach (var (o, p) in cabs)
+        {
+            if (p <= 0) continue;
+            if (!first) sb.Append(',');
+            first = false;
+            sb.Append('[').Append(o).Append(',').Append(p).Append(']');
+        }
+        sb.Append("],\"left\":").Append(left).Append('}');
+        return sb.ToString();
+    }
+}

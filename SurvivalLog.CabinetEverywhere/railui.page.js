@@ -927,23 +927,26 @@
        留背包 = 背包现存件数。toast 走主侧栏（rail.js storeAll 同款，sb 入口亦然——
        rack 双面板两段同屏，proto 定稿如此）。全留背包（无匹配/全满/空回推）单独分支。 */
     if (x.kind === 'storeAll') {
-      var bagSt = snapOwner(store.bag);
-      var movedP = x.bag.p - bagSt.p;
-      var parts = [], hit = 0;
-      for (var s = 0; s < x.order.length; s++) {
-        var was = x.snaps[x.order[s]];
-        if (!was) continue;
-        var dp = snapOwner(x.order[s]).p - was.p;
-        if (dp <= 0) continue;
-        hit++;
-        if (parts.length < 4) { var cc = ctnById(x.order[s]); if (cc) parts.push(nm(cc) + '×' + dp); }
+      /* 数据链瘦身 §E：结果改读 C# 任务权威计数（ctx.storeAllRes=逐柜件数+留背包件数）——
+         旧的「arm 时全量柜快照+结算差量」退役（不再依赖全屋物品行）。parts=有增量柜前四
+         join ' · '，超出补「 等」；单位=件（与旧口径一致）。res 缺席（mock/异常）=收尾兜底。 */
+      var res = store.ctx && store.ctx.storeAllRes;
+      if (!res || !res.cabs) {
+        storeProgDone('入库结束');
+        storeBtnBusy(false);
+        return;
+      }
+      var movedP = 0, parts = [], hit = res.cabs.length;
+      for (var s = 0; s < res.cabs.length; s++) {
+        movedP += res.cabs[s][1];
+        if (parts.length < 4) { var cc = ctnById(res.cabs[s][0]); if (cc) parts.push(nm(cc) + '×' + res.cabs[s][1]); }
       }
       if (movedP > 0) {
         var msg = '已入库 ' + movedP + ' 件 → ' + parts.join(' · ') + (hit > 4 ? ' 等' : '');
-        if (bagSt.p) msg += '；' + bagSt.p + ' 件无匹配柜或柜已满，留在背包';
+        if (res.left > 0) msg += '；' + res.left + ' 件无匹配柜或柜已满，留在背包';
         storeProgDone(msg);
       } else {
-        storeProgDone(bagSt.p + ' 件无匹配柜或柜已满，留在背包');
+        storeProgDone(res.left + ' 件无匹配柜或柜已满，留在背包');
       }
       storeBtnBusy(false); /* 完成哨兵结算处恢复入库按钮（armStoreAll 置 busy 的对称收口） */
       return;
@@ -1010,9 +1013,8 @@
      ——官方按钮 core.UnitySendEvent 页内直发，postMessage 跨帧路由不认该 type（SORT_BACKPACK
      在官方白名单故整理可用，TAG_PUT_IN 不在）——勿再走。 */
   function armStoreAll(order) {
-    var snaps = {};
-    for (var i = 0; i < order.length; i++) snaps[order[i]] = snapOwner(order[i]);
-    XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps, hold: true };
+    /* 数据链瘦身 §E：不再拍全量柜/背包快照——结果由 C# 任务权威计数（ctx.storeAllRes）带回 */
+    XFER = { kind: 'storeAll', hold: true };
     cmdOut('storeAll', { order: order });
     storeProgShow();
     storeBtnBusy(true);
