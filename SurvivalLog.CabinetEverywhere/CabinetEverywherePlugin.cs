@@ -290,6 +290,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 搬运通知合并（2026-11-13 方案 A·V1）：批量搬运批末整包同步——治全部存入/取出等
         // 批量搬运的秒级单帧冻结（PERF_NOTES.md 拆账：每件 3002/3005→BuildBagJson 整包重建占 65-80%）
         MoveNotifyCoalescer.Install();
+        // 变化信号（2026-11-14 数据链瘦身）：挂官方物品通知 → 脏标记（事件驱动推送，替代轮询签名）
+        ItemChangeSignal.Install();
     }
 
     /// <summary>

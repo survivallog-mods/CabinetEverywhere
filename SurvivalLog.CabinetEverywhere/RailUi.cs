@@ -393,7 +393,7 @@ internal static class RailUi
     /// 尺寸改写后的立即生效链（spec §2 硬验收：不允许变形/闪烁/延迟）：
     /// ①官方活跃页刷新 Ra_RefreshBag（重建态=重读尺寸，官方路径零闪烁——Bug3 以来验证的机制）；
     /// ②BackpackUI 补 Ac_Item_RefreshAllBagViews（其 RefreshBag 需 Redux 对象，见 RailData.RefreshActivePage 注）；
-    /// ③mod rail：容器 cap 重算（rev 含 Cap，ComputeSig:1021 实证）+ 强制重推——侧栏/排序弹窗当帧~0.5s 跟上。
+    /// ③mod rail：容器 cap 重算（变化经 RailData._lastMetaSig 比对）+ 强制重推——侧栏/排序弹窗当帧~0.5s 跟上。
     /// </summary>
     private static void RefreshAfterSizeWrite()
     {
@@ -623,7 +623,10 @@ internal static class RailUi
                     catch (Exception e) { WarnOnce("drain", "drain 回调通道不可用（命令暂不能下发）: " + e.Message); }
                 }
             }
-            if (!RailData.AnyRailSceneActive() || !RailData.StructureChangedFast()) return;
+            if (!RailData.AnyRailSceneActive()) return;
+            RailGround.PollFastCount(); // 地面计数沿（丢弃/拾取/腐烂）→ 脏标记
+            RailData.PollCtxFast();     // 页面态沿（活动页/双背包翻转/A 侧归属/架子 owner/背包 owner）
+            if (!RailData.ItemsDirty()) return;
             var web = GetWebView();
             if (web == null) return;
             var sw = System.Diagnostics.Stopwatch.StartNew();

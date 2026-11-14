@@ -20,7 +20,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// 契约接入（RailData）：虚拟容器键 OwnerId（负常量，避开 InstanceId 正数空间）——有物品
 /// 才进 ctn 段（BuildJson 0.5s 动态判定，不入 _ctn 5s 元数据通道）；行 id=Item.InstanceId
 /// （官方详情弹窗 idetail 同源）；取物时反查 DropItem 实体 id。伪坐标 12 列（UniformWidth）
-/// 顺序填充——渲染层按排序键平铺不消费 x/y（ComputeSig 注释同判），仅保 grid 视图合法形状。
+/// 顺序填充——渲染层按排序键平铺不消费 x/y（位置不参与变化检测），仅保 grid 视图合法形状。
 ///
 /// 性能纪律：FastCount（每帧）只 1 次 _dropItems.Count（O(1) 零分配零地图判定）；家图
 /// 过滤/逐件字段读只在 0.5s BuildJson/签名通道——千件级静息 ~1.5-6ms/0.5s、变化 8-30ms
@@ -93,8 +93,7 @@ internal static class RailGround
         return result;
     }
 
-    /// <summary>每帧快检（StructureChangedFast）：全部 DropItem 数（含野外=超集，野外增减也触发
-    /// 重推=保守正确）；O(1) 计数，零分配零地图判定——每帧纪律的硬边界。</summary>
+    /// <summary>O(1) 计数（全部 DropItem 数，含野外=超集）——零分配零地图判定的硬边界。</summary>
     internal static int FastCount()
     {
         try
@@ -105,24 +104,17 @@ internal static class RailGround
         catch (Exception e) { PerfDiag.Swallow("ground.fastcount:" + e.GetType().Name); return 0; } // [PERFDIAG]
     }
 
-    /// <summary>签名项（SigOwner 同形）：家内行数+Σcount+首末物品 id（0.5s 通道，逐件读 2 字段）。</summary>
-    internal static long SigOf(long sig)
+    private static int _lastFastCount = -1;
+
+    /// <summary>每帧地面计数沿（RailUi.FastPoll 调）：DropItem 总数变化 → 全局脏（丢弃/拾取/腐烂
+    /// 转换；含野外=超集，误触发无害——600ms 节流吸收）。地面物品不挂 owner，无通知可标，
+    /// 这是它的变化信号（原 StructureChangedFast 内地面项的事件化替身）。</summary>
+    internal static void PollFastCount()
     {
-        var drops = HomeDrops();
-        int rows = 0; long countSum = 0, first = 0, last = 0;
-        foreach (var d in drops)
-        {
-            var it = SafeItem(d);
-            if (it == null) continue;
-            long id = 0; int cnt = 0;
-            try { id = it.InstanceId; cnt = it.ItemCount; } catch { }
-            if (id <= 0) continue;
-            if (rows == 0) first = id;
-            last = id;
-            countSum += cnt;
-            rows++;
-        }
-        return ((((sig * 31 + rows) * 31 + (int)(countSum & 0x7FFFFFFF)) * 31 + (int)(first & 0x7FFFFFFF)) * 31 + (int)(last & 0x7FFFFFFF));
+        int c = FastCount();
+        if (c == _lastFastCount) return;
+        _lastFastCount = c;
+        RailData.MarkGlobalDirty();
     }
 
     /// <summary>行拼装（RailData.AppendItemRow 行体）：伪坐标按 colWidth 列顺序填充。</summary>

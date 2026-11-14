@@ -238,7 +238,7 @@ internal static class RailData
     }
 
     /// <summary>容器行 cap 重算（RefreshMeta 主体抽出；尺寸改写后立即生效链即时调用——
-    /// rev 含 Cap（ComputeSig:1021），重算+ForceRepublish=mod rail 帧级跟上，spec §2 硬验收）。</summary>
+    /// cap 变化经 _lastMetaSig 比对强制重推，mod rail 帧级跟上，spec §2 硬验收）。</summary>
     internal static void RecomputeCaps()
     {
         var cm = BagTable.Cm();
@@ -264,63 +264,67 @@ internal static class RailData
 
         long bagOwner = ResolveBagOwner(null);
         _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
+
+        // 元数据变化（柜增删/容量/标签/改名）→ 强制重推（原 ComputeSig 元数据项的事件化替身）
+        long ms = 17;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var m = list[i];
+            ms = ms * 31 + m.OwnerId * 7 + m.Cap + (m.Name != null ? m.Name.GetHashCode() : 0);
+            if (m.TagIds != null) for (int t = 0; t < m.TagIds.Length; t++) ms = ms * 31 + m.TagIds[t];
+        }
+        ms = ms * 31 + _bagCap;
+        if (ms != _lastMetaSig)
+        {
+            _lastMetaSig = ms;
+            _forcePending = true;
+        }
     }
 
+    // ================= 事件驱动脏标记（spec 2026-11-14-rail-data-slim-design §A） =================
+    // 物品变化由 ItemChangeSignal 挂官方通知（3002/3005/3031/3027/21015）标记；原 0.5s 全屋签名
+    // 扫描（ComputeSig）与每帧结构快检（StructureChangedFast）已退役。BuildJson 组装完成处清。
+    internal static readonly RailDirtySet Dirty = new();
+
+    /// <summary>物品事件置脏（ItemChangeSignal prefix 调；owner≤0 由集合自身忽略）。</summary>
+    internal static void MarkOwnerDirty(long owner) => Dirty.MarkOwner(owner);
+
+    /// <summary>全局置脏（3027 全刷/21015 地面/3005 反查不到 owner）。</summary>
+    internal static void MarkGlobalDirty() => Dirty.MarkGlobal();
+
     /// <summary>
-    /// 廉价 rev：白名单各 owner 的物品条数+Σ数量+首末 InstanceId 混元数据签名。
-    /// TimeLeft 倒计时不入签名（小时粒度缓变，不为此 0.5s 重推——校准点 T14：若需临期红点
-    /// 实时翻转，在此追加 timeLeft&lt;=0 的粗粒度项）。
+    /// 推送门②：物品事件脏 / 页面态变化(_ctxDirty) / 强制重推 / 一次性标志 / 篮子沿 任一为真。
+    /// （篮子沿：愿望/危机/篮内变化而物品不变时 ctx.basket 也要重推；推出即清）
     /// </summary>
     internal static bool ItemsDirty()
     {
-        // 篮子救援 glist：愿望/危机/篮内变化沿并入（物品不变时 ctx.basket 也要重推；推出即清 @:584）
-        return ComputeSig() != _lastSig || _forcePending || _tidyFailPending || BasketGlist.Dirty;
+        return Dirty.ScopedDirty(null) || _ctxDirty || _forcePending || _tidyFailPending || BasketGlist.Dirty;
     }
 
-    /* ================= 快通道签名（2026-11-04 Bug4「无人机交易一键整理响应 2s+」排查） =================
-       原回推链=官方排序落地后等 0.5s 泵轮询才发现变化（ItemsDirty 全量逐物品扫描只在
-       Tick 跑），叠加官方格重绘与推包/渲染，感知延迟轻松上 2s。本快检把「检出」提前到
-       ≤1 帧：每 owner 只读 1 次 Count（interop 跨界≈每帧几十次，远低于 ComputeSig 的
-       逐物品 InstanceId/ItemCount 扫描），叠数/owner 集一变即真——官方 tidy 合并、搬运
-       增删叠、拆分全部落此（tidy 的可感知反馈恰好只依赖叠数差量）。
-       捕不到的（行数不变的改动：纯挪位/Σcount 变如拾取并入已有叠/用掉部分）仍由 0.5s
-       Tick 的 ItemsDirty 全量兜底，与原行为一致=零回归。 */
-    private static long _lastFastSig = long.MinValue;
+    // ---- 页面态快检（原 ComputeSig 元数据项的事件化替身；RailUi.FastPoll 每帧调）----
+    // ctx 里不随物品事件变化的页面态——活动页/双背包形态/A 侧归属/架子 owner/背包 owner——
+    // 任一翻转置 _ctxDirty（BuildJson 尾清）。每帧数次 interop 读（场景活跃时才有意义）。
+    private static long _lastCtxSig = long.MinValue;
+    private static bool _ctxDirty;
 
-    /// <summary>帧级快检（RailUi.FastPoll 每帧调）：返回 true=行数/owner 集/bagOwner 相对上次有变（检出即消费）。</summary>
-    internal static bool StructureChangedFast()
+    internal static void PollCtxFast()
     {
+        var sc = ActiveScene();
+        if (sc == null) return;
         long sig = 17;
-        var ctn = _ctn;
-        sig = sig * 31 + ctn.Count;
-        for (int i = 0; i < ctn.Count; i++)
-            sig = sig * 31 + ctn[i].OwnerId * 7;
+        sig = sig * 31 + (sc.Page != null ? sc.Page.GetHashCode() : 0);
+        sig = sig * 31 + (BagOnlyDyn(sc) ? 1 : 0);
+        sig = sig * 31 + (BpBagDyn() ? 1 : 0);
+        sig = sig * 31 + RackOwnerOf(sc);
         sig = sig * 31 + _bagOwner;
-        var world = LogicWorld();
-        var oc = world?._ItemManager?.OwnerCache;
-        if (oc != null)
-        {
-            sig = sig * 31 + InnerCountFast(oc, _bagOwner);
-            for (int i = 0; i < ctn.Count; i++)
-                sig = sig * 31 + InnerCountFast(oc, ctn[i].OwnerId);
-        }
-        // 地面（家内掉落）每帧纪律：只 1 次 _dropItems.Count（O(1) 零分配零地图判定——
-        // 含野外=超集，误触发无害）；家图过滤/逐件读留给 0.5s 通道（RailGround 头注释）
-        sig = sig * 31 + RailGround.FastCount();
-        if (sig == _lastFastSig) return false;
-        _lastFastSig = sig;
-        return true;
+        if (sig == _lastCtxSig) return;
+        _lastCtxSig = sig;
+        _ctxDirty = true;
     }
 
-    /// <summary>单 owner 行数（2 次 interop 读）；owner 不可得/异常=0（与 SigOwner 空容器同口径）。</summary>
-    private static long InnerCountFast(
-        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
-        long owner)
-    {
-        if (owner <= 0) return 0;
-        try { return oc.TryGetValue(owner, out var inner) && inner != null ? inner.Count : 0; }
-        catch (Exception e) { PerfDiag.Swallow("owner.count:" + e.GetType().Name); return 0; } // [PERFDIAG]
-    }
+    // 元数据签名（RecomputeCaps 尾比对）：柜增删/容量/标签/改名变化 → 强制重推
+    // （原 ComputeSig 元数据项的事件化替身；慢通道每轮幂等比对，稳态零推）。
+    private static long _lastMetaSig;
 
     /* ================= 世界重绑（2026-11-01 第十二轮：作者「退主菜单重读档后排序彻底失效」
        日志实锤：rev3 之后全程静默——重读档后页沿不翻/签名不变 → 泵门②永拦 → JS 契约冻结在
@@ -347,7 +351,6 @@ internal static class RailData
         _forcePending = true;
         _tidyFailPending = false;
         RailCommands.AbortStoreTask(); // 入库任务基于旧 OwnerCache 快照，换档后无意义：静默丢弃（方案 A 终案）
-        _lastSig = long.MinValue;   // 首包必推（与静态初值同款）
         try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
     }
 
@@ -635,7 +638,8 @@ internal static class RailData
         _feedFailPending = null;  // 同上（feed 失败码随本包带出即清）
         BasketGlist.Dirty = false; // 篮子沿同款：ctx.basket 已随本包带出即清（ItemsDirty 并入位）
         _rev++;
-        _lastSig = ComputeSig();
+        Dirty.Clear();     // 组装完成：事件脏清（其后新事件重新标；瞬态早退由 _forcePending 保重试）
+        _ctxDirty = false; // 页面态沿同点清
         /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
            再比前包**=恒假死代码（三零空包照推）。正确序=先比后存：三零且前包非空=瞬态
            （OwnerCache 空窗/换档瞬间），不推立即重试；T6 裁定 4 的正常空态（开局首包/
@@ -1410,70 +1414,6 @@ internal static class RailData
         return 0;
     }
 
-    // ================= 签名 / rev =================
-
-    /// <summary>白名单物品签名 + 元数据签名混合（廉价：Σ条数/Σ数量/首末 id/容器数/owner 集合）。</summary>
-    private static long ComputeSig()
-    {
-        long sig = 17;
-
-        // 元数据：容器数、owner 集合、cap、bagCap、rackOwner、bagOwner
-        var ctn = _ctn;
-        sig = sig * 31 + ctn.Count;
-        for (int i = 0; i < ctn.Count; i++)
-            sig = sig * 31 + ctn[i].OwnerId * 7 + ctn[i].Cap;
-        sig = sig * 31 + _bagCap;
-        sig = sig * 31 + (BagOnlyDyn(ActiveScene()) ? 1 : 0); // Bug1：双背包形态翻转也要重推
-        sig = sig * 31 + (BpBagDyn() ? 1 : 0); // v13.9：A 侧背包/取用单柜翻转也要重推（按钮对装配判据）
-        sig = sig * 31 + _bagOwner;
-        sig = sig * 31 + RackOwnerOf();
-        string ap = ActivePage();
-        sig = sig * 31 + (ap != null ? ap.GetHashCode() : 0);
-
-        // 物品：逐白名单 owner 的条数/Σcount/首末 id
-        var world = LogicWorld();
-        var oc = world?._ItemManager?.OwnerCache;
-        if (oc != null)
-        {
-            sig = SigOwner(oc, _bagOwner, sig);
-            for (int i = 0; i < ctn.Count; i++)
-                sig = SigOwner(oc, ctn[i].OwnerId, sig);
-        }
-        // 地面（家内掉落）：行数+Σcount+首末 id（SigOwner 同形；掉落/拾取/腐败转换触发重推）
-        sig = RailGround.SigOf(sig);
-        return sig;
-    }
-
-    // 裁定（评审 Important 2，fix round 1 停放）：SigOwner 不含 BagPos——同容器内挪动物位
-    // 不触发重推。依据：rail 渲染层不消费 x/y（按排序键平铺），当前无观察面；已记 SDD 账本。
-    // 若未来契约/渲染消费位置，在此追加 x/y 哈希项即可。
-    private static long SigOwner(
-        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
-        long owner, long sig)
-    {
-        if (owner <= 0) return sig;
-        Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
-        try { if (!oc.TryGetValue(owner, out inner) || inner == null) return sig * 31; } catch { return sig * 31; }
-        int rows = 0; long countSum = 0, first = 0, last = 0;
-        try
-        {
-            foreach (var pair in inner)
-            {
-                var it = pair.Value;
-                if (it == null) continue;
-                long id = 0; int cnt = 0;
-                try { id = it.InstanceId; cnt = it.ItemCount; } catch { }
-                if (id <= 0) continue;
-                if (rows == 0) first = id;
-                last = id;
-                countSum += cnt;
-                rows++;
-            }
-        }
-        catch { }
-        return ((((sig * 31 + rows) * 31 + (int)(countSum & 0x7FFFFFFF)) * 31 + (int)(first & 0x7FFFFFFF)) * 31 + (int)(last & 0x7FFFFFFF));
-    }
-
     // ================= Debug.Verbose（T14 实机校准日志） =================
 
     private static string _lastJsonHead = "";
@@ -1561,7 +1501,6 @@ internal static class RailData
     private static List<CtnMeta> _ctn = new();      // RefreshMeta 5s 刷新
     private static long _bagOwner;                  // BAG_OWNER 会话缓存（findings §4 ①）
     private static int _bagCap;                     // 背包容量（格），RefreshMeta 刷新
-    private static long _lastSig = long.MinValue;   // 首包必推
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）
