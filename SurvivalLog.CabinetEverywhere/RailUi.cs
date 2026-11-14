@@ -103,12 +103,16 @@ internal static class RailUi
     // 直写 size[0]=目标宽——**勿回 RewriteSize 的 mult 路**：want=原值×(目标/当前宽)，重跑时
     // 当前宽=已改值 → 想要值被弹回原宽（12↔16 振荡）；v1.8.3 靠「每会话一次」掩盖了这一点。
     // 高度修改批（2026-11-07）起宽恒 12（cfg 键退役）；5s 周期重扫（RefreshMeta 慢通道）+
-    // 高度键 SettingChanged→SizeDirty 帧级重算；高=15 键逐包（0=原生/MaxHeight 夹/缩高走掉落闸）。
+    // 高度键 SettingChanged→SizeDirty 帧级重算；高=15 键逐包（0=原生/上限夹/缩高走掉落闸）。
     private static string _sizeSig = ""; // 目标集签名（集合/宽/高映射未变=零日志快路径；异常轮不记号下轮重试）
 
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §6）====
     /// <summary>柜宽恒 12（作者令「宽度固定 12 不允许修改」：Rail.UniformBagWidth 键退役，此常量单源）。</summary>
     internal const int UniformWidth = 12;
+    /// <summary>高度上限内建（2026-11-14 作者令「取出上限配置」：Rail.MaxHeight 键退役，老 cfg 残留值忽略）：
+    /// 背包链 30、柜子/抽屉等其余高度键 100，逐包/逐档夹。</summary>
+    internal const int BackpackHeightCap = 30;
+    internal const int CabinetHeightCap = 100;
     /// <summary>立即生效硬验收（spec §2）：15 个高度键 SettingChanged 置脏（线程不定，禁直调 Il2Cpp）→
     /// Tick 首行主线程帧内消费重算——改键当帧落笔，不等 5s 慢通道。</summary>
     internal static volatile bool SizeDirty;
@@ -264,7 +268,7 @@ internal static class RailUi
                     : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标"
                       + (shrinkPending > 0 ? $"（另有 {shrinkPending} 包缩高待处理，每 5s 重试——见 ShrinkDrop 日志）" : ""))
                     + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                    + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架宽 20 不动（高可调，Height_110009）；高度=16键解析(0=原生/MaxHeight夹/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
+                    + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架宽 20 不动（高可调，Height_110009）；高度=15键解析(0=原生/上限夹背包30·柜100/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
         }
         catch (Exception e)
         {
@@ -283,7 +287,7 @@ internal static class RailUi
     }
 
     /// <summary>包的目标行数：单包键/背包链直值；抽屉三档=H/H+1/H+2（升级链递进保留，spec §7）；
-    /// 0=恢复原生；MaxHeight&gt;0 逐包/逐档夹。不在高度名单=-1（调用方跳过）。</summary>
+    /// 0=恢复原生；上限内建（背包 30/其余 100）逐包/逐档夹。不在高度名单=-1（调用方跳过）。</summary>
     private static int ResolveTargetHeight(int bagId)
     {
         int want;
@@ -311,9 +315,9 @@ internal static class RailUi
         }
         catch { return -1; }
         if (want <= 0) return 0;
-        int max;
-        try { max = CabinetEverywherePlugin.MaxHeight?.Value ?? 0; } catch { max = 0; }
-        if (max > 0 && want > max) want = max;
+        int max = Array.IndexOf(CabinetEverywherePlugin.BackpackBagIds, bagId) >= 0
+            ? BackpackHeightCap : CabinetHeightCap;
+        if (want > max) want = max;
         return want;
     }
 

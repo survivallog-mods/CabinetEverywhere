@@ -63,11 +63,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
     // 宽度退役恒 12（Rail.UniformBagWidth 绑定删除，代码常量 RailUi.UniformWidth；老 cfg 残留值忽略）。
-    // 高度 15 键逐包/逐组，全部默认 0=恢复原生；MaxHeight 逐包/逐档夹持；缩高=越界物品官方掉落（ShrinkDrop）。
+    // 高度 15 键逐包/逐组，全部默认 0=恢复原生；上限内建逐包/逐档夹（背包 30/柜子 100，2026-11-14 作者令 MaxHeight 键退役不可改）；缩高=越界物品官方掉落（ShrinkDrop）。
     // SettingChanged→RailUi.SizeDirty（帧内主线程重算=立即生效硬验收，勿直调 Il2Cpp）。
     internal static ConfigEntry<int> BackpackHeight;   // 背包链 9 包统一行数（天赋换包链必须同高，spec §7）
     internal static ConfigEntry<int> DrawerHeight;     // 工作台抽屉基准行数：三档=H/H+1/H+2（升级链保留）
-    internal static ConfigEntry<int> MaxHeight;        // 高度防呆上限（0=不封顶自担）
     internal static Dictionary<int, ConfigEntry<int>> HeightByBag; // 13 个单包键（置物架4+工具柜1+冰箱4+载具3+材料架1）
     internal static readonly int[] BackpackBagIds = { 1, 2, 5, 6, 7, 8, 9, 10, 11 }; // 天赋链（含 2 登山包/8 仓管初始）
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
@@ -153,12 +152,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         };
         DrawerHeight = Config.Bind("Rail", "DrawerHeight", 0,
             "工作台抽屉基准行数：三档=H/H+1/H+2（工作台升级加行语义保留；原生链 5/6/7；0=恢复原生链）。宽恒 12。");
-        MaxHeight = Config.Bind("Rail", "MaxHeight", 50,
-            "高度防呆上限：任何高度键目标超出即夹到该值（逐包/逐档夹；0=不封顶自担——超高依赖界面纵向滚动）。");
         // 立即生效硬验收（spec §2）：改键即置脏，RailUi.Tick 主线程帧内重算（SettingChanged 线程不定，禁直调 Il2Cpp）
         BackpackHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         DrawerHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
-        MaxHeight.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         foreach (var hb in HeightByBag.Values)
             hb.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
