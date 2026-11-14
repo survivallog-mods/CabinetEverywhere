@@ -292,6 +292,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         MoveNotifyCoalescer.Install();
         // 变化信号（2026-11-14 数据链瘦身）：挂官方物品通知 → 脏标记（事件驱动推送，替代轮询签名）
         ItemChangeSignal.Install();
+        // 关页动作标记跳过（2026-11-14 官方成本拦截）：LogicAdapter 九页无门扇出，页面已关仍全量重算
+        StaleMarksGuard.Install();
     }
 
     /// <summary>

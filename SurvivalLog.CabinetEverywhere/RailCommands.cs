@@ -587,15 +587,26 @@ internal static class RailCommands
         }
         try
         {
-            // Bug3（2026-10-31 实机反馈：一键整理卡顿 1-2s）——分段计时定位：sort / merge 各占多少，
-            // 与 Pump 末尾的重推耗时对账（见 Pump 计时日志）。常驻 Info 一行（tidy 低频）。
+            // 官方成本拦截（2026-11-14 spec §B）：排序/合并包进任务级静默窗——排序/合并的逐件
+            // 3002/3005/3031 风暴（每件=活跃页整包 JSON 重建，实测整理 ~1.2s 的主源）全吞，
+            // 批末 ManualExit 一次 SyncBothBags 追平（V1.2 红线：静默必配数据层追平）。
+            // 官方 SORT 事件路（JS forgePost，RA_Sort=状态排序+2×整包 JSON≈470ms）同步退役——
+            // v1.8.2 走它是因为旧 C# 路「多重全量刷新」，那正是搬运合并窗后来根治的东西。
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            im.SortContainerForHub(c.Owner); // ① 首选：官方公开排序
-            long tSort = sw.ElapsedMilliseconds;
-            im.MergeStacksForHub(c.Owner);   // ② 备选：官方合并（interop public 包装直调，免反射）
-            long tMerge = sw.ElapsedMilliseconds - tSort;
-            CabinetEverywherePlugin.Log.LogInfo($"[CERail] tidy 计时 owner={c.Owner}：sort={tSort}ms merge={tMerge}ms（卡顿对账用）");
-            VLog(c.Op, $"owner={c.Owner} sort+merge 已调（合并效果 T12 校准）");
+            MoveNotifyCoalescer.ManualEnter(c.Owner); // 自环对：批末一次整包追平该 owner
+            try
+            {
+                im.SortContainerForHub(c.Owner); // ① 官方公开排序（数据层）
+                long tSort = sw.ElapsedMilliseconds;
+                im.MergeStacksForHub(c.Owner);   // ② 官方合并（数据层）
+                long tMerge = sw.ElapsedMilliseconds - tSort;
+                CabinetEverywherePlugin.Log.LogInfo($"[CERail] tidy 计时 owner={c.Owner}：sort={tSort}ms merge={tMerge}ms（静默窗内，批末一次追平）");
+                VLog(c.Op, $"owner={c.Owner} sort+merge 静默窗完成（批末整包追平）");
+            }
+            finally
+            {
+                MoveNotifyCoalescer.ManualExit(); // 批末：SyncBothBags(owner,owner) 一次 + ForceRepublish
+            }
         }
         catch (Exception e)
         {

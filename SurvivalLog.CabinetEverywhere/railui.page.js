@@ -1132,30 +1132,18 @@
     if (!ctnById(owner)) return; /* 柜已消失等：无从整理，静默 */
     var raw = owner === store.bag ? bagArr() : (store.items[String(owner)] || []);
     if (!raw.length) { toast(owner === store.bag ? '背包是空的' : '这里没有物品'); return; }
-    /* Bug3 v1.8.2.4：改走**官方 SORT 事件**（与官方面板"一键整理"按钮同一条路：官方 Reducer
-       原地排序+推送，实测流畅；旧路=C# Sort/Merge 直调(82ms)+命令后 RefreshBag 全页重绑——
-       多重全量刷新叠加官方大网格重绘=卡顿主源，作者实机对照实锤）。带 SORT 事件的页直发；
-       无该事件的页（Brew/RatCage/Dye/Compressor/Shredder/GreenhouseBuild/MaterialRack）
-       保留 C# 命令路（Sort+Merge+RefreshBag）。 */
-    var ev = buildSortEvent(owner);
+    /* 官方成本拦截（2026-11-14 spec §B）：官方 SORT 事件路（forgePost→RA_Sort=状态排序+2×
+       整包 JSON≈470ms，扩容背包实测）退役——统一走 C# OpTidy：排序/合并包进静默搬运窗，
+       批末一次整包追平（v1.8.2 走官方事件是因为旧 C# 路「多重全量刷新」，那已被搬运合并窗
+       根治；Bug3 的刷新问题由批末追平解决）。 */
     /* Bug4（2026-11-04 作者实测：交易页一键整理响应 2s+）三段计时标记：t0=点击、
        tMO=官方格重绘首见（srBadgeMO 回调盖戳≈官方排序完成）、tSet=契约回推到达（setData
        盖戳）——settleXfer 出一行对账日志（console），实机一段定位瓶颈。 */
     XFER = { kind: 'tidy', owner: owner, before: raw.length, t0: Date.now(), tMO: 0, tSet: 0 };
-    if (ev && forgePost(ev)) return;                           /* 官方 SORT 事件路（Trade/DroneHub 等 5 页） */
-    cmdOut('tidy', { owner: owner });                          /* C# OpTidy：Sort+Merge 官方 API */
+    cmdOut('tidy', { owner: owner });                          /* C# OpTidy：静默窗内 Sort+Merge+批末一次追平 */
   }
-  /* 官方 SORT 事件构造（findings §5 + BackpackUI.html @5844 实证负载）：
-     BackpackUI=SORT_BACKPACK{side:'A'|'B'}（A=背包本体；B=双背包另一侧=当前柜）；
-     Cooking/DroneHub/ToolTable=SORT_BAG{}（排序对象=背包面板当前 active 容器=st.currentId）；
-     Trade=SORT_BAG{}（仅 trade 阶段官方启用）。 */
-  function buildSortEvent(owner) {
-    var page = store.ctx && store.ctx.page;
-    if (!page) return null;
-    if (page === 'BackpackUI') return { type: 'SORT_BACKPACK', data: { side: owner === store.bag ? 'A' : 'B' } };
-    if (page === 'Cooking' || page === 'DroneHub' || page === 'ToolTable' || page === 'Trade') return { type: 'SORT_BAG', data: {} };
-    return null;
-  }
+  /* 官方 SORT 事件构造（buildSortEvent）随官方事件路退役（2026-11-14 spec §B）——
+     forgePost 通道保留（其他官方事件重放仍用）。 */
   /* 官方事件直发（Root 帧伪造页面来源，tagfilter forgeSwitch 同通道；复用 frameByKey 定位真实 iframe id） */
   function forgePost(ev) {
     var f = frameByKey(st.scene);
