@@ -32,7 +32,7 @@ namespace SurvivalLog.CabinetEverywhere;
 internal static class RailSortMath
 {
     private static readonly int[] EatIndex = { 0, 1, 2, 4 }; // Stats[0..3]=效果维[饱腹/心态/精力/生命(=效果4)]
-    private static float _nowFallback; // NowHours 失败回退值（原 _factorsAt 引用随天赋管线退役）
+    private static float _nowFallback; // NowHours 最近一次成功值——失败回退到它（保排序键不瞬跳；首次失败=0）
 
     // ================= 吃入天赋管线（2026-11-01 第九轮恢复；68fb926 版逐字回归 + 诊断日志。
     //    第六轮整块删除是误判：详情 28/次 = 实例 24 × 天赋管线（PC OneUse→EatValues 实锤，
@@ -586,7 +586,12 @@ internal static class RailSortMath
         try
         {
             var w = RailData.World();
-            if (w != null) return GameCore.HotUpdate.Battle.Logic.RobotSortingManager.GetNowHours(w);
+            if (w != null)
+            {
+                var v = GameCore.HotUpdate.Battle.Logic.RobotSortingManager.GetNowHours(w);
+                _nowFallback = v; // 成功即记——失败回退到最近成功值（原先恒 0=失败时排序键瞬跳到零点的隐性缺陷）
+                return v;
+            }
         }
         catch { }
         return _nowFallback;

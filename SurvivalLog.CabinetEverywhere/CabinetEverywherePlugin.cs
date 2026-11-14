@@ -42,7 +42,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
     public const string Version = "2.1.7";
 
-    internal static ManualLogSource Log;
+    internal static new ManualLogSource Log;
 
     // General.Enabled 总开关（ModCenter 启停位，2026-10-24）：false=对称移除白名单注入并停写停注入；
     // 下次启动不加载（不创建 Ticker、不装合并补丁，零日志零改写）。
