@@ -1080,6 +1080,7 @@ internal static class RailCommands
         public int ScanFrom; // 扫描游标（提速批：连续帧同柜时从上次位置续扫，不每帧从头全扫——600 叠全扫≈1.5ms/帧省掉）
         public Il2CppSystem.Collections.Generic.List<long> Batch;
         public int MovedStacks, MovedTotal, LeftStacks, TotalStacks, Calls, MatchCalls, Steps;
+        public Dictionary<int, long> CabPieces = new(); // 逐柜吸收件数（下标=Cabs 序）——ctx.storeAllRes（数据链瘦身 §E）
         public long TSnap; public System.Diagnostics.Stopwatch Sw;
     }
     private static StoreAllTask _storeTask;
@@ -1087,6 +1088,27 @@ internal static class RailCommands
     /// <summary>入库任务在途（RailUi.PushIfDue 闸门用：任务期间压住 FastPoll/Tick 全量重推，
     /// 防每帧搬运各触发一次 136KB BuildJson+下发——完成时收尾一次性推）。</summary>
     internal static bool StoreTaskActive => _storeTask != null;
+    /// <summary>ctx.storeAllRes 载荷：逐柜 (OwnerId, 吸收件数)（零件柜由 RailStoreRes 滤掉，
+    /// 序=Cabs 序=JS order 序——差量 toast 前四柜文案口径不变）。留背包=**收尾时背包实存件数**
+    /// （旧 JS 结算同口径：部分吸收的余量/配置查无/中止未搬的全在内——只读背包自身字典）。</summary>
+    private static string StoreAllResJson(StoreAllTask t)
+    {
+        var arr = new (long, long)[t.Cabs.Count];
+        for (int i = 0; i < t.Cabs.Count; i++) arr[i] = (t.Cabs[i].OwnerId, t.CabPieces.GetValueOrDefault(i));
+        long left = 0;
+        try
+        {
+            var inner = OwnerItems(t.Im, t.Bag);
+            if (inner != null)
+                foreach (var pair in inner)
+                {
+                    try { left += pair.Value?.ItemCount ?? 0; } catch { }
+                }
+        }
+        catch { }
+        return RailStoreRes.Build(arr, left);
+    }
+
     /// <summary>中止入库任务（storeAbort 命令=玩家 ✕ 关弹窗；OnWorldRebind 换档同口）：
     /// 走 FinishStoreTask 正式收口（部分已入库不可回滚——剩余留背包；收尾推送+哨兵+汇总日志照发，
     /// 哨兵对已关窗/已换档的 JS 无消费方=无害）。</summary>
@@ -1125,6 +1147,9 @@ internal static class RailCommands
         if (bag <= 0) { Bail("storeAll:nobag", "storeAll 丢弃：背包 owner 不可得", "无背包 owner，弹窗哨兵收口"); return; }
         var im = RailData.ItemMgr();
         if (im == null) { Bail("storeAll:noim", "storeAll 丢弃：ItemManager 不可得", "无 ItemManager，弹窗哨兵收口"); return; }
+
+        // 按需扫描触发②（数据链瘦身 §F）：执行前现扫柜子名单+元数据——路由用最新白名单/标签/容量
+        try { CabinetCatalog.RefreshHomeInstances(); RailData.RefreshMeta(); } catch { }
 
         var cabs = new List<CabinetCatalog.ContainerInst>();
         var cabRules = new List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>>();
@@ -1237,7 +1262,7 @@ internal static class RailCommands
                     var p = t.Pending[k];
                     int now = 0;
                     try { now = ItemOf(inner, p.id)?.ItemCount ?? 0; } catch { }
-                    if (now < p.cnt) { t.MovedStacks++; t.MovedTotal += p.cnt - now; p.next = -1; anyOk[cab] = true; } // 件数减少=有吸收即 placed（部分吸收不顺延，旧 moved>0 语义）
+                    if (now < p.cnt) { t.MovedStacks++; t.MovedTotal += p.cnt - now; t.CabPieces[cab] = t.CabPieces.GetValueOrDefault(cab) + (p.cnt - now); p.next = -1; anyOk[cab] = true; } // 件数减少=有吸收即 placed（部分吸收不顺延，旧 moved>0 语义）
                     else { p.next = cab + 1; anyOk[cab] = anyOk.GetValueOrDefault(cab); } // 纹丝不动=放不下：顺延游标推进（anyOk 保持既有值/缺省 false）
                     t.Pending[k] = p;
                 }
@@ -1295,8 +1320,10 @@ internal static class RailCommands
     private static void FinishStoreTask(StoreAllTask t, string abort)
     {
         _storeTask = null;
+
         MoveNotifyCoalescer.ManualExit(); // [PERF-V1.4] 任务级大窗收口：此处才做批末整包补发（SyncBothBags 追平 Data 层）
         RailUi.PushStoreProg(t.TotalStacks, t.TotalStacks); // 进度 100%（弹窗转完成态由哨兵包驱动）
+        RailData.SetStoreAllRes(StoreAllResJson(t)); // ctx.storeAllRes：逐柜件数+留背包件数（数据链瘦身 §E，JS 差量快照退役）
         RailData.MarkStoreDone();     // ctx.storeAllDone 哨兵（JS settleXfer 解除 hold+弹窗结果态）
         // [PERF-C1 收尾帧拆开] 官方整页刷新+ForceRepublish 延到 Pump 下一帧——收尾帧实测
         // 402~411ms（哨兵+官方整页重建+BuildJson 130KB 三件同帧），拆开后收尾帧≈1ms

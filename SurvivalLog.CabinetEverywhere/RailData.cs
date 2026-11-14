@@ -218,6 +218,141 @@ internal static class RailData
         catch { return 0; }
     }
 
+    // ================= 按页推送范围（spec 2026-11-14-rail-data-slim-design §B） =================
+
+    /// <summary>当前容器 owner（页面 Redux 状态直读，0=未知）：BackpackUI 双背包=OwnerId_B /
+    /// 取用单柜=OwnerId_A（白名单校验，BpBagDyn 同款——B 键单背包 A 侧=背包 → 0）；
+    /// 机器页=各 State_Web_*.BagOwnerId / cart 三页=CartOwnerId（RP .Value，TradeUI 裸 long）；
+    /// MaterialRack=RackOwnerOf。官方切页签该字段随之翻——PollCtxFast 帧级跟随触发重推。
+    /// 注意与 ResolveBagOwner 的 CtnGuard 相反：这里柜 id 是**合法值**（当前柜本就是柜）。</summary>
+    private static long CurrentOwnerOf(SceneDef sc)
+    {
+        if (sc == null) return 0;
+        var rus = ReduxUi();
+        if (rus == null) return 0;
+        try
+        {
+            switch (sc.Page)
+            {
+                case "BackpackUI":
+                {
+                    var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_BackpackUI>();
+                    if (st == null) return 0;
+                    long o;
+                    try { o = st.IsDualBag ? st.OwnerId_B : st.OwnerId_A; } catch { return 0; }
+                    if (o == 0 || o == _bagOwner) return 0;
+                    var all = CabinetCatalog.AllContainers;
+                    for (int i = 0; i < all.Count; i++) if (all[i].OwnerId == o) return o; // 白名单校验
+                    return 0;
+                }
+                case "Cooking":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Cooking)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Cooking>()?.BagOwnerId?.Value ?? 0;
+                case "RatCage":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_RatCage>()?.BagOwnerId?.Value ?? 0;
+                case "BrewPanel":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Brew>()?.BagOwnerId?.Value ?? 0;
+                case "DyePanel":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Dye>()?.BagOwnerId?.Value ?? 0;
+                case "Compressor":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Compressor)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Compressor>()?.CartOwnerId?.Value ?? 0;
+                case "Shredder":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Shredder)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Shredder>()?.CartOwnerId?.Value ?? 0;
+                case "GreenhouseBuild":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_GreenhouseBuild)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_GreenhouseBuild>()?.CartOwnerId?.Value ?? 0;
+                case "ToolTable":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_ToolTable)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_ToolTable>()?.BagOwnerId?.Value ?? 0;
+                case "Trade":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_TradeUI)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_TradeUI>()?.BagOwnerId ?? 0;
+                case "DroneHub":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_DroneHub>()?.BagOwnerId?.Value ?? 0;
+                case "FuelGenerator":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0;
+                case "Heater":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Heater)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Heater>()?.BagOwnerId?.Value ?? 0;
+                case "MaterialRack":
+                    return RackOwnerOf(sc);
+            }
+        }
+        catch { return 0; }
+        return 0;
+    }
+
+    /// <summary>_ctn 的 ownerId 数组（RecomputeCaps 随名单重建——Compose 零分配入参）。</summary>
+    private static long[] _ctnOwnerIds = Array.Empty<long>();
+
+    /// <summary>items 段范围（BuildJson 现算）：背包 + 当前柜（CurrentOwnerOf 自校验：B 键背包
+    /// A 侧=背包→0、非白名单→0，故不必按 bagOnly 另行清零——取用单柜页 bagOnly=true 仍需 A 柜行）。
+    /// 全量页=温室（作者令不动）+ 吊栏窗（类别用户运行时点选无法预筛）。glist 五页在列表批扩全量。</summary>
+    private static List<long> ScopeOwnersOf(SceneDef sc)
+    {
+        var fill = new List<long>(16);
+        ScopeOwnersOfInto(sc, fill);
+        return fill;
+    }
+
+    private static void ScopeOwnersOfInto(SceneDef sc, List<long> fill)
+    {
+        long bag = _bagOwner > 0 ? _bagOwner : ResolveBagOwner(null);
+        bool fullHouse = sc != null && (sc.Page == "GreenhouseBuild"
+            || GlistOnOf(sc.Page)                       // 五列表页：全屋按页筛后的子集（spec §C）
+            || (sc.Page == "BackpackUI" && BasketGlist.BasketOn)); // 吊栏窗：全屋按需求类别筛（spec §D）
+        long cur = CurrentOwnerOf(sc);
+        RailScope.Compose(bag, cur, _ctnOwnerIds, false, fullHouse, fill);
+    }
+
+    /// <summary>行筛选上下文（spec §C/§D）：五列表页按页谓词、吊栏按需求类别；Drop=true 滤掉不输出，
+    /// Drop=false（背包/当前柜）仅计数（行全量输出——格子态网格/排序角标/右键取物回查都要）；
+    /// HiddenKinds=「已隐藏 N 种」计数（跨 owner 共享，含 Drop=false 将被 JS 列表态藏掉的行）。</summary>
+    internal sealed class RowFilterCtx
+    {
+        public string Page;                 // 五页场景键，或 "basket"
+        public HashSet<int> BasketCats;     // basket：允许类别集（null=非 basket）
+        public bool Drop;
+        public HashSet<string> HiddenKinds;
+    }
+
+    /// <summary>五列表页 glistOn（与 BuildJson ctx.glistOn 同源同值：RatCage/BrewPanel 零配置键恒开）。</summary>
+    private static bool GlistOnOf(string page)
+    {
+        switch (page)
+        {
+            case "RatCage":
+            case "BrewPanel": return true;
+            case "DyePanel": return CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false;
+            case "Heater": return CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false;
+            case "FuelGenerator": return CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false;
+            default: return false;
+        }
+    }
+
+    private static RowFilterCtx BuildRowFilter(SceneDef sc, HashSet<string> hiddenKinds)
+    {
+        if (sc?.Page == null) return null;
+        if (sc.Page == "BackpackUI" && BasketGlist.BasketOn)
+            return new RowFilterCtx
+            {
+                Page = "basket",
+                BasketCats = new HashSet<int>(RailGlistRule.BasketAllowedCats(BasketGlist.Mode, BasketGlist.WishCats, BasketGlist.CrisisCat)),
+                HiddenKinds = hiddenKinds,
+            };
+        if (GlistOnOf(sc.Page))
+            return new RowFilterCtx { Page = sc.Page, HiddenKinds = hiddenKinds };
+        return null;
+    }
+
     /// <summary>
     /// 5s 慢通道（AccessTicker）：容器行元数据+背包容量（来自 CabinetCatalog.AllContainers
     /// 与 Config_Bag/Config_Furniture 纯配置查询）。物品行不在本通道——0.5s 快通道 BuildJson 现算。
@@ -238,7 +373,7 @@ internal static class RailData
     }
 
     /// <summary>容器行 cap 重算（RefreshMeta 主体抽出；尺寸改写后立即生效链即时调用——
-    /// rev 含 Cap（ComputeSig:1021），重算+ForceRepublish=mod rail 帧级跟上，spec §2 硬验收）。</summary>
+    /// cap 变化经 _lastMetaSig 比对强制重推，mod rail 帧级跟上，spec §2 硬验收）。</summary>
     internal static void RecomputeCaps()
     {
         var cm = BagTable.Cm();
@@ -261,66 +396,80 @@ internal static class RailData
             list.Add(m);
         }
         _ctn = list;
+        var ownerIds = new long[list.Count];
+        for (int i = 0; i < list.Count; i++) ownerIds[i] = list[i].OwnerId;
+        _ctnOwnerIds = ownerIds;
 
         long bagOwner = ResolveBagOwner(null);
         _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
+
+        // 元数据变化（柜增删/容量/标签/改名）→ 强制重推（原 ComputeSig 元数据项的事件化替身）
+        long ms = 17;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var m = list[i];
+            ms = ms * 31 + m.OwnerId * 7 + m.Cap + (m.Name != null ? m.Name.GetHashCode() : 0);
+            if (m.TagIds != null) for (int t = 0; t < m.TagIds.Length; t++) ms = ms * 31 + m.TagIds[t];
+        }
+        ms = ms * 31 + _bagCap;
+        if (ms != _lastMetaSig)
+        {
+            _lastMetaSig = ms;
+            _forcePending = true;
+        }
     }
 
+    // ================= 事件驱动脏标记（spec 2026-11-14-rail-data-slim-design §A） =================
+    // 物品变化由 ItemChangeSignal 挂官方通知（3002/3005/3031/3027/21015）标记；原 0.5s 全屋签名
+    // 扫描（ComputeSig）与每帧结构快检（StructureChangedFast）已退役。BuildJson 组装完成处清。
+    internal static readonly RailDirtySet Dirty = new();
+
+    /// <summary>物品事件置脏（ItemChangeSignal prefix 调；owner≤0 由集合自身忽略）。</summary>
+    internal static void MarkOwnerDirty(long owner) => Dirty.MarkOwner(owner);
+
+    /// <summary>全局置脏（3027 全刷/21015 地面/3005 反查不到 owner）。</summary>
+    internal static void MarkGlobalDirty() => Dirty.MarkGlobal();
+
     /// <summary>
-    /// 廉价 rev：白名单各 owner 的物品条数+Σ数量+首末 InstanceId 混元数据签名。
-    /// TimeLeft 倒计时不入签名（小时粒度缓变，不为此 0.5s 重推——校准点 T14：若需临期红点
-    /// 实时翻转，在此追加 timeLeft&lt;=0 的粗粒度项）。
+    /// 推送门②：物品事件脏 / 页面态变化(_ctxDirty) / 强制重推 / 一次性标志 / 篮子沿 任一为真。
+    /// （篮子沿：愿望/危机/篮内变化而物品不变时 ctx.basket 也要重推；推出即清）
     /// </summary>
     internal static bool ItemsDirty()
     {
-        // 篮子救援 glist：愿望/危机/篮内变化沿并入（物品不变时 ctx.basket 也要重推；推出即清 @:584）
-        return ComputeSig() != _lastSig || _forcePending || _tidyFailPending || BasketGlist.Dirty;
+        return Dirty.ScopedDirty(_scopeCache) || _ctxDirty || _forcePending || _tidyFailPending || BasketGlist.Dirty;
     }
 
-    /* ================= 快通道签名（2026-11-04 Bug4「无人机交易一键整理响应 2s+」排查） =================
-       原回推链=官方排序落地后等 0.5s 泵轮询才发现变化（ItemsDirty 全量逐物品扫描只在
-       Tick 跑），叠加官方格重绘与推包/渲染，感知延迟轻松上 2s。本快检把「检出」提前到
-       ≤1 帧：每 owner 只读 1 次 Count（interop 跨界≈每帧几十次，远低于 ComputeSig 的
-       逐物品 InstanceId/ItemCount 扫描），叠数/owner 集一变即真——官方 tidy 合并、搬运
-       增删叠、拆分全部落此（tidy 的可感知反馈恰好只依赖叠数差量）。
-       捕不到的（行数不变的改动：纯挪位/Σcount 变如拾取并入已有叠/用掉部分）仍由 0.5s
-       Tick 的 ItemsDirty 全量兜底，与原行为一致=零回归。 */
-    private static long _lastFastSig = long.MinValue;
+    // ---- 页面态快检（原 ComputeSig 元数据项的事件化替身；RailUi.FastPoll 每帧调）----
+    // ctx 里不随物品事件变化的页面态——活动页/双背包形态/A 侧归属/架子 owner/背包 owner——
+    // 任一翻转置 _ctxDirty（BuildJson 尾清）。每帧数次 interop 读（场景活跃时才有意义）。
+    private static long _lastCtxSig = long.MinValue;
+    private static bool _ctxDirty;
+    private static readonly List<long> _scopeCache = new(16); // 场景活跃时随 PollCtxFast 刷新
 
-    /// <summary>帧级快检（RailUi.FastPoll 每帧调）：返回 true=行数/owner 集/bagOwner 相对上次有变（检出即消费）。</summary>
-    internal static bool StructureChangedFast()
+    internal static void PollCtxFast()
     {
+        var sc = ActiveScene();
+        if (sc == null) return;
+        long cur = CurrentOwnerOf(sc);
         long sig = 17;
-        var ctn = _ctn;
-        sig = sig * 31 + ctn.Count;
-        for (int i = 0; i < ctn.Count; i++)
-            sig = sig * 31 + ctn[i].OwnerId * 7;
+        sig = sig * 31 + (sc.Page != null ? sc.Page.GetHashCode() : 0);
+        sig = sig * 31 + (BagOnlyDyn(sc) ? 1 : 0);
+        sig = sig * 31 + (BpBagDyn() ? 1 : 0);
+        sig = sig * 31 + RackOwnerOf(sc);
         sig = sig * 31 + _bagOwner;
-        var world = LogicWorld();
-        var oc = world?._ItemManager?.OwnerCache;
-        if (oc != null)
+        sig = sig * 31 + cur;                    // 当前容器跟随：官方切页签→翻→重推
+        sig = sig * 31 + _ctnOwnerIds.Length;    // 柜名单增删→范围变→重推
+        if (sig != _lastCtxSig)
         {
-            sig = sig * 31 + InnerCountFast(oc, _bagOwner);
-            for (int i = 0; i < ctn.Count; i++)
-                sig = sig * 31 + InnerCountFast(oc, ctn[i].OwnerId);
+            _lastCtxSig = sig;
+            _ctxDirty = true;
+            ScopeOwnersOfInto(sc, _scopeCache);  // 输入变才重建缓存（零新建；稳态零动作）
         }
-        // 地面（家内掉落）每帧纪律：只 1 次 _dropItems.Count（O(1) 零分配零地图判定——
-        // 含野外=超集，误触发无害）；家图过滤/逐件读留给 0.5s 通道（RailGround 头注释）
-        sig = sig * 31 + RailGround.FastCount();
-        if (sig == _lastFastSig) return false;
-        _lastFastSig = sig;
-        return true;
     }
 
-    /// <summary>单 owner 行数（2 次 interop 读）；owner 不可得/异常=0（与 SigOwner 空容器同口径）。</summary>
-    private static long InnerCountFast(
-        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
-        long owner)
-    {
-        if (owner <= 0) return 0;
-        try { return oc.TryGetValue(owner, out var inner) && inner != null ? inner.Count : 0; }
-        catch (Exception e) { PerfDiag.Swallow("owner.count:" + e.GetType().Name); return 0; } // [PERFDIAG]
-    }
+    // 元数据签名（RecomputeCaps 尾比对）：柜增删/容量/标签/改名变化 → 强制重推
+    // （原 ComputeSig 元数据项的事件化替身；慢通道每轮幂等比对，稳态零推）。
+    private static long _lastMetaSig;
 
     /* ================= 世界重绑（2026-11-01 第十二轮：作者「退主菜单重读档后排序彻底失效」
        日志实锤：rev3 之后全程静默——重读档后页沿不翻/签名不变 → 泵门②永拦 → JS 契约冻结在
@@ -347,7 +496,6 @@ internal static class RailData
         _forcePending = true;
         _tidyFailPending = false;
         RailCommands.AbortStoreTask(); // 入库任务基于旧 OwnerCache 快照，换档后无意义：静默丢弃（方案 A 终案）
-        _lastSig = long.MinValue;   // 首包必推（与静态初值同款）
         try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
     }
 
@@ -362,6 +510,11 @@ internal static class RailData
     /// 收到哨兵包才解除 hold 结算差量 toast+恢复入库按钮。</summary>
     private static bool _storeDonePending;
     internal static void MarkStoreDone() => _storeDonePending = true;
+
+    /// <summary>storeAll 结果 JSON（FinishStoreTask 置）：ctx.storeAllRes 带出即清（数据链瘦身 §E
+    /// ——逐柜件数+留背包件数，JS 差量快照结算退役）。空/异常=null。</summary>
+    private static string _storeResPending;
+    internal static void SetStoreAllRes(string json) => _storeResPending = json;
 
     /// <summary>tidy 失败标记（RailCommands.OpTidy 置位）：下一包 ctx.lastTidyFail=true 带出即清（T12 toast 消费）。</summary>
     internal static void ReportTidyFail()
@@ -496,6 +649,8 @@ internal static class RailData
         // storeAll 任务完成哨兵（方案 A 终案）：JS settleXfer 靠它解除 hold（带出即清，与 lastTidyFail 同点位）
         sb.Append(",\"storeAllDone\":").Append(_storeDonePending ? "true" : "false");
         _storeDonePending = false;
+        sb.Append(",\"storeAllRes\":").Append(string.IsNullOrEmpty(_storeResPending) ? "null" : _storeResPending);
+        _storeResPending = null;
         // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
         sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
         // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版
@@ -582,8 +737,10 @@ internal static class RailData
         // 契约字段序 icfg 在 items 前 → 先浅走白名单收集 cfgId（第一遍，只读 ItemConfigId），
         // 拼 icfg 段，再拼 items 段（第二遍）。同一次 BuildJson 内主线程无让出，
         // 两遍之间 OwnerCache 不会变化。
-        var ownerIds = new List<long>();
-        foreach (var m in _ctn) ownerIds.Add(m.OwnerId);
+        var ownerIds = ScopeOwnersOf(sc); // 按页范围（spec §B）——ctn 元数据段仍全量（入库路由/页签名/白名单校验）
+        var hiddenKinds = new HashSet<string>();
+        var flt = BuildRowFilter(sc, hiddenKinds);
+        long curOwner = CurrentOwnerOf(sc);
 
         // 第一遍：收集 cfgId（浅走：只读 ItemConfigId）
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);
@@ -611,12 +768,14 @@ internal static class RailData
         bool tradeScene = sc?.Page == "Trade";
         sb.Append(",\"items\":{");
         sb.Append("\"bag\":");
-        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict, nowHours, tradeScene);
+        if (flt != null) flt.Drop = false; // 背包行全量（右键取物回查/格子态网格）
+        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict, nowHours, tradeScene, flt);
         itemRows += n;
         for (int i = 0; i < ownerIds.Count; i++)
         {
             sb.Append(",\"").Append(ownerIds[i]).Append("\":");
-            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene);
+            if (flt != null) flt.Drop = ownerIds[i] != curOwner; // 当前柜全量（格子态网格/排序角标）
+            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene, flt);
             itemRows += n;
         }
         // 地面段（虚拟键 RailGround.OwnerId；行 id=ItemData.InstanceId——idetail/词条同源，
@@ -628,6 +787,10 @@ internal static class RailData
             itemRows += n;
         }
         sb.Append('}');
+        // 页脚「已隐藏 N 种」：C# 推送前滤掉+当前柜/背包将被 JS 藏掉的行，按种计数随包回传
+        // （吊栏无页脚计数——篮子行为「全部可见」，类别预筛即全部内容）。
+        if (flt != null && flt.BasketCats == null)
+            sb.Append(",\"glistHidden\":").Append(hiddenKinds.Count);
         sb.Append('}');
 
         _forcePending = false;
@@ -635,7 +798,8 @@ internal static class RailData
         _feedFailPending = null;  // 同上（feed 失败码随本包带出即清）
         BasketGlist.Dirty = false; // 篮子沿同款：ctx.basket 已随本包带出即清（ItemsDirty 并入位）
         _rev++;
-        _lastSig = ComputeSig();
+        Dirty.Clear();     // 组装完成：事件脏清（其后新事件重新标；瞬态早退由 _forcePending 保重试）
+        _ctxDirty = false; // 页面态沿同点清
         /* 2026-11-01 第十一轮（实机 rev4 实锤）+第十二轮修正：上一轮把 _last* 计数**先赋值
            再比前包**=恒假死代码（三零空包照推）。正确序=先比后存：三零且前包非空=瞬态
            （OwnerCache 空窗/换档瞬间），不推立即重试；T6 裁定 4 的正常空态（开局首包/
@@ -925,7 +1089,7 @@ internal static class RailData
         Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
         long owner,
         Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
-        float nowHours, bool tradeScene)
+        float nowHours, bool tradeScene, RowFilterCtx flt)
     {
         Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
         try { if (!oc.TryGetValue(owner, out inner) || inner == null) { sb.Append("[]"); return 0; } } catch { sb.Append("[]"); return 0; }
@@ -940,7 +1104,7 @@ internal static class RailData
                 if (it == null) continue;
                 int x = 0, y = 0;
                 try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
-                AppendItemRow(sb, it, x, y, itemDict, nowHours, tradeScene, ref rows);
+                AppendItemRow(sb, it, x, y, itemDict, nowHours, tradeScene, ref rows, flt);
             }
         }
         catch { }
@@ -958,7 +1122,7 @@ internal static class RailData
     internal static void AppendItemRow(
         StringBuilder sb, GameCore.HotUpdate.Battle.Logic.ItemData it, int x, int y,
         Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
-        float nowHours, bool tradeScene, ref int rows)
+        float nowHours, bool tradeScene, ref int rows, RowFilterCtx flt)
     {
         try
         {
@@ -1001,6 +1165,35 @@ internal static class RailData
                 // 徽章（item-use 方案镜像）；null=无该维度（材料/燃料等同名即并）。
                 int? usesVal = null, usesMaxVal = null;
                 try { var um = it.MaxUseTimes; if (um > 0) { usesVal = Math.Max(1, it.UseTimes); usesMaxVal = um; } } catch { }
+
+                // 列表页/吊栏行筛选（spec §C/§D）：Drop=true 的 owner 滤掉不输出（行未落笔 rows 不变）；
+                // Drop=false（背包/当前柜）仅计 HiddenKinds——行照常输出，列表态由 JS 按同谓词藏。
+                if (flt != null)
+                {
+                    bool keep;
+                    if (flt.BasketCats != null)
+                    {
+                        int cat = 0;
+                        try { cat = ic?.Category ?? 0; } catch { }
+                        keep = flt.BasketCats.Contains(cat);
+                    }
+                    else
+                    {
+                        bool burnable = false, canBrew = false, hasPig = false;
+                        int prey = 0;
+                        try { burnable = ic != null && ic.Burnable; } catch { }
+                        try { canBrew = ic != null && ic.CanBrew; } catch { }
+                        if (flt.Page == "RatCage") { try { prey = RatPreyKind(cfg); } catch { } }
+                        if (flt.Page == "DyePanel") { try { hasPig = DyePigOf(cfg) != "[]"; } catch { } }
+                        float s1v = nums.Stats[0] ?? 0;
+                        keep = RailGlistRule.Keep(flt.Page, burnable, hasPig, prey, s1v, canBrew);
+                    }
+                    if (!keep)
+                    {
+                        flt.HiddenKinds?.Add(RailGlistRule.KindKey(cfg, usesVal, usesMaxVal, attrSig));
+                        if (flt.Drop) return;
+                    }
+                }
 
                 if (rows > 0) sb.Append(',');
                 sb.Append('[').Append(id).Append(',').Append(cfg).Append(',').Append(count)
@@ -1410,70 +1603,6 @@ internal static class RailData
         return 0;
     }
 
-    // ================= 签名 / rev =================
-
-    /// <summary>白名单物品签名 + 元数据签名混合（廉价：Σ条数/Σ数量/首末 id/容器数/owner 集合）。</summary>
-    private static long ComputeSig()
-    {
-        long sig = 17;
-
-        // 元数据：容器数、owner 集合、cap、bagCap、rackOwner、bagOwner
-        var ctn = _ctn;
-        sig = sig * 31 + ctn.Count;
-        for (int i = 0; i < ctn.Count; i++)
-            sig = sig * 31 + ctn[i].OwnerId * 7 + ctn[i].Cap;
-        sig = sig * 31 + _bagCap;
-        sig = sig * 31 + (BagOnlyDyn(ActiveScene()) ? 1 : 0); // Bug1：双背包形态翻转也要重推
-        sig = sig * 31 + (BpBagDyn() ? 1 : 0); // v13.9：A 侧背包/取用单柜翻转也要重推（按钮对装配判据）
-        sig = sig * 31 + _bagOwner;
-        sig = sig * 31 + RackOwnerOf();
-        string ap = ActivePage();
-        sig = sig * 31 + (ap != null ? ap.GetHashCode() : 0);
-
-        // 物品：逐白名单 owner 的条数/Σcount/首末 id
-        var world = LogicWorld();
-        var oc = world?._ItemManager?.OwnerCache;
-        if (oc != null)
-        {
-            sig = SigOwner(oc, _bagOwner, sig);
-            for (int i = 0; i < ctn.Count; i++)
-                sig = SigOwner(oc, ctn[i].OwnerId, sig);
-        }
-        // 地面（家内掉落）：行数+Σcount+首末 id（SigOwner 同形；掉落/拾取/腐败转换触发重推）
-        sig = RailGround.SigOf(sig);
-        return sig;
-    }
-
-    // 裁定（评审 Important 2，fix round 1 停放）：SigOwner 不含 BagPos——同容器内挪动物位
-    // 不触发重推。依据：rail 渲染层不消费 x/y（按排序键平铺），当前无观察面；已记 SDD 账本。
-    // 若未来契约/渲染消费位置，在此追加 x/y 哈希项即可。
-    private static long SigOwner(
-        Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
-        long owner, long sig)
-    {
-        if (owner <= 0) return sig;
-        Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
-        try { if (!oc.TryGetValue(owner, out inner) || inner == null) return sig * 31; } catch { return sig * 31; }
-        int rows = 0; long countSum = 0, first = 0, last = 0;
-        try
-        {
-            foreach (var pair in inner)
-            {
-                var it = pair.Value;
-                if (it == null) continue;
-                long id = 0; int cnt = 0;
-                try { id = it.InstanceId; cnt = it.ItemCount; } catch { }
-                if (id <= 0) continue;
-                if (rows == 0) first = id;
-                last = id;
-                countSum += cnt;
-                rows++;
-            }
-        }
-        catch { }
-        return ((((sig * 31 + rows) * 31 + (int)(countSum & 0x7FFFFFFF)) * 31 + (int)(first & 0x7FFFFFFF)) * 31 + (int)(last & 0x7FFFFFFF));
-    }
-
     // ================= Debug.Verbose（T14 实机校准日志） =================
 
     private static string _lastJsonHead = "";
@@ -1561,7 +1690,6 @@ internal static class RailData
     private static List<CtnMeta> _ctn = new();      // RefreshMeta 5s 刷新
     private static long _bagOwner;                  // BAG_OWNER 会话缓存（findings §4 ①）
     private static int _bagCap;                     // 背包容量（格），RefreshMeta 刷新
-    private static long _lastSig = long.MinValue;   // 首包必推
     private static int _rev;
     private static volatile bool _forcePending;
     private static volatile bool _tidyFailPending;  // tidy 失败一次性标志（ReportTidyFail 置位，BuildJson 推出即清）

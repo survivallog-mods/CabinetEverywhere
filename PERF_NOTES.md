@@ -34,16 +34,18 @@
 
 | # | 事项 | 状态/方案 | 优先级 |
 |---|---|---|---|
-| P1 | **打开满载背包首帧 ~2710ms** | 初判官方 itemsJson 序列化+首渲染为主（发生在 mod 推送之前）；上轮被入库巨帧掩盖，V1.4 后复测定责——若官方为主则 mod 无法根治（600 格背包的固有成本，可选缓解：调低背包高度） | 待复测 |
+| P1 | **开/关整理页巨帧 0.5~2.7s（满载）**——**2026-11-14 定责完成：官方原生层，随物品数线性，mod 无关，不可根治** | 五轮排除法（OpenTrace v3~v7 探针+WebView CDP buffered 取样+反汇编）：✗GetMsg 序列化（1~12ms）✗SendMessageToPage/PostToWebView 发送链（≤51ms）✗GC（巨帧当帧增量 0/0/0）✗JS 渲染（全 frame buffered 长任务 ≤115ms）✗mod rail 推送（Rail 关闭 A/B 后巨帧照旧）✗C# 等待（TickLoadStallGuard 反汇编非阻塞）→ 剩 Vuplex/WebView2 原生同步（Harmony 不可达）。空背包开页流畅=成本随物品数线性。唯一剩余 mod 侧思路：页面常驻（拦 RemovePage 保活 iframe，开/关降为 Show/Hide），需评估内存与官方状态一致性 | 已定责 |
 | P2 | 丢弃残余 1~4s（几百件掉落物 3D 实体生成 2-6ms/件，V1.2 后暴露） | 可做 V1.5：丢弃表现层分帧（掉落物分批渐显） | 中 |
 | P3 | 拾取链飘字/音效（2020/14001 逐件） | 批量拾取时几百条飘字——体验项非性能主因，可并入 V1.5 静默+批末汇总 | 低 |
 | P4 | JS 侧 TradeFx MutationObserver（characterData+subtree，打字机动画期近每帧跑四渲染链） | agent B 高风险项，未修；交易页动画期掉帧时再修 | 中 |
 | P5 | JS makeBadgeLayer 三路驱动逐格读 offset 链 | 未修；角标层偶发布局抖动源 | 低 |
 | P6 | C# 内存累积（agent 审查）：ComputeSig/BuildJson 全量枚举与 130KB 大串随物品总数线性（LOH 碎片）=「越玩越卡」型；TagCtx 每 0.5s 多处无缓存重建；_namesWorld 钉住旧档整个逻辑世界 | 结构性优化项（增量签名/缓存/换档清理），非本次卡顿主因；玩家反馈"越玩越卡"时启动 | 中 |
-| P7 | 每秒 6 次 Il2CppException 来源 | 堆栈仅 interop 一帧无法定位；EndlessGuard 停用后待验证是否归零（台账 L2） | 待验证 |
+| P7 | 每秒 6 次 Il2CppException 来源 | 堆栈仅 interop 一帧无法定位；2026-11-14 二分：EndlessGuard dll 改 .disabled 后计数照旧（×64/10s）→ **已排除 EndlessGuard**，来源仍未知（其余 mod 或游戏自身）；恒定背景噪音（≈数 ms/s），非性能主因 | 低 |
 | P8 | 诊断代码拆除（PerfDiag+[PERFDIAG] 标记 22 处+5 个 A/B 开关） | 稳定运行一段时间后一次性拆除 | 收尾 |
 | P9 | 遗留台账 L1~L5（EndlessGuard 反馈/残留进程风险/R10 UI 变形复现修） | 见下方台账节 | 低 |
 | P10 | 帧预算自适应/搬运任务互斥（方案 B 并发防护） | V1.4 大窗后每帧成本回到 ~13ms，优先级降低；若并发批量操作叠加掉帧再做 | 低 |
+| P11 | **单件操作剩余地板 ~150-250ms**（V1.6 后实测 110~288ms；单丢背包>单丢柜子=批末 PushGroundDock 全量地面同步差异；单件移动=批末 SyncBothBags 整包追平一次） | 每次状态变更至少 1 次整包 DTO+推送（官方协议固有）；可见 managed 仅 20-40ms（BuildBagJson 1-13ms 已证便宜），其余为推送求值等隐形成本。**V1.7 候选：官方 O(1) 增量通道 Ac_Item_MoveBag→3017**（RA_ToOther 0x40 字节、RA_MoveBag 0x70 字节反汇编实证；约束=Data 层需 DTO，须 3002/3005 放行+只吞 3031/3027/21015 的混合方案，防 V1.2 显示不更新回归） | 中 |
+| P12 | 开页巨帧构成更新（v7.1 RA_* 钩子实测）：653ms 帧中 **RA_OpenUI 211ms + RA_UpdateItemActionMarks 206ms 可见**（物品角标 O(物品数) 重算）+RA_Sort 219ms（整理按钮）；此前"隐形原生"实为未挂钩的 RA 族 | 官方 Reducer 逻辑，mod 不可跳过；600+600 格是放大器。降格数或页面常驻（已否决）是仅有的杠杆 | 已定责 |
 
 ### 四、经验教训（本案沉淀）
 

@@ -111,6 +111,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableMoveCoalescer = Config.Bind("Perf", "EnableMoveCoalescer", true,
             "批量搬运通知合并：搬运期间暂缓界面逐件刷新（每搬一件官方会整包重建一次界面 JSON——扩容后批量搬运秒级冻结的主因），搬运结束一次性整包同步。false=回原行为。重启生效。");
         PerfDiag.Install(Config, Log); // [PERFDIAG] 临时诊断（PERF_NOTES.md 验证后删除）：独立挂载，不受 General.Enabled 影响
+        // [PERFDIAG][OpenTrace] 打开链计时探针（P1 打开巨帧定责，验证后删）——安装挪至 PerfDiagTicker
+        // 首帧：插件 Load 期挂 hook 后，其他插件 Load 期强制类初始化会经 hook 重入 cctor 递归栈溢出
         // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
         // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
         // 由原生重建清除（与 Filter 同策略，不主动清）。
@@ -288,6 +290,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 搬运通知合并（2026-11-13 方案 A·V1）：批量搬运批末整包同步——治全部存入/取出等
         // 批量搬运的秒级单帧冻结（PERF_NOTES.md 拆账：每件 3002/3005→BuildBagJson 整包重建占 65-80%）
         MoveNotifyCoalescer.Install();
+        // 变化信号（2026-11-14 数据链瘦身）：挂官方物品通知 → 脏标记（事件驱动推送，替代轮询签名）
+        ItemChangeSignal.Install();
     }
 
     /// <summary>
@@ -361,22 +365,34 @@ internal sealed class AccessTicker : MonoBehaviour
     public AccessTicker(IntPtr ptr) : base(ptr) { }
     public AccessTicker() { }
 
-    private float _slowCheck;          // 白名单 + 柜子名单重扫 + 统一容器扫描（5s 幂等）
     private float _fastCheck;          // 页签注入轮询（0.5s，仅目标界面打开时）
     private bool _listedOnce;
+    private string _lastOpenPage;      // 储物界面打开沿/切页（按需扫描触发①，数据链瘦身 §F）
 
     public void Update()
     {
         try
         {
-            // 帧尾合并补派：必须每帧最先跑（在 0.5s/5s 门闩之前）
+            // 帧尾合并补派：必须每帧最先跑（在 0.5s 门闩之前）
             RefreshCoalescer.Flush();
             // v1.8.9 Bug4 帧级快通道：官方排序/搬运改叠数 ≤1 帧检出并重推（替代 0.5s 泵量化等待，
-            // 「一键整理响应 2s+」排查修复；空闲≈零开销，重活仍在 0.5s Tick）
+            // 「一键整理响应 2s+」排查修复）；空闲≈零开销，重活仍在 0.5s Tick
             RailUi.FastPoll();
             // glist 键盘门（实机批改#5）：Dye/Heater 页激活期间 SetKeyboardEnabled+IME On
             //（搜索框可输入+中文——PlanPick 装机实证方案同款，内部 0.3s 节流）
             RailUi.GlistKeyboardTick();
+            // 按需扫描触发①（数据链瘦身 §F，原 5s 定时器退役）：储物界面关闭→打开沿/切页 →
+            // 现扫柜子名单+元数据+筛选数据。置于 TabInjector.FastPoll 之前同帧完成——首开页签
+            // 瞬帧注入与首推数据都取到新名单（新放柜子打好标签即显，零陈旧）。
+            if (CabinetEverywherePlugin.Enabled == null || CabinetEverywherePlugin.Enabled.Value)
+            {
+                string openPage = RailData.ActivePage();
+                if (!string.Equals(openPage, _lastOpenPage, StringComparison.Ordinal))
+                {
+                    _lastOpenPage = openPage;
+                    if (openPage != null && !CabinetEverywherePlugin.Rerun) SlowPass(false);
+                }
+            }
             // v1.8.9 十三批：开界面瞬帧注入柜子页签（0.5s 轮询量化是首开闪烁根源——首推只带
             // 原生背包+冰箱；每帧只查翻转，开界面那帧抢在首推序列化前注入全量；稳态零动作）
             TabInjector.FastPoll();
@@ -386,7 +402,7 @@ internal sealed class AccessTicker : MonoBehaviour
             // 交易页柜子页签补挂（回应求助路官方收集缺位，TradeTabs 头注释反汇编取证）
             TradeTabs.FastPoll();
             // TradeFx 官方刷新事件消费（实机批改二批）：Refresh postfix 置位→当帧重建推送，
-            // 官方状态落定即推——治 0.5s 轮询落在官方 DOM 半渲染瞬间的竞态
+            // 治 0.5s 轮询落在官方 DOM 半渲染瞬间的竞态
             TradeFx.FastPoll();
             Tick(Time.deltaTime);
         }
@@ -405,52 +421,20 @@ internal sealed class AccessTicker : MonoBehaviour
             return;
         }
 
-        _slowCheck += dt;
-        var slowDue = CabinetEverywherePlugin.Rerun || _slowCheck >= 5f;
-
-        if (slowDue)
+        // 按需慢通道（数据链瘦身 §F——原 5s 定时器退役）。四触发点：③ cfg 变更/首次（Rerun，
+        // 全套）+调试 dump 标志（此处）；① 开页沿（Update 内）；② 一键入库执行前（OpStoreAll）；
+        // ④ 读档（ReapplyOnBattleStart，含 BagBurden 收敛）。
+        if (CabinetEverywherePlugin.Rerun)
         {
-            _slowCheck = 0f;
-            // 1) 柜子家具名单（配置层，幂等重扫）
-            var cfgIds = CabinetCatalog.RebuildConfigIds();
-            if (cfgIds == null) return; // 配置表未就绪
+            if (!SlowPass(true)) return; // 配置表未就绪：Rerun 保留下帧重试（原 5s 通道同款语义）
             CabinetEverywherePlugin.Rerun = false;
-
-            if (!_listedOnce && CabinetEverywherePlugin.ListOnReady.Value)
-            {
-                _listedOnce = true;
-                CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 柜子名单（" + cfgIds.Count + " 条）：\n  " +
-                                                    string.Join("\n  ", CabinetCatalog.DescribeAll()));
-            }
-
-            // 1.5) 负重改写（背包 kg 调整 + 柜子负重解放，CabinetBurden 并回批）：
-            //     配置表幂等直写（Burden 为 OnInit 快照→改表读档后对已存在容器/已穿背包生效）
-            BagBurden.SlowTick();
-
-            // 2) 白名单注入（工作台/无人机交易/无人机站/粉碎机/温室）；关=对称移除本会话
-            //    注入（CraftSourceInjector.RemoveAll，幂等——含"运行中由开转关"的收敛路径）
-            if (CabinetEverywherePlugin.EnableCraftSource.Value)
-                CraftSourceInjector.Ensure(cfgIds);
-            else
-                CraftSourceInjector.RemoveAll();
-
-            // 3) 统一容器扫描（5s 只扫一遍，原直达/筛选两个 5s 扫描合一）：单遍产出
-            //    AllContainers（全容器+标签，筛选用）+ HomeInstances（柜子子集，直达注入用）
-            CabinetCatalog.RefreshHomeInstances();
-            CabinetCatalog.FlushDump();
-            RailData.FlushDyePigDump(); // 染料桶 spike：同门同节律（进档后一次性；flag 消费自复位）
-
-            // 4) 筛选：JS 注入/喂标签数据（容器枚举已并入上面的统一扫描）
-            if (CabinetEverywherePlugin.FilterEnable.Value)
-                TagFilter.Tick();
-
-            // 5) CERail 容器行/背包容量元数据（消费上面的 AllContainers；物品行走 0.5s 快通道）
-            //    终审 Minor-4：cfg [Rail] Enable=false 时跳过（回退态不再做死工作——
-            //    OpRename/OpSetTags 命令路径内的 RefreshMeta 直调不受此门影响）
-            if (RailUi.Enabled) RailData.RefreshMeta();
+        }
+        else if (CabinetCatalog.DumpRequested || RailData.DyePigDumpRequested)
+        {
+            SlowPass(false); // 调试 dump 标志：即时服务（原由 5s 周期顺带，现按需）
         }
 
-        // 页签注入（烹饪/老鼠笼/酿酒/颜料桶）：读 5s 刷新的柜子子集 HomeInstances，0.5s 轮询补挂
+        // 页签注入（烹饪/老鼠笼/酿酒/颜料桶）：读慢通道刷新的柜子子集 HomeInstances，0.5s 轮询补挂
         _fastCheck += dt;
         if (_fastCheck < 0.5f) return;
         _fastCheck = 0f;
@@ -467,10 +451,14 @@ internal sealed class AccessTicker : MonoBehaviour
         // 在 BasketGlist.Poll 首行；产出 BasketJson/Dirty 由 RailData 契约（ctx.basket）携带推出，
         // 非独立通道；须先于 RailUi.Tick（同帧 BuildJson 取到新鲜值）
         BasketGlist.Poll();
+        // 筛选通道（§F 改造）：探活注入一次+名单变化才推数据——仅储物界面打开时跑（全关零注入
+        // 零推送；原「每 5s 重注 65KB 脚本+直推」退役）
+        if (CabinetEverywherePlugin.FilterEnable.Value && RailData.AnyRailSceneActive())
+            TagFilter.Tick();
 
         // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
         // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：
-        // rev 门控在 RailUi.Tick 内（无场景/rev 未变不推），常态空转零开销
+        // 门控在 RailUi.Tick 内（无场景/未脏不推），常态空转零开销
         RailUi.Tick();
 
         // 工作台页签修剪（扫描=所见）：仅当白名单注入+筛选都开着才有意义
@@ -481,5 +469,53 @@ internal sealed class AccessTicker : MonoBehaviour
         // v1.8.7 T2 场景视图状态层对账（DroneHub/cart×3/Trade——bag×4 在 TabInjector 内联、
         // 工作台=上方 Pruner；总门 [Filter] Enable 在 TabGate.PollAll 首行，false=全显零动作）
         TabGate.PollAll();
+    }
+
+    /// <summary>按需慢通道（§F）。full=true（cfg 变更/首次）=全套：配置层柜子名单+白名单注入+
+    /// 负重改写+容器扫描+元数据+筛选数据+强制重推（视图/glist 门变了范围要重算）；false（开页沿/
+    /// 入库前/dump）=容器扫描+元数据+筛选数据。返回 false=配置表未就绪（仅 full 路径）。</summary>
+    private bool SlowPass(bool full)
+    {
+        HashSet<int> cfgIds = null;
+        if (full)
+        {
+            // 1) 柜子家具名单（配置层，幂等重扫）
+            cfgIds = CabinetCatalog.RebuildConfigIds();
+            if (cfgIds == null) return false;
+
+            if (!_listedOnce && CabinetEverywherePlugin.ListOnReady.Value)
+            {
+                _listedOnce = true;
+                CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 柜子名单（" + cfgIds.Count + " 条）：\n  " +
+                                                    string.Join("\n  ", CabinetCatalog.DescribeAll()));
+            }
+
+            // 1.5) 负重改写（背包 kg 调整 + 柜子负重解放，CabinetBurden 并回批）：
+            //     配置表幂等直写（Burden 为 OnInit 快照→改表读档后对已存在容器/已穿背包生效）
+            BagBurden.SlowTick();
+
+            // 2) 白名单注入（工作台/无人机交易/无人机站/粉碎机/温室）；关=对称移除本会话
+            //    注入（CraftSourceInjector.RemoveAll，幂等——含"运行中由开转关"的收敛路径）。
+            //    白名单是家具类型级静态集合，新柜子实例无需重注入——只在 cfg 变更/读档时跑。
+            if (CabinetEverywherePlugin.EnableCraftSource.Value)
+                CraftSourceInjector.Ensure(cfgIds);
+            else
+                CraftSourceInjector.RemoveAll();
+        }
+
+        // 3) 统一容器扫描：单遍产出 AllContainers（全容器+标签，筛选用）+ HomeInstances（柜子子集，
+        //    直达注入用）；4) 筛选数据置脏（TagFilter.Tick 在界面开着时推）；5) 容器行/背包容量元数据
+        //    （cfg [Rail] Enable=false 时跳过——OpRename/OpSetTags 命令路径内的 RefreshMeta 直调不受此门影响）
+        CabinetCatalog.RefreshHomeInstances();
+        CabinetCatalog.FlushDump();
+        RailData.FlushDyePigDump(); // 染料桶 spike：flag 消费自复位
+        if (CabinetEverywherePlugin.FilterEnable.Value)
+            TagFilter.NotifyScan();
+        if (RailUi.Enabled)
+        {
+            RailData.RefreshMeta();
+            if (full) RailData.ForceRepublish(); // cfg 视图/glist 门变更→推送范围变→强制重推一包
+        }
+        return true;
     }
 }

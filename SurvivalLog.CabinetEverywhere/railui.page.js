@@ -927,23 +927,26 @@
        留背包 = 背包现存件数。toast 走主侧栏（rail.js storeAll 同款，sb 入口亦然——
        rack 双面板两段同屏，proto 定稿如此）。全留背包（无匹配/全满/空回推）单独分支。 */
     if (x.kind === 'storeAll') {
-      var bagSt = snapOwner(store.bag);
-      var movedP = x.bag.p - bagSt.p;
-      var parts = [], hit = 0;
-      for (var s = 0; s < x.order.length; s++) {
-        var was = x.snaps[x.order[s]];
-        if (!was) continue;
-        var dp = snapOwner(x.order[s]).p - was.p;
-        if (dp <= 0) continue;
-        hit++;
-        if (parts.length < 4) { var cc = ctnById(x.order[s]); if (cc) parts.push(nm(cc) + '×' + dp); }
+      /* 数据链瘦身 §E：结果改读 C# 任务权威计数（ctx.storeAllRes=逐柜件数+留背包件数）——
+         旧的「arm 时全量柜快照+结算差量」退役（不再依赖全屋物品行）。parts=有增量柜前四
+         join ' · '，超出补「 等」；单位=件（与旧口径一致）。res 缺席（mock/异常）=收尾兜底。 */
+      var res = store.ctx && store.ctx.storeAllRes;
+      if (!res || !res.cabs) {
+        storeProgDone('入库结束');
+        storeBtnBusy(false);
+        return;
+      }
+      var movedP = 0, parts = [], hit = res.cabs.length;
+      for (var s = 0; s < res.cabs.length; s++) {
+        movedP += res.cabs[s][1];
+        if (parts.length < 4) { var cc = ctnById(res.cabs[s][0]); if (cc) parts.push(nm(cc) + '×' + res.cabs[s][1]); }
       }
       if (movedP > 0) {
         var msg = '已入库 ' + movedP + ' 件 → ' + parts.join(' · ') + (hit > 4 ? ' 等' : '');
-        if (bagSt.p) msg += '；' + bagSt.p + ' 件无匹配柜或柜已满，留在背包';
+        if (res.left > 0) msg += '；' + res.left + ' 件无匹配柜或柜已满，留在背包';
         storeProgDone(msg);
       } else {
-        storeProgDone(bagSt.p + ' 件无匹配柜或柜已满，留在背包');
+        storeProgDone(res.left + ' 件无匹配柜或柜已满，留在背包');
       }
       storeBtnBusy(false); /* 完成哨兵结算处恢复入库按钮（armStoreAll 置 busy 的对称收口） */
       return;
@@ -1010,9 +1013,8 @@
      ——官方按钮 core.UnitySendEvent 页内直发，postMessage 跨帧路由不认该 type（SORT_BACKPACK
      在官方白名单故整理可用，TAG_PUT_IN 不在）——勿再走。 */
   function armStoreAll(order) {
-    var snaps = {};
-    for (var i = 0; i < order.length; i++) snaps[order[i]] = snapOwner(order[i]);
-    XFER = { kind: 'storeAll', order: order, bag: snapOwner(store.bag), snaps: snaps, hold: true };
+    /* 数据链瘦身 §E：不再拍全量柜/背包快照——结果由 C# 任务权威计数（ctx.storeAllRes）带回 */
+    XFER = { kind: 'storeAll', hold: true };
     cmdOut('storeAll', { order: order });
     storeProgShow();
     storeBtnBusy(true);
@@ -4841,9 +4843,9 @@
         if (!gr.fuel) { hidden++; continue; }
         gr.badge = { v: ic ? (ic.burnV || 0) : 0 };
       } else if (D.badge === 'aid') {
-        /* 篮子救援 glist（basket spec §5.2）：全行可见零预设隐藏（筛选=chips 单选显式行为）；
-           分值徽章/排序键=ctx.basket.scores（glistRender 侧接线——聚合不掺场景态，契约数据
-           驱动徽章与排序在渲染层做，篮子内容变化即联动） */
+        /* 篮子救援 glist（basket spec §5.2；数据链瘦身 §D）：柜子行已由 C# 按需求状态类别
+           预筛（许愿∪危机/垂危=食物/无许愿=8 分类）——「全部」即相关类别全集；背包行全量
+           （chips 单选/分值排序照旧渲染层做）；分值徽章/排序键=ctx.basket.scores */
       } else if (D.badge === 'sat') {
         /* rat-brew（rat v2.2.7 作者令）：聚合池=猎物（含死体，prey 1|2）或有饱腹值（s1>0，
            官方页准入同口径）——**tab 过滤在渲染层**（GL_MEMO 按 rev 记忆，tab 切换不变 rev）；
@@ -5400,6 +5402,10 @@
     var p = f.doc.getElementById('srgPanel');
     if (!p || p.classList.contains('srg-gridmode')) return;
     var a = glistAggregate(f.key);
+    /* 页脚隐藏计数以 C# 回传为权威（数据链瘦身 §C：ctx.glistHidden=全 owner 被谓词滤掉的种类数，
+       含背包/当前柜将在列表态藏掉的行——与旧全量包下 JS 自算同口径；缺席（非列表页/旧 C#）回退
+       JS 自算）。**本地变量**——a 是 GL_MEMO 记忆对象，禁写（下方 rb 计数同纪律）。 */
+    var hiddenN = (store.ctx && store.ctx.glistHidden != null) ? store.ctx.glistHidden : a.hiddenCount;
     var q = (GLQ[f.key] || '').trim();
     var rows = a.rows;
     /* 染料预设单选过滤（spec §5.3）：选中色=该色任一点数>0 即命中（主色非该色但含点数也入选） */
@@ -5420,8 +5426,8 @@
         if (GLCLR[f.key] === 'mouse') { if (p2) rbPreyN2++; return p2; }
         return !p2;
       });
-      if (GLCLR[f.key] === 'mouse') { rbFoot = (poolN - rbPreyN2) + a.hiddenCount; rbPreyShown = rbPreyN2; }
-      else rbFoot = (poolN - (rows.length)) + a.hiddenCount; /* food tab 藏=池内猎物行+无饱腹聚合计 */
+      if (GLCLR[f.key] === 'mouse') { rbFoot = (poolN - rbPreyN2) + hiddenN; rbPreyShown = rbPreyN2; }
+      else rbFoot = (poolN - (rows.length)) + hiddenN; /* food tab 藏=池内猎物行+无饱腹聚合计 */
     }
     if (q) { var fr = []; for (var i = 0; i < rows.length; i++) if (rows[i].name && rows[i].name.indexOf(q) >= 0) fr.push(rows[i]); rows = fr; }
     var bkt = GLIST[f.key].badge === 'aid' ? (store.ctx && store.ctx.basket) : null; /* 禁入表（行置灰+右键拒绝） */
@@ -5450,9 +5456,9 @@
     if (a.truncated) footR = '已截断显示前 ' + GLIST_MAX_ROWS + ' 种';
     else if (f.key === 'RatCage' && GLCLR[f.key] === 'mouse' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非猎物物品';
     else if (f.key === 'RatCage' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非喂鼠食物';
-    else if (f.key === 'Heater' && a.hiddenCount > 0) footR = '非燃料 ' + a.hiddenCount + ' 种已按场景预设隐藏';
-    else if (f.key === 'BrewPanel' && a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种不可酿物品';
-    else if (a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种无色素物品';
+    else if (f.key === 'Heater' && hiddenN > 0) footR = '非燃料 ' + hiddenN + ' 种已按场景预设隐藏';
+    else if (f.key === 'BrewPanel' && hiddenN > 0) footR = '已按预设隐藏 ' + hiddenN + ' 种不可酿物品';
+    else if (hiddenN > 0) footR = '已按预设隐藏 ' + hiddenN + ' 种无色素物品';
     else footR = '';
     var chips = glistChipsHtml(f); /* 染料预设 chips（Heater 桌牌 Task 6）——进签名随选变色重渲 */
     /* v2.2.5：rat 双 tab 提示行随 tab 换右键目标——老鼠 tab=官方路由（笼位优先，满入食物仓） */
