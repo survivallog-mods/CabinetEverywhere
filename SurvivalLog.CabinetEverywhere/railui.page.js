@@ -5402,7 +5402,10 @@
     var p = f.doc.getElementById('srgPanel');
     if (!p || p.classList.contains('srg-gridmode')) return;
     var a = glistAggregate(f.key);
-    a.hiddenCount += (store.ctx && store.ctx.glistHidden) || 0; /* C# 推送前已滤的种类并入页脚计数（数据链瘦身 §C） */
+    /* 页脚隐藏计数以 C# 回传为权威（数据链瘦身 §C：ctx.glistHidden=全 owner 被谓词滤掉的种类数，
+       含背包/当前柜将在列表态藏掉的行——与旧全量包下 JS 自算同口径；缺席（非列表页/旧 C#）回退
+       JS 自算）。**本地变量**——a 是 GL_MEMO 记忆对象，禁写（下方 rb 计数同纪律）。 */
+    var hiddenN = (store.ctx && store.ctx.glistHidden != null) ? store.ctx.glistHidden : a.hiddenCount;
     var q = (GLQ[f.key] || '').trim();
     var rows = a.rows;
     /* 染料预设单选过滤（spec §5.3）：选中色=该色任一点数>0 即命中（主色非该色但含点数也入选） */
@@ -5423,8 +5426,8 @@
         if (GLCLR[f.key] === 'mouse') { if (p2) rbPreyN2++; return p2; }
         return !p2;
       });
-      if (GLCLR[f.key] === 'mouse') { rbFoot = (poolN - rbPreyN2) + a.hiddenCount; rbPreyShown = rbPreyN2; }
-      else rbFoot = (poolN - (rows.length)) + a.hiddenCount; /* food tab 藏=池内猎物行+无饱腹聚合计 */
+      if (GLCLR[f.key] === 'mouse') { rbFoot = (poolN - rbPreyN2) + hiddenN; rbPreyShown = rbPreyN2; }
+      else rbFoot = (poolN - (rows.length)) + hiddenN; /* food tab 藏=池内猎物行+无饱腹聚合计 */
     }
     if (q) { var fr = []; for (var i = 0; i < rows.length; i++) if (rows[i].name && rows[i].name.indexOf(q) >= 0) fr.push(rows[i]); rows = fr; }
     var bkt = GLIST[f.key].badge === 'aid' ? (store.ctx && store.ctx.basket) : null; /* 禁入表（行置灰+右键拒绝） */
@@ -5453,9 +5456,9 @@
     if (a.truncated) footR = '已截断显示前 ' + GLIST_MAX_ROWS + ' 种';
     else if (f.key === 'RatCage' && GLCLR[f.key] === 'mouse' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非猎物物品';
     else if (f.key === 'RatCage' && rbFoot > 0) footR = '已按预设隐藏 ' + rbFoot + ' 种非喂鼠食物';
-    else if (f.key === 'Heater' && a.hiddenCount > 0) footR = '非燃料 ' + a.hiddenCount + ' 种已按场景预设隐藏';
-    else if (f.key === 'BrewPanel' && a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种不可酿物品';
-    else if (a.hiddenCount > 0) footR = '已按预设隐藏 ' + a.hiddenCount + ' 种无色素物品';
+    else if (f.key === 'Heater' && hiddenN > 0) footR = '非燃料 ' + hiddenN + ' 种已按场景预设隐藏';
+    else if (f.key === 'BrewPanel' && hiddenN > 0) footR = '已按预设隐藏 ' + hiddenN + ' 种不可酿物品';
+    else if (hiddenN > 0) footR = '已按预设隐藏 ' + hiddenN + ' 种无色素物品';
     else footR = '';
     var chips = glistChipsHtml(f); /* 染料预设 chips（Heater 桌牌 Task 6）——进签名随选变色重渲 */
     /* v2.2.5：rat 双 tab 提示行随 tab 换右键目标——老鼠 tab=官方路由（笼位优先，满入食物仓） */

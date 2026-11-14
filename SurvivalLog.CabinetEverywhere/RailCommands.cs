@@ -1081,7 +1081,6 @@ internal static class RailCommands
         public Il2CppSystem.Collections.Generic.List<long> Batch;
         public int MovedStacks, MovedTotal, LeftStacks, TotalStacks, Calls, MatchCalls, Steps;
         public Dictionary<int, long> CabPieces = new(); // 逐柜吸收件数（下标=Cabs 序）——ctx.storeAllRes（数据链瘦身 §E）
-        public long LeftPieces;                          // 终局留背包件数（LeftStacks 是叠数，文案口径=件）
         public long TSnap; public System.Diagnostics.Stopwatch Sw;
     }
     private static StoreAllTask _storeTask;
@@ -1090,12 +1089,24 @@ internal static class RailCommands
     /// 防每帧搬运各触发一次 136KB BuildJson+下发——完成时收尾一次性推）。</summary>
     internal static bool StoreTaskActive => _storeTask != null;
     /// <summary>ctx.storeAllRes 载荷：逐柜 (OwnerId, 吸收件数)（零件柜由 RailStoreRes 滤掉，
-    /// 序=Cabs 序=JS order 序——差量 toast 前四柜文案口径不变）。</summary>
+    /// 序=Cabs 序=JS order 序——差量 toast 前四柜文案口径不变）。留背包=**收尾时背包实存件数**
+    /// （旧 JS 结算同口径：部分吸收的余量/配置查无/中止未搬的全在内——只读背包自身字典）。</summary>
     private static string StoreAllResJson(StoreAllTask t)
     {
         var arr = new (long, long)[t.Cabs.Count];
         for (int i = 0; i < t.Cabs.Count; i++) arr[i] = (t.Cabs[i].OwnerId, t.CabPieces.GetValueOrDefault(i));
-        return RailStoreRes.Build(arr, t.LeftPieces);
+        long left = 0;
+        try
+        {
+            var inner = OwnerItems(t.Im, t.Bag);
+            if (inner != null)
+                foreach (var pair in inner)
+                {
+                    try { left += pair.Value?.ItemCount ?? 0; } catch { }
+                }
+        }
+        catch { }
+        return RailStoreRes.Build(arr, left);
     }
 
     /// <summary>中止入库任务（storeAbort 命令=玩家 ✕ 关弹窗；OnWorldRebind 换档同口）：
@@ -1275,7 +1286,7 @@ internal static class RailCommands
                 if (p.next < 0) continue;
                 int j = p.next;
                 while (j < t.Cabs.Count && !MatchCab(t.CabRules, t.CabEmpty, t.CabSaturated, j, p.ic, p.days, ref t.MatchCalls)) j++; // §4.7：官方判定（含饱和跳过）
-                if (j >= t.Cabs.Count) { p.next = -1; t.Pending[k] = p; t.LeftStacks++; t.LeftPieces += p.cnt; continue; } // 无匹配柜：终局留背包
+                if (j >= t.Cabs.Count) { p.next = -1; t.Pending[k] = p; t.LeftStacks++; continue; } // 无匹配柜：终局留背包
                 if (!buckets.TryGetValue(j, out var g)) { g = new List<int>(); buckets[j] = g; }
                 g.Add(k); gathered++; lastK = k;
             }

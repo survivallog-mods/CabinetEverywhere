@@ -31,9 +31,11 @@ internal static class TagFilter
     }
 
     // ---- 探活注入状态机（§F，RailUi.InjectBootstrap 同款）----
+    // 不做 WebView 引用判等：GetWebView() 每次属性访问都产生新的 interop 包装实例，
+    // ReferenceEquals 恒 false（RailUi.InjectBootstrap 头注释 v1.8.1 实机铁证）——重建/重载
+    // 检测纯靠探针 absent 回包驱动。
     private static bool _alive;          // __SLTF__ 存活（本 WebView 生命周期内）
     private static int _probeState;      // 0=等回包/未知 1=最近一探明确 absent（许可注入一剂）
-    private static Vuplex.WebView.IWebView _lastWeb; // 实例引用变更=WebView 重建→复位重注
     private static Il2CppSystem.Action<string> _probeCb, _ackCb;
     private static string _lastJson;     // 上次成功推送的数据（同串免重推）
     private static bool _dataDirty;      // 扫描沿置位（NotifyScan）；探活确认沿也置位（补推一包）
@@ -63,13 +65,6 @@ internal static class TagFilter
         if (web == null) return;
         try
         {
-            if (!ReferenceEquals(web, _lastWeb))
-            {
-                _lastWeb = web;
-                _alive = false;
-                _probeState = 0;
-                _dataDirty = true; // 新 WebView：确认存活后要补一包
-            }
             if (_probeCb == null)
                 _probeCb = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
                     new Action<string>(r =>
