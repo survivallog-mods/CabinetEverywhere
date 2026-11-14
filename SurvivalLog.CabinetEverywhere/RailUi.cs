@@ -337,6 +337,7 @@ internal static class RailUi
         try { CabinetCatalog.RebuildConfigIds(); } catch { } // 配置层名单幂等重扫（未就绪=SizeEnginePoll 内部自判）
         try { CabinetCatalog.RefreshHomeInstances(); } catch { } // 家具未建时扫空无害（后续 prefix/慢通道补）
         SizeEnginePoll();
+        try { BagBurden.SlowTick(); } catch { } // 数据链瘦身 §F：负重读档收敛链（原 5s 事后收敛退役）
     }
 
     /// <summary>守卫告警节流（60s）：官方异步洗表若持续，防每帧刷屏。</summary>

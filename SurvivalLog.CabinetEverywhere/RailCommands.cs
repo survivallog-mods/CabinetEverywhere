@@ -1137,6 +1137,9 @@ internal static class RailCommands
         var im = RailData.ItemMgr();
         if (im == null) { Bail("storeAll:noim", "storeAll 丢弃：ItemManager 不可得", "无 ItemManager，弹窗哨兵收口"); return; }
 
+        // 按需扫描触发②（数据链瘦身 §F）：执行前现扫柜子名单+元数据——路由用最新白名单/标签/容量
+        try { CabinetCatalog.RefreshHomeInstances(); RailData.RefreshMeta(); } catch { }
+
         var cabs = new List<CabinetCatalog.ContainerInst>();
         var cabRules = new List<Il2CppSystem.Collections.Generic.IReadOnlyList<int>>();
         var cabEmpty = new List<bool>();

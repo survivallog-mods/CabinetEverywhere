@@ -9,14 +9,14 @@ namespace SurvivalLog.CabinetEverywhere;
 /// <summary>
 /// 筛选通道：读容器标签（CabinetCatalog.AllContainers 统一容器扫描）+ 标签库（Config_FurnitureTag），经
 /// WebUILayer.canvasWebViewPrefab.WebView（Vuplex IWebView）ExecuteJavaScript 注入引导脚本并喂标签数据。
-/// 引导脚本每周期幂等重注（WebView 崩溃恢复重建后自动重挂），数据每周期直推（体量极小，
-/// 免维护"注入先后"时序）。JS 侧截读消息、按视图/标签隐藏 DOM，A/D 步进到被藏柜子时以
-/// 页面同款事件伪造切换（不改任何下发的 tabs 数组/下标；全貌见 DESIGN.md 附录 A/C）。
+/// 数据链瘦身 §F（2026-11-14）：注入改探活状态机（RailUi.InjectBootstrap 同款——探针确认存活后零注入，
+/// WebView 重建自动重注），数据仅在「储物界面开着 && 扫描沿置脏」时推（AccessTicker 慢通道调 NotifyScan）；
+/// 全部走带回调重载（单参重载本机静默丢弃，RailUi 实机铁证）。JS 侧截读消息、按视图/标签隐藏 DOM，
+/// A/D 步进到被藏柜子时以页面同款事件伪造切换（不改任何下发的 tabs 数组/下标；全貌见 DESIGN.md 附录 A/C）。
 /// </summary>
 internal static class TagFilter
 {
     private static readonly HashSet<string> Warned = new();
-    private static bool _probeDone;
     private static bool _containerLogged;
 
     private static string _bootstrap;
@@ -30,6 +30,20 @@ internal static class TagFilter
         return r.ReadToEnd();
     }
 
+    // ---- 探活注入状态机（§F，RailUi.InjectBootstrap 同款）----
+    private static bool _alive;          // __SLTF__ 存活（本 WebView 生命周期内）
+    private static int _probeState;      // 0=等回包/未知 1=最近一探明确 absent（许可注入一剂）
+    private static Vuplex.WebView.IWebView _lastWeb; // 实例引用变更=WebView 重建→复位重注
+    private static Il2CppSystem.Action<string> _probeCb, _ackCb;
+    private static string _lastJson;     // 上次成功推送的数据（同串免重推）
+    private static bool _dataDirty;      // 扫描沿置位（NotifyScan）；探活确认沿也置位（补推一包）
+
+    /// <summary>名单/标签数据可能变了（AccessTicker 慢通道各触发点调用）——下一 Tick（界面开着时）重推。</summary>
+    internal static void NotifyScan() => _dataDirty = true;
+
+    /// <summary>0.5s 节拍（仅储物界面打开时由 AccessTicker 调——全关零注入零推送）。
+    /// 每周期一发几十字节探针；已确认存活且数据没变=纯探针维护；absent→注入一剂 bootstrap
+    /// （脚本顶部 if(window.__SLTF__)return 幂等）；存活确认沿→强制补推一包数据。</summary>
     internal static void Tick()
     {
         // General.Enabled 停用门（2026-10-24）：false=不再注入筛选 JS/不再喂标签数据（=不藏 UI）；
@@ -49,16 +63,50 @@ internal static class TagFilter
         if (web == null) return;
         try
         {
-            if (!PerfDiag.R8Off) web.ExecuteJavaScript(BootstrapJs); // [PERFDIAG] R8 A/B：true=停每 5s 全量 JS 重注
-            var json = BuildDataJson();
-            if (json != null)
-                web.ExecuteJavaScript("window.__SLTF__&&window.__SLTF__.setData(" + json + ")");
-            if (!_probeDone)
+            if (!ReferenceEquals(web, _lastWeb))
             {
-                _probeDone = true;
-                Probe(web);
+                _lastWeb = web;
+                _alive = false;
+                _probeState = 0;
+                _dataDirty = true; // 新 WebView：确认存活后要补一包
             }
-
+            if (_probeCb == null)
+                _probeCb = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
+                    new Action<string>(r =>
+                    {
+                        if (r == "1")
+                        {
+                            if (!_alive)
+                            {
+                                _alive = true;
+                                _probeState = 0;
+                                _dataDirty = true; // 注入成功沿：补推一包（JS 新实例空数据）
+                            }
+                        }
+                        else
+                        {
+                            _alive = false;  // WebView 重建/页面重载：复位待重注
+                            _probeState = 1; // 明确 absent：许可下一 Tick 注入一剂
+                        }
+                    }));
+            if (_ackCb == null)
+                _ackCb = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(new Action<string>(_ => { }));
+            web.ExecuteJavaScript("(function(){try{return window.__SLTF__?1:0}catch(e){return 0}})()", _probeCb);
+            if (_alive)
+            {
+                if (!_dataDirty) return; // 稳态：本周期只剩探针
+                _dataDirty = false;
+                var json = BuildDataJson();
+                if (json != null && json != _lastJson)
+                {
+                    _lastJson = json;
+                    web.ExecuteJavaScript("window.__SLTF__&&window.__SLTF__.setData(" + json + ")", _ackCb);
+                }
+                return;
+            }
+            if (_probeState != 1) return; // 探针回包未到/未明确 absent：不盲目重注
+            _probeState = 0;
+            web.ExecuteJavaScript(BootstrapJs, _ackCb); // 带回调重载（§F：单参静默丢弃铁证）
         }
         catch (Exception e)
         {
@@ -78,31 +126,6 @@ internal static class TagFilter
             return prefab?.WebView;
         }
         catch { return null; }
-    }
-
-    private static void Probe(Vuplex.WebView.IWebView web)
-    {
-        var js = "(function(){try{var f=document.querySelector('#iframe-container iframe');"
-               + "if(!f)return 'NOFRAME';"
-               + "return f.contentDocument?('OK '+f.contentDocument.location.pathname):'NULLDOC'}"
-               + "catch(e){return 'XORIGIN:'+e.name}})()";
-        try
-        {
-            var cb = DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
-                new Action<string>(r =>
-                {
-                    var ok = r != null && r.StartsWith("OK", StringComparison.Ordinal);
-                    CabinetEverywherePlugin.Log.LogInfo(
-                        "[CabinetEverywhere.筛选] 同源探针: " + r +
-                        (ok ? "" : "（非 OK：Root↔iframe 无 DOM 通道，筛选不生效，需换方案）"));
-                }));
-            web.ExecuteJavaScript(js, cb);
-        }
-        catch (Exception e)
-        {
-            CabinetEverywherePlugin.Log.LogInfo(
-                "[CabinetEverywhere.筛选] 探针回调委托不可用（不影响功能，仅少了日志回读）: " + e.Message);
-        }
     }
 
     /// <summary>
