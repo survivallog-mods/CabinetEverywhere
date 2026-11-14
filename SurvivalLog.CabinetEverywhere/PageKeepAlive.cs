@@ -93,9 +93,16 @@ internal static class PageKeepAlive
         {
             var prefab = AccessTools.Field(typeof(GameCore.HotUpdate.ReduxUI.WebUILayer), "canvasWebViewPrefab")
                 ?.GetValue(layer) as UnityEngine.Object;
-            return prefab != null ? prefab.GetInstanceID() : 0;
+            if (prefab != null)
+            {
+                var id = prefab.GetInstanceID();
+                if (id != 0) return id;
+            }
         }
-        catch { return 0; }
+        catch { }
+        // 追踪实锤：探测失败返回 0 → 前置静默早退（既不缓存也无日志=上一版零效果根因）。
+        // 探不到=恒同世界（1）：换档失效由 OnWorldRebind 弃缓存兜底（存档重读必经）。
+        return 1;
     }
 
     // ---- 临时追踪（v3 实测两钩子零触发：实参与假定不符——打出真实 pageId/uiType 后移除） ----
@@ -129,7 +136,7 @@ internal static class PageKeepAlive
         }
     }
 
-    private static void FinRemovePage()
+    private static void FinRemovePage(Exception __exception)
     {
         if (!_suppressRootMsg) return;   // 非 Backpack 或异常路径：无窗
         _suppressRootMsg = false;
