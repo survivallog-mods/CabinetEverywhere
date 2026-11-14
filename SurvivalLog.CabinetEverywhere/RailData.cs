@@ -307,9 +307,50 @@ internal static class RailData
     {
         long bag = _bagOwner > 0 ? _bagOwner : ResolveBagOwner(null);
         bool fullHouse = sc != null && (sc.Page == "GreenhouseBuild"
-            || (sc.Page == "BackpackUI" && BasketGlist.BasketOn));
+            || GlistOnOf(sc.Page)                       // 五列表页：全屋按页筛后的子集（spec §C）
+            || (sc.Page == "BackpackUI" && BasketGlist.BasketOn)); // 吊栏窗：全屋按需求类别筛（spec §D）
         long cur = CurrentOwnerOf(sc);
         RailScope.Compose(bag, cur, _ctnOwnerIds, false, fullHouse, fill);
+    }
+
+    /// <summary>行筛选上下文（spec §C/§D）：五列表页按页谓词、吊栏按需求类别；Drop=true 滤掉不输出，
+    /// Drop=false（背包/当前柜）仅计数（行全量输出——格子态网格/排序角标/右键取物回查都要）；
+    /// HiddenKinds=「已隐藏 N 种」计数（跨 owner 共享，含 Drop=false 将被 JS 列表态藏掉的行）。</summary>
+    internal sealed class RowFilterCtx
+    {
+        public string Page;                 // 五页场景键，或 "basket"
+        public HashSet<int> BasketCats;     // basket：允许类别集（null=非 basket）
+        public bool Drop;
+        public HashSet<string> HiddenKinds;
+    }
+
+    /// <summary>五列表页 glistOn（与 BuildJson ctx.glistOn 同源同值：RatCage/BrewPanel 零配置键恒开）。</summary>
+    private static bool GlistOnOf(string page)
+    {
+        switch (page)
+        {
+            case "RatCage":
+            case "BrewPanel": return true;
+            case "DyePanel": return CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false;
+            case "Heater": return CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false;
+            case "FuelGenerator": return CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false;
+            default: return false;
+        }
+    }
+
+    private static RowFilterCtx BuildRowFilter(SceneDef sc, HashSet<string> hiddenKinds)
+    {
+        if (sc?.Page == null) return null;
+        if (sc.Page == "BackpackUI" && BasketGlist.BasketOn)
+            return new RowFilterCtx
+            {
+                Page = "basket",
+                BasketCats = new HashSet<int>(RailGlistRule.BasketAllowedCats(BasketGlist.Mode, BasketGlist.WishCats, BasketGlist.CrisisCat)),
+                HiddenKinds = hiddenKinds,
+            };
+        if (GlistOnOf(sc.Page))
+            return new RowFilterCtx { Page = sc.Page, HiddenKinds = hiddenKinds };
+        return null;
     }
 
     /// <summary>
@@ -690,6 +731,9 @@ internal static class RailData
         // 拼 icfg 段，再拼 items 段（第二遍）。同一次 BuildJson 内主线程无让出，
         // 两遍之间 OwnerCache 不会变化。
         var ownerIds = ScopeOwnersOf(sc); // 按页范围（spec §B）——ctn 元数据段仍全量（入库路由/页签名/白名单校验）
+        var hiddenKinds = new HashSet<string>();
+        var flt = BuildRowFilter(sc, hiddenKinds);
+        long curOwner = CurrentOwnerOf(sc);
 
         // 第一遍：收集 cfgId（浅走：只读 ItemConfigId）
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);
@@ -717,12 +761,14 @@ internal static class RailData
         bool tradeScene = sc?.Page == "Trade";
         sb.Append(",\"items\":{");
         sb.Append("\"bag\":");
-        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict, nowHours, tradeScene);
+        if (flt != null) flt.Drop = false; // 背包行全量（右键取物回查/格子态网格）
+        int n = AppendOwnerItems(sb, oc, bagOwner, itemDict, nowHours, tradeScene, flt);
         itemRows += n;
         for (int i = 0; i < ownerIds.Count; i++)
         {
             sb.Append(",\"").Append(ownerIds[i]).Append("\":");
-            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene);
+            if (flt != null) flt.Drop = ownerIds[i] != curOwner; // 当前柜全量（格子态网格/排序角标）
+            n = AppendOwnerItems(sb, oc, ownerIds[i], itemDict, nowHours, tradeScene, flt);
             itemRows += n;
         }
         // 地面段（虚拟键 RailGround.OwnerId；行 id=ItemData.InstanceId——idetail/词条同源，
@@ -734,6 +780,10 @@ internal static class RailData
             itemRows += n;
         }
         sb.Append('}');
+        // 页脚「已隐藏 N 种」：C# 推送前滤掉+当前柜/背包将被 JS 藏掉的行，按种计数随包回传
+        // （吊栏无页脚计数——篮子行为「全部可见」，类别预筛即全部内容）。
+        if (flt != null && flt.BasketCats == null)
+            sb.Append(",\"glistHidden\":").Append(hiddenKinds.Count);
         sb.Append('}');
 
         _forcePending = false;
@@ -1032,7 +1082,7 @@ internal static class RailData
         Il2CppSystem.Collections.Generic.Dictionary<long, Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData>> oc,
         long owner,
         Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
-        float nowHours, bool tradeScene)
+        float nowHours, bool tradeScene, RowFilterCtx flt)
     {
         Il2CppSystem.Collections.Generic.Dictionary<long, GameCore.HotUpdate.Battle.Logic.ItemData> inner = null;
         try { if (!oc.TryGetValue(owner, out inner) || inner == null) { sb.Append("[]"); return 0; } } catch { sb.Append("[]"); return 0; }
@@ -1047,7 +1097,7 @@ internal static class RailData
                 if (it == null) continue;
                 int x = 0, y = 0;
                 try { x = it.BagPos.x; y = it.BagPos.y; } catch { }
-                AppendItemRow(sb, it, x, y, itemDict, nowHours, tradeScene, ref rows);
+                AppendItemRow(sb, it, x, y, itemDict, nowHours, tradeScene, ref rows, flt);
             }
         }
         catch { }
@@ -1065,7 +1115,7 @@ internal static class RailData
     internal static void AppendItemRow(
         StringBuilder sb, GameCore.HotUpdate.Battle.Logic.ItemData it, int x, int y,
         Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict,
-        float nowHours, bool tradeScene, ref int rows)
+        float nowHours, bool tradeScene, ref int rows, RowFilterCtx flt)
     {
         try
         {
@@ -1108,6 +1158,35 @@ internal static class RailData
                 // 徽章（item-use 方案镜像）；null=无该维度（材料/燃料等同名即并）。
                 int? usesVal = null, usesMaxVal = null;
                 try { var um = it.MaxUseTimes; if (um > 0) { usesVal = Math.Max(1, it.UseTimes); usesMaxVal = um; } } catch { }
+
+                // 列表页/吊栏行筛选（spec §C/§D）：Drop=true 的 owner 滤掉不输出（行未落笔 rows 不变）；
+                // Drop=false（背包/当前柜）仅计 HiddenKinds——行照常输出，列表态由 JS 按同谓词藏。
+                if (flt != null)
+                {
+                    bool keep;
+                    if (flt.BasketCats != null)
+                    {
+                        int cat = 0;
+                        try { cat = ic?.Category ?? 0; } catch { }
+                        keep = flt.BasketCats.Contains(cat);
+                    }
+                    else
+                    {
+                        bool burnable = false, canBrew = false, hasPig = false;
+                        int prey = 0;
+                        try { burnable = ic != null && ic.Burnable; } catch { }
+                        try { canBrew = ic != null && ic.CanBrew; } catch { }
+                        if (flt.Page == "RatCage") { try { prey = RatPreyKind(cfg); } catch { } }
+                        if (flt.Page == "DyePanel") { try { hasPig = DyePigOf(cfg) != "[]"; } catch { } }
+                        float s1v = nums.Stats[0] ?? 0;
+                        keep = RailGlistRule.Keep(flt.Page, burnable, hasPig, prey, s1v, canBrew);
+                    }
+                    if (!keep)
+                    {
+                        flt.HiddenKinds?.Add(RailGlistRule.KindKey(cfg, usesVal, usesMaxVal, attrSig));
+                        if (flt.Drop) return;
+                    }
+                }
 
                 if (rows > 0) sb.Append(',');
                 sb.Append('[').Append(id).Append(',').Append(cfg).Append(',').Append(count)

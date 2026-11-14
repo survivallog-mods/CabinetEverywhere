@@ -33,6 +33,12 @@ internal static class BasketGlist
 
     internal static bool Disabled;
 
+    /// <summary>吊栏需求三态与类别（RailData.BuildRowFilter 消费——吊栏窗柜子行按需求类别预筛）。
+    /// 窗关（BasketOn=false）时 Mode 置 null。</summary>
+    internal static string Mode;
+    internal static int[] WishCats = Array.Empty<int>();
+    internal static int CrisisCat;
+
     private static string _lastSig;
     private static bool _wasLive;
     private static long _warnOwnerId;           // SelfCheck 告警按窗去重
@@ -58,6 +64,7 @@ internal static class BasketGlist
                     _wasLive = false;
                     BasketOn = false;
                     BasketJson = null;
+                    Mode = null; // 行筛选随窗关退役（BuildRowFilter 判 BasketOn 兜底）
                     Dirty = true; // 关窗沿：让契约再推一包（glistOn=false）拆装对称
                 }
                 return;
@@ -136,6 +143,17 @@ internal static class BasketGlist
         try { wishCount = snap.wishCats?.Count ?? 0; } catch { }
         bool dying = snap.dying, pending = snap.wishPending;
         var model = new BktModel { Mode = BasketAid.ModeOf(dying, pending, wishCount) };
+
+        // 行筛选消费的三态/类别快照（RailData.BuildRowFilter）
+        Mode = model.Mode;
+        try
+        {
+            var cats = new int[wishCount];
+            for (int i = 0; i < wishCount; i++) cats[i] = snap.wishCats[i];
+            WishCats = cats;
+        }
+        catch { WishCats = Array.Empty<int>(); }
+        CrisisCat = snap.crisisActive && snap.crisisCat > 0 ? snap.crisisCat : 0;
 
         // ---- chips ----
         if (model.Mode == "wish")

@@ -136,7 +136,7 @@ internal static class RailGround
             if (w <= 0) w = 1;
             if (h <= 0) h = 1;
             if (col + w > colWidth) { col = 0; row++; } // 换行（伪布局，渲染层不消费）
-            RailData.AppendItemRow(sb, it, col, row, itemDict, nowHours, tradeScene, ref rows);
+            RailData.AppendItemRow(sb, it, col, row, itemDict, nowHours, tradeScene, ref rows, null); // 地面行不参与列表页筛选（量小，JS 端照旧按谓词藏）
             col += w;
         }
         sb.Append(']');

@@ -4841,9 +4841,9 @@
         if (!gr.fuel) { hidden++; continue; }
         gr.badge = { v: ic ? (ic.burnV || 0) : 0 };
       } else if (D.badge === 'aid') {
-        /* 篮子救援 glist（basket spec §5.2）：全行可见零预设隐藏（筛选=chips 单选显式行为）；
-           分值徽章/排序键=ctx.basket.scores（glistRender 侧接线——聚合不掺场景态，契约数据
-           驱动徽章与排序在渲染层做，篮子内容变化即联动） */
+        /* 篮子救援 glist（basket spec §5.2；数据链瘦身 §D）：柜子行已由 C# 按需求状态类别
+           预筛（许愿∪危机/垂危=食物/无许愿=8 分类）——「全部」即相关类别全集；背包行全量
+           （chips 单选/分值排序照旧渲染层做）；分值徽章/排序键=ctx.basket.scores */
       } else if (D.badge === 'sat') {
         /* rat-brew（rat v2.2.7 作者令）：聚合池=猎物（含死体，prey 1|2）或有饱腹值（s1>0，
            官方页准入同口径）——**tab 过滤在渲染层**（GL_MEMO 按 rev 记忆，tab 切换不变 rev）；
@@ -5400,6 +5400,7 @@
     var p = f.doc.getElementById('srgPanel');
     if (!p || p.classList.contains('srg-gridmode')) return;
     var a = glistAggregate(f.key);
+    a.hiddenCount += (store.ctx && store.ctx.glistHidden) || 0; /* C# 推送前已滤的种类并入页脚计数（数据链瘦身 §C） */
     var q = (GLQ[f.key] || '').trim();
     var rows = a.rows;
     /* 染料预设单选过滤（spec §5.3）：选中色=该色任一点数>0 即命中（主色非该色但含点数也入选） */

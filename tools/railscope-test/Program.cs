@@ -74,5 +74,36 @@ bool Seq(List<long> a, params long[] e) { return a.Count == e.Length && Enumerab
     Ok(Seq(Fill(100, 5, new long[] { 100, 5, 7, 5 }, true, true), 100, 5, 7), "s07_全量含重复与背包重叠去重");
 }
 
+// ---- 五列表页/吊栏行筛选 RailGlistRule（Task 3）----
+{
+    Ok(RailGlistRule.Keep("Heater", true, false, 0, 0f, false), "g01_暖炉可燃物保留");
+    Ok(!RailGlistRule.Keep("Heater", false, true, 2, 99f, true), "g02_暖炉非可燃滤掉（其余维度无关）");
+    Ok(RailGlistRule.Keep("FuelGenerator", true, false, 0, 0f, false), "g03_发电机同暖炉口径");
+    Ok(RailGlistRule.Keep("DyePanel", false, true, 0, 0f, false), "g04_染料桶有色素保留");
+    Ok(!RailGlistRule.Keep("DyePanel", true, false, 1, 50f, true), "g05_染料桶无色素滤掉");
+    Ok(RailGlistRule.Keep("RatCage", false, false, 1, 0f, false), "g06_老鼠笼活体猎物保留");
+    Ok(RailGlistRule.Keep("RatCage", false, false, 2, 0f, false), "g07_老鼠笼死体猎物保留");
+    Ok(RailGlistRule.Keep("RatCage", false, false, 0, 12.5f, false), "g08_老鼠笼有饱腹食物保留");
+    Ok(!RailGlistRule.Keep("RatCage", false, false, 0, 0f, false), "g09_老鼠笼无饱腹非猎物滤掉");
+    Ok(RailGlistRule.Keep("BrewPanel", false, false, 0, 30f, true), "g10_酿酒桶可酿且有值保留");
+    Ok(!RailGlistRule.Keep("BrewPanel", false, false, 0, 30f, false), "g11_酿酒桶不可酿滤掉");
+    Ok(!RailGlistRule.Keep("BrewPanel", false, false, 0, 0f, true), "g12_酿酒桶可酿无值滤掉");
+    Ok(RailGlistRule.Keep("Cooking", false, false, 0, 0f, false), "g13_非列表页恒保留");
+}
+{
+    var d = RailGlistRule.BasketAllowedCats("dying", new int[] { 7, 8 }, 5);
+    Ok(d.Count == 1 && d[0] == 1, "g14_垂危=只食物(1)");
+    var w = RailGlistRule.BasketAllowedCats("wish", new int[] { 7, 7, 8 }, 5);
+    Ok(w.Count == 3 && w.Contains(7) && w.Contains(8) && w.Contains(5), "g15_许愿=许愿类∪危机类去重", string.Join(",", w));
+    var n = RailGlistRule.BasketAllowedCats("nowish", null, 9);
+    Ok(n.Count == 8 && n.Contains(1) && n.Contains(9) && n.Contains(5) && n.Contains(13) && n.Contains(2) && n.Contains(3) && n.Contains(6) && n.Contains(10), "g16_无许愿=8 固定分类", string.Join(",", n));
+    var u = RailGlistRule.BasketAllowedCats(null, null, 0);
+    Ok(u.Count == 8, "g17_模式未知按 8 分类兜底");
+}
+{
+    Ok(RailGlistRule.KindKey(42, null, null, "") == "42|u-/-|", "g18_种类键无uses");
+    Ok(RailGlistRule.KindKey(42, 3, 5, "1|2|0|0|0") == "42|u3/5|1|2|0|0|0", "g19_种类键含uses与词条");
+}
+
 Console.WriteLine($"\n{passed} passed, {failures} failed");
 return failures == 0 ? 0 : 1;
