@@ -98,10 +98,20 @@ internal static class PageKeepAlive
         catch { return 0; }
     }
 
+    // ---- 临时追踪（v3 实测两钩子零触发：实参与假定不符——打出真实 pageId/uiType 后移除） ----
+    private static int _traceLeft = 16;
+    private static void Trace(string what)
+    {
+        if (_traceLeft <= 0) return;
+        _traceLeft--;
+        try { CabinetEverywherePlugin.Log.LogInfo("[CE.页面常驻][追踪] " + what); } catch { }
+    }
+
     // ---- 关：先隐藏保留，再放行官方销毁簿记（压掉其销毁 Root 消息） ----
 
     private static bool PreRemovePage(GameCore.HotUpdate.ReduxUI.WebUILayer __instance, string pageId)
     {
+        Trace("RemovePage pageId=[" + pageId + "]");
         if (pageId != PageId) return true;
         try
         {
@@ -135,6 +145,7 @@ internal static class PageKeepAlive
     {
         try
         {
+            Trace("LoadPage uiType=" + (uiType == null ? "null" : (uiType.FullName ?? ("?:" + uiType.Name))));
             if (!_cached || uiType == null || uiType.Name != "WebUI_BackpackUI") return true;
             if (WorldIdOf(__instance) != _worldId)
             {
