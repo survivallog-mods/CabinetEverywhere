@@ -401,7 +401,7 @@ internal static class RailUi
         try { RailData.RefreshActivePage(); } catch { }
         try
         {
-            if (RailData.ActivePage() == "BackpackUI")
+            if (RailData.ActivePageCached() == "BackpackUI")
                 GameCore.HotUpdate.ReduxUI.Ac_Item_RefreshAllBagViews.SendAction();
         }
         catch { }
@@ -453,7 +453,7 @@ internal static class RailUi
             }
 
             // 门控①：无 rail 场景不推（清 _lastPage：重开场景时视为 page 变化必推一包）
-            if (!RailData.AnyRailSceneActive()) { _lastPage = null; return; }
+            if (!RailData.AnyRailSceneActiveCached()) { _lastPage = null; return; }
 
             // drain（T7）：取走 JS 命令队列——回调只解析入队（红线1），Pump 下周期消费；
             // 积压 ≥ MaxQueued 抑流。回调创建一次复用（主帧赋值，无竞争）。
@@ -527,7 +527,7 @@ internal static class RailUi
         // JS 全量渲染×8=游戏慢动作数秒。600ms 节流把连发合并到 2-3 包（哨兵/页面切换最多迟 600ms 无感）。
         long nowMs = System.Environment.TickCount64;
         if (nowMs - _lastPushMs < 600 && _lastPushMs != 0) return -1;
-        string page = RailData.ActivePage();
+        string page = RailData.ActivePageCached();
         bool pageChanged = !string.Equals(page, _lastPage, StringComparison.Ordinal);
         if (!pageChanged && !RailData.ItemsDirty()) return -1;
 
@@ -609,7 +609,7 @@ internal static class RailUi
             // Pump 消化=端到端≈2 帧。原路径 drain@0.5s Tick + Pump@下轮 Tick=固定 0.5~1s 量化延迟）。
             // drain() 空队列=微 JS 调用零成本（ping 通道实验实证小包恒达先例）
             RailCommands.Pump();
-            if (!PerfDiag.R3Off && RailData.AnyRailSceneActive() && RailCommands.QueueDepth < RailCommands.MaxQueued) // [PERFDIAG] R3 A/B：true=停每帧 drain（保留 0.5s Tick 的 drain）
+            if (!PerfDiag.R3Off && RailData.AnyRailSceneActiveCached() && RailCommands.QueueDepth < RailCommands.MaxQueued) // [PERFDIAG] R3 A/B：true=停每帧 drain（保留 0.5s Tick 的 drain）
             {
                 var webC = GetWebView();
                 if (webC != null)
@@ -624,7 +624,7 @@ internal static class RailUi
                     catch (Exception e) { WarnOnce("drain", "drain 回调通道不可用（命令暂不能下发）: " + e.Message); }
                 }
             }
-            if (!RailData.AnyRailSceneActive()) return;
+            if (!RailData.AnyRailSceneActiveCached()) return;
             RailGround.PollFastCount(); // 地面计数沿（丢弃/拾取/腐烂）→ 脏标记
             RailData.PollCtxFast();     // 页面态沿（活动页/双背包翻转/A 侧归属/架子 owner/背包 owner）
             if (!RailData.ItemsDirty()) return;

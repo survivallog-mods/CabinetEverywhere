@@ -109,12 +109,39 @@ internal static class RailGlistRule
         return r;
     }
 
-    /// <summary>「已隐藏 N 种」种类键（JS glistItemKey 同粒度=名+uses+attrSig；C# 以 cfg 代名——
-    /// 同名异 cfg 极罕见，计一次 vs 两次的差别，页脚数字口径足够）。</summary>
-    public static string KindKey(int cfg, int? uses, int? usesMax, string attrSig)
-        => cfg + "|u" + (uses.HasValue ? uses.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")
+    /// <summary>「已隐藏 N 种」种类键（JS glistItemKey 同口径=**物品名**+uses+attrSig）。</summary>
+    public static string KindKey(string name, int? uses, int? usesMax, string attrSig)
+        => (string.IsNullOrEmpty(name) ? "?" : name)
+           + "|u" + (uses.HasValue ? uses.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")
            + "/" + (usesMax.HasValue ? usesMax.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")
            + "|" + attrSig;
+}
+
+/// <summary>
+/// 挪位忽略缓存（3002 纯挪位/纯缓变抑制）：恢复旧 SigOwner 裁定「同容器挪动物位不触发重推」——
+/// 事件驱动后 3002 携新 BagPos 必至，按 (owner,cfg,count) 三元组不变即判「纯挪位/纯缓变
+/// （timeLeft 衰减等旧签名本就不入的维度）」忽略。删除（3005）/换档（OnWorldRebind）清项。
+/// 主线程单线程；条目≈在场物品数×16B。
+/// </summary>
+internal sealed class RailMoveCache
+{
+    private readonly Dictionary<long, long> _ent = new(); // instanceId → pack(owner,cfg,count)
+
+    private static long Pack(long owner, int cfg, int count)
+        => (owner & 0xFFFF_FFFF) << 32 | (uint)(cfg & 0xFFFF) << 16 | (uint)(count & 0xFFFF);
+
+    /// <summary>true=可忽略（owner/cfg/count 与上次一致）；false=实质变化（已记入新值）。id≤0 恒 false 且不入缓存。</summary>
+    public bool NoteIgnoreable(long id, long owner, int cfg, int count)
+    {
+        if (id <= 0) return false;
+        var packed = Pack(owner, cfg, count);
+        if (_ent.TryGetValue(id, out var old) && old == packed) return true;
+        _ent[id] = packed;
+        return false;
+    }
+
+    public void Remove(long id) => _ent.Remove(id);
+    public void Clear() => _ent.Clear();
 }
 
 /// <summary>一键入库结果 JSON（spec 2026-11-14-rail-data-slim-design §E，纯逻辑）：

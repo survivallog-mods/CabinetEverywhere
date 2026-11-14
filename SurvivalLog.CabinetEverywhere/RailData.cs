@@ -90,6 +90,24 @@ internal static class RailData
 
     // ================= 公共入口 =================
 
+    /// <summary>当前是否有 rail 场景（12 页 IsUIActive 任一命中）——RailUi 推送门控第一道。
+    /// 帧级缓存版（*Cached）：同一帧内多处调用只查官方状态一次（12 次 interop）——
+    /// FastPoll/Tick/开页沿/PollCtxFast 共 4+ 个调用点，不缓存=每帧 36~48 次跨界读。</summary>
+    private static int _sceneFrame = -1;
+    private static SceneDef _sceneCached;
+    private static SceneDef ActiveSceneCached()
+    {
+        int f = UnityEngine.Time.frameCount;
+        if (f != _sceneFrame)
+        {
+            _sceneFrame = f;
+            _sceneCached = ActiveScene();
+        }
+        return _sceneCached;
+    }
+    internal static bool AnyRailSceneActiveCached() => ActiveSceneCached() != null;
+    internal static string ActivePageCached() => ActiveSceneCached()?.Page;
+
     /// <summary>当前是否有 rail 场景（12 页 IsUIActive 任一命中）——RailUi 推送门控第一道。</summary>
     internal static bool AnyRailSceneActive()
     {
@@ -105,7 +123,7 @@ internal static class RailData
     /// <summary>当前活动 rail 场景的 ctx.page 键；无场景返回 null。</summary>
     internal static string ActivePage()
     {
-        var sc = ActiveScene();
+        var sc = ActiveSceneCached();
         return sc?.Page;
     }
 
@@ -117,7 +135,7 @@ internal static class RailData
     /// </summary>
     internal static void RefreshActivePage()
     {
-        var sc = ActiveScene();
+        var sc = ActiveSceneCached();
         if (sc == null) return;
         var rus = ReduxUi();
         if (rus == null) return;
@@ -452,7 +470,7 @@ internal static class RailData
 
     internal static void PollCtxFast()
     {
-        var sc = ActiveScene();
+        var sc = ActiveSceneCached();
         if (sc == null) return;
         long cur = CurrentOwnerOf(sc);
         long sig = 17;
@@ -500,6 +518,7 @@ internal static class RailData
         _forcePending = true;
         _tidyFailPending = false;
         RailCommands.AbortStoreTask(); // 入库任务基于旧 OwnerCache 快照，换档后无意义：静默丢弃（方案 A 终案）
+        ItemChangeSignal.ResetMoveCache(); // 挪位忽略缓存按旧世界 id 记账，换档全部作废
         try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
     }
 
@@ -612,7 +631,7 @@ internal static class RailData
         var cm = BagTable.Cm();
         var itemDict = cm?._Config_Item_Dict;
 
-        var sc = ActiveScene();
+        var sc = ActiveSceneCached();
         long rackOwner = RackOwnerOf(sc);
 
         // 地面（家内掉落）快照（地面/门口袋扩展批）：一次取、ctn/items/icfg 三段共用
@@ -787,7 +806,8 @@ internal static class RailData
         if (gdrops.Count > 0)
         {
             sb.Append(",\"").Append(RailGround.OwnerId).Append("\":");
-            n = RailGround.AppendItems(sb, gdrops, itemDict, nowHours, tradeScene, RailUi.UniformWidth);
+            if (flt != null) flt.Drop = true; // 地面=非当前柜：列表页/吊栏同谓词滤（§C 补：地面参与预筛）
+            n = RailGround.AppendItems(sb, gdrops, itemDict, nowHours, tradeScene, RailUi.UniformWidth, flt);
             itemRows += n;
         }
         sb.Append('}');
@@ -1194,7 +1214,9 @@ internal static class RailData
                     }
                     if (!keep)
                     {
-                        flt.HiddenKinds?.Add(RailGlistRule.KindKey(cfg, usesVal, usesMaxVal, attrSig));
+                        var kindName = "";
+                        try { kindName = ic == null ? "" : (string.IsNullOrEmpty(ic.ItemName_Local) ? ic.ItemName : ic.ItemName_Local); } catch { }
+                        flt.HiddenKinds?.Add(RailGlistRule.KindKey(kindName, usesVal, usesMaxVal, attrSig));
                         if (flt.Drop) return;
                     }
                 }
