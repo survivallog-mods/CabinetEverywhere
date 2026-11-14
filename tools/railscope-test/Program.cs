@@ -43,5 +43,36 @@ void Ok(bool cond, string name, string detail = "")
     Ok(!s.ScopedDirty(new List<long> { 1, 2 }), "d09_范围外owner不触发");
 }
 
+// ---- 按页推送范围 RailScope.Compose（Task 2）----
+List<long> Fill(long bag, long current, long[] allCtn, bool bagOnly, bool fullHouse)
+{
+    var fill = new List<long>();
+    RailScope.Compose(bag, current, allCtn, bagOnly, fullHouse, fill);
+    return fill;
+}
+bool Seq(List<long> a, params long[] e) { return a.Count == e.Length && Enumerable.Range(0, e.Length).All(i => a[i] == e[i]); }
+
+{
+    Ok(Seq(Fill(100, 0, new long[] { 1, 2 }, true, false), 100), "s01_bagOnly只推背包");
+}
+{
+    Ok(Seq(Fill(100, 5, new long[] { 1, 2, 5 }, false, false), 100, 5), "s02_常规=背包+当前柜");
+}
+{
+    Ok(Seq(Fill(100, 5, new long[] { 5, 1, 2 }, true, true), 100, 5, 1, 2), "s03_全量=背包+全部柜去重保持序");
+}
+{
+    Ok(Seq(Fill(100, 0, new long[] { 1, 2 }, false, false), 100), "s04_当前柜未知退化为背包");
+}
+{
+    Ok(Seq(Fill(100, 100, new long[] { 1 }, false, false), 100), "s05_当前柜=背包去重");
+}
+{
+    Ok(Seq(Fill(0, 5, new long[] { 5, 1 }, false, false), 5), "s06_背包owner未知仍带当前柜");
+}
+{
+    Ok(Seq(Fill(100, 5, new long[] { 100, 5, 7, 5 }, true, true), 100, 5, 7), "s07_全量含重复与背包重叠去重");
+}
+
 Console.WriteLine($"\n{passed} passed, {failures} failed");
 return failures == 0 ? 0 : 1;

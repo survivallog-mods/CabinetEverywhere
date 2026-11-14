@@ -218,6 +218,100 @@ internal static class RailData
         catch { return 0; }
     }
 
+    // ================= 按页推送范围（spec 2026-11-14-rail-data-slim-design §B） =================
+
+    /// <summary>当前容器 owner（页面 Redux 状态直读，0=未知）：BackpackUI 双背包=OwnerId_B /
+    /// 取用单柜=OwnerId_A（白名单校验，BpBagDyn 同款——B 键单背包 A 侧=背包 → 0）；
+    /// 机器页=各 State_Web_*.BagOwnerId / cart 三页=CartOwnerId（RP .Value，TradeUI 裸 long）；
+    /// MaterialRack=RackOwnerOf。官方切页签该字段随之翻——PollCtxFast 帧级跟随触发重推。
+    /// 注意与 ResolveBagOwner 的 CtnGuard 相反：这里柜 id 是**合法值**（当前柜本就是柜）。</summary>
+    private static long CurrentOwnerOf(SceneDef sc)
+    {
+        if (sc == null) return 0;
+        var rus = ReduxUi();
+        if (rus == null) return 0;
+        try
+        {
+            switch (sc.Page)
+            {
+                case "BackpackUI":
+                {
+                    var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_BackpackUI>();
+                    if (st == null) return 0;
+                    long o;
+                    try { o = st.IsDualBag ? st.OwnerId_B : st.OwnerId_A; } catch { return 0; }
+                    if (o == 0 || o == _bagOwner) return 0;
+                    var all = CabinetCatalog.AllContainers;
+                    for (int i = 0; i < all.Count; i++) if (all[i].OwnerId == o) return o; // 白名单校验
+                    return 0;
+                }
+                case "Cooking":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Cooking)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Cooking>()?.BagOwnerId?.Value ?? 0;
+                case "RatCage":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_RatCage>()?.BagOwnerId?.Value ?? 0;
+                case "BrewPanel":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Brew>()?.BagOwnerId?.Value ?? 0;
+                case "DyePanel":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Dye>()?.BagOwnerId?.Value ?? 0;
+                case "Compressor":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Compressor)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Compressor>()?.CartOwnerId?.Value ?? 0;
+                case "Shredder":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Shredder)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Shredder>()?.CartOwnerId?.Value ?? 0;
+                case "GreenhouseBuild":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_GreenhouseBuild)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_GreenhouseBuild>()?.CartOwnerId?.Value ?? 0;
+                case "ToolTable":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_ToolTable)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_ToolTable>()?.BagOwnerId?.Value ?? 0;
+                case "Trade":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_TradeUI)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_TradeUI>()?.BagOwnerId ?? 0;
+                case "DroneHub":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_DroneHub>()?.BagOwnerId?.Value ?? 0;
+                case "FuelGenerator":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_FuelGenerator)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_FuelGenerator>()?.BagOwnerId?.Value ?? 0;
+                case "Heater":
+                    return rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Heater)))
+                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Heater>()?.BagOwnerId?.Value ?? 0;
+                case "MaterialRack":
+                    return RackOwnerOf(sc);
+            }
+        }
+        catch { return 0; }
+        return 0;
+    }
+
+    /// <summary>_ctn 的 ownerId 数组（RecomputeCaps 随名单重建——Compose 零分配入参）。</summary>
+    private static long[] _ctnOwnerIds = Array.Empty<long>();
+
+    /// <summary>items 段范围（BuildJson 现算）：背包 + 当前柜（CurrentOwnerOf 自校验：B 键背包
+    /// A 侧=背包→0、非白名单→0，故不必按 bagOnly 另行清零——取用单柜页 bagOnly=true 仍需 A 柜行）。
+    /// 全量页=温室（作者令不动）+ 吊栏窗（类别用户运行时点选无法预筛）。glist 五页在列表批扩全量。</summary>
+    private static List<long> ScopeOwnersOf(SceneDef sc)
+    {
+        var fill = new List<long>(16);
+        ScopeOwnersOfInto(sc, fill);
+        return fill;
+    }
+
+    private static void ScopeOwnersOfInto(SceneDef sc, List<long> fill)
+    {
+        long bag = _bagOwner > 0 ? _bagOwner : ResolveBagOwner(null);
+        bool fullHouse = sc != null && (sc.Page == "GreenhouseBuild"
+            || (sc.Page == "BackpackUI" && BasketGlist.BasketOn));
+        long cur = CurrentOwnerOf(sc);
+        RailScope.Compose(bag, cur, _ctnOwnerIds, false, fullHouse, fill);
+    }
+
     /// <summary>
     /// 5s 慢通道（AccessTicker）：容器行元数据+背包容量（来自 CabinetCatalog.AllContainers
     /// 与 Config_Bag/Config_Furniture 纯配置查询）。物品行不在本通道——0.5s 快通道 BuildJson 现算。
@@ -261,6 +355,9 @@ internal static class RailData
             list.Add(m);
         }
         _ctn = list;
+        var ownerIds = new long[list.Count];
+        for (int i = 0; i < list.Count; i++) ownerIds[i] = list[i].OwnerId;
+        _ctnOwnerIds = ownerIds;
 
         long bagOwner = ResolveBagOwner(null);
         _bagCap = bagOwner > 0 ? CapCells(furn, bags, itemState, 0, bagOwner) : 0;
@@ -298,7 +395,7 @@ internal static class RailData
     /// </summary>
     internal static bool ItemsDirty()
     {
-        return Dirty.ScopedDirty(null) || _ctxDirty || _forcePending || _tidyFailPending || BasketGlist.Dirty;
+        return Dirty.ScopedDirty(_scopeCache) || _ctxDirty || _forcePending || _tidyFailPending || BasketGlist.Dirty;
     }
 
     // ---- 页面态快检（原 ComputeSig 元数据项的事件化替身；RailUi.FastPoll 每帧调）----
@@ -306,20 +403,27 @@ internal static class RailData
     // 任一翻转置 _ctxDirty（BuildJson 尾清）。每帧数次 interop 读（场景活跃时才有意义）。
     private static long _lastCtxSig = long.MinValue;
     private static bool _ctxDirty;
+    private static readonly List<long> _scopeCache = new(16); // 场景活跃时随 PollCtxFast 刷新
 
     internal static void PollCtxFast()
     {
         var sc = ActiveScene();
         if (sc == null) return;
+        long cur = CurrentOwnerOf(sc);
         long sig = 17;
         sig = sig * 31 + (sc.Page != null ? sc.Page.GetHashCode() : 0);
         sig = sig * 31 + (BagOnlyDyn(sc) ? 1 : 0);
         sig = sig * 31 + (BpBagDyn() ? 1 : 0);
         sig = sig * 31 + RackOwnerOf(sc);
         sig = sig * 31 + _bagOwner;
-        if (sig == _lastCtxSig) return;
-        _lastCtxSig = sig;
-        _ctxDirty = true;
+        sig = sig * 31 + cur;                    // 当前容器跟随：官方切页签→翻→重推
+        sig = sig * 31 + _ctnOwnerIds.Length;    // 柜名单增删→范围变→重推
+        if (sig != _lastCtxSig)
+        {
+            _lastCtxSig = sig;
+            _ctxDirty = true;
+            ScopeOwnersOfInto(sc, _scopeCache);  // 输入变才重建缓存（零新建；稳态零动作）
+        }
     }
 
     // 元数据签名（RecomputeCaps 尾比对）：柜增删/容量/标签/改名变化 → 强制重推
@@ -585,8 +689,7 @@ internal static class RailData
         // 契约字段序 icfg 在 items 前 → 先浅走白名单收集 cfgId（第一遍，只读 ItemConfigId），
         // 拼 icfg 段，再拼 items 段（第二遍）。同一次 BuildJson 内主线程无让出，
         // 两遍之间 OwnerCache 不会变化。
-        var ownerIds = new List<long>();
-        foreach (var m in _ctn) ownerIds.Add(m.OwnerId);
+        var ownerIds = ScopeOwnersOf(sc); // 按页范围（spec §B）——ctn 元数据段仍全量（入库路由/页签名/白名单校验）
 
         // 第一遍：收集 cfgId（浅走：只读 ItemConfigId）
         CollectCfgIds(oc, bagOwner, ownerIds, icfgSeen, icfgOrder);

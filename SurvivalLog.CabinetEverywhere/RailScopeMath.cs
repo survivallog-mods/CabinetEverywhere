@@ -47,3 +47,22 @@ internal sealed class RailDirtySet
         lock (_gate) { _owners.Clear(); _global = false; }
     }
 }
+
+/// <summary>
+/// 按页推送范围组成（spec 2026-11-14-rail-data-slim-design §B，纯逻辑）：interop 侧读好的
+/// bag/current/全量名单入参，产出 items 段要拼的 owner 集（ctn 元数据段不受此限——全量保留）。
+/// </summary>
+internal static class RailScope
+{
+    /// <summary>范围 = 背包 +（bagOnly=false 时）当前容器；（fullHouse=true 时）全部柜子。
+    /// fill 复用调用方列表（零新建）；去重且保持「背包→当前→其余按名单序」稳定。</summary>
+    public static void Compose(long bag, long current, IReadOnlyList<long> allCtn, bool bagOnly, bool fullHouse, List<long> fill)
+    {
+        fill.Clear();
+        if (bag > 0) fill.Add(bag);
+        if (!bagOnly && current > 0 && !fill.Contains(current)) fill.Add(current);
+        if (fullHouse && allCtn != null)
+            for (int i = 0; i < allCtn.Count; i++)
+                if (allCtn[i] > 0 && !fill.Contains(allCtn[i])) fill.Add(allCtn[i]);
+    }
+}
