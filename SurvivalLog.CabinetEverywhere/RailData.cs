@@ -519,6 +519,7 @@ internal static class RailData
         _tidyFailPending = false;
         RailCommands.AbortStoreTask(); // 入库任务基于旧 OwnerCache 快照，换档后无意义：静默丢弃（方案 A 终案）
         ItemChangeSignal.ResetMoveCache(); // 挪位忽略缓存按旧世界 id 记账，换档全部作废
+        PageKeepAlive.OnWorldRebind(); // 常驻页内容属旧世界：真移除弃缓存，下次开全价重建
         try { CabinetEverywherePlugin.Log.LogInfo("[CERail] 世界重绑：管线按新开机复位（owner/签名/force 全清+立即重推——治「重读档后排序彻底失效」）"); } catch { }
     }
 

@@ -294,6 +294,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ItemChangeSignal.Install();
         // 关页动作标记跳过（2026-11-14 官方成本拦截）：LogicAdapter 九页无门扇出，页面已关仍全量重算
         StaleMarksGuard.Install();
+        // 页面常驻实验（2026-11-14，perf/page-keepalive 分支）：Backpack 页关=隐藏保留、开=ShowPage 跳过原生重建
+        PageKeepAlive.Install();
     }
 
     /// <summary>
