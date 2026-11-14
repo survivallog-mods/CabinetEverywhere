@@ -5,37 +5,27 @@ using HarmonyLib;
 namespace SurvivalLog.CabinetEverywhere;
 
 /// <summary>
-/// 关页动作标记跳过（spec 2026-11-14-official-cost-guard §A）。
+/// 关页动作标记跳过（spec 2026-11-14-official-cost-guard §A；v1.1 收窄=仅 BackpackUI）。
 ///
 /// 病灶（实测+反汇编定责，2026-11-14）：LogicAdapter.UpdateItemActionMarks（@0x2A90550）不查
 /// 页面开关，一次给 9 个界面的 Reducer 全发动作标记重算——页面已关时 Reducer_Web_BackpackUI
 /// .RA_UpdateItemActionMarks（@0x2B05CB0）仍全量跑（RefreshItems_A，双背包再 +RefreshItems_B，
 /// 内部 BuildBagJson 整包重建），实测关页巨帧 411/719/1225/2142ms（PERFDIAG 卡顿帧行）。
-/// 烹饪/工作台/交易/发电机/暖炉不在这 9 页扇出名单=「烹饪不卡、背包页卡」的结构性差异。
 ///
-/// 安全性（跳过零损失）：RA_OpenUI（@0x2B036A0）开页时 new State_Web_BackpackUI + InitSide_A/B
-/// + BuildATabs 全量重建——关页期间算出的标记在重开时全部作废重算。
-///
-/// 拦法：bool prefix（false=跳过官方处理器），按 __originalMethod.DeclaringType 查表取该页
-/// UI 类型，IsUIActive=false 才跳过；查不到/异常一律放行（保守）。事件频率级调用，每次 1 次
-/// IsUIActive（非每帧）。
+/// v1.1 收窄教训（2026-11-14 实锤）：v1 挂了全部 9 页——安全论证（「重开页全量重建故跳过无损」）
+/// 只对 BackpackUI 反汇编实证过（RA_OpenUI@0x2B036A0 new State+InitSide_A/B），其余 8 页是
+/// 未验证的推断。官方无门扇出的设计前提=各页标记**常新**（重开不依赖复算）；染料桶/酿酒桶
+/// 即属此类——跳过其关期重算后 Q 丢弃（物品操作）失效（作者实测）。撤防其余 8 页：实测巨帧
+/// 全部来自背包页（其背包最大），其余页收益微小风险不证。
 /// </summary>
 internal static class StaleMarksGuard
 {
     private static bool _installed;
 
-    // 九页扇出名单（LogicAdapter.UpdateItemActionMarks 反汇编 @0x2A90550；Reducer↔UI 一一对应）
+    // 仅实证安全页（开页 RA_OpenUI new State+InitSide_A/B 全量重建=关期跳过零损失）
     private static readonly Dictionary<Type, Type> Map = new()
     {
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_BackpackUI),   typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_RatCage),      typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_Brew),         typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_Shredder),     typeof(GameCore.HotUpdate.ReduxUI.WebUI_Shredder) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_Compressor),   typeof(GameCore.HotUpdate.ReduxUI.WebUI_Compressor) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_DroneHub),     typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_Dye),          typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_MaterialRack), typeof(GameCore.HotUpdate.ReduxUI.WebUI_MaterialRack) },
-        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_TrashCan),     typeof(GameCore.HotUpdate.ReduxUI.WebUI_TrashCan) },
+        { typeof(GameCore.HotUpdate.ReduxUI.Reducer_Web_BackpackUI), typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI) },
     };
 
     internal static void Install()
@@ -64,7 +54,7 @@ internal static class StaleMarksGuard
                 }
             }
             _installed = patched > 0;
-            CabinetEverywherePlugin.Log.LogInfo("[CE.关页标记] 已挂 " + patched + "/9 页（页面未激活跳过 RA_UpdateItemActionMarks）");
+            CabinetEverywherePlugin.Log.LogInfo("[CE.关页标记] 已挂 " + patched + "/1 页（BackpackUI 实证安全；其余 8 页撤防——v1 未验证页跳过致染料桶/酿酒桶 Q 丢弃失效)");
         }
         catch (Exception e)
         {
