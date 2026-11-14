@@ -59,6 +59,14 @@
 - [ ] **Step 3: JS 实现**——setData 差量：BackpackUI 活跃时对比前后包 bag/B柜行，官方 Vue bagA/bagB 列表按 (id) 搬移/增删（乐观 splice，不触官方全量刷新）；任何不匹配（行数对不上/官方结构变）→ 置回退标志，下窗走整包。
 - [ ] **Step 4: 构建 + JS 语法检查 + 全套件** → Commit `perf：单件移动批末追平 O(1) 化——吞 LogicAdapter 重建链的同时原样转发数据层动作（Ac_Item_AddOrNotify/Ac_Item_Del），视图由 JS 乐观搬移（官方拖拽同原理）；不匹配兜底回整包（V1.2 红线）`
 
+### Task 2: ~~单件右键移动 O(1) 追平~~ —— 取证后放弃（2026-11-14）
+
+Step 1 取证结论：`Ac_Item_AddOrNotify` 无 SendAction 直发重载且其 Data 处理器自身级联整包视图重建
+（拆账 #1 链条本体）；`Ac_Item_MoveBag.SendAction(from,to)` 为整包全搬语义（无物品参数）；
+官方拖拽快=浏览器乐观更新（C# 侧同吃一次后台重建）。**逐件 O(1) 数据通道官方不存在，
+单件地板（P11：110-288ms 整包 DTO+推送）为协议固有，不可安全绕过**。JS 乐观搬移官方 Vue
+列表=高风险脆弱面，不属本轮。零代码，定责记录于此。
+
 ### Task 3: mod 整理改造（弃官方 SORT 重放）
 
 **Files:**
