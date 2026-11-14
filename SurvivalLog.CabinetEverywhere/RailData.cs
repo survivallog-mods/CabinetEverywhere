@@ -1349,7 +1349,7 @@ internal static class RailData
     /// Points，全颜色含未解锁）；按 ItemId 聚合懒建索引，配置未就绪返 "[]" 下周期再试（不锁死）。</summary>
     private static Dictionary<int, string> _dyePigIdx;
 
-    private static string DyePigOf(int cfgId)
+    internal static string DyePigOf(int cfgId)
     {
         try
         {
@@ -1415,7 +1415,7 @@ internal static class RailData
     /// <summary>rat-brew v2.2.7：cfgId → 猎物三值（0 非猎物/1 活体/2 死体）。活=Prey_Rarity>0；
     /// 死体=与活体同动物 Model（结构关联非名字推导——gamekb 7 种死体全对上，腐烂链活体→肥料
     /// 不可用）。索引懒建一次（_perfectIds 同款源引用守卫）。</summary>
-    private static int RatPreyKind(int cfgId)
+    internal static int RatPreyKind(int cfgId)
     {
         try
         {

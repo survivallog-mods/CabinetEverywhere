@@ -92,6 +92,7 @@ internal static class RailCommands
         public string Key; // uiShow/uiClose/pinOrder/setFilter 页键（v1.8.5：sortBy 数据层排序已退役——排序=显示层，见 railui.page.js DISP）
         public string Sel; // v1.9.1：setFilter 筛选选中（"0"=全部柜子/"other"=未打标签/tagId）
         public string Text; // TradeFx 批1：report 探针上报文本（纯日志，零副作用）
+        public string Ev; // slotFeed（glist 柜源右键一步直达）：官方口径事件路由（"mouse"=RatCage 活鼠入笼位；其余=ItemClick rightClick）
         public List<long> Ids = new();
         public List<long> Tags = new();
         public List<long> Order = new();
@@ -151,6 +152,7 @@ internal static class RailCommands
         if (o.TryGetValue("key", out var ky) && ky is string ks) c.Key = ks;
         if (o.TryGetValue("sel", out var sl) && sl is string ss) c.Sel = ss;
         if (o.TryGetValue("text", out var tx) && tx is string ts) c.Text = ts;
+        if (o.TryGetValue("ev", out var ev) && ev is string es) c.Ev = es;
         c.Ids = Lngs(o, "ids");
         c.Tags = Lngs(o, "tags");
         c.Order = Lngs(o, "order");
@@ -239,6 +241,7 @@ internal static class RailCommands
             case "switchBag": OpSwitchBag(c); break; // 九验收：柜签=官方背包数据切换（官方网格/拖拽/详情/悬浮全原生，见 OpSwitchBag 注释）
             case "refreshBag": OpRefreshBag(); break; // glist 批改#9：格子态官方刷新杠杆（switchBag 同值守卫早退不覆盖——见 OpRefreshBag 注释）
             case "basketPut": OpBasketPut(c); break; // 篮子救援 glist：右键 1 件直放篮子（最终入篮=官方快转动作，见 OpBasketPut 注释）
+            case "slotFeed": OpSlotFeed(c); break; // glist 柜源右键一步直达（brew/dye/rat 三页官方 ItemClick/MouseAdd 直发，见 OpSlotFeed 注释）
             case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
             case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
@@ -958,6 +961,202 @@ internal static class RailCommands
             }
             catch { return 0; }
         }
+    }
+
+    /// <summary>
+    /// slotFeed{owner,item,ev}（glist 柜源右键一步直达，2026-11-14 作者令「不经背包中转」二改）：
+    /// item 路径=官方事件 EnumNotify_ItemBag.QuickMoveItem(3026) 直发 (itemId, fromOwner=源柜/背包,
+    /// toOwner=桶槽 owner)——反汇编定案：三页 Reducer_Web_*.RA_ItemClick 右键终拍即此事件（Brew→
+    /// BarrelOwnerId/Dye→VatOwnerId/RatCage→FoodOwnerId），ItemManager.OnQuickMoveItem→
+    /// TryQuickMoveItem 单件减量（官方右键「移 1 件」正身，无需 mod 拆件）——**物品全程不落背包**，
+    /// 背包满不再是失败面（一改「柜→包→ItemClick」在背包满时 bagfull 拒）。准入+锁在 C# 保守
+    /// 复刻（直发绕过 Reducer 必须自带）：准入=RailGlistRule.Keep 同谓词（与 glist 可见行 100%
+    /// 同口径——能看到的行必过、不可入物必拒）；锁=Brew.Locked/BrewState==1、Dye.Locked、
+    /// RatCage.IsRunning（各页 RA_ItemClick PopLocked 同字段）。mouse 路径（RatCage 活鼠入笼）=
+    /// 官方 MouseAdd→NotifyInstance 特殊链，物品须在包：保留拆1件柜→包（silent）+落包定位+
+    /// Ac_RatCage_MouseAdd（OpBasketPut 同款）。地面源=官方拾取进包后 3026(bag→to)。
+    /// 失败 MarkFeedFail（noitem/bagfull/nomove/admit/locked → ctx.feedFail 一次性回执）。
+    /// </summary>
+    private static void OpSlotFeed(Cmd c)
+    {
+        long bag = RailData.BagOwner();
+        var im = RailData.ItemMgr();
+        if (bag <= 0 || im == null) { RailData.MarkFeedFail("noitem"); return; }
+        bool fromBag = c.Owner == bag;
+        bool ground = !fromBag && c.Owner == RailGround.OwnerId;
+        if (!fromBag && !ground && !Whitelisted(c.Owner))
+        {
+            CabinetEverywherePlugin.Log.LogWarning($"[CERail] slotFeed 丢弃：owner={c.Owner} 不在白名单（红线2）");
+            return;
+        }
+        if (c.Item <= 0) return;
+        string page = RailData.ActivePage();
+        if (page != "BrewPanel" && page != "DyePanel" && page != "RatCage")
+        { WarnOnce("slotfeed:page", $"slotFeed 丢弃：页 {page} 不在支持面"); return; }
+
+        var srcInner = OwnerItems(im, c.Owner);
+        var src = ItemOf(srcInner, c.Item);
+        if (src == null && ground) src = RailGround.FindItem(c.Item); // 地面源：反查 DropItem.Item（OpFeed/OpBasketPut 同款）
+        if (src == null) { RailData.MarkFeedFail("noitem"); return; }
+        int cfgId = 0;
+        try { cfgId = src.ItemConfigId; } catch { }
+
+        var (to, unlocked) = SlotTarget(page);
+        if (to <= 0) { RailData.MarkFeedFail("noitem"); WarnOnce("slotfeed:target", "桶槽 owner 不可得"); return; }
+        if (!unlocked) { RailData.MarkFeedFail("locked"); VLog(c.Op, $"cfg={cfgId} 拒：目标仓锁定/运行中"); return; }
+
+        if (c.Ev == "mouse")
+        {
+            // 活鼠入笼（官方 NotifyInstance 特殊链）：物品须在包——包源拆 1 / 柜源(地面)先搬包（OpBasketPut 同款）
+            long piece;
+            if (fromBag)
+            {
+                piece = c.Item;
+                int cnt = 0; try { cnt = src.ItemCount; } catch { }
+                if (cnt > 1) { var sp = TrySplit(im, c.Item); if (sp > 0) piece = sp; }
+            }
+            else
+            {
+                if (ground)
+                {
+                    if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
+                    { RailData.MarkFeedFail("bagfull"); VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）"); return; }
+                    piece = ResolvePiece(im, bag, c.Item, cfgId);
+                }
+                else
+                {
+                    var batch = new Il2CppSystem.Collections.Generic.List<long>();
+                    AddTakeOne(im, srcInner, c.Item, batch);
+                    if (batch.Count == 0) { RailData.MarkFeedFail("noitem"); return; }
+                    int moved = im.TryQuickMoveItems(batch, c.Owner, bag, SilentQuickMove, false);
+                    if (moved <= 0)
+                    {
+                        bool still = ItemOf(OwnerItems(im, c.Owner), c.Item) != null;
+                        RailData.MarkFeedFail(still ? "bagfull" : "noitem");
+                        VLog(c.Op, $"柜→包失败 cfg={cfgId} {(still ? "bagfull" : "noitem")}");
+                        return;
+                    }
+                    piece = ResolvePiece(im, bag, batch[0], cfgId);
+                }
+            }
+            if (piece <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            try { GameCore.HotUpdate.ReduxUI.Ac_RatCage_MouseAdd.SendAction("{\"itemId\":" + piece + "}"); }
+            catch (Exception e) { RailData.MarkFeedFail("nomove"); WarnOnce("slotfeed:mouse", "MouseAdd 发送失败: " + e.Message); return; }
+            VLog(c.Op, $"owner={c.Owner} item={c.Item}→{piece} cfg={cfgId} mouse（进包+MouseAdd）");
+            return;
+        }
+
+        // ---- item 路径：官方 3026 直发（准入 C# 复刻，物品不经背包）----
+        if (!SlotAdmissionOk(page, src, cfgId))
+        { RailData.MarkFeedFail("admit"); VLog(c.Op, $"cfg={cfgId} 拒：准入（glist 行同谓词）"); return; }
+        if (ground)
+        {
+            // 地面 owner 不走官方 OwnerCache 常规链：拾取进包后 3026(bag→to)（重定位，官方单件减量）
+            if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
+            { RailData.MarkFeedFail("bagfull"); VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）"); return; }
+            long piece = ResolvePiece(im, bag, c.Item, cfgId);
+            if (piece <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            NotifyQuickMoveItem(piece, bag, to);
+            VLog(c.Op, $"ground item={c.Item}→{piece} cfg={cfgId} 3026 bag→{to}（拾取+直发）");
+            return;
+        }
+        NotifyQuickMoveItem(c.Item, fromBag ? bag : c.Owner, to);
+        VLog(c.Op, $"owner={c.Owner} item={c.Item} cfg={cfgId} 3026 {c.Owner}→{to}（直发，不经背包）");
+
+        static long TrySplit(GameCore.HotUpdate.Battle.Logic.ItemManager im, long id)
+        {
+            try { return im.SplitItem(id, 1)?.InstanceId ?? 0; } catch { return 0; }
+        }
+        static long ResolvePiece(GameCore.HotUpdate.Battle.Logic.ItemManager im, long bag, long firstId, int cfgId)
+        {
+            var bagInner = OwnerItems(im, bag);
+            long target = 0;
+            if (ItemOf(bagInner, firstId) != null) target = firstId; /* 拆件独立存活：直用 */
+            if (target <= 0 && bagInner != null)
+            {
+                try
+                {
+                    foreach (var pair in bagInner) /* 已并叠：cfg-first 找并叠（OpFeed ④/OpBasketPut 终审 I2 同款） */
+                    {
+                        var it = pair.Value;
+                        if (it == null) continue;
+                        int bc = 0;
+                        try { bc = it.ItemConfigId; } catch { }
+                        if (bc == cfgId) { try { target = it.InstanceId; } catch { } break; }
+                    }
+                }
+                catch { }
+            }
+            if (target > 0)
+            {
+                int merged = 0; try { merged = ItemOf(bagInner, target)?.ItemCount ?? 0; } catch { }
+                if (merged > 1) { var sp = TrySplit(im, target); if (sp > 0) target = sp; } // 并叠再拆 1
+            }
+            return target;
+        }
+    }
+
+    /// <summary>按页读目标槽 owner+锁态（三页 RA_ItemClick 终拍 to 参数/PopLocked 同源字段）。
+    /// unlocked=false=锁定或状态不可读（保守拒）。</summary>
+    private static (long owner, bool unlocked) SlotTarget(string page)
+    {
+        try
+        {
+            var rus = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated
+                ? GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance : null;
+            if (rus == null) return (0, false);
+            if (page == "BrewPanel")
+            {
+                var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew)))
+                    ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Brew>();
+                if (st == null) return (0, false);
+                return (st.BarrelOwnerId?.Value ?? 0, st.Locked?.Value != true && (st.BrewState?.Value ?? 0) != 1);
+            }
+            if (page == "DyePanel")
+            {
+                var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye)))
+                    ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_Dye>();
+                if (st == null) return (0, false);
+                return (st.VatOwnerId?.Value ?? 0, st.Locked?.Value != true);
+            }
+            var stR = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage)))
+                ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_RatCage>();
+            if (stR == null) return (0, false);
+            return (stR.FoodOwnerId?.Value ?? 0, stR.IsRunning?.Value != true);
+        }
+        catch { return (0, false); }
+    }
+
+    /// <summary>准入复刻（3026 直发绕过 Reducer 必须自带）：RailGlistRule.Keep 同谓词——与 glist
+    /// 可见行（brew=CanBrew∧饱腹/dye=有色素/rat=非猎物∧饱腹，C# 行过滤层同源字段）100% 同口径。</summary>
+    private static bool SlotAdmissionOk(string page, GameCore.HotUpdate.Battle.Logic.ItemData src, int cfgId)
+    {
+        try
+        {
+            var ic = ItemCfg(cfgId);
+            if (ic == null) return false;
+            bool canBrew = false, hasPig = false;
+            int prey = 0;
+            try { canBrew = ic.CanBrew; } catch { }
+            if (page == "RatCage") { try { prey = RailData.RatPreyKind(cfgId); } catch { } }
+            if (page == "DyePanel") { try { hasPig = RailData.DyePigOf(cfgId) != "[]"; } catch { } }
+            float s1 = 0;
+            try { s1 = RailSortMath.Of(src, ic, false, RailSortMath.NowHours()).Stats[0] ?? 0; } catch { }
+            return RailGlistRule.Keep(page, false, hasPig, prey, s1, canBrew);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>官方单件跨容器移动事件直发（3026 QuickMoveItem，三页 RA_ItemClick 右键终拍同入口）：
+    /// ItemManager.OnQuickMoveItem→TryQuickMoveItem——并叠/减量/容量/类别阻断/负重官方数据层全校验。</summary>
+    private static void NotifyQuickMoveItem(long itemId, long fromOwner, long toOwner)
+    {
+        try
+        {
+            GameCore.HotUpdate.EventDispatcherTools.NotifyGlobal<long, long, long>(
+                GameCore.HotUpdate.EnumNotify_ItemBag.QuickMoveItem, itemId, fromOwner, toOwner);
+        }
+        catch (Exception e) { RailData.MarkFeedFail("nomove"); WarnOnce("slotfeed:3026", "QuickMoveItem 直发失败: " + e.Message); }
     }
 
     /// <summary>
