@@ -77,8 +77,6 @@ internal static class BagBurden
 
             if (raw == want)
             {
-                if (CabinetEverywherePlugin.Verbose.Value)
-                    lines.Add($"BAG {pair.Key}({BagTable.Name(bag)}) 负重 {raw}（原 {Orig[pair.Key]}，已达标）");
                 continue;
             }
 

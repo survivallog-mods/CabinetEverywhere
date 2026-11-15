@@ -101,7 +101,7 @@ internal static class RailGround
             var all = World()?._DropItemManager?._dropItems;
             return all != null ? all.Count : 0;
         }
-        catch (Exception e) { PerfDiag.Swallow("ground.fastcount:" + e.GetType().Name); return 0; } // [PERFDIAG]
+        catch { return 0; }
     }
 
     private static int _lastFastCount = -1;

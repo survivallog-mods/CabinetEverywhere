@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "2.1.7";
+    public const string Version = "2.2.0";
 
     internal static new ManualLogSource Log;
 
@@ -56,10 +56,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<string> IncludeFurnitureIds;
     internal static ConfigEntry<string> ExcludeFurnitureIds;
     internal static ConfigEntry<string> ExcludeBagIds;
-    internal static ConfigEntry<bool> Verbose;
-    internal static ConfigEntry<bool> ListOnReady;
-    internal static ConfigEntry<bool> DumpFurniture;
-    internal static ConfigEntry<bool> DumpDyePigments; // 染料桶排序 spike（dye-pigment-sort spec §6）：一次性自发现 dump
     internal static ConfigEntry<bool> FilterEnable;
     internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
@@ -78,12 +74,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // ==== 负重批（2026-11-07 作者令：背包负重调整新增 + 原独立 mod CabinetBurden 并回）====
     internal static ConfigEntry<int> BackpackBurden;   // 背包负重上限（公斤，0=官方原值，0~1000，写表=kg×1000）
     internal static ConfigEntry<bool> CabinetUnburden; // 柜子负重解放：true=家具储物包负重清零；false=还原
-    internal static ConfigEntry<bool> AllowDebugUiShow; // 调试：uiShow 远程显示官方界面（实机验收 Chrome 用，默认关）
     // 搬运通知合并（2026-11-13 方案 A·V1，PERF_NOTES.md 拆账终审）：批量搬运期间静默界面逐件
     // 刷新（每搬一件=官方整包重建界面 JSON=扩容后批量搬运秒级冻结主因，占 65-80%），批末走
     // 官方 SyncBothBags 整包同步一次=状态完全追平（官方 ExecuteMoveBag 批末同构）。
     internal static ConfigEntry<bool> EnableMoveCoalescer;
-    internal static ConfigEntry<int> RemoteDebugPort; // v1.8.10 八追：>0=WebView2 附加 --remote-debugging-port（断流现场 CDP 取证，默认关）
     internal static ConfigEntry<bool> ClassicWebViewScrollbars; // v1.8.8 关 fluent 滚动条（环境变量级，重启生效）
 
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
@@ -112,23 +106,15 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Enabled.SettingChanged += (object s0, System.EventArgs e0) => { Rerun = true; };
         EnableMoveCoalescer = Config.Bind("Perf", "EnableMoveCoalescer", true,
             "批量搬运通知合并：搬运期间暂缓界面逐件刷新（每搬一件官方会整包重建一次界面 JSON——扩容后批量搬运秒级冻结的主因），搬运结束一次性整包同步。false=回原行为。重启生效。");
-        PerfDiag.Install(Config, Log); // [PERFDIAG] 临时诊断（PERF_NOTES.md 验证后删除）：独立挂载，不受 General.Enabled 影响
-        // [PERFDIAG][OpenTrace] 打开链计时探针（P1 打开巨帧定责，验证后删）——安装挪至 PerfDiagTicker
-        // 首帧：插件 Load 期挂 hook 后，其他插件 Load 期强制类初始化会经 hook 重入 cctor 递归栈溢出
         // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
         // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
         // 由原生重建清除（与 Filter 同策略，不主动清）。
         RailEnable = Config.Bind("Rail", "Enable", true,
             "CERail 储物侧栏总开关：false=不注入侧栏脚本、不推数据、不取命令（12 页官方面板恢复原样）。");
         RailEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
-        AllowDebugUiShow = Config.Bind("Rail", "AllowDebugUiShow", false,
-            "调试：允许 uiShow 命令远程显示官方界面（实机验收驱动用；发布/日常保持 false）。");
-        RemoteDebugPort = Config.Bind("Rail", "RemoteDebugPort", 0,
-            "断流/白屏现场取证：>0 时向 WebView2 附加 --remote-debugging-port=该值（浏览器打开 http://127.0.0.1:端口/json 可连 CDP 调试协议，仅本机可连；平时保持 0；需重启游戏生效）。");
         ClassicWebViewScrollbars = Config.Bind("Rail", "ClassicWebViewScrollbars", true,
             "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
         ApplyWebViewScrollbarEnv();
-        ApplyRemoteDebugEnv();
         // ==== 高度修改批 15 键（spec §4.1 逐字；全部默认 0=恢复原生；宽度恒 12 不可改——
         // 材料架 110009 例外：2026-11-12 作者令开高度，宽保持原生 20=每行件数，不进宽度统一）====
         BackpackHeight = Config.Bind("Rail", "BackpackHeight", 0,
@@ -191,13 +177,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ExcludeBagIds = Config.Bind("Access", "ExcludeBagIds",
             "1008,1009,1014,1050,1060,10001,10004,3001,115002,115004,5001,5002,5003,5004,5005,5006,5007,5008,5009,5011,5014,5015,5017,5020",
             "排除的 BagId（整包系排除）。默认排除非储物容器：厨房电器(5001燃料炉/5002电烤箱/5003微波炉/5004燃气灶/5005榨汁机/5006咖啡机/5011电火锅)、机器功能槽(5007-5009/5014老鼠笼/5015粉碎机/5017口粮压制机/5020暖房工程台/115002堆肥箱/115004酿酒桶)、围栏(3001)、吊篮(1050)、无人机货舱(1008)/无人机中控台(1009，2026-10-17 作者实测补)、门(1060)、窗(1014)、床(10001)、垃圾桶(10004)。其余带储物包家具默认全部生效。");
-        Verbose = Config.Bind("Debug", "Verbose", false, "输出每条明细。");
-        ListOnReady = Config.Bind("Debug", "ListOnReady", true,
-            "配置表就绪时在日志列出发现的全部柜子家具名单（首次核对用，可关）。");
-        DumpFurniture = Config.Bind("Debug", "DumpFurniture", false,
-            "置 true 后在日志列出家中全部带包家具明细：owner/配置/名称/锁定态/是否入选。排查'新柜子不生效'用，平时关。注意：cfg 改动需重启游戏生效（BepInEx 不监听 cfg 文件外部修改——2026-11-05 八追实测游戏内改 cfg 不生效，旧注「5 秒内生效」有误）。");
-        DumpDyePigments = Config.Bind("Debug", "DumpDyePigments", false,
-            "染料桶排序 spike：置 true 后进档在日志 dump 全部 Dye/Pigment 相关类型、GameKey 与 Config_Item 色素全表（植物×颜色点数）。一次性，取完关。cfg 改动需重启游戏生效。");
         FilterEnable = Config.Bind("Filter", "Enable", true,
             "标签筛选总开关：关闭后不注入筛选（场景视图也一并失效，容器页签全部显示）。");
         FilterEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
@@ -262,8 +241,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableFuelGen.SettingChanged += reload;
         ViewHeater.SettingChanged += reload;
         EnableHeater.SettingChanged += reload;
-        DumpFurniture.SettingChanged += (object s, System.EventArgs e) => { CabinetCatalog.DumpRequested = true; };
-        DumpDyePigments.SettingChanged += (object s, System.EventArgs e) => { RailData.DyePigDumpRequested = true; };
 
         // General.Enabled=false：不启 Ticker/不装合并补丁，零日志零改写
         //（白名单本会话从未注入，无需移除；运行中关闭由 AccessTicker 首行门处理）
@@ -271,8 +248,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 
         if (!ClassInjector.IsTypeRegisteredInIl2Cpp<AccessTicker>())
             ClassInjector.RegisterTypeInIl2Cpp<AccessTicker>();
-        if (DumpFurniture.Value) CabinetCatalog.DumpRequested = true; // cfg 启动即 true 也生效（进档后 dump 一次）
-        if (DumpDyePigments.Value) RailData.DyePigDumpRequested = true; // 同上（重启路：SettingChanged 不覆盖文件加载）
         var go = new GameObject("CabinetEverywhere.Ticker");
         Object.DontDestroyOnLoad(go);
         go.AddComponent<AccessTicker>();
@@ -280,8 +255,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
                     "，页签注入=烹饪/老鼠笼/酿酒/颜料桶(" + EnableCooking.Value + "/" + EnableRatCage.Value + "/" + EnableBrew.Value + "/" + EnableDye.Value + ")");
         SurvivalLog.ModShared.WelcomeTip.Install(Log);
 
-        // 性能探针（Debug.Verbose 门控，发版归一 false）：纯测量零行为改动，卡顿定数用
-        if (Verbose.Value) ToolTableProbe.Install();
         // 袋刷新帧尾合并（一次做一次算）：默认行为
         RefreshCoalescer.Install();
         // TradeFx 官方刷新事件（第 4 个 patch，实机批改二批）：Reducer_Web_TradeUI.Refresh
@@ -347,33 +320,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             Log.LogWarning("[CERail] WEBVIEW2 滚动条环境变量注入失败（fluent 可能仍生效）: " + e.Message);
         }
     }
-
-    /// <summary>
-    /// v1.8.10 八追：WebView2 远程调试端口（cfg [Rail] RemoteDebugPort，默认 0=关）。>0 时向
-    /// WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 附加 --remote-debugging-port——断流/白屏/JS 假尸
-    /// 现场可直接连 CDP（浏览器开 http://127.0.0.1:端口/json）读 __CERAIL__ 活态（store.rev/
-    /// _ppCount/srFoodSort.hidden/FRAMES），四~七追轮番盲修的教训=没有 JS 侧现场只能猜。
-    /// 仅本机回环可连；平时保持 0；需重启游戏生效（环境变量在 WebView 环境创建时读取）。
-    /// 独立于滚动条开关（ClassicWebViewScrollbars=false 也可单独开调试口）。
-    /// </summary>
-    private static void ApplyRemoteDebugEnv()
-    {
-        try
-        {
-            int port = RemoteDebugPort?.Value ?? 0;
-            if (port <= 0 || port > 65535) return;
-            const string varName = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
-            var cur = Environment.GetEnvironmentVariable(varName);
-            if (cur != null && cur.IndexOf("--remote-debugging-port=", StringComparison.Ordinal) >= 0) return;
-            cur = string.IsNullOrEmpty(cur) ? "--remote-debugging-port=" + port : cur + " --remote-debugging-port=" + port;
-            Environment.SetEnvironmentVariable(varName, cur);
-            Log.LogInfo("[CERail] WebView2 远程调试端口已附加 --remote-debugging-port=" + port + "（取证：http://127.0.0.1:" + port + "/json）");
-        }
-        catch (Exception e)
-        {
-            Log.LogWarning("[CERail] 远程调试端口注入失败: " + e.Message);
-        }
-    }
 }
 
 internal sealed class AccessTicker : MonoBehaviour
@@ -382,7 +328,6 @@ internal sealed class AccessTicker : MonoBehaviour
     public AccessTicker() { }
 
     private float _fastCheck;          // 页签注入轮询（0.5s，仅目标界面打开时）
-    private bool _listedOnce;
     private string _lastOpenPage;      // 储物界面打开沿/切页（按需扫描触发①，数据链瘦身 §F）
 
     public void Update()
@@ -424,7 +369,7 @@ internal sealed class AccessTicker : MonoBehaviour
             TradeFx.FastPoll();
             Tick(Time.deltaTime);
         }
-        catch (Exception e) { PerfDiag.Swallow("ticker.Update:" + e.GetType().Name); /* 单帧异常不终止轮询 [PERFDIAG] */ }
+        catch { /* 单帧异常不终止轮询 */ }
     }
 
     private void Tick(float dt)
@@ -446,10 +391,6 @@ internal sealed class AccessTicker : MonoBehaviour
         {
             if (!SlowPass(true)) return; // 配置表未就绪：Rerun 保留下帧重试（原 5s 通道同款语义）
             CabinetEverywherePlugin.Rerun = false;
-        }
-        else if (CabinetCatalog.DumpRequested || RailData.DyePigDumpRequested)
-        {
-            SlowPass(false); // 调试 dump 标志：即时服务（原由 5s 周期顺带，现按需）
         }
 
         // 页签注入（烹饪/老鼠笼/酿酒/颜料桶）：读慢通道刷新的柜子子集 HomeInstances，0.5s 轮询补挂
@@ -504,13 +445,6 @@ internal sealed class AccessTicker : MonoBehaviour
             cfgIds = CabinetCatalog.RebuildConfigIds();
             if (cfgIds == null) return false;
 
-            if (!_listedOnce && CabinetEverywherePlugin.ListOnReady.Value)
-            {
-                _listedOnce = true;
-                CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 柜子名单（" + cfgIds.Count + " 条）：\n  " +
-                                                    string.Join("\n  ", CabinetCatalog.DescribeAll()));
-            }
-
             // 1.5) 负重改写（背包 kg 调整 + 柜子负重解放，CabinetBurden 并回批）：
             //     配置表幂等直写（Burden 为 OnInit 快照→改表读档后对已存在容器/已穿背包生效）
             BagBurden.SlowTick();
@@ -528,8 +462,6 @@ internal sealed class AccessTicker : MonoBehaviour
         //    直达注入用）；4) 筛选数据置脏（TagFilter.Tick 在界面开着时推）；5) 容器行/背包容量元数据
         //    （cfg [Rail] Enable=false 时跳过——OpRename/OpSetTags 命令路径内的 RefreshMeta 直调不受此门影响）
         CabinetCatalog.RefreshHomeInstances();
-        CabinetCatalog.FlushDump();
-        RailData.FlushDyePigDump(); // 染料桶 spike：flag 消费自复位
         if (CabinetEverywherePlugin.FilterEnable.Value)
             TagFilter.NotifyScan();
         if (RailUi.Enabled)

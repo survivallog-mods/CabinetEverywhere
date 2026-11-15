@@ -70,9 +70,6 @@ internal static class RailUi
     }
 
     // ---- v1.8.8 滚动条诊断（一次性：首个 rail 场景开到后量测并记一行日志，防盲改） ----
-    private static bool _diagDone;
-    private static int _diagTries;
-    private static Il2CppSystem.Action<string> _diagCb;
 
     /// <summary>cfg [Rail] Enable（T8 裁定 4）：false=不注入/不推数/drain（含 Pump）全停。</summary>
     internal static bool Enabled =>
@@ -419,7 +416,6 @@ internal static class RailUi
     /// </summary>
     internal static void SizeGuardFrame()
     {
-        if (PerfDiag.R1Off) return; // [PERFDIAG] R1 A/B：true=停用帧级读检（5s 慢通道+StartBattle 抢写仍在）
         if (_appliedSize.Count == 0) return;
         try
         {
@@ -442,7 +438,7 @@ internal static class RailUi
                     fixedCount++;
                     if (fixedNames.Count < 8) fixedNames.Add(kv.Key + "(" + BagTable.Name(bag) + ")");
                 }
-                catch (Exception e) { PerfDiag.Swallow("sizeguard.bag:" + e.GetType().Name); } // [PERFDIAG]
+                catch { }
             }
             if (fixedCount == 0) return;
             try { BagTable.InvalidateBagSizeIndex(cm, new List<string>()); } catch { }
@@ -455,7 +451,7 @@ internal static class RailUi
                 string.Join("、", fixedNames) + (fixedCount > fixedNames.Count ? " 等" : "") +
                 "）——读档掉物品修复（抢写钩 SizeGuardHook + 本帧守卫双保险）");
         }
-        catch (Exception e) { PerfDiag.Swallow("sizeguard.frame:" + e.GetType().Name); } // [PERFDIAG]
+        catch { }
     }
 
     /// <summary>
@@ -541,13 +537,11 @@ internal static class RailUi
             }
 
             // 门控②：rev（数据签名）未变且场景未切换 → 不推
-            RunScrollbarDiag(web);
             PushIfDue(web);
             PushWatchdog(); // 八追：回执缺口看门狗（丢弃态可见化+维持重发压力）
         }
         catch (Exception e)
         {
-            PerfDiag.Swallow("railui.tick"); // [PERFDIAG]
             WarnOnce("tick", "rail 数据推送失败: " + e.Message);
         }
     }
@@ -582,10 +576,6 @@ internal static class RailUi
 
     /// <summary>上次全量推送时刻（ms，Environment.TickCount64）——余波节流用（见 PushIfDue 头注释）。</summary>
     private static long _lastPushMs;
-
-    // [PERFDIAG] 卡顿现场行取数（PERF_NOTES.md 验证后删除）
-    internal static long LastPushAgoMs => _lastPushMs == 0 ? -1 : System.Environment.TickCount64 - _lastPushMs;
-    internal static int LastPushLen { get; private set; }
 
     private static int PushIfDue(Vuplex.WebView.IWebView web)
     {
@@ -645,12 +635,6 @@ internal static class RailUi
         }
         _lastPage = page;
         _lastPushMs = nowMs; // 余波节流基准（本次推送时刻，见头注释）
-        LastPushLen = json.Length; // [PERFDIAG] 卡顿现场行取数
-
-        // Debug.Verbose（T14 实机校准观测点）：json 头 200 字符 + 容器数/物品行数/icfg 行数/rev
-        if (CabinetEverywherePlugin.Verbose?.Value == true)
-            CabinetEverywherePlugin.Log?.LogInfo(
-                $"[CERail] 推送 rev={rev} page={page ?? ""}：容器 {RailData.LastCtnRows}，物品行 {RailData.LastItemRows}，icfg {RailData.LastIcfgRows}\n  head: {RailData.LastJsonHead}");
         return json.Length;
     }
 
@@ -677,7 +661,7 @@ internal static class RailUi
             // Pump 消化=端到端≈2 帧。原路径 drain@0.5s Tick + Pump@下轮 Tick=固定 0.5~1s 量化延迟）。
             // drain() 空队列=微 JS 调用零成本（ping 通道实验实证小包恒达先例）
             RailCommands.Pump();
-            if (!PerfDiag.R3Off && RailData.AnyRailSceneActiveCached() && RailCommands.QueueDepth < RailCommands.MaxQueued) // [PERFDIAG] R3 A/B：true=停每帧 drain（保留 0.5s Tick 的 drain）
+            if (RailData.AnyRailSceneActiveCached() && RailCommands.QueueDepth < RailCommands.MaxQueued)
             {
                 var webC = GetWebView();
                 if (webC != null)
@@ -702,12 +686,11 @@ internal static class RailUi
             int len = PushIfDue(web);
             long t = sw.ElapsedMilliseconds;
             // Bug3 对账口径（>150ms 常驻打印）：快通道检出→BuildJson→下发一段的成本留痕
-            if (len >= 0 && (CabinetEverywherePlugin.Verbose?.Value == true || t > 150))
+            if (len >= 0 && t > 150)
                 CabinetEverywherePlugin.Log?.LogInfo($"[CERail] 快通道重推（结构变化≤1帧检出）：检出+BuildJson+下发 {t}ms，payload {len / 1024}KB");
         }
         catch (Exception e)
         {
-            PerfDiag.Swallow("railui.fastpoll"); // [PERFDIAG]
             WarnOnce("fastpoll", "快通道推送失败: " + e.Message);
         }
     }
@@ -849,53 +832,6 @@ internal static class RailUi
     }
 
     /// <summary>
-    /// v1.8.8 滚动条诊断（一次性）：首个 rail 场景挂出后从 Root 逐 iframe 找 #srRail，量 .sr-body
-    /// 的 overflowY / 滚动条占位 gap / 是否溢出 / style#srpRail 是否带自定义轨道规则，回包记一行
-    /// 日志。判读：trackRule=1 且 gap≥8（或 !overflowed 且 gap≥8）=自定义经典滚动条生效（fluent
-    /// 已关，恒显不闪）；trackRule=1 但 gap=0=fluent 仍接管（环境变量没赶上/feature 名失效）；
-    /// trackRule=0=CSS 未注入（bootstrap 陈旧）。最多试 20 个周期，rail 一直没挂就放弃。
-    /// </summary>
-    private static void RunScrollbarDiag(Vuplex.WebView.IWebView web)
-    {
-        if (_diagDone || _diagTries >= 20) return;
-        _diagTries++;
-        try
-        {
-            if (_diagCb == null)
-                _diagCb = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<Il2CppSystem.Action<string>>(
-                    new Action<string>(r =>
-                    {
-                        if (!string.IsNullOrEmpty(r) && r.Contains("srBody"))
-                        {
-                            _diagDone = true;
-                            CabinetEverywherePlugin.Log?.LogInfo("[CERail] 滚动条诊断：" + r);
-                        }
-                    }));
-            web.ExecuteJavaScript(DiagJs, _diagCb);
-        }
-        catch (Exception e)
-        {
-            WarnOnce("diag", "滚动条诊断通道不可用: " + e.Message);
-            _diagDone = true;
-        }
-    }
-
-    private const string DiagJs =
-        "(function(){try{" +
-        "var ws=[window];for(var i=0;i<window.frames.length;i++){try{ws.push(window.frames[i])}catch(e){}}" +
-        "for(var i=0;i<ws.length;i++){var d;try{d=ws[i].document}catch(e){continue}" +
-        " if(!d||!d.getElementById||!d.getElementById('srRail'))continue;" +
-        " var b=d.getElementById('srBody');if(!b)continue;" +
-        " var st=(d.defaultView||ws[i]).getComputedStyle(b);" +
-        " var css='';var sEl=d.getElementById('srpRail');if(sEl)css=sEl.textContent;" +
-        " return 'srBody overflowY='+st.overflowY+' gap='+(b.offsetWidth-b.clientWidth)+" +
-        " '+ov='+(b.scrollHeight>b.clientHeight+2?1:0)+" +
-        " ' trackRule='+(css.indexOf('-webkit-scrollbar-track')>=0?1:0)+" +
-        " ' sbwRule='+(css.indexOf('scrollbar-width')>=0?1:0);" +
-        "}" +
-        "return 'noRail';}catch(e){return 'diagErr '+e.message}})()";
-
-    /// <summary>
     /// bootstrap 全文（静态缓存）：`window.__CERAIL__||(function(){ railui.page.js 全文;
     /// window.__CERAIL_CSS__="railui.css 全文（JS 字符串字面量转义）" })()`——JS 文本与 CSS
     /// 文本两个 EmbeddedResource 拼一次缓存；幂等靠外层守卫与 page.js IIFE 顶部早退（已有）。
@@ -934,7 +870,7 @@ internal static class RailUi
             var prefab = layer?.canvasWebViewPrefab;
             return prefab?.WebView;
         }
-        catch (Exception e) { PerfDiag.Swallow("webview.get:" + e.GetType().Name); return null; } // [PERFDIAG]
+        catch { return null; }
     }
 
     // ==== glist 键盘门（实机批改#5，2026-11-08）：搜索框可输入 + 中文 IME ====
@@ -966,14 +902,13 @@ internal static class RailUi
     private static readonly string[] _gkBrewKeys = { "BrewPanel", "Brew", "UI_Brew", "WebUI_Brew" };
     internal static void GlistKeyboardTick()
     {
-        if (PerfDiag.R5Off) return; // [PERFDIAG] R5 A/B：true=停键盘门（相关页搜索框不可输入）
         var now = UnityEngine.Time.unscaledTime;
         if (_gkHanded && now < _gkNext)
         {
             /* 批改#12c 快速路（帧级差分实锤：暖炉搜索键全到/染料桶 0 键——染料页存在页面级
                原生压关，0.3s 节流重申打不过每帧压关者）：非求值帧只做**每帧重申开**（幂等轻量），
                状态求值/日志/IME prev 采样仍 0.3s 节流。 */
-            try { _gkLayer?.SetKeyboardEnabled(true); } catch (Exception e) { PerfDiag.Swallow("gk.reassert:" + e.GetType().Name); } // [PERFDIAG]
+            try { _gkLayer?.SetKeyboardEnabled(true); } catch { }
             return;
         }
         if (now < _gkNext) return;
@@ -1001,46 +936,11 @@ internal static class RailUi
             if (GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.IsInstanceCreated)
                 layer = GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance?.GetWebUILayer();
         }
-        catch (Exception e) { PerfDiag.Swallow("gk.layer:" + e.GetType().Name); layer = null; } // [PERFDIAG]
+        catch { layer = null; }
         if (layer == null)
         {
             if (_gkHanded) GlistKeyboardReturn();
-            /* 批改#12e 遥测：门未开期间层取不到=静默 return（v2 实机会话整场零日志的两种可能之一，
-               30s 节流一行把静默路径照亮） */
-            if (now > _gkTelNext) { _gkTelNext = now + 30f; CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：GetWebUILayer=null（tick 活着，层不可得）"); }
             return;
-        }
-        /* 批改#12e 遥测：门未开时 30s 一行页键全景（层在但页键全灭=IsPageActive 键名/覆盖层问题）。
-           v4：实机判决=染料页开着九键全灭 → 键名本身可疑，加 PageMap/pageReadyStates 键名倾倒
-           （官方页 id 词汇表=IsPageActive 的合法参数域，一次拿到真相） */
-        if (!_gkHanded && now > _gkTelNext)
-        {
-            _gkTelNext = now + 30f;
-            try
-            {
-                string keys = "";
-                foreach (var k in _gkDyeKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
-                foreach (var k in _gkHeaterKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
-                foreach (var k in _gkFuelGenKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
-                foreach (var k in _gkRatKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
-                foreach (var k in _gkBrewKeys) keys += k + (GlistAnyPageActive(layer, new[] { k }) ? "=1 " : "=0 ");
-                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：门未开；页键全景 " + keys);
-            }
-            catch { }
-            try
-            {
-                string ids = "";
-                foreach (var k in layer.PageMap.Keys) ids += k + " ";
-                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：PageMap keys: " + ids);
-            }
-            catch (Exception e) { CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：PageMap 枚举失败 " + e.Message); }
-            try
-            {
-                string ids = "";
-                foreach (var k in layer.pageReadyStates.Keys) ids += k + " ";
-                CabinetEverywherePlugin.Log.LogWarning("[CERail] glist 键盘遥测：pageReadyStates keys: " + ids);
-            }
-            catch { }
         }
         bool active =
             (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
@@ -1075,7 +975,6 @@ internal static class RailUi
     private static bool _gkGuardArmed;
     private static int _gkRepelled;
     private static bool _gkSeen; private static int _gkSeenN;
-    private static float _gkTelNext;
     private static void GlistKeyboardArmGuard()
     {
         if (_gkGuardArmed) return;
@@ -1123,7 +1022,7 @@ internal static class RailUi
     }
     private static bool GlistAnyPageActive(GameCore.HotUpdate.ReduxUI.WebUILayer layer, string[] keys)
     {
-        foreach (var k in keys) { try { if (layer.IsPageActive(k)) return true; } catch (Exception e) { PerfDiag.Swallow("gk.ispageactive:" + e.GetType().Name); } } // [PERFDIAG]
+        foreach (var k in keys) { try { if (layer.IsPageActive(k)) return true; } catch { } } // [PERFDIAG]
         return false;
     }
     internal static Vuplex.WebView.IWebView ActiveWebView => GetWebView(); // v1.8.10 十三批六追：OpPing 通道对照实验用（微包回执）

@@ -95,31 +95,6 @@ internal static class CabinetCatalog
     }
 
     /// <summary>日志用：全部候选家具的 id/名称/BagId（含被默认排除的置物架提示）。</summary>
-    internal static List<string> DescribeAll()
-    {
-        var lines = new List<string>();
-        var cm = BagTable.Cm();
-        var dict = BagTable.FurnDict(cm);
-        if (dict == null) { lines.Add("配置表未就绪"); return lines; }
-
-        var excludeBag = BagTable.ParseIds(CabinetEverywherePlugin.ExcludeBagIds.Value);
-        foreach (var pair in dict)
-        {
-            var f = pair.Value;
-            if (f == null) continue;
-            int bagId = 0, ftype = 0;
-            try { bagId = f.BagId; ftype = f.FurnitureType; } catch { continue; }
-            if (bagId <= 0) continue;
-
-            string tag;
-            if (ConfigIds.Contains(pair.Key)) tag = "入选";
-            else if (excludeBag.Contains(bagId)) tag = "排除(BagId名单)";
-            else tag = "排除(非储藏类/冷链)";
-            lines.Add($"家具 {pair.Key}（{BagTable.FurnName(f)}，BagId={bagId}，Type={ftype}）→ {tag}");
-        }
-        return lines;
-    }
-
     /// <summary>
     /// 统一容器扫描（5s 一遍，原直达/筛选两个 5s 扫描合一）：**单遍直扫 AgentManager.agentList**
     /// （与原生 GetFurnituresWithBag 同一数据源，但不走其"主角当前楼层"过滤；也不再用
@@ -183,15 +158,7 @@ internal static class CabinetCatalog
                 int bagId = 0;
                 try { if (cfg != null) bagId = cfg.BagId; } catch { }
                 if (bagId <= 0 || excludeBagCfg.Contains(bagId) || NonStorageBagIds.Contains(bagId))
-                {
-                    if (DumpRequested)
-                    {
-                        int fmD = 0; bool lockedD = false;
-                        try { fmD = furn.MapConfigId; lockedD = furn.IsBagLocked; } catch { }
-                        _dumpLines.Add($"  家具 {cfgId}（{FurnNameSafe(dict, cfgId)}）owner=0x{ownerId:X} map={fmD} locked={lockedD} → 排除(无包/非储物名单)");
-                    }
                     continue;
-                }
 
                 int furnMap = 0;
                 try { furnMap = furn.MapConfigId; } catch { }
@@ -227,33 +194,6 @@ internal static class CabinetCatalog
                     if (nativeIds.Contains(ownerId)) withBagCount++;
                     else extraNames.Add($"{inst.Name}(0x{ownerId:X})");
                 }
-            }
-
-            // 诊断：全量列出 agentList 中的家具（不过滤），标注各判定结果——定位"被过滤掉的新柜子"
-            if (DumpRequested)
-            {
-                try
-                {
-                    int n = 0;
-                    for (int i = 0; i < agentList.Count && n < 400; i++)
-                    {
-                        GameCore.HotUpdate.Battle.Logic.Furniture f = null;
-                        try { f = agentList[i]?.TryCast<GameCore.HotUpdate.Battle.Logic.Furniture>(); } catch { }
-                        if (f == null) continue;
-                        long v = 0; int c = 0; int fm = 0; bool locked = false; int floor = -1; bool isHome = false;
-                        try
-                        {
-                            v = f.InstanceId; c = f.AgentConfigId; fm = f.MapConfigId; locked = f.IsBagLocked;
-                            floor = am.GetAgentFloor(v);
-                            isHome = am.IsHomeMap(fm);
-                        }
-                        catch { }
-                        n++;
-                        _dumpLines.Add($"  家具 {c}（{FurnNameSafe(dict, c)}）owner=0x{v:X} map={fm}(IsHomeMap={isHome}) floor={floor} locked={locked} 入选={ConfigIds.Contains(c)} 严格同图={fm == mapId}");
-                    }
-                    _dumpLines.Add($"  [全量] agentList 中家具共 {n} 条（上限400截断），GetHomeMapId={mapId}，柜子名单收录 {fresh.Count}");
-                }
-                catch (Exception e) { _dumpLines.Add("  [全量] 失败: " + e.Message); }
             }
 
             // 变化时才打，防 5 秒刷屏
@@ -366,8 +306,6 @@ internal static class CabinetCatalog
         }
     }
 
-    internal static volatile bool DumpRequested;
-    private static readonly List<string> _dumpLines = new();
     private static string _lastExtraKey = "";
 
     private static string FurnNameSafe(Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Furniture> dict, int cfgId)
@@ -416,23 +354,6 @@ internal static class CabinetCatalog
             return dict != null && dict[Il2CppInterop.Runtime.Il2CppType.From(type)] != null;
         }
         catch { return false; }
-    }
-
-    /// <summary>诊断：列出本次枚举的全部带包家具明细（DumpFurniture 置 true 触发一次）。</summary>
-    internal static void FlushDump()
-    {
-        if (!DumpRequested) return;
-        if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.IsInstanceCreated)
-            return; // 等进档后再消费，避免主菜单空转清标志
-        if (_homeInstances.Count == 0 && _dumpLines.Count == 0)
-            return; // 加载屏阶段世界已建但家具未生成（曾在此被空消费掉标志），等首份有效数据
-        DumpRequested = false;
-        CabinetEverywherePlugin.Log.LogInfo(
-            $"[CabinetEverywhere][诊断] 带包家具明细（GetHomeMapId 映射）共 {_dumpLines.Count + _homeInstances.Count} 条：");
-        foreach (var l in _dumpLines) CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere][诊断] " + l);
-        _dumpLines.Clear();
-        foreach (var c in _homeInstances)
-            CabinetEverywherePlugin.Log.LogInfo($"[CabinetEverywhere][诊断]   入选 家具 {c.ConfigId}（{c.Name}）owner={c.OwnerId}(0x{c.OwnerId:X})");
     }
 
     private static bool _instanceLogged;

@@ -5999,8 +5999,6 @@
      __CERAIL_TABS__ 同款独立通道，不进 rail 契约/rev）；>7.5KB 走 __CERAIL_TRADEFX_CHUNK__
      (pid,i,total,片)（C# 侧 EscapeJs 装箱，JS 解析字面量还原；pid 单调，乱序/重复/迟到
      幂等——railui pushChunk 同协议独立序列）。渲染宿主=Trade 帧（frameByKey('Trade')）。
-     探针：TFX_DEPS 每功能声明依赖选择器，apply 前探测，缺件经 cmd('report') 上报一次
-     （页面级 Set 去重，恢复再坏不重报）——游戏改版「哪个部件没了」实机定位口。
      幂等纪律：解析失败静默（data 不变）；mode=none → clear。 */
   var TFX = {
     data: null,
@@ -6417,32 +6415,10 @@
     if (b.textContent !== line) b.textContent = line;
   }
 
-  var TFX_DEPS = {
-    chips: ['.bubble'],
-    bar: ['.foot-main', '.bal-track'],
-    cells: ['#tradeBagGrid'],
-    shelf: ['.shelf-list'],
-    requests: ['.sup-list'],
-    rewards: ['.sup-list']
-  };
-  var TFX_REPORTED = {}; /* 探针去重：key → true（页面级一次上报纪律） */
   function tfxFrame() {
     var f = frameByKey('Trade');
     if (f && f.el && f.el.isConnected && f.doc) return f;
     return null;
-  }
-  function tfxProbe(doc) {
-    for (var k in TFX_DEPS) {
-      if (!Object.prototype.hasOwnProperty.call(TFX_DEPS, k)) continue;
-      var sels = TFX_DEPS[k];
-      var missing = [];
-      for (var i = 0; i < sels.length; i++)
-        try { if (!doc.querySelector(sels[i])) missing.push(sels[i]); } catch (e) { }
-      if (missing.length && !TFX_REPORTED[k]) {
-        TFX_REPORTED[k] = true;
-        try { cmd('report', { text: 'tradefx missing ' + k + '(' + missing.join(',') + ')' }); } catch (e) { }
-      }
-    }
   }
   var _tfxApplying = false;   /* 自写标记（诊断口；观察器异步投递时已复位——自写防护靠幂等收敛） */
   var _tfxObsDoc = null, _tfxObs = null, _tfxRaf = 0;
@@ -6476,7 +6452,6 @@
     if (!d) return;
     var f = tfxFrame();
     if (!f) return; /* 无 Trade 帧（未开窗）：不渲染不报探针（防刷屏） */
-    try { tfxProbe(f.doc); } catch (e) { }
     _tfxApplying = true;
     try {
       if (d.mode === 'trade') {

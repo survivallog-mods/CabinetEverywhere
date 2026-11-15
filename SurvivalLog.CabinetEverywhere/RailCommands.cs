@@ -55,7 +55,7 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   6. 每帧 8 条上限；ForceRepublish 批量末尾一次。✅
 ///
 /// 结果回传：无 JS 主动回传通道——执行结果经 ForceRepublish 数据差量自然体现 + 日志
-/// （Verbose 每命令一行 op/参数/结果计数；失败 WarnOnce）。tidy 失败需让 JS 知道（T12 toast）：
+/// （失败 WarnOnce）。tidy 失败需让 JS 知道（T12 toast）：
 /// 置 RailData.ctx.lastTidyFail=true 一次性标志（推出即清），railui.page.js 由 T12 消费。
 /// </summary>
 internal static class RailCommands
@@ -128,8 +128,6 @@ internal static class RailCommands
                 Pending.Enqueue(c);
                 n++;
             }
-            if (n > 0 && CabinetEverywherePlugin.Verbose?.Value == true)
-                CabinetEverywherePlugin.Log.LogInfo($"[CERail] drain 入队 {n} 条（积压 {Pending.Count}）");
         }
         catch (Exception e)
         {
@@ -196,7 +194,7 @@ internal static class RailCommands
             {
                 try { Execute(c); }
                 catch (Exception e) { WarnOnce("exec:" + c.Op, "命令 " + c.Op + " 执行异常: " + e.Message); }
-                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder" && c.Op != "setFilter" && c.Op != "report"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush；setFilter=选中落库走 TabGate/Pruner 下轮对账；report=纯日志）
+                mutated |= c.Op != "rename" && c.Op != "setTags" && c.Op != "rackOpen" && c.Op != "pinOrder" && c.Op != "setFilter"; // 物品变更类（Bug3 刷新判定；pinOrder=纯序变更走 TabInjector Repush；setFilter=选中落库走 TabGate/Pruner 下轮对账）
                 executed++;
             }
             if (executed > 0)
@@ -206,7 +204,7 @@ internal static class RailCommands
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 RailData.ForceRepublish();
                 long tPush = sw.ElapsedMilliseconds;
-                if (CabinetEverywherePlugin.Verbose?.Value == true || tPush > 150)
+                if (tPush > 150)
                     CabinetEverywherePlugin.Log.LogInfo($"[CERail] 命令泵本帧执行 {executed} 条（余量 {Pending.Count}）→ ForceRepublish {tPush}ms（>150ms 常驻打印）");
             }
             if (_storeTask != null) DriveStoreTask(); // 方案 A 终案：入库任务每帧一步（收尾自带哨兵+推送收口）
@@ -242,8 +240,6 @@ internal static class RailCommands
             case "refreshBag": OpRefreshBag(); break; // glist 批改#9：格子态官方刷新杠杆（switchBag 同值守卫早退不覆盖——见 OpRefreshBag 注释）
             case "basketPut": OpBasketPut(c); break; // 篮子救援 glist：右键 1 件直放篮子（最终入篮=官方快转动作，见 OpBasketPut 注释）
             case "slotFeed": OpSlotFeed(c); break; // glist 柜源右键一步直达（brew/dye/rat 三页官方 ItemClick/MouseAdd 直发，见 OpSlotFeed 注释）
-            case "uiShow": OpUiShow(c); break; // 调试：远程显示官方界面（AllowDebugUiShow 门控）
-            case "uiClose": OpUiClose(c); break; // 调试：远程关闭官方界面（uiShow 前清场——Ac_OpenUI 不自动关旧 UI，ActivePage 被残留页霸占=验证踩坑实锤；同门控）
             case "storeAll": OpStoreAll(c); break;
             case "storeAbort": AbortStoreTask(); break; // 玩家 ✕ 关进度弹窗：中止剩余搬运（B 款可关闭批）
             case "rename": OpRename(c); break;
@@ -251,7 +247,6 @@ internal static class RailCommands
             case "pinOrder": OpPinOrder(c); break; // 四轮（作者#2）：拖拽页签序同步官方 BagTabs 序（TabInjector 落盘+0.5s 轮询重排）
             case "setFilter": OpSetFilter(c); break; // v1.9.1 筛选下拉：选中落库（TabGate 下轮按选中收窄可见集）
             case "ping": OpPing(c); break; // v1.8.10 十三批四追：心跳自愈；六追后升级为通道对照实验（微包回执）：ExecuteJavaScript 大包（62KB 契约）实测零达而 drain（33B）恒达——长度丢弃假说验证
-            case "report": OpReport(c); break; // TradeFx 批1：JS 侧 missing 探针上报（纯日志零副作用——游戏改版定位「哪个依赖部件没了」）
             case "detail": OpDetail(c); break; // TradeFx 批2（A5）：货架/格子点击 → 官方物品详情弹窗
             case "idetail": OpIDetail(c); break; // glist v2.2.1：行左键 → 官方详情弹窗（实例级，任意容器归属）
             default: WarnOnce("op:" + c.Op, "未知 op，丢弃: " + c.Op); break;
@@ -272,7 +267,6 @@ internal static class RailCommands
         if (c.From == RailGround.OwnerId)
         {
             int picked = RailGround.TakeToBag(c.Ids, bag, !c.All);
-            VLog(c.Op, $"ground→bag all={c.All} picked={picked}");
             return;
         }
         var im = RailData.ItemMgr();
@@ -301,7 +295,6 @@ internal static class RailCommands
             }
         }
         int moved = batch.Count > 0 ? im.TryQuickMoveItems(batch, c.From, bag, SilentQuickMove, false) : 0;
-        VLog(c.Op, $"from={c.From}→bag={bag} all={c.All} batch={batch.Count} moved={moved} skip={skip}");
     }
 
     /// <summary>put{ids,all,to}：背包→柜（整理柜左面板右键）。all:false 同样只取第一叠 1 件。</summary>
@@ -336,7 +329,6 @@ internal static class RailCommands
             }
         }
         int moved = batch.Count > 0 ? im.TryQuickMoveItems(batch, bag, c.To, SilentQuickMove, false) : 0;
-        VLog(c.Op, $"bag={bag}→to={c.To} all={c.All} batch={batch.Count} moved={moved} skip={skip}");
     }
 
     /// <summary>takeAll{from}：整容器柜→背包（TryMoveBagAll；tipOnUntransferred 默认 true=装不下官方自带 toast）。</summary>
@@ -350,13 +342,11 @@ internal static class RailCommands
         if (c.From == RailGround.OwnerId)
         {
             int picked = RailGround.TakeAllToBag(bag);
-            VLog(c.Op, $"ground→bag picked={picked}");
             return;
         }
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("takeAll:noim", "takeAll 丢弃：ItemManager 不可得"); return; }
         bool ok = im.TryMoveBagAll(c.From, bag, true);
-        VLog(c.Op, $"from={c.From}→bag={bag} ok={ok}");
     }
 
     /// <summary>putAll{to}：背包→柜整转（TryMoveBagAll tipOnUntransferred=true：背包满官方 toast）。</summary>
@@ -370,7 +360,6 @@ internal static class RailCommands
         var im = RailData.ItemMgr();
         if (im == null) { WarnOnce("putAll:noim", "putAll 丢弃：ItemManager 不可得"); return; }
         bool ok = im.TryMoveBagAll(bag, c.To, true);
-        VLog(c.Op, $"bag={bag}→to={c.To} ok={ok}");
     }
 
     /// <summary>takeCat{from,cat} / putCat{to,cat}：按 Config_Item.Category==cat 过滤源 owner 物品 id → 整批转移。</summary>
@@ -408,7 +397,6 @@ internal static class RailCommands
         long from = toBag ? c.From : bag;
         long to = toBag ? bag : c.To;
         int moved = batch.Count > 0 ? im.TryQuickMoveItems(batch, from, to, SilentQuickMove, false) : 0;
-        VLog(toBag ? "takeCat" : "putCat", $"owner={other} cat={c.Cat} batch={batch.Count} moved={moved}");
     }
 
     /// <summary>
@@ -448,7 +436,6 @@ internal static class RailCommands
             catch (Exception e) { WarnOnce("putTag:iter", "标签入选遍历异常: " + e.Message); }
         }
         int moved = batch.Count > 0 ? im.TryQuickMoveItems(batch, bag, c.To, SilentQuickMove, false) : 0;
-        VLog(c.Op, $"to={c.To} tags=[{string.Join("/", names)}] batch={batch.Count} moved={moved}");
     }
 
     /// <summary>
@@ -475,7 +462,7 @@ internal static class RailCommands
     /// RA_Open 读 OwnerCache 渲染行视图，跨 kind 行为 T14 实机校准）。
     /// 门：仅 MaterialRack UI 活跃时执行（防点完即关页的存量命令把界面重新拉起）。
     /// TargetId 口径（校准点 C1）：CabinetCatalog 注释 ownerId==Furniture.InstanceId，目标家具
-    /// 实例即容器 owner 本身 → 首版取 OwnerId 同值；Verbose 打印重放前后 RackOwnerId/
+    /// 实例即容器 owner 本身 → 首版取 OwnerId 同值
     /// CurrentFurnitureId 供实机核对（不符则按日志回填，一行改动）。
     /// </summary>
     private static void OpRackOpen(Cmd c)
@@ -495,20 +482,7 @@ internal static class RailCommands
             if (!rus.IsUIActive(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_MaterialRack))))
             { WarnOnce("rackOpen:notactive", $"rackOpen 丢弃：MaterialRack 界面未开（owner={c.Owner}，防关页重拉）"); return; }
 
-            if (CabinetEverywherePlugin.Verbose?.Value == true)
-            {
-                long before = 0, cur = 0;
-                try
-                {
-                    var st = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_MaterialRack)))
-                        ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_MaterialRack>();
-                    before = st?.RackOwnerId?.Value ?? 0; cur = st?.CurrentFurnitureId ?? 0;
-                }
-                catch { }
-                CabinetEverywherePlugin.Log.LogInfo($"[CERail] rackOpen 前态：RackOwnerId={before} CurrentFurnitureId={cur} → 重放 Ac_MaterialRack_Open(owner={c.Owner}, target={c.Owner}, cfg={inst.ConfigId})（C1 校准点）");
-            }
             GameCore.HotUpdate.ReduxUI.Ac_MaterialRack_Open.SendAction(c.Owner, c.Owner, inst.ConfigId);
-            VLog(c.Op, $"owner={c.Owner} cfg={inst.ConfigId} 已重放官方 Ac_MaterialRack_Open（state 重绑→官方行重渲染）");
         }
         catch (Exception e)
         {
@@ -537,15 +511,6 @@ internal static class RailCommands
             }
         }
         catch (Exception) { }
-    }
-
-    /// <summary>report：TradeFx JS 侧 missing 探针上报（批1 Task 3）。纯日志零副作用——
-    /// 依赖选择器缺失即上报（「游戏改版把哪个部件改没了」实机定位口），消息去重防刷屏。
-    /// 不入 Pump 的 mutated 名单（不触发 republish）。</summary>
-    private static void OpReport(Cmd c)
-    {
-        if (!string.IsNullOrEmpty(c.Text))
-            WarnOnce("fx:" + c.Text, "[TradeFx] 页面探针: " + c.Text);
     }
 
     /// <summary>detail：TradeFx 批2（A5）——货架单价/格子徽章点击 → 官方物品详情弹窗
@@ -608,7 +573,6 @@ internal static class RailCommands
                 im.MergeStacksForHub(c.Owner);   // ② 官方合并（数据层）
                 long tMerge = sw.ElapsedMilliseconds - tSort;
                 CabinetEverywherePlugin.Log.LogInfo($"[CERail] tidy 计时 owner={c.Owner}：sort={tSort}ms merge={tMerge}ms（静默窗内，批末一次追平）");
-                VLog(c.Op, $"owner={c.Owner} sort+merge 静默窗完成（批末整包追平）");
             }
             finally
             {
@@ -681,7 +645,6 @@ internal static class RailCommands
             if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
             {
                 RailData.MarkFeedFail("bagfull");
-                VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）");
                 return;
             }
         }
@@ -720,7 +683,7 @@ internal static class RailCommands
             }
             catch (Exception e) { WarnOnce("feed:iter", "背包叠并重解析遍历异常: " + e.Message); }
         }
-        if (target <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 重解析失败（背包无目标叠）"); return; }
+        if (target <= 0) { RailData.MarkFeedFail("noitem"); return; }
 
         // ⑤ 第二跳：官方加油动作重放（与页面 FUEL_ADD 按钮同入口；bagtabs 族按页派发——
         // Ac_Heater_FuelAdd/Ac_FuelGenerator_FuelAdd 同载荷 {itemId}）
@@ -728,7 +691,6 @@ internal static class RailCommands
             GameCore.HotUpdate.ReduxUI.Ac_Heater_FuelAdd.SendAction("{\"itemId\":" + target + "}");
         else
             GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_FuelAdd.SendAction("{\"itemId\":" + target + "}");
-        VLog(c.Op, $"owner={c.Owner} item={c.Item}→bag 重解析={target} cfg={cfgId}（两跳完成）");
     }
 
     /// <summary>
@@ -764,7 +726,6 @@ internal static class RailCommands
                 if (cur == owner) return; /* 同值守卫：已在目标 owner=免命令风暴（官方刷新也免） */
                 stH.BagOwnerId.Value = owner;
                 GameCore.HotUpdate.ReduxUI.Ac_Heater_RefreshBag.SendAction();
-                VLog(c.Op, "owner=" + cur + "→" + owner + "（官方状态直写+官方刷新）");
             }
             catch (Exception e) { WarnOnce("switch:write", "BagOwnerId 直写异常(Heater): " + e.Message); }
             return;
@@ -777,7 +738,6 @@ internal static class RailCommands
             if (cur == owner) return; /* 同值守卫：已在目标 owner=免命令风暴（官方刷新也免） */
             st.BagOwnerId.Value = owner;
             GameCore.HotUpdate.ReduxUI.Ac_FuelGenerator_RefreshBag.SendAction();
-            VLog(c.Op, "owner=" + cur + "→" + owner + "（官方状态直写+官方刷新）");
         }
         catch (Exception e) { WarnOnce("switch:write", "BagOwnerId 直写异常: " + e.Message); }
     }
@@ -791,7 +751,7 @@ internal static class RailCommands
     /// </summary>
     private static void OpRefreshBag()
     {
-        try { RailData.RefreshActivePage(); VLog("refreshBag", "活跃页官方刷新（glist 格子态）"); } catch (Exception e) { WarnOnce("refresh:fail", "refreshBag 异常: " + e.Message); }
+        try { RailData.RefreshActivePage(); } catch (Exception e) { WarnOnce("refresh:fail", "refreshBag 异常: " + e.Message); }
     }
 
     /// <summary>basketPut{owner,item}（篮子救援 glist 右键）：1 件直放篮子（basket spec §5.1）。
@@ -850,7 +810,7 @@ internal static class RailCommands
             }
         }
         catch { }
-        if (basketStacks >= maxItems && !hasSameCfg) { RailData.MarkFeedFail("full"); VLog(c.Op, $"full：{basketStacks}/{maxItems} cfg={cfgId}"); return; }
+        if (basketStacks >= maxItems && !hasSameCfg) { RailData.MarkFeedFail("full"); return; }
 
         // 地面源（批改 2026-11-12）：官方实体拾取整叠入包（TryPickupItem）→ 包内定位
         //（原 id 优先/cfg 兜底——并叠处理）→ 拆 1 件官方快转入篮（右键 1 件口径，柜源同语义）
@@ -859,7 +819,6 @@ internal static class RailCommands
             if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
             {
                 RailData.MarkFeedFail("bagfull");
-                VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）");
                 return;
             }
             var bagInnerG = OwnerItems(im, bag);
@@ -880,12 +839,11 @@ internal static class RailCommands
                 }
                 catch { }
             }
-            if (pieceG <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败（地面）"); return; }
+            if (pieceG <= 0) { RailData.MarkFeedFail("noitem"); return; }
             int cntG = 0;
             try { cntG = ItemOf(bagInnerG, pieceG)?.ItemCount ?? 0; } catch { }
             if (cntG > 1) { var sp = TrySplit(im, pieceG); if (sp > 0) pieceG = sp; } // 整叠入包后拆 1 件
             SendQuickTransfer(pieceG);
-            VLog(c.Op, $"ground→basket piece={pieceG}（拾取→定位→拆1→快转）");
             return;
         }
 
@@ -918,7 +876,6 @@ internal static class RailCommands
                 // 终审 I4：柜→包失败主因=背包满——源叠仍在柜=bagfull（OpFeed :619 同口径），否则 noitem
                 bool stillInCabinet = ItemOf(OwnerItems(im, c.Owner), c.Item) != null;
                 RailData.MarkFeedFail(stillInCabinet ? "bagfull" : "noitem");
-                VLog(c.Op, $"柜→包失败 cfg={cfgId} {(stillInCabinet ? "bagfull" : "noitem")}");
                 return;
             }
             var bagInner = OwnerItems(im, bag);
@@ -945,10 +902,9 @@ internal static class RailCommands
                     }
                 }
             }
-            if (target <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            if (target <= 0) { RailData.MarkFeedFail("noitem"); return; }
             SendQuickTransfer(target);
         }
-        VLog(c.Op, $"owner={c.Owner} item={c.Item} cfg={cfgId} 件={basketStacks}/{maxItems}{(hasSameCfg ? " 并叠" : "")}");
 
         static void SendQuickTransfer(long itemId)
         {
@@ -1008,7 +964,7 @@ internal static class RailCommands
 
         var (to, unlocked) = SlotTarget(page);
         if (to <= 0) { RailData.MarkFeedFail("noitem"); WarnOnce("slotfeed:target", "桶槽 owner 不可得"); return; }
-        if (!unlocked) { RailData.MarkFeedFail("locked"); VLog(c.Op, $"cfg={cfgId} 拒：目标仓锁定/运行中"); return; }
+        if (!unlocked) { RailData.MarkFeedFail("locked"); return; }
 
         if (c.Ev == "mouse")
         {
@@ -1025,7 +981,7 @@ internal static class RailCommands
                 if (ground)
                 {
                     if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
-                    { RailData.MarkFeedFail("bagfull"); VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）"); return; }
+                    { RailData.MarkFeedFail("bagfull"); return; }
                     piece = ResolvePiece(im, bag, c.Item, cfgId);
                 }
                 else
@@ -1038,35 +994,31 @@ internal static class RailCommands
                     {
                         bool still = ItemOf(OwnerItems(im, c.Owner), c.Item) != null;
                         RailData.MarkFeedFail(still ? "bagfull" : "noitem");
-                        VLog(c.Op, $"柜→包失败 cfg={cfgId} {(still ? "bagfull" : "noitem")}");
                         return;
                     }
                     piece = ResolvePiece(im, bag, batch[0], cfgId);
                 }
             }
-            if (piece <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            if (piece <= 0) { RailData.MarkFeedFail("noitem"); return; }
             try { GameCore.HotUpdate.ReduxUI.Ac_RatCage_MouseAdd.SendAction("{\"itemId\":" + piece + "}"); }
             catch (Exception e) { RailData.MarkFeedFail("nomove"); WarnOnce("slotfeed:mouse", "MouseAdd 发送失败: " + e.Message); return; }
-            VLog(c.Op, $"owner={c.Owner} item={c.Item}→{piece} cfg={cfgId} mouse（进包+MouseAdd）");
             return;
         }
 
         // ---- item 路径：官方 3026 直发（准入 C# 复刻，物品不经背包）----
         if (!SlotAdmissionOk(page, src, cfgId))
-        { RailData.MarkFeedFail("admit"); VLog(c.Op, $"cfg={cfgId} 拒：准入（glist 行同谓词）"); return; }
+        { RailData.MarkFeedFail("admit"); return; }
         if (ground)
         {
             // 地面 owner 不走官方 OwnerCache 常规链：拾取进包后 3026(bag→to)（重定位，官方单件减量）
             if (RailGround.TakeToBag(new List<long> { c.Item }, bag, true) <= 0)
-            { RailData.MarkFeedFail("bagfull"); VLog(c.Op, $"ground→bag 失败 cfg={cfgId}（背包满/负重拒）"); return; }
+            { RailData.MarkFeedFail("bagfull"); return; }
             long piece = ResolvePiece(im, bag, c.Item, cfgId);
-            if (piece <= 0) { RailData.MarkFeedFail("noitem"); VLog(c.Op, $"cfg={cfgId} 落包重解析失败"); return; }
+            if (piece <= 0) { RailData.MarkFeedFail("noitem"); return; }
             NotifyQuickMoveItem(piece, bag, to);
-            VLog(c.Op, $"ground item={c.Item}→{piece} cfg={cfgId} 3026 bag→{to}（拾取+直发）");
             return;
         }
         NotifyQuickMoveItem(c.Item, fromBag ? bag : c.Owner, to);
-        VLog(c.Op, $"owner={c.Owner} item={c.Item} cfg={cfgId} 3026 {c.Owner}→{to}（直发，不经背包）");
 
         static long TrySplit(GameCore.HotUpdate.Battle.Logic.ItemManager im, long id)
         {
@@ -1164,84 +1116,6 @@ internal static class RailCommands
         }
         catch (Exception e) { RailData.MarkFeedFail("nomove"); WarnOnce("slotfeed:3026", "QuickMoveItem 直发失败: " + e.Message); }
     }
-
-    /// <summary>
-    /// uiShow{key}（调试专用，[Rail] AllowDebugUiShow=true 才生效）：远程显示指定官方界面——
-    /// 重放官方各族 **无参 ShowUI 动作**（零载荷=零状态构造风险，与 rackOpen 重放同性质；
-    /// 机器区自身数据若未初始化可能空显，rail 侧数据由本 mod 推送泵独立供给，验收 Chrome 用）。
-    /// </summary>
-    private static void OpUiShow(Cmd c)
-    {
-        if (CabinetEverywherePlugin.AllowDebugUiShow?.Value != true) { WarnOnce("uiShow:gate", "uiShow 丢弃：[Rail] AllowDebugUiShow=false"); return; }
-        try
-        {
-            /* 主路：通用 Ac_OpenUI(Type)——带初始化的打开（iframe 按需创建）；失败降级各族 ShowUI */
-            var uiType = UiTypeOf(c.Key);
-            if (uiType != null)
-            {
-                try { GameCore.HotUpdate.ReduxUI.Ac_OpenUI.SendAction(uiType); VLog(c.Op, c.Key + " (Ac_OpenUI)"); return; }
-                catch (Exception e1) { WarnOnce("uiShow:openui", "Ac_OpenUI 异常（降级 ShowUI）: " + e1.Message); }
-            }
-            switch (c.Key)
-            {
-                case "Cooking": GameCore.HotUpdate.ReduxUI.Ac_Cooking_ShowUI.SendAction(); break;
-                case "BrewPanel": GameCore.HotUpdate.ReduxUI.Ac_Brew_ShowUI.SendAction(); break;
-                case "RatCage": GameCore.HotUpdate.ReduxUI.Ac_RatCage_ShowUI.SendAction(); break;
-                case "DyePanel": GameCore.HotUpdate.ReduxUI.Ac_Dye_ShowUI.SendAction(); break;
-                case "Compressor": GameCore.HotUpdate.ReduxUI.Ac_Compressor_ShowUI.SendAction(); break;
-                case "Shredder": GameCore.HotUpdate.ReduxUI.Ac_Shredder_ShowUI.SendAction(); break;
-                case "ToolTable": GameCore.HotUpdate.ReduxUI.Ac_ToolTable_ShowUI.SendAction(); break;
-                case "Trade": GameCore.HotUpdate.ReduxUI.Ac_TradeUI_ShowUI.SendAction(); break;
-                case "DroneHub": GameCore.HotUpdate.ReduxUI.Ac_DroneHub_ShowUI.SendAction(); break;
-                case "MaterialRack": GameCore.HotUpdate.ReduxUI.Ac_MaterialRack_ShowUI.SendAction(); break;
-                default: WarnOnce("uiShow:key", "uiShow 未知页: " + c.Key); return;
-            }
-            VLog(c.Op, c.Key);
-        }
-        catch (Exception e) { WarnOnce("uiShow:call", "uiShow 异常: " + e.Message); }
-    }
-    /// <summary>
-    /// uiClose{key}（调试专用，[Rail] AllowDebugUiShow=true 才生效）：官方 Ac_CloseUI 重放——
-    /// uiShow 前清场。实锤：Ac_OpenUI 开新页不自动关旧页，双 UI 活跃时 RailData.ActivePage()
-    /// 取到残留旧页 → 契约 ctx.page 错 → rail 按错误场景渲染（2026-11-01 实机验证踩坑）。
-    /// </summary>
-    private static void OpUiClose(Cmd c)
-    {
-        if (CabinetEverywherePlugin.AllowDebugUiShow?.Value != true) { WarnOnce("uiClose:gate", "uiClose 丢弃：[Rail] AllowDebugUiShow=false"); return; }
-        try
-        {
-            var uiType = UiTypeOf(c.Key);
-            if (uiType == null) { WarnOnce("uiClose:key", "uiClose 未知页: " + c.Key); return; }
-            GameCore.HotUpdate.ReduxUI.Ac_CloseUI.SendAction(uiType);
-            VLog(c.Op, c.Key + " (Ac_CloseUI)");
-        }
-        catch (Exception e) { WarnOnce("uiClose:call", "uiClose 异常: " + e.Message); }
-    }
-
-    private static Il2CppSystem.Type UiTypeOf(string key)  /* Ac_OpenUI/Ac_CloseUI.SendAction 形参=Il2CppSystem.Type（Il2CppType.From 直出） */
-    {
-        try
-        {
-            switch (key)
-            {
-                case "BackpackUI": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_BackpackUI)); /* 2026-11-01 实机踩坑补：缺此映射=uiClose 关不掉背包→ActivePage 被霸占全跑偏 */
-                case "Cooking": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Cooking));
-                case "BrewPanel": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Brew));
-                case "RatCage": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage));
-                case "DyePanel": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Dye));
-                case "Compressor": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Compressor));
-                case "Shredder": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_Shredder));
-                case "GreenhouseBuild": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_GreenhouseBuild));
-                case "ToolTable": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_ToolTable));
-                case "Trade": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_TradeUI));
-                case "DroneHub": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_DroneHub));
-                case "MaterialRack": return Il2CppInterop.Runtime.Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_MaterialRack));
-            }
-        }
-        catch { }
-        return null;
-    }
-
 
     /// <summary>
     /// storeAll{order}：§4.7 一键入库路由——背包快照后：物品命中标签集 → 按 order 顺序找「柜官方
@@ -1353,7 +1227,6 @@ internal static class RailCommands
         void Bail(string warnKey, string warnMsg, string vlog)
         {
             WarnOnce(warnKey, warnMsg);
-            VLog(c.Op, vlog);
             RailData.MarkStoreDone();
             RailData.ForceRepublish();
         }
@@ -1439,7 +1312,6 @@ internal static class RailCommands
         }
         if (pending.Count == 0)
         {
-            VLog(c.Op, $"cabs={cabs.Count} 入库 0 叠/0 件，留背包 {leftStacks} 叠（无可路由物品）");
             RailData.MarkStoreDone(); // 哨兵收口（背包空/全配置查无：进度弹窗直落完成态）
             RailData.ForceRepublish();
             return;
@@ -1453,7 +1325,6 @@ internal static class RailCommands
             LeftStacks = leftStacks, TotalStacks = leftStacks + pending.Count, TSnap = tSnap, Sw = sw,
         };
         MoveNotifyCoalescer.ManualEnter(bag); // [PERF-V1.4] 任务级大窗：每帧小批各自开窗=每帧窗尾整包补发（实测入库回归变卡）——大窗包全程，收尾 FinishStoreTask 一次性补发
-        VLog(c.Op, $"任务启动：柜 {cabs.Count} 叠 {pending.Count}（每帧 ≤{StoreBatchPerFrame} 件分帧，完成时哨兵包收口）");
     }
 
     /// <summary>入库任务每帧一步（Pump 尾部调用）：①结算上帧批（count 差量：placed 终局/放不下
@@ -1532,7 +1403,7 @@ internal static class RailCommands
     }
 
     /// <summary>任务收尾（正常/异常同口）：先清任务（PushIfDue 闸门开）→ 哨兵+官方页刷+重推
-    /// 一次性收口（任务期间被闸住的全量推送在此补上）→ 汇总 VLog（总时长/帧数/调用次数）。</summary>
+    /// 一次性收口（任务期间被闸住的全量推送在此补上）→ 汇总日志（总时长/帧数/调用次数）。</summary>
     private static void FinishStoreTask(StoreAllTask t, string abort)
     {
         _storeTask = null;
@@ -1545,10 +1416,6 @@ internal static class RailCommands
         // 402~411ms（哨兵+官方整页重建+BuildJson 130KB 三件同帧），拆开后收尾帧≈1ms
         _storeFlushPending = true;
         if (abort != null) WarnOnce("storeAll:abort", "入库任务提前终止：" + abort);
-        if (abort != null) WarnOnce("storeAll:abort", "入库任务提前终止：" + abort);
-        VLog("storeAll", $"cabs={t.Cabs.Count} 入库 {t.MovedStacks} 叠/{t.MovedTotal} 件，留背包 {t.LeftStacks} 叠" +
-            $"｜性能 快照 {t.TSnap}ms 任务 {t.Sw.ElapsedMilliseconds - t.TSnap}ms/{t.Steps} 帧 均 {t.MovedStacks / Math.Max(1, t.Steps)} 件/帧" +
-            $" 饱和柜 {CountTrue(t.CabSaturated)}/{t.Cabs.Count} Matches {t.MatchCalls} 次 TryQuickMoveItems {t.Calls} 次");
     }
 
     private static int CountTrue(bool[] a)
@@ -1596,7 +1463,6 @@ internal static class RailCommands
         }
         if (ids.Count == 0) return;
         TabInjector.SavePinOrder(pageKey, ids);
-        VLog(c.Op, $"page={pageKey} ids={ids.Count} dropped={dropped}（0.5s 轮询重排官方数组序）");
     }
 
     /// <summary>v1.9.1 筛选下拉：选中（批改后 sel 域={"0"=全部/"food"=食物域/"other"=其他/官方 tagId}）落
@@ -1613,7 +1479,6 @@ internal static class RailCommands
             return;
         }
         TabGate.SaveFilter(pageKey, normalized);
-        VLog(c.Op, $"page={pageKey} sel={normalized}（下轮对账收窄可见集）");
     }
 
     /// <summary>rename{owner,name}：mod 侧持久化 cerail_names.json（≤8 字截断；空名=删除覆盖回契约名）。</summary>
@@ -1629,7 +1494,6 @@ internal static class RailCommands
         else names[c.Owner] = v;
         SaveNames();
         RailData.RefreshMeta(); // NameOf 进 _ctn 行缓存，立即随 ForceRepublish 回推
-        VLog(c.Op, $"owner={c.Owner} name=\"{v}\"");
     }
 
     /// <summary>
@@ -1652,7 +1516,6 @@ internal static class RailCommands
             catch { known = false; }
             if (known) rule.Add((int)t); else dropped++;
         }
-        if (dropped > 0) VLog("setTags", $"白名单剔除未知 tagId ×{dropped}（红线5）");
 
         var comp = TagComponentOf(c.Owner);
         if (comp == null) { WarnOnce("setTags:nocomp", "setTags 失败：容器 FurnitureTagComponent 不可得 owner=" + c.Owner); return; }
@@ -1665,7 +1528,6 @@ internal static class RailCommands
         catch (Exception e) { WarnOnce("setTags:call", "SetRule 调用异常: " + e.Message); return; }
 
         RailData.RefreshMeta(); // 新 TagIds 进 _ctn 行，立即随 ForceRepublish 回推
-        VLog(c.Op, $"owner={c.Owner} tags=[{string.Join(",", c.Tags)}] → kept={rule.Count} dropped={dropped} ok={ok}");
     }
 
     // ================= 取用 / 校验助手 =================
@@ -1873,7 +1735,6 @@ internal static class RailCommands
             File.WriteAllText(tmp, sb.ToString());
             File.Move(tmp, path, true);
             _namesMtime = File.GetLastWriteTimeUtc(path);
-            VLog("rename", $"cerail_names.json 已写（{_names.Count} 条）");
         }
         catch (Exception e)
         {
@@ -1895,10 +1756,4 @@ internal static class RailCommands
         CabinetEverywherePlugin.Log?.LogWarning("[CERail] " + msg);
     }
 
-    /// <summary>Debug.Verbose：每命令一行 op/参数摘要/结果计数（T14 实机校准观测点）。</summary>
-    private static void VLog(string op, string detail)
-    {
-        if (CabinetEverywherePlugin.Verbose?.Value != true) return;
-        CabinetEverywherePlugin.Log.LogInfo($"[CERail] cmd {op}: {detail}");
-    }
 }

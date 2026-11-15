@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using BepInEx;
 
 namespace SurvivalLog.CabinetEverywhere;
 
@@ -21,7 +20,6 @@ internal static class CraftSourceInjector
     private static bool _announced;
     private static readonly HashSet<int> _added = new();
     // 空操作 trace 单次哨兵（RemoveAll 幂等被巡检高频调用，只落一次证据防刷屏）
-    private static bool _noopTraced;
 
     internal static void Ensure(HashSet<int> cfgIds)
     {
@@ -62,10 +60,6 @@ internal static class CraftSourceInjector
                 _announced = true;
                 CabinetEverywherePlugin.Log.LogInfo(
                     $"[CabinetEverywhere] 白名单注入完成：本次新增 {added} 条（累计 {_added.Count}，官方原有 70006 工具柜保留）");
-                if (CabinetEverywherePlugin.Verbose.Value)
-                    CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere] 名单：[" + string.Join(",", _added) + "]");
-                if (added > 0)
-                    Trace($"Ensure: 本次新增 {added}，_added={_added.Count}，白名单集合={SafeCount(set)}");
             }
         }
         catch (Exception e)
@@ -86,15 +80,7 @@ internal static class CraftSourceInjector
         try
         {
             var set = GameCore.HotUpdate.ToolCabinetConfig.CraftSourceFurnitureIds;
-            if (_added.Count == 0)
-            {
-                if (!_noopTraced)
-                {
-                    _noopTraced = true;
-                    Trace($"RemoveAll(noop): 无本会话注入，白名单集合={SafeCount(set)}（官方态）");
-                }
-                return;
-            }
+            if (_added.Count == 0) return;
 
             int before = SafeCount(set);
             var removed = new List<int>();
@@ -113,7 +99,6 @@ internal static class CraftSourceInjector
             int after = SafeCount(set);
             CabinetEverywherePlugin.Log.LogInfo(
                 $"[CabinetEverywhere] 白名单对称移除：移除 {removed.Count} 条（集合 {before}->{after}，官方原有 70006 工具柜保留）");
-            Trace($"RemoveAll: 移除 {removed.Count} 条 [{string.Join(",", removed)}]，集合 {before}->{after}，_added 剩 {_added.Count}");
         }
         catch (Exception e)
         {
@@ -125,17 +110,5 @@ internal static class CraftSourceInjector
     {
         try { return set?.Count ?? -1; }
         catch { return -1; }
-    }
-
-    /// <summary>自证 trace（BepInEx 日志强杀不落盘，状态变化落文件；仅状态迁移时写，低频）。</summary>
-    private static void Trace(string msg)
-    {
-        try
-        {
-            System.IO.File.AppendAllText(
-                System.IO.Path.Combine(Paths.BepInExRootPath, "CE_gate_trace.txt"),
-                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {msg}\n");
-        }
-        catch { }
     }
 }

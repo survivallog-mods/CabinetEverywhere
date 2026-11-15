@@ -115,7 +115,7 @@ internal static class RailData
         if (rus == null) return false;
         foreach (var sc in Scenes)
         {
-            try { if (rus.IsUIActive(sc.UiType)) return true; } catch (Exception e) { PerfDiag.Swallow("rus.IsUIActive:" + e.GetType().Name); } // [PERFDIAG]
+            try { if (rus.IsUIActive(sc.UiType)) return true; } catch { }
         }
         return false;
     }
@@ -513,7 +513,6 @@ internal static class RailData
     internal static void OnWorldRebind()
     {
         _bagOwner = 0;
-        _bagCalLogged = false;
         RailGround.Reset(); // 地面：家图判定缓存随档失效（mapId→IsHomeMap 语义换档变）
         _forcePending = true;
         _tidyFailPending = false;
@@ -840,11 +839,9 @@ internal static class RailData
             _forcePending = true; /* 瞬态：下一周期重试 */
             return (null, _rev);
         }
-        _lastJsonHead = sb.Length > 200 ? sb.ToString(0, 200) : sb.ToString();
         _lastItemRows = itemRows;
         _lastCtnRows = _ctn.Count;
         _lastIcfgRows = icfgOrder.Count;
-        LogVerboseAnchors(icfgOrder, itemDict);
         return (sb.ToString(), _rev);
     }
 
@@ -977,7 +974,7 @@ internal static class RailData
         if (rus == null) return null;
         foreach (var sc in Scenes)
         {
-            try { if (rus.IsUIActive(sc.UiType)) return sc; } catch (Exception e) { PerfDiag.Swallow("rus.IsUIActive:" + e.GetType().Name); } // [PERFDIAG]
+            try { if (rus.IsUIActive(sc.UiType)) return sc; } catch { }
         }
         return null;
     }
@@ -1019,11 +1016,9 @@ internal static class RailData
                     _ => 0,
                 };
             }
-            catch (Exception e) { PerfDiag.Swallow("resolveBagOwner.state:" + e.GetType().Name); } // [PERFDIAG]
+            catch { }
             if (v > 0)
             {
-                if (_bagOwner != v && CabinetEverywherePlugin.Verbose?.Value == true)
-                    CabinetEverywherePlugin.Log.LogInfo($"[CERail] 背包 owner：活动页 {sc.Page} PlayerBagOwnerId={v}（旧缓存 {_bagOwner}）");
                 _bagOwner = v;
                 return v;
             }
@@ -1052,35 +1047,8 @@ internal static class RailData
                 return pid;
             }
         }
-        catch (Exception e) { PerfDiag.Swallow("resolveBagOwner.playerId:" + e.GetType().Name); } // [PERFDIAG]
-        return _bagOwner > 0 ? _bagOwner : 0;
-    }
-
-    /// <summary>BAG_OWNER 校准日志（findings §4 校准点，Debug.Verbose 每会话一次）。</summary>
-    private static void LogBagOwnerCalibration(long bagOwner)
-    {
-        if (_bagCalLogged) return;
-        _bagCalLogged = true;
-        try
-        {
-            var rus = ReduxUi();
-            var itemState = ItemState();
-            long player = 0;
-            try
-            {
-                var dataTree = rus?.reduxStoreLayer?.dataTree;
-                GameCore.HotUpdate.ReduxUI.BaseReduxState rawP = null;
-                dataTree?.TryGetValue(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.State_Data_Player)), out rawP);
-                player = rawP?.TryCast<GameCore.HotUpdate.ReduxUI.State_Data_Player>()?.PlayerId ?? 0;
-            }
-            catch { }
-            int bagCacheKeys = 0;
-            try { bagCacheKeys = itemState?.BagCache?.Count ?? 0; } catch { }
-            CabinetEverywherePlugin.Log.LogInfo(
-                $"[CERail][校准] 背包 owner={bagOwner}，PlayerId={player}，BagCache 键数={bagCacheKeys}" +
-                $"（断言 owner==PlayerId 且 BagCache 命中——findings §4，T14 复核）");
-        }
         catch { }
+        return _bagOwner > 0 ? _bagOwner : 0;
     }
 
     // ================= 物品行 / icfg =================
@@ -1643,52 +1611,7 @@ internal static class RailData
         return 0;
     }
 
-    // ================= Debug.Verbose（T14 实机校准日志） =================
-
-    private static string _lastJsonHead = "";
-    private static int _lastItemRows, _lastCtnRows, _lastIcfgRows;
-    private static bool _bagCalLogged;
-    private static bool _vdLogged;
-
-    /// <summary>
-    /// T14 校准锚点（Debug.Verbose 门控，每会话各一次）：
-    /// ① VD_MAP 四物回归（findings §1B：面包 2502=[20,3,0,0,0]/绷带 2400=[0,0,0,0,20]/
-    ///    西瓜汁完美 12417=[102,51,0,0,9]/咖啡 7=[0,5,20,0,0]）；
-    /// ② BAG_OWNER 三值对照（findings §4）。
-    /// </summary>
-    private static void LogVerboseAnchors(List<int> icfgOrder, Il2CppSystem.Collections.Generic.Dictionary<int, GameCore.HotUpdate.Config_Item> itemDict)
-    {
-        if (CabinetEverywherePlugin.Verbose?.Value != true) return;
-
-        LogBagOwnerCalibration(_bagOwner);
-
-        if (_vdLogged) return;
-        var cm = BagTable.Cm();
-        if (itemDict == null) itemDict = cm?._Config_Item_Dict;
-        var marks = new[] { (2502, "面包"), (2400, "绷带"), (12417, "西瓜汁完美"), (7, "咖啡") };
-        var hits = new List<string>();
-        foreach (var (id, label) in marks)
-        {
-            if (!icfgOrder.Contains(id)) continue;
-            GameCore.HotUpdate.Config_Item ic = null;
-            try { itemDict?.TryGetValue(id, out ic); } catch { }
-            if (ic == null) continue;
-            string v;
-            try { v = $"{ic.ValueDisplay1},{ic.ValueDisplay2},{ic.ValueDisplay3},{ic.ValueDisplay4},{ic.ValueDisplay5}"; }
-            catch { continue; }
-            hits.Add($"{label}({id}) v=[{v}]");
-        }
-        if (hits.Count == 0) return;
-        _vdLogged = true;
-        CabinetEverywherePlugin.Log.LogInfo("[CERail][校准] VD_MAP 四物对照（期望 面包[20,3,0,0,0]/绷带[0,0,0,0,20]/西瓜汁[102,51,0,0,9]/咖啡[0,5,20,0,0]，findings §1B）："
-            + string.Join("；", hits));
-    }
-
-    /// <summary>最近一包的头 200 字符（RailUi.Verbose 日志用）。</summary>
-    internal static string LastJsonHead => _lastJsonHead;
-    internal static int LastItemRows => _lastItemRows;
-    internal static int LastCtnRows => _lastCtnRows;
-    internal static int LastIcfgRows => _lastIcfgRows;
+    private static int _lastItemRows, _lastCtnRows, _lastIcfgRows; /* 前包行数（瞬态空包判定） */
 
     // ================= 基础取用 / 杂项 =================
 
@@ -1700,7 +1623,7 @@ internal static class RailData
                 return null;
             return GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.ReduxUI.ReduxUISystem>.Instance;
         }
-        catch (Exception e) { PerfDiag.Swallow("rus.singleton:" + e.GetType().Name); return null; } // [PERFDIAG]
+        catch { return null; }
     }
 
     private static GameCore.HotUpdate.Battle.Logic.BattleLogicWorld LogicWorld()
@@ -1711,7 +1634,7 @@ internal static class RailData
                 return null;
             return GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.Instance;
         }
-        catch (Exception e) { PerfDiag.Swallow("world.singleton:" + e.GetType().Name); return null; } // [PERFDIAG]
+        catch { return null; }
     }
 
     internal static GameCore.HotUpdate.ReduxUI.State_Data_Item ItemState() // 高度修改批：ShrinkDrop 共用（BagCache/OwnerCache 只读入口）
@@ -1776,149 +1699,6 @@ internal static class RailData
     {
         if (!_warned.Add(key)) return;
         CabinetEverywherePlugin.Log?.LogWarning("[CERail] " + msg);
-    }
-
-    // ================= 染料桶色素 spike dump（dye-pigment-sort spec §6 S1/S3；Debug.DumpDyePigments 触发一次） =================
-    // 自发现式：枚举 GameCore.HotUpdate 程序集里名字含 Dye/Pigment 的类型与字段，逐项 try/catch——
-    // 找多少打多少（找不全不是错）。产出=Task 2 的 C# 访问链 + 附录 A 数值表。
-    internal static volatile bool DyePigDumpRequested;
-
-    internal static void FlushDyePigDump()
-    {
-        if (!DyePigDumpRequested) return;
-        if (!GameCore.HotUpdate.BaseSingleton<GameCore.HotUpdate.Battle.Logic.BattleLogicWorld>.IsInstanceCreated)
-            return; // 等进档（FlushDump 同门）：主菜单阶段配置表未挂世界
-        if (ItemDict() == null || ItemDict().Count == 0)
-            return; // 配置表未就绪：不消费标志，等下周期（FlushDump「等首份有效数据」同纪律）
-        DyePigDumpRequested = false;
-        var log = CabinetEverywherePlugin.Log;
-        log.LogInfo("[CERail] dye-pig spike dump 开始（自发现：类型普查/GameKey/ConfigManager/Config_Item 逐项容错）");
-
-        // ① 类型普查：名字含 Dye/Pigment 的类型 + 其字段/属性名（只打名字，值由②③④定向取）
-        try
-        {
-            var types = typeof(GameCore.HotUpdate.ConfigManager).Assembly.GetTypes();
-            int n = 0;
-            foreach (var t in types)
-            {
-                var fn = t.FullName ?? "";
-                if (fn.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
-                    fn.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                n++;
-                var sb = new StringBuilder();
-                sb.Append("[CERail] dye-pig type ").Append(t.FullName);
-                try
-                {
-                    foreach (var f in t.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
-                        sb.Append("\n    f ").Append(f.FieldType.Name).Append(' ').Append(f.Name).Append(f.IsStatic ? " [static]" : "");
-                    foreach (var p in t.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static))
-                        sb.Append("\n    p ").Append(p.PropertyType.Name).Append(' ').Append(p.Name);
-                }
-                catch (Exception e) { sb.Append("  <成员枚举失败: ").Append(e.Message).Append('>'); }
-                log.LogInfo(sb.ToString());
-            }
-            log.LogInfo("[CERail] dye-pig 类型普查命中 " + n + " 个");
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig 类型普查失败: " + e.Message); }
-
-        // ② GameKey：含 Dye/Pigment 的静态属性名+值（brewP1 读取的同类）
-        try
-        {
-            foreach (var p in typeof(GameCore.HotUpdate.GameKey).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
-            {
-                if (p.Name.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
-                    p.Name.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                var v = "<读取失败>";
-                try { v = string.Concat(p.GetValue(null)); } catch { }
-                log.LogInfo("[CERail] dye-pig GameKey " + p.Name + " = " + v);
-            }
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig GameKey 枚举失败: " + e.Message); }
-
-        // ③-v2 ConfigManager：Il2CppInterop 把 il2cpp 字段暴露成**属性**（一轮 GetFields 空手教训）——
-        //    GetProperties 扫名字含 Dye/Pigment/Plant 的表属性，dict/list 打 count，并定向枚举 PlantPigment 表
-        var cm = BagTable.Cm();
-        if (cm != null)
-        {
-            // v3 起 typed 路负责取值——反射仅留属性名普查（表类型对账；pigTable/pigProp 死变量随警告清理删除）
-            try
-            {
-                foreach (var p in cm.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
-                {
-                    var n = p.Name;
-                    if (n.IndexOf("Dye", StringComparison.OrdinalIgnoreCase) < 0 &&
-                        n.IndexOf("Pigment", StringComparison.OrdinalIgnoreCase) < 0 &&
-                        n.IndexOf("Plant", StringComparison.OrdinalIgnoreCase) < 0) continue;
-                    log.LogInfo("[CERail] dye-pig ConfigManager p " + p.PropertyType.Name + " " + n);
-                }
-            }
-            catch (Exception e) { log.LogWarning("[CERail] dye-pig ConfigManager 属性枚举失败: " + e.Message); }
-        }
-        else log.LogWarning("[CERail] dye-pig ConfigManager 未就绪");
-
-        // ⑤-v3 色板与色素表：**typed 直读**（v2 反射枚举 Il2Cpp 集合两路空——interop 只保证 typed
-        //    路可用；_Config_Item_Dict typed foreach 先例实证）。逐块独立 try/catch，坏一块不影响其余。
-        try
-        {
-            var sbA = new StringBuilder();
-            sbA.Append("ColorCount=").Append(GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorCount);
-            try { sbA.Append(" ColorDyeIds=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorDyeIds) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorDyeIds 失败: ").Append(e2.Message).Append('>'); }
-            try { sbA.Append(" ColorHex=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorHex) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorHex 失败: ").Append(e2.Message).Append('>'); }
-            try { sbA.Append(" ColorShowKeys=["); foreach (var e in GameCore.HotUpdate.Battle.Logic.DyeConfig.ColorShowKeys) sbA.Append(e).Append(','); sbA.Append(']'); } catch (Exception e2) { sbA.Append(" <ColorShowKeys 失败: ").Append(e2.Message).Append('>'); }
-            log.LogInfo("[CERail] dye-pig DyeConfig " + sbA.ToString());
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig DyeConfig typed 读取失败: " + e.Message); }
-        try
-        {
-            var sbB = new StringBuilder();
-            sbB.Append("PaletteSize=").Append(GameCore.HotUpdate.DyePaletteRules.PaletteSize).Append(" NoDye=").Append(GameCore.HotUpdate.DyePaletteRules.NoDye);
-            try { sbB.Append(" SlotToDyeItem=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.SlotToDyeItem) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <SlotToDyeItem 失败: ").Append(e2.Message).Append('>'); }
-            try { sbB.Append(" PanelDyeItems=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeItems) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <PanelDyeItems 失败: ").Append(e2.Message).Append('>'); }
-            try { sbB.Append(" PanelDyeHex=["); foreach (var e in GameCore.HotUpdate.DyePaletteRules.PanelDyeHex) sbB.Append(e).Append(','); sbB.Append(']'); } catch (Exception e2) { sbB.Append(" <PanelDyeHex 失败: ").Append(e2.Message).Append('>'); }
-            log.LogInfo("[CERail] dye-pig DyePaletteRules " + sbB.ToString());
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig DyePaletteRules typed 读取失败: " + e.Message); }
-        // PlantPigment 表 typed 全行（附录 A 数据源）：ID/Source/ItemId/DyeItemId/Points/MainKey
-        try
-        {
-            var pd = BagTable.Cm()?._Config_PlantPigment_Dict;
-            if (pd == null || pd.Count == 0) log.LogWarning("[CERail] dye-pig PlantPigment 表未就绪（null/空）");
-            else
-            {
-                var sbC = new StringBuilder("[CERail] dye-pig PlantPigment 表 ").Append(pd.Count).Append(" 行：\n");
-                foreach (var kv in pd)
-                {
-                    var r = kv.Value;
-                    if (r == null) continue;
-                    try { sbC.Append("  ID=").Append(r.ID).Append(" item=").Append(r.ItemId).Append(" dye=").Append(r.DyeItemId).Append(" pts=").Append(r.Points).Append(" src=\"").Append(r.Source).Append("\"\n"); }
-                    catch (Exception e2) { sbC.Append("  <行读失败: ").Append(e2.Message).Append(">\n"); }
-                }
-                log.LogInfo(sbC.Append("（附录 A 数据源）").ToString());
-            }
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig PlantPigment typed 枚举失败: " + e.Message); }
-        // _plantPigmentsByItem typed（运行期索引，核对与配置表一致性 + 行集合形状）
-        try
-        {
-            var it = BagTable.Cm()?._plantPigmentsByItem;
-            if (it == null) log.LogWarning("[CERail] dye-pig _plantPigmentsByItem null");
-            else
-            {
-                var sbD = new StringBuilder("[CERail] dye-pig _plantPigmentsByItem：\n");
-                int n = 0;
-                foreach (var kv in it)
-                {
-                    n++;
-                    var val = kv.Value;
-                    try { sbD.Append("  item ").Append(kv.Key).Append(" → ").Append(val == null ? "null" : val.ToString()).Append('\n'); }
-                    catch (Exception e2) { sbD.Append("  item ").Append(kv.Key).Append(" → <读失败: ").Append(e2.Message).Append(">\n"); }
-                }
-                log.LogInfo(sbD.Append("共 ").Append(n).Append(" 键").ToString());
-            }
-        }
-        catch (Exception e) { log.LogWarning("[CERail] dye-pig _plantPigmentsByItem typed 读取失败: " + e.Message); }
-
-        log.LogInfo("[CERail] dye-pig spike dump 结束（Task 2 访问链/附录 A 依据）");
     }
 
     private static string SafeName(GameCore.HotUpdate.Config_Item ci)

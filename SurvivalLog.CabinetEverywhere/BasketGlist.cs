@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using GameCore.HotUpdate;
@@ -94,10 +93,8 @@ internal static class BasketGlist
 
             string sig = Sig(st);
             if (_wasLive && sig == _lastSig) return; // 静置零重算零推送
-            bool first = !_wasLive;
             bool wasOn = BasketOn;
 
-            var sw = Stopwatch.StartNew();
             BasketOn = true;
             BasketJson = Build(st);
             if (!wasOn) Dirty = true; // 开窗沿即推：glistOn=true 先行（basket 段未就绪=键缺省，JS 容错）——无需求满篮开窗首包也必带出（批改#1：否则钮要等一次物品事件才显）
@@ -105,9 +102,6 @@ internal static class BasketGlist
             _wasLive = true;
             _lastSig = sig;
             Dirty = true;
-            if (CabinetEverywherePlugin.Verbose?.Value == true)
-                CabinetEverywherePlugin.Log?.LogInfo(
-                    $"[CERail] basket-glist rebuild{(first ? "(开窗沿)" : "")}：{BasketJson?.Length ?? 0}B，{sw.ElapsedMilliseconds}ms");
         }
         catch (Exception e)
         {
@@ -297,8 +291,6 @@ internal static class BasketGlist
             {
                 // 终审 I5：gain 解析失败（wishJson 格式漂移）≠对账通过——fail-closed 按失败处理
                 gain = modSum + 9999;
-                if (CabinetEverywherePlugin.Verbose?.Value == true)
-                    CabinetEverywherePlugin.Log?.LogWarning("[basket-glist] wishJson gain 未解析（格式漂移？），SelfCheck 按 fail-closed 处理");
             }
             if (!BasketAid.SelfCheckOk(modSum, gain))
             {

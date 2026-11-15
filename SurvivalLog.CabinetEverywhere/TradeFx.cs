@@ -64,7 +64,10 @@ internal static class TradeFx
             // 非配置表（127 表无 6612x 键）——只有官方派送数据链跑过才存在。切柜子之所以有效=
             // 触发 Ac_TradeUI_RefreshBag（TabGate 同款官方杠杆）。空奖励时我们主动发同一动作
             // 驱动灌载：每空窗发 1 次（≤2 次/窗），最多 3 窗后静默放弃（防刷新风暴），得数即复位。
-            if (_lastModel != null && _lastModel.Mode == "request" && _lastModel.Rewards.Count == 0)
+            // 行序契约改全量占位后 Rewards 恒非空：空奖池判定=所有行 Gifts 皆空（kind==2 据点行恒空 g，混在也算正常非重试态）。
+            bool reqAllEmpty = _lastModel != null && _lastModel.Mode == "request"
+                && (_lastModel.Rewards.Count == 0 || _lastModel.Rewards.TrueForAll(x => x.Gifts.Count == 0));
+            if (reqAllEmpty)
             {
                 if (_reqEmptyRetry == 0 && _reqEmptyEpochs < 3)
                 {
@@ -77,7 +80,8 @@ internal static class TradeFx
                     }
                 }
             }
-            else if (_lastModel == null || _lastModel.Mode != "request" || _lastModel.Rewards.Count > 0)
+            else if (_lastModel == null || _lastModel.Mode != "request"
+                     || _lastModel.Rewards.Exists(x => x.Gifts.Count > 0))
             {
                 _reqRefreshSends = 0;
                 _reqEmptyEpochs = 0;
@@ -148,9 +152,6 @@ internal static class TradeFx
                         RailUi.EscapeJs(json.Substring(i * Chunk, take)) + "\")", _ack);
                 }
             }
-            if (CabinetEverywherePlugin.Verbose?.Value == true)
-                CabinetEverywherePlugin.Log?.LogInfo(
-                    "[TradeFx] 推送 " + json.Length + " 字符：head " + json.Substring(0, Math.Min(100, json.Length)));
         }
         catch (Exception e) { WarnOnce("push failed: " + e.Message); }
     }
@@ -436,13 +437,20 @@ internal static class TradeFx
                 for (int i = 0; i < payload.targets.Count; i++)
                 {
                     var tg = payload.targets[i];
-                    if (tg == null || tg.kind == 2 || tg.demands == null || tg.demands.Count == 0) continue;
+                    /* 行序契约（实机 2026-11-15 作者实报：送样本/派送委托页回报全灭）：页面 .sup-row=
+                       官方 BuildDispatchRowsJson 对 targets 全量输出（RefreshDispatch 同源），官方上行
+                       谓词只滤 null/kind<=0（OpenDispatchCore b__208_0）。旧版此处再跳过 kind==2（竞赛期
+                       救援据点行）与无 demands 行 → requests/rewards 比页面行少 → JS 索引 zip 门控
+                       （rows.length!==rewards.length）整页清空。改为与官方同口径全量：无数据的行输出
+                       空集，JS 侧行级容错（空 rows 跳过图标/空 g 摘条带）已就位。 */
+                    if (tg == null || tg.kind <= 0) continue;
                     var rows = new List<(int, int, bool, int)>();
-                    for (int j = 0; j < tg.demands.Count; j++)
-                    {
-                        var dm = tg.demands[j];
-                        rows.Add((dm?.need ?? 0, dm?.paid ?? 0, dm?.done ?? false, 0));
-                    }
+                    if (tg.demands != null)
+                        for (int j = 0; j < tg.demands.Count; j++)
+                        {
+                            var dm = tg.demands[j];
+                            rows.Add((dm?.need ?? 0, dm?.paid ?? 0, dm?.done ?? false, 0));
+                        }
                     var lines = RequestLines(tg.kind, tg.id);
                     if (lines != null && lines.Count == rows.Count)
                         for (int j = 0; j < lines.Count; j++)
@@ -473,13 +481,11 @@ internal static class TradeFx
                             if (ssm != null)
                                 rw = ToManaged(StrangerSupportManager.GetDefRsGift(StrangerSupportManager.AidChannelDefRs(tg.id - 1000)));
                         }
-                        if (rw != null && rw.Count > 0)
-                        {
-                            var rl = new List<(int, int)>();
+                        var rl = new List<(int, int)>();
+                        if (rw != null)
                             foreach (var kv in rw)
                                 if (kv.Key > 0 && kv.Value > 0) { rl.Add((kv.Key, kv.Value)); AppendObject(cfg, objs, kv.Key); }
-                            if (rl.Count > 0) m.Rewards.Add((tg.kind, tg.id, rl));
-                        }
+                        m.Rewards.Add((tg.kind, tg.id, rl)); /* 无奖励行也占位（与页面行等长等序，zip 恒成立；JS 空 g=不画条带） */
                     }
                     catch (Exception ex) { WarnOnce("[TradeFx] 奖励溯源失败: " + ex.Message); }
                 }

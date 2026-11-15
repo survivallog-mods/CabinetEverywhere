@@ -18,7 +18,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// Index=列表位次并平移 ActiveLeftTab；活动页签本身不剪（下次开台自然收敛）。
 /// Browser 视图不剪（交易/无人机站语义，工作台视图=Browser 时同样全量）。
 /// 零 Harmony，纯状态列表操作（TabInjector 同手法）。
-/// 日志：汇总行常开；逐条明细走 Debug.Verbose（发版关开关即静默，不删代码）。
+/// 日志：汇总行常开。
 /// </summary>
 internal static class ToolTablePruner
 {
@@ -80,7 +80,7 @@ internal static class ToolTablePruner
                 if (!_registry.ContainsKey(e.OwnerId))
                     _registry[e.OwnerId] = e;
             if (_registry.Count != before)
-                Log($"开台登记柜页签 {_registry.Count} 条（明细开 Debug.Verbose；背包/工作台抽屉不在列表内）");
+                Log($"开台登记柜页签 {_registry.Count} 条（背包/工作台抽屉不在列表内）");
 
             Reconcile(rus, st, tabs);
         }
@@ -113,13 +113,11 @@ internal static class ToolTablePruner
     {
         string view = CurrentView();
         var desired = new HashSet<long>();
-        var verdicts = new List<string>(); // Verbose 明细
         var tagCtx = TagContext.Build();
         foreach (var kv in _registry)
         {
             bool ok = Allows(view, kv.Value, tagCtx, out string why);
             if (ok) desired.Add(kv.Key);
-            verdicts.Add($"{kv.Value.Name}({kv.Key})={(ok ? "留" : "剪")}:{why}");
         }
 
         // v1.8.7 T3：拖拽序对齐先行（cerail_pinorder.json "tooltable"；TabInjector.ApplyOrder
@@ -210,8 +208,6 @@ internal static class ToolTablePruner
         {
             Log($"视图={view} 修剪 {removed} 条 / 加回 {added} 条 / 序对齐={reordered}，扫描集=所见={tabs.Count} 条" +
                 $"（登记 {_registry.Count}，背包/抽屉不在内）");
-            if (CabinetEverywherePlugin.Verbose.Value)
-                foreach (var v in verdicts) LogDetail(v);
 
             // 补发原生全量刷新（Ac_ToolTable_RefreshBag.SendAction()→RA_RefreshBag：
             // RefreshBagItems+RefreshRecipeList+UpdateMaxCraftCount，纯刷新无取料副作用；
@@ -296,7 +292,6 @@ internal static class ToolTablePruner
     }
 
     private static void Log(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.工作台] " + msg);
-    private static void LogDetail(string msg) => CabinetEverywherePlugin.Log.LogInfo("[CabinetEverywhere.工作台.明细] " + msg);
 
     /// <summary>标签上下文（材料/工具/燃料标签 id + 食物域判定），每轮对账时重建（标签库极小，开销可忽略）。</summary>
     private sealed class TagContext
