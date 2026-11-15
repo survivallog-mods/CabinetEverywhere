@@ -1,0 +1,305 @@
+{
+  "mcSpec": 2,
+  "id": "com.local.survivallog.cabineteverywhere",
+  "display": "更好的储物柜",
+  "en": "CabinetEverywhere",
+  "summary": "全容器作为制作/烹饪/酿造等取料源直达；柜子页签标签筛选与场景固定视图。高度修改：25 包逐包可调（0=恢复原生），宽度恒 12（材料架恒 20）；缩高放不下的物品掉在脚下。",
+  "usage": {
+    "intro": "家里所有柜子直达各大界面：工作台做东西自动从柜子取料，烹饪、酿酒、无人机交易都能直接翻柜子；另带柜子高度调整与负重解放。",
+    "sections": [
+      {
+        "heading": "怎么用",
+        "bullets": [
+          "装好即生效——工作台 / 无人机交易（含回应求助）/ 烹饪 / 酿酒 / 粉碎机 / 温室等界面会多出家里的柜子页签，制作自动从柜子取料",
+          "在背包界面给柜子打标签（食物 / 材料 / 药品…），界面里按标签筛选；无人机交易 / 调度机队页脚有「筛选 ▾」下拉，选择按界面分别记忆",
+          "燃油发电机 / 暖炉页可翻「燃料」标签柜，点柜中燃料整组直送；染料桶 / 暖炉 / 发电机三页还支持「列表形态」——跨背包和全屋柜的同名合并列表 + 全局搜索，右上按钮切回格子",
+          "「高度修改」逐柜调行数（0 = 恢复原生，宽度恒 12），面板改动即时生效；「背包负重」与「柜子负重解放」改后重进存档生效"
+        ]
+      },
+      {
+        "heading": "提示",
+        "bullets": [
+          "柜子不是冷链电器，食物放柜子不保鲜（官方设定）；柜子改矮后放不下的物品会掉在脚下",
+          "烹饪类界面默认只看「食物」标签柜 + 冰箱，工作台类默认只看「材料 / 工具」柜；想全看把对应视图切成 Browser",
+          "曾装过旧的背包扩容 / 柜子容量 / 柜子负重解放三个 mod 请先卸载——它们与本 mod 同写容量数值，会互相覆盖"
+        ]
+      }
+    ]
+  },
+  "groups": [
+    {
+      "title": "高度修改（0=恢复原生；上限内建不可改——背包≤30、柜子/抽屉≤100；宽度恒 12，材料架恒 20）",
+      "order": 1,
+      "items": [
+        {
+          "key": "Rail:BackpackHeight",
+          "label": "背包高度",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 30,
+          "step": 1,
+          "order": 10,
+          "note": "普通/登山/仓管背包共 9 包统一行数（原生 18）；天赋加行照常；上限 30"
+        },
+        {
+          "key": "Rail:Height_110002",
+          "label": "小型置物架",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 8",
+          "order": 20
+        },
+        {
+          "key": "Rail:Height_110001",
+          "label": "中型置物架",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "65 家具共用（含工具柜70006/烧烤架）；原生 10",
+          "order": 30
+        },
+        {
+          "key": "Rail:Height_110000",
+          "label": "大型置物架",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 10",
+          "order": 40
+        },
+        {
+          "key": "Rail:Height_110008",
+          "label": "超大型置物架",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 12",
+          "order": 50
+        },
+        {
+          "key": "Rail:Height_10007",
+          "label": "工具柜",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "家具 406；原生 7",
+          "order": 60
+        },
+        {
+          "key": "Rail:Height_1004",
+          "label": "双门冰箱",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "12 家具共用（冰柜/食堂冰箱/冷饮柜/医用冷藏柜等）；原生 7",
+          "order": 70
+        },
+        {
+          "key": "Rail:Height_115000",
+          "label": "双开门冰箱",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 7",
+          "order": 80
+        },
+        {
+          "key": "Rail:Height_115001",
+          "label": "冰柜",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "5 家具共用（含豪华版双门冰箱）；原生 10",
+          "order": 90
+        },
+        {
+          "key": "Rail:Height_115005",
+          "label": "大容量冰柜",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 10",
+          "order": 100
+        },
+        {
+          "key": "Rail:Height_1021",
+          "label": "自行车车筐",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 4",
+          "order": 110
+        },
+        {
+          "key": "Rail:Height_1022",
+          "label": "小汽车后备箱",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "原生 8",
+          "order": 120
+        },
+        {
+          "key": "Rail:Height_1023",
+          "label": "SUV后备箱",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "与门口塑料袋共用；原生 10",
+          "order": 130
+        },
+        {
+          "key": "Rail:Height_110009",
+          "label": "材料架",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "材料种类行数（每种一行）；原生 12。宽恒 20=每行件数不可改；超过 12 行右栏纵向滚动",
+          "order": 140
+        },
+        {
+          "key": "Rail:DrawerHeight",
+          "label": "工作台抽屉",
+          "badge": "now",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "note": "基准行数：三档=H/H+1/H+2（升级加行保留）；原生链 5/6/7；逐档夹 100",
+          "order": 150
+        }
+      ]
+    },
+    {
+      "title": "不常用柜子高度（下拉选择添加；删除即恢复原生；上限 100）",
+      "order": 2,
+      "items": [
+        {
+          "key": "Rail:UncommonHeights",
+          "label": "不常用柜子清单",
+          "badge": "now",
+          "type": "ucb",
+          "def": "",
+          "order": 10,
+          "cabs": [
+            {
+              "id": 1003,
+              "name": "橱柜/储物柜/保险箱/书架",
+              "native": 10
+            },
+            {
+              "id": 1006,
+              "name": "抽屉柜",
+              "native": 6
+            },
+            {
+              "id": 110003,
+              "name": "床头柜",
+              "native": 6
+            },
+            {
+              "id": 110004,
+              "name": "大衣柜",
+              "native": 10
+            },
+            {
+              "id": 110005,
+              "name": "玄关台",
+              "native": 7
+            },
+            {
+              "id": 110006,
+              "name": "小衣柜",
+              "native": 3
+            },
+            {
+              "id": 10003,
+              "name": "工具箱",
+              "native": 3
+            },
+            {
+              "id": 2002,
+              "name": "啤酒箱",
+              "native": 3
+            },
+            {
+              "id": 3003,
+              "name": "纸箱堆/手推车",
+              "native": 6
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "负重（重进存档后生效）",
+      "order": 3,
+      "items": [
+        {
+          "key": "Burden:BackpackBurden",
+          "label": "背包负重（kg）",
+          "badge": "reload",
+          "type": "int",
+          "def": 0,
+          "min": 0,
+          "max": 1000,
+          "step": 1,
+          "order": 10,
+          "note": "0=官方原值；9 个可穿背包统一（原生 9.6~12.5kg），天赋加成照常叠加"
+        },
+        {
+          "key": "Burden:CabinetUnburden",
+          "label": "柜子负重解放",
+          "badge": "reload",
+          "type": "bool",
+          "def": true,
+          "order": 20,
+          "note": "true=储物家具负重清零（负重条整行隐藏，等同冰箱）；false=恢复官方原值"
+        }
+      ]
+    }
+  ]
+}
