@@ -3806,6 +3806,8 @@
         DISP_CT.choice = null; DISP_CT.owner = 0; DISP_CT.model = null; /* v1.8.6：柜侧同沿重置 */
       }
       nbTabAlignSettle(doc); /* v1.9.1：多袋页签垂直对齐跟校（周期兜底线；主触发=观察器微任务） */
+      nbDockPin(doc); /* 2026-11-15 ②：脚边横排 CSS 常驻钉底（style#srDockPin 幂等注入） */
+      nbTipFix(doc); /* 2026-11-15 ①：tooltip/拖拽幽灵按实际 zoom 归位（wrap 一次+观察器/rAF 跟校） */
     } catch (e) { try { console.warn('[CERail] nbMount 失败(兜底不炸扫描)', e && (e.stack || e.message)); } catch (e2) { } }
   }
   /* ================= v1.9.1 原生多袋页签垂直对齐修正（作者实报 2026-11-08 两单：野外探险
@@ -3959,6 +3961,136 @@
         doc.__srnTabAl = { mo: mo, a: aSlot, b: bSlot, p: aPanel };
       }
     } catch (e) { }
+  }
+  /* ================= 2026-11-15 ② 脚边横排 CSS 常驻钉底（作者实报两轮：探险野外地图悬屏中；
+     取出物资界面屏中，拾取/丢弃一拍闪中又回底） =================
+     根因：官方 webui-grounddock place() 锚=gridRefs.A.closest('.panel')——袋未开（野外态
+     ready=false）rect=0×0 或新版结构变更后查空 → null 兜底 y=屏高 50%=屏中；袋开时钳后
+     A 面板 bottom 也常在屏中。一轮 JS 观察器跟校实报不达：官方每次 setData（拾取/丢弃/
+     地面变化）重 place 写 top=屏中 → 观察器**下一拍**才改回 → 每拍闪中一帧；且首拍 place
+     常早于观察器安装=开场即屏中。修=CSS 常驻钉底 `body>.gd-row{top:auto!important;
+     bottom:6px!important}`：渲染帧即生效（内联 top 非 important 被 CSS important 压制）
+     ⇒ 零闪烁、不依赖 DOM 结构/袋开合、随视口自适应（bottom 锚天然跟 resize）；left 不动
+     =官方照常按 HUD 避让算。bottom:6px=官方「无地下沿」兜底同值（MARGIN=6）。 */
+  function nbDockPin(doc) {
+    try {
+      if (!doc || !doc.head || doc.getElementById('srDockPin')) return;
+      var st = doc.createElement('style');
+      st.id = 'srDockPin';
+      st.setAttribute('data-cer-native', '1');
+      st.textContent = 'body>.gd-row{top:auto!important;bottom:6px!important}';
+      doc.head.appendChild(st);
+    } catch (e) { }
+  }
+  /* ================= 2026-11-15 ① 探险页鼠标跟随浮层按实际 zoom 归位（tooltip/拖拽幽灵） =================
+     作者实报：探险页（BackpackUI 多袋页签）悬浮物品信息弹窗距物品过远。根因：nbTabAlignTick ③
+     自写 app.style.zoom（钳后布局口径 0.94）≠ 官方 viewportZoom ref（官方 applyViewportFit 先跑
+     syncSlotHeight 回写未钳 slot 高再量容器=官方全高口径 0.66~0.72；ref=闭包 ref 不可直写）——
+     官方全部鼠标跟随浮层（updateTooltipPos、onMouseDown 的 dragContext.cachedZoom、spray/kin
+     光标）以 ref 除鼠标坐标=布局 px，渲染按实际 zoom ⇒ 视觉恒偏 (actual/ref−1)·|mouse|：harness
+     实测 SUV 页签/单袋形态 tooltip 漂 75~259px、拖拽幽灵 193px（当前页签=最高页签时两口径相等
+     =零漂，故此前未曝；曾试「slot max-height+派 resize 促官方自量钳后布局」的根因修——官方
+     refit 与 ①③ 跟校在高包布局下双吸引子振荡（zoom 0.62↔0.94 死循环实锤）弃）。
+     修=消费端按实际 zoom 复算归位（与官方 refit 零耦合、无反馈环）：
+     · tooltip：wrap 官方 onItemEnter/onItemMove 记鼠标 → rAF 后按 z=parseFloat(app.style.zoom)
+       复算 left/top（翻转判定用实测宽高，边距/翻转式官方同口径）+#app>.tooltip style 观察器
+       兜官方无鼠标事件的重定位路（detailHeld nextTick——用最后记录坐标）；
+     · 幽灵：wrap 官方 onMouseDown 记抓取视觉偏移（mouse−物品左上，官方 offsetX 同源）+ 自挂
+       window mousemove——拖拽中每帧把 .drag-ghost 归位 (mouse−偏移)/z（官方 Vue :style patch
+       在微任务先行、本写在 rAF=同帧后置覆写）。官方拖拽落点判定全用视觉 rect 自洽不受影响。
+     全部幂等签名守卫=差>0.5px 才写（防自激铁律同 §0b-glist）。 */
+  var _nbTip = { doc: null, x: 0, y: 0, has: false, raf: 0, mo: null, g: 0, gx: 0, gy: 0, mx: null, my: null };
+  function nbTipFix(doc) {
+    if (_nbTip.doc === doc) return;
+    _nbTip.doc = doc;
+    var su = null;
+    try { su = nbVueSu(doc); } catch (e) { }
+    if (!su || typeof su.onItemEnter !== 'function') return;
+    var w = doc.defaultView;
+    var enter = su.onItemEnter, move = su.onItemMove, down = su.onMouseDown;
+    if (typeof enter === 'function') {
+      su.onItemEnter = function (ev) {
+        if (ev && typeof ev.clientX === 'number') { _nbTip.x = ev.clientX; _nbTip.y = ev.clientY; _nbTip.has = true; }
+        var r = enter.apply(this, arguments);
+        nbTipKick(doc);
+        return r;
+      };
+    }
+    if (typeof move === 'function') {
+      su.onItemMove = function (ev) {
+        if (ev && typeof ev.clientX === 'number') { _nbTip.x = ev.clientX; _nbTip.y = ev.clientY; _nbTip.has = true; }
+        var r = move.apply(this, arguments); /* 官方在 handler 内自挂 rAF 定位——先跑，我们的 rAF 后注册=同帧后置覆写 */
+        nbTipKick(doc);
+        return r;
+      };
+    }
+    if (typeof down === 'function') {
+      su.onMouseDown = function (ev) {
+        _nbTip.g = 0;
+        try {
+          if (ev && ev.button === 0 && ev.currentTarget && ev.currentTarget.getBoundingClientRect) {
+            var rr = ev.currentTarget.getBoundingClientRect();
+            _nbTip.gx = ev.clientX - rr.left; _nbTip.gy = ev.clientY - rr.top; _nbTip.g = 1;
+          }
+        } catch (e) { }
+        return down.apply(this, arguments);
+      };
+    }
+    if (w) {
+      w.addEventListener('mousemove', function (ev) {
+        try {
+          if (!_nbTip.g) return;
+          var su2 = nbVueSu(doc), ds = su2 && refVal(su2.dragState);
+          if (!ds || ds.draggingId === -1) return;
+          _nbTip.mx = ev.clientX; _nbTip.my = ev.clientY;
+          nbTipKick(doc);
+        } catch (e) { }
+      }, true);
+      var tip = doc.querySelector('#app > .tooltip');
+      if (tip && typeof w.MutationObserver === 'function') {
+        _nbTip.mo = new w.MutationObserver(function () { try { nbTipFixTick(doc); } catch (e) { } });
+        _nbTip.mo.observe(tip, { attributes: true, attributeFilter: ['style'] });
+      }
+    }
+  }
+  function nbTipKick(doc) {
+    if (_nbTip.raf) return;
+    _nbTip.raf = 1;
+    var w = doc.defaultView;
+    var fn = function () { _nbTip.raf = 0; try { nbTipFixTick(doc); } catch (e) { } try { nbGhostFixTick(doc); } catch (e) { } };
+    try { if (w && w.requestAnimationFrame) w.requestAnimationFrame(fn); else if (w) w.setTimeout(fn, 0); else fn(); } catch (e) { fn(); }
+  }
+  function nbTipFixTick(doc) {
+    if (!_nbTip.has) return;
+    var app = doc.getElementById('app');
+    var tip = doc.querySelector('#app > .tooltip');
+    if (!app || !tip || tip.style.display === 'none') return; /* v-show 隐态零写 */
+    var w = doc.defaultView;
+    if (!w) return;
+    var z = parseFloat(app.style.zoom) || 1; /* 实际渲染 zoom（官方/③ 谁最后写都是它） */
+    var lx = _nbTip.x / z, ly = _nbTip.y / z;
+    var tw = tip.offsetWidth || 200, th = tip.offsetHeight || 120;
+    var tx = lx + 15, ty = ly + 15;
+    if (tx + tw > w.innerWidth / z) tx = lx - tw - 15;
+    if (ty + th > w.innerHeight / z) ty = ly - th - 15;
+    tx = Math.round(tx * 10) / 10; ty = Math.round(ty * 10) / 10;
+    if (Math.abs((parseFloat(tip.style.left) || 0) - tx) > 0.5) tip.style.left = tx + 'px';
+    if (Math.abs((parseFloat(tip.style.top) || 0) - ty) > 0.5) tip.style.top = ty + 'px';
+  }
+  function nbGhostFixTick(doc) {
+    if (!_nbTip.g || _nbTip.mx == null) return;
+    var su = null;
+    try { su = nbVueSu(doc); } catch (e) { }
+    var ds = su && refVal(su.dragState);
+    if (!ds || ds.draggingId === -1) return;
+    var gh = doc.querySelector('.drag-ghost');
+    if (!gh) return;
+    var app = doc.getElementById('app');
+    var z = (app && parseFloat(app.style.zoom)) || 1;
+    var lx = Math.round((_nbTip.mx - _nbTip.gx) / z * 10) / 10;
+    var ly = Math.round((_nbTip.my - _nbTip.gy) / z * 10) / 10;
+    if (Math.abs((parseFloat(gh.style.left) || 0) - lx) > 0.5) gh.style.left = lx + 'px';
+    if (Math.abs((parseFloat(gh.style.top) || 0) - ly) > 0.5) gh.style.top = ly + 'px';
   }
   /* nbRenderSortPop/nbSortLabel/nbApplyFsort 已收敛：弹层渲染/标签同步=makeSortMenu 实例
      （menuNB，nbMount 创建），应用=applyDispSort 统一入口（选完即关/亮金态/toast 文案原样） */
