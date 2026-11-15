@@ -72,6 +72,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 12 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
+    // ==== 不常用柜子高度批（2026-11-15）：下拉添加的柜子行数（整串序列化，解析在 RailUi）====
+    internal static ConfigEntry<string> UncommonHeights;
     // ==== 负重批（2026-11-07 作者令：背包负重调整新增 + 原独立 mod CabinetBurden 并回）====
     internal static ConfigEntry<int> BackpackBurden;   // 背包负重上限（公斤，0=官方原值，0~1000，写表=kg×1000）
     internal static ConfigEntry<bool> CabinetUnburden; // 柜子负重解放：true=家具储物包负重清零；false=还原
@@ -159,6 +161,12 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             hb.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
             "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随恒定 12 列统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
+        // 不常用柜子高度批（2026-11-15）：面板下拉添加/删除=恢复原生（ModCenter ucb 渲染，整串提交）。
+        // 白名单 13 包见 RailUi.UncommonBagIds（gamekb 2026-11-12 全量交叉实证：可购纯家用储物柜，
+        // 零场景件/零机器/零冷链；白名单外 id 解析时忽略——柜子1/2/3、箱子族3002 等混探险场景件的包不收）。
+        UncommonHeights = Config.Bind("Rail", "UncommonHeights", "",
+            "不常用柜子行数清单（\"BagId:行数\" 逗号分隔，如 \"1006:8,110004:12\"；只收白名单 13 包：矮柜1006/金属柜族10002·10005·10006·10008·10009/床头柜110003/大衣柜110004/玄关台110005/小衣柜110006/工具箱10003/啤酒箱2002/纸箱堆·手推车3003；0=恢复原生，上限 100；宽恒 12）。ModCenter 面板提供下拉添加，改此值与 15 键同通道帧级生效。");
+        UncommonHeights.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         // ==== 负重批（[Burden] 区，Rail 区后 Access 区前；Burden 是 OnInit 快照→读档后对已存在容器/已穿背包生效）====
         BackpackBurden = Config.Bind("Burden", "BackpackBurden", 0,
             "背包负重上限（公斤）。0=官方原值；范围 0~1000，写表换算 kg×1000（游戏内部单位=克，UI 显示 Kg）。对 9 个可穿背包统一生效，天赋加成照常独立叠加；改后重新读档对已穿背包生效。");

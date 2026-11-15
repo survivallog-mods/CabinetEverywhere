@@ -133,6 +133,49 @@ internal static class RailUi
     /// ——收窄=砍每行件数容量，SizeEnginePoll 宽度段对它跳过。</summary>
     internal const int RackBagId = 110009;
 
+    /// <summary>不常用柜子高度批白名单（2026-11-15，面板下拉数据源同源）：gamekb 2026-11-12 快照
+    /// （Config_Bag 87 包 × Config_Furniture 1558）全量交叉实证的**可购纯家用储物柜**——全部家具
+    /// 商店有售、零探索/灾前商店场景件、零机器/烹饪/冷链。与 ModCenter Meta.cs「不常用柜子高度」
+    /// 组同源同步（游戏更新加新柜子两处一起改）。柜子1/2/3、箱子族3002 等混场景件的包不收（共包
+    /// 半径：改一个包=共用家具全变）。</summary>
+    internal static readonly int[] UncommonBagIds =
+    {
+        1006, 10002, 10005, 10006, 10008, 10009,          // 矮柜/金属柜族（10002 含普通储物柜435）
+        110003, 110004, 110005, 110006,                    // 床头柜/大衣柜/玄关台/小衣柜
+        10003, 2002, 3003,                                 // 工具箱/啤酒箱/纸箱堆·手推车·小拖车
+    };
+
+    /// <summary>UncommonHeights 解析缓存（"bagId:h,…"）：SizeEnginePoll 每轮头重建（5s 幂等）+
+    /// SettingChanged 置脏帧级重算（与 15 键同通道）。白名单外 id 忽略（WarnOnce）；h 夹 0..100，
+    /// 0=恢复原生。空串/空 map=13 包照进高度名单但目标全 0=原生（幂等零写，与 15 键语义一致）。</summary>
+    private static readonly Dictionary<int, int> _uncommonH = new();
+    private static readonly HashSet<int> _uncommonWarned = new();
+
+    private static void RefreshUncommonHeights()
+    {
+        _uncommonH.Clear();
+        var s = CabinetEverywherePlugin.UncommonHeights?.Value;
+        if (string.IsNullOrWhiteSpace(s)) return;
+        foreach (var part in s.Split(','))
+        {
+            var seg = part.Trim();
+            if (seg.Length == 0) continue;
+            int ix = seg.IndexOf(':');
+            if (ix <= 0) continue;
+            if (!int.TryParse(seg.Substring(0, ix), out int id) ||
+                !int.TryParse(seg.Substring(ix + 1), out int h)) continue;
+            if (Array.IndexOf(UncommonBagIds, id) < 0)
+            {
+                if (_uncommonWarned.Add(id))
+                    CabinetEverywherePlugin.Log.LogWarning($"[CERail] UncommonHeights：{id} 不在白名单（可购纯家用储物柜 13 包），已忽略");
+                continue;
+            }
+            if (h < 0) h = 0;
+            if (h > CabinetHeightCap) h = CabinetHeightCap;
+            _uncommonH[id] = h;
+        }
+    }
+
     internal static void SizeEnginePoll()
     {
         const int w = UniformWidth; // 宽恒 12（UniformBagWidth 键退役，spec §2）
@@ -142,6 +185,7 @@ internal static class RailUi
             var bags = BagTable.BagDict(cm);
             var furns = BagTable.FurnDict(cm);
             if (bags == null || furns == null || bags.Count == 0) return; // 配置表未就绪：下轮再试
+            RefreshUncommonHeights(); // 不常用柜子清单解析（5s 幂等；改键置脏走同一条重算路）
 
             // ① 目标包=家中柜子 + 冷链冰箱（作者 2026-11-01 复测缺陷：豪华版双门冰箱/冰柜没进 12——
             //    上一版只扫 HomeInstances=kind 'c'，冰箱是冷链电器 kind 'f' 全漏；改扫 AllContainers
@@ -268,7 +312,7 @@ internal static class RailUi
                     : $"[CERail] SizeEngine：目标 {targets.Count} 包宽 {w} 列/高度均已达标"
                       + (shrinkPending > 0 ? $"（另有 {shrinkPending} 包缩高待处理，每 5s 重试——见 ShrinkDrop 日志）" : ""))
                     + (skipped.Count > 0 ? "；跳过 " + skipped.Count + " 包：" + string.Join(",", skipped) : "")
-                    + "（宽度目标=家中柜子+冰箱+白名单+高度名单24包，材料架宽 20 不动（高可调，Height_110009）；高度=15键解析(0=原生/上限夹背包30·柜100/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
+                    + "（宽度目标=家中柜子+冰箱+白名单+高度名单25包+不常用柜子13包，材料架宽 20 不动（高可调，Height_110009）；高度=15键+UncommonHeights清单解析(0=原生/上限夹背包30·柜100/抽屉H·H+1·H+2)；Config_Bag 内存直写，5s 幂等+改键帧级）");
         }
         catch (Exception e)
         {
@@ -276,7 +320,9 @@ internal static class RailUi
         }
     }
 
-    /// <summary>高度段静态名单（spec §4.1 + 2026-11-12 材料架批）：背包链 9 + 单包键 13（含材料架 110009）+ 抽屉三档 3 = 25 包（顺序即处理序）。</summary>
+    /// <summary>高度段静态名单（spec §4.1 + 2026-11-12 材料架批 + 2026-11-15 不常用柜子批）：
+    /// 背包链 9 + 单包键 13（含材料架 110009）+ 抽屉三档 3 + 不常用柜子白名单 13（恒列——
+    /// 删行/清串后仍需在列才能把已改高的包写回原生，见 ResolveTargetHeight）。</summary>
     private static IEnumerable<int> HeightTargetBags()
     {
         foreach (var id in CabinetEverywherePlugin.BackpackBagIds) yield return id;
@@ -284,6 +330,7 @@ internal static class RailUi
         if (byBag != null)
             foreach (var id in byBag.Keys) yield return id;
         foreach (var id in DrawerBagIds) yield return id;
+        foreach (var id in UncommonBagIds) yield return id;
     }
 
     /// <summary>包的目标行数：单包键/背包链直值；抽屉三档=H/H+1/H+2（升级链递进保留，spec §7）；
@@ -302,6 +349,11 @@ internal static class RailUi
             else if (Array.IndexOf(CabinetEverywherePlugin.BackpackBagIds, bagId) >= 0)
             {
                 want = CabinetEverywherePlugin.BackpackHeight?.Value ?? 0;
+            }
+            else if (Array.IndexOf(UncommonBagIds, bagId) >= 0)
+            {
+                // 不常用柜子批：清单里没有/值为 0 都=恢复原生（删除行即还原——包恒在名单，走写回路径）
+                _uncommonH.TryGetValue(bagId, out want);
             }
             else if (CabinetEverywherePlugin.HeightByBag == null ||
                      !CabinetEverywherePlugin.HeightByBag.TryGetValue(bagId, out var ent) || ent == null)
