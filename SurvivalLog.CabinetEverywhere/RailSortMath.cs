@@ -275,6 +275,19 @@ internal static class RailSortMath
         return (float)useTimes / max * denom;
     }
 
+    /// <summary>官方 EffectiveUses 直译（dump@227485 反汇编定谳：分母=实例 MaxUseTimes（≤0
+    /// 回退 cfg.UseTimes），分子=实例剩余 UseTimes，整体按 cfg.UseTimes 基准缩放；剩余 ≤0=1）。
+    /// Trade 页单件价值含使用次数（维生素单价 63×3 次=189 徽章实证）——排序键与 TradeFx
+    /// 徽章（EvaluateState 实值）同口径须乘此因子。原方法 private 且形参是 Data_Item
+    /// （rail 侧持 Battle.Logic.ItemData 同形字段），不可直调，公式移植（TradeUnit 同款纪律）。</summary>
+    internal static float EffUses(int useTimes, int maxUseTimes, int cfgUses)
+    {
+        int cfgMax = cfgUses > 0 ? cfgUses : 1;
+        int maxInst = maxUseTimes > 0 ? maxUseTimes : cfgMax;
+        if (useTimes > 0) return (float)useTimes / maxInst * cfgMax;
+        return 1f;
+    }
+
     /// <summary>鉴定加成（ProjectCook TalentInputs.ReadAppraisal 同键）。</summary>
     internal static float Appraisal()
     {
@@ -518,7 +531,10 @@ internal static class RailSortMath
             if (tradeScene)
             {
                 var t = TradeNow();
-                trade = TradeUnit(cfg, t) * Math.Max(1, count) * (1f + t.AppraisalBoost);
+                /* 使用次数因子（2026-11-15 作者实报排序错）：官方 Trade 单件价值含次数——维生素
+                   单价 63×3 次=徽章 189、绷带 98×1=98，旧式缺次数因子=维生素按 63 排在绷带 98 后。
+                   因子=官方 EffectiveUses 直译（见下方），与 TradeFx 徽章（EvaluateState 实值）同口径 */
+                trade = TradeUnit(cfg, t) * EffUses(useTimes, maxUse, cfgUses) * Math.Max(1, count) * (1f + t.AppraisalBoost);
             }
             else
             {
