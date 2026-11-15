@@ -1458,6 +1458,45 @@
       mo.observe(slot, { childList: true });
     } catch (e) { }
   }
+  /* ================= Trade 货舱护持页签视觉收窄（2026-11-15 作者定版：筛选只影响左侧柜子页签栏） =================
+     官方页签=Containers 的纯函数（RebuildBagTabs 单源重建），而货舱 DroneItemsJson 的物品
+     解析依赖同一 Containers 重建的 TabItems（反汇编取证见 C# TabGate.GiveItemOwners）——
+     C# 把给出物品所在柜恒留源名单修「筛选→货舱物品消失」，代价=该柜页签回流可见。本端补
+     纯呈现收窄：筛选激活时护持柜页签 display:none（零数据伪造，C# 数组恒真实；tabdrop/
+     悬停均 rect 命中，display:none 零 rect 不成目标）。active 页签不藏（C# 源名单同纪律：
+     active 恒留——A/D 步进落上时页签自然显回）；sel 回 '0' 或护持集清空即还原
+     （data-srgh 标记自愈）。数据源=window.__CERAIL_TRADE_GIVE__（C# PollTrade 签名门控
+     直推；清空货舱/切筛选即时换包）。观察器=页签槽 childList+class（Vue 重建/active 切换
+     即时重套，微任务先于绘制零闪现——tagfilter applyFrame 同款实证），500ms 拍兜底
+     （ensureTabsInSlot 内联调用）。 */
+  function tradeGiveStrip(doc, slot) {
+    try {
+      var prev = slot.querySelectorAll('[data-srgh]');
+      for (var i = 0; i < prev.length; i++) { prev[i].style.display = ''; prev[i].removeAttribute('data-srgh'); }
+      var pay = window.__CERAIL_TRADE_GIVE__;
+      if (!pay || !pay.on || !Array.isArray(pay.owners) || !pay.owners.length) return;
+      if (loadFilterSel('Trade') === '0') return; /* 未筛选：护持集残留（切换瞬态）不藏 */
+      var give = {};
+      for (var j = 0; j < pay.owners.length; j++) give[String(pay.owners[j])] = true;
+      var tabs = slot.querySelectorAll('.bag-tab[data-owner]');
+      for (var k = 0; k < tabs.length; k++) {
+        var el = tabs[k];
+        if (el.classList.contains('active')) continue; /* 活动页签不藏（C# 同纪律） */
+        if (give[String(el.getAttribute('data-owner'))]) { el.style.display = 'none'; el.setAttribute('data-srgh', '1'); }
+      }
+    } catch (e) { }
+  }
+  function tradeGiveAttach(doc) {
+    try {
+      if (!doc || doc.__srTradeGive) return;
+      var slot = doc.getElementById('srTabs');
+      if (!slot) return; /* 槽未建：下轮 bind 再试（不落标记，dhStripGuardAttach 同款） */
+      doc.__srTradeGive = true;
+      var mo = new (doc.defaultView.MutationObserver || MutationObserver)(function () { tradeGiveStrip(doc, slot); });
+      mo.observe(slot, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      tradeGiveStrip(doc, slot);
+    } catch (e) { }
+  }
   function fsortLabel(k) {
     /* dye-pigment-sort：动态键 pig:<id> 查 dyePal 色名（FSORTS 静态表无此键；查无回原键串） */
     if (String(k).indexOf('pig:') === 0) {
@@ -2572,6 +2611,8 @@
     if (st.scene === 'DroneHub') dhStripGuardAttach(d);
     /* 批改（2026-11-11）：Trade 零命中守卫（Vue v-if 真拆栏→占位栏补；slot 观察器即时触发） */
     if (st.scene === 'Trade') tradeGuardAttach(d);
+    /* 货舱护持页签视觉收窄（观察器即时重套；槽未建下轮 bind 再试） */
+    if (st.scene === 'Trade') tradeGiveAttach(d);
     /* T9 重绑幂等门：rail 节点已带监听器（首次 bind 挂过，节点未换）→ 引用表重收即可，
        不再重挂（addEventListener 重复挂会让 contextmenu/drag/dblclick 双发）。
        mount 路（全新 DOM）无标记 → 正常挂全量。 */
@@ -4245,8 +4286,9 @@
       var slot = doc.getElementById('srTabs');
       if (!slot) return;
       armTabScrollFollow(slot); /* 十二批：官方重建→rAF 回滚活动页签（真件在槽的早退路同样要布防） */
-      /* Trade 零命中守卫先于槽检查（真栏在场即拆占位让位；占位在场=真栏必不在，槽检查早退无害） */
-      if (f.key === 'Trade') tradeTabsGuard(f.key, doc, slot);
+      /* Trade 零命中守卫先于槽检查（真栏在场即拆占位让位；占位在场=真栏必不在，槽检查早退无害）；
+         货舱护持页签收窄同拍（500ms 拍兜底：护持集推送落地后无 DOM 变化也能换装） */
+      if (f.key === 'Trade') { tradeTabsGuard(f.key, doc, slot); tradeGiveStrip(doc, slot); }
       if (slot.querySelector(sc.tabs)) return; /* 真件已在槽内（#bagTabs/.left-tabs/.bag-tabs 均容器内可查） */
       var t = sc.tabs.charAt(0) === '#'
         ? doc.getElementById(sc.tabs.slice(1))

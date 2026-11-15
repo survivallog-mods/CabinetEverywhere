@@ -688,6 +688,8 @@ internal static class TabGate
     // 字段（RA_Open 携带收集、开页即建，稳态无回流路）不受此坑。 ----
     private static readonly Dictionary<long, GameCore.HotUpdate.TradeContainerInfo> TradeSeen = new(); // 会话快照：owner→官方条目对象（重写时复用）
     private static bool _tradeWasActive;
+    private static string _givePushSig; // 上次护持集推送签名（同串免重推；关页复位=重开必推）
+    private static int _givePushRev;    // 推送修订号（JS 侧只读对象无需比对，保留与 tabBridge 同形）
 
     private static void PollTrade(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
     {
@@ -695,7 +697,7 @@ internal static class TabGate
         {
             if (!SafeActive(rus, TradeType))
             {
-                if (_tradeWasActive) { _tradeWasActive = false; TradeSeen.Clear(); } // 关页=会话快照退役（重开重建）
+                if (_tradeWasActive) { _tradeWasActive = false; TradeSeen.Clear(); _givePushSig = null; } // 关页=会话快照/护持集推送签名退役（重开重建+必重推——页面重载后 window 变量空白）
                 return;
             }
             _tradeWasActive = true;
@@ -710,19 +712,27 @@ internal static class TabGate
             bool gate = view != "Browser" || SelActive(sel); // 未选+Browser=全显零动作（v1.8.9 口径）
             var ctx = gate ? TagCtx.Build() : null;
 
-            // ① 源名单对账：并入快照 → 期望集（gate 关=快照全量；开=Judge 通过+pin/活动/座位恒留）→ 差异重写
+            // 快照并入先行（原①首段拆出）：护持集反查键集=快照全量，须先并入再算
+            // GiveItemOwners——否则开页首轮快照空→护持空→给出柜被剪一拍再回=货舱闪丢一帧
+            var containersPre = st.Containers;
+            if (containersPre != null)
+            {
+                for (int i = 0; i < containersPre.Count; i++)
+                {
+                    var c = containersPre[i];
+                    long o = 0;
+                    try { o = c.OwnerId; } catch { }
+                    if (o != 0 && !TradeSeen.ContainsKey(o)) TradeSeen[o] = c;
+                }
+            }
+            var giveOwners = gate ? GiveItemOwners(rus, st) : null; /* 货舱护持：给出清单物品所在容器恒留（见 GiveItemOwners 取证注释） */
+            PushTradeGive(gate, giveOwners); /* 护持集直推 JS（tabBridge 同款通道；JS 据此纯呈现收窄页签） */
+
+            // ① 源名单对账：期望集（gate 关=快照全量；开=Judge 通过+pin/活动/货舱护持恒留）→ 差异重写
             int containersFixed = 0;
             var containers = st.Containers;
             if (containers != null)
             {
-                for (int i = 0; i < containers.Count; i++)
-                {
-                    var c = containers[i];
-                    long o = 0;
-                    bool pin = false;
-                    try { o = c.OwnerId; pin = c.Pinned; } catch { }
-                    if (o != 0 && !TradeSeen.ContainsKey(o)) TradeSeen[o] = c;
-                }
                 bool needRewrite = false;
                 var cur = new HashSet<long>();
                 for (int i = 0; i < containers.Count; i++)
@@ -734,6 +744,7 @@ internal static class TabGate
                 foreach (var kv in TradeSeen)
                 {
                     bool want = !gate || kv.Value.Pinned || kv.Key == active
+                        || (giveOwners != null && giveOwners.Contains(kv.Key))
                         || Judge(kv.Key, view, ctx, sel) == Verdict.Keep;
                     bool has = cur.Contains(kv.Key);
                     if (want != has) { needRewrite = true; break; }
@@ -745,6 +756,7 @@ internal static class TabGate
                     foreach (var kv in TradeSeen)
                     {
                         bool want = !gate || kv.Value.Pinned || kv.Key == active
+                            || (giveOwners != null && giveOwners.Contains(kv.Key))
                             || Judge(kv.Key, view, ctx, sel) == Verdict.Keep;
                         if (want) { try { containers.Add(kv.Value); containersFixed++; } catch { } }
                     }
@@ -771,6 +783,7 @@ internal static class TabGate
                     }
                     catch { continue; }
                     if (keepMarked || o == 0 || o == active) continue;
+                    if (giveOwners != null && giveOwners.Contains(o)) continue; // 货舱护持：给出清单物品所在柜（源名单同口径，防本步移出后 RefreshBag 重建回流闪一帧）
                     bool keep = drawerOwner != 0 && o == drawerOwner
                         ? DrawerPasses(gate, view, sel, ctx)
                         : Judge(o, view, ctx, sel) == Verdict.Keep;
@@ -783,7 +796,9 @@ internal static class TabGate
             bool reordered = ApplyOrderTrade(tabs); /* T3 拖拽序（List 非 ObservableList，独立小路） */
             if (removed > 0 || containersFixed > 0 || reordered)
             {
-                Log($"无人机交易 视图={view} 移出 {removed} 条 / 源名单重写 {containersFixed} 条 / 序对齐={reordered}（源=可见集，重建不回流）");
+                Log($"无人机交易 视图={view} 移出 {removed} 条 / 源名单重写 {containersFixed} 条 / 序对齐={reordered}"
+                    + (giveOwners != null && giveOwners.Count > 0 ? $" / 货舱护持 {giveOwners.Count} 柜" : string.Empty)
+                    + "（源=可见集，重建不回流）");
                 /* 批改二轮②③：渲染走官方 Ac_TradeUI_RefreshBag（Bug3 实证杠杆=按数据重建 state
                    并推送页面）——替代 MarkAllMsgDirty 全量重推（大包高丢弃率=「页签不刷新要手动
                    移动」+卡顿观感的实锤路，实机 ping 风暴佐证） */
@@ -792,6 +807,75 @@ internal static class TabGate
             }
         }
         catch (Exception e) { WarnOnce("trade", "无人机交易视图对账异常: " + e.Message); }
+    }
+
+    /// <summary>无人机交易「货舱给出清单」物品所在容器集（源名单收窄护持，2026-11-15 作者实报筛选切
+    /// 食物→货舱燃料瓶消失）。官方链路取证（gamekb 2026-11-12 反汇编 + TradeUI.html 货舱模板注释）：
+    /// 货舱栏=GiveJson 给出清单，**物品仍在原容器**（不换 owner）；RefreshBag→RefreshCore 序列化
+    /// DroneItemsJson 时逐条 FindItem（ItemDataList→TabItems→HoldItemList）解析，解析不到=该条
+    /// 整条不进 JSON（页面上物品消失）；TabItems 由 RebuildBagTabs 按 **Containers** 重建——源名单
+    /// 收窄掉某柜即缺键，该柜给出的物品全部失联。护持=GiveJson 条目 id（=LogicId）命中的容器：
+    /// ParseGive 官方解析（TradeFx 同源），反查走 State_Extensions_Item.GetItemDataList（快照=
+    /// TradeSeen 全量键，本轮收窄前恒全量）。空清单/异常=空集（零护持=原行为）。</summary>
+    private static HashSet<long> GiveItemOwners(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, State_Web_TradeUI st)
+    {
+        var owners = new HashSet<long>();
+        try
+        {
+            var give = Reducer_Web_TradeUI.ParseGive(st.GiveJson);
+            if (give == null || give.Count == 0) return owners;
+            var ids = new HashSet<long>();
+            for (int i = 0; i < give.Count; i++)
+            {
+                try { var g = give[i]; if (g != null && g.id != 0) ids.Add(g.id); } catch { }
+            }
+            if (ids.Count == 0) return owners;
+            BaseReduxState raw = null;
+            try { rus?.reduxStoreLayer?.dataTree?.TryGetValue(Il2CppInterop.Runtime.Il2CppType.From(typeof(State_Data_Item)), out raw); } catch { }
+            var itemState = raw?.TryCast<State_Data_Item>();
+            if (itemState == null) return owners;
+            foreach (var kv in TradeSeen)
+            {
+                var list = State_Extensions_Item.GetItemDataList(itemState, kv.Key);
+                if (list == null) continue;
+                for (int j = 0; j < list.Count; j++)
+                {
+                    long lid = 0;
+                    try { var it = list[j]; if (it != null) lid = it.LogicId; } catch { }
+                    if (lid != 0 && ids.Contains(lid)) { owners.Add(kv.Key); break; }
+                }
+            }
+        }
+        catch (Exception e) { WarnOnce("trade:give", "交易页货舱护持集构建失败: " + e.Message); }
+        return owners;
+    }
+
+    /// <summary>货舱护持集直推 JS（window.__CERAIL_TRADE_GIVE__，PushDroneTabs 同款小包通道）：
+    /// 官方页签=Containers 的纯函数（RebuildBagTabs 单源重建），保货舱物品解析就必须恒留源名单
+    /// ——页签视觉收窄只能在呈现层做。JS（railui tradeGiveStrip）据此在筛选激活期间把护持柜
+    /// 页签 display:none（零数据伪造）。gate 关/空集=on:false 复位包；签名门控稳态零包，
+    /// 关页复位签名=重开必推（页面重载后 window 变量空白）。</summary>
+    private static void PushTradeGive(bool gate, HashSet<long> giveOwners)
+    {
+        try
+        {
+            bool on = gate && giveOwners != null && giveOwners.Count > 0;
+            var sorted = on ? new List<long>(giveOwners) : null;
+            if (sorted != null) sorted.Sort();
+            var sig = new System.Text.StringBuilder(64).Append(on ? '1' : '0').Append('|');
+            if (sorted != null) for (int i = 0; i < sorted.Count; i++) sig.Append(sorted[i]).Append(',');
+            var sigStr = sig.ToString();
+            if (sigStr == _givePushSig) return; // 同集免重推（稳态零包）
+            _givePushSig = sigStr;
+            var sb = new System.Text.StringBuilder(96);
+            sb.Append("{\"rev\":").Append(++_givePushRev).Append(",\"on\":").Append(on ? "true" : "false").Append(",\"owners\":[");
+            if (sorted != null) for (int i = 0; i < sorted.Count; i++) { if (i > 0) sb.Append(','); sb.Append(sorted[i]); }
+            sb.Append("]}");
+            var web = TagFilter.GetWebView();
+            if (web == null) return;
+            web.ExecuteJavaScript("window.__CERAIL_TRADE_GIVE__=" + sb);
+        }
+        catch (Exception e) { WarnOnce("trade:give:push", "交易页货舱护持集推送失败: " + e.Message); }
     }
 
     /// <summary>Trade 页签序对齐（cerail_pinorder.json "trade"）：pin/player 条目稳定在前（官方
