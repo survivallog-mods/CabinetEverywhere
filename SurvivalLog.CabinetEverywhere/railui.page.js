@@ -4284,6 +4284,7 @@
       scrollActiveTabIntoView(slot);
     } catch (e) { }
   }
+
   function ensureTabsInSlot(f) {
     try {
       var sc = SCENES[f.key], doc = f.doc;
