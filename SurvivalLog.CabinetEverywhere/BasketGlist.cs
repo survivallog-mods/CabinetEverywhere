@@ -98,7 +98,9 @@ internal static class BasketGlist
         return rus?.GetStateByUI(Il2CppType.From(typeof(WebUI_BackpackUI)))?.TryCast<State_Web_BackpackUI>();
     }
 
-    /// <summary>签名：wishJson ordinal + snap 关键值 + wishCats 序 + B 侧逐件（cfg×count）+ B 侧引用。</summary>
+    /// <summary>签名：wishJson ordinal + snap 关键值 + wishCats 序 + B 侧逐件（cfg×count）+ B 侧引用
+    /// + 地面种类段（RailGround.KindsSig——地面无通知可标，不挂 owner 的唯一候选源，缺此=篮子窗内
+    /// 地面新丢/捡走种类不触发重算）。</summary>
     private static string Sig(State_Web_BackpackUI st)
     {
         var sb = new StringBuilder(96);
@@ -131,6 +133,7 @@ internal static class BasketGlist
             sb.Append(']');
         }
         catch { }
+        try { sb.Append(RailGround.KindsSig()); } catch { }
         return sb.ToString();
     }
 

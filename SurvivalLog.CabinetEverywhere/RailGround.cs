@@ -157,6 +157,42 @@ internal static class RailGround
         }
     }
 
+    /// <summary>（cfg,uses,usesMax) 三元组收集（篮子救援 glist 分值候选地面段——
+    /// RailData.BasketKindRows 契约柜段同口径去重；uses/usesMax=ItemData 原值，
+    /// 行键归一在 BasketGlist.KindKey）。</summary>
+    internal static void CollectKindRows(
+        List<GameCore.HotUpdate.Battle.Logic.DropItem> drops,
+        HashSet<(int Cfg, int Uses, int UsesMax)> seen,
+        List<(int Cfg, int Uses, int UsesMax)> order)
+    {
+        foreach (var d in drops)
+        {
+            var it = SafeItem(d);
+            if (it == null) continue;
+            int cfg = 0, ut = 0, mt = 0;
+            try { cfg = it.ItemConfigId; } catch { }
+            try { ut = it.UseTimes; } catch { }
+            try { mt = it.MaxUseTimes; } catch { }
+            if (cfg <= 0) continue;
+            var k = (cfg, mt > 0 ? Math.Max(1, ut) : 0, mt);
+            if (seen.Add(k)) order.Add(k);
+        }
+    }
+
+    /// <summary>地面种类签名段（BasketGlist.Sig 追加）："|g[cfg|u uses/mt;…]" 去重——键归一与
+    /// CollectKindRows 去重同构（签名变=候选行集变）。地面不挂 owner，是分值候选里唯一
+    /// 无通知可标的源：缺此段=篮子窗内地面新丢/捡走种类不触发重算，地面行永远查无分值。
+    /// 只读 cfg/uses/usesMax 三字段，篮子窗活时随 0.5s 快轮重拼（Sig 的 B 侧逐件同量级）。</summary>
+    internal static string KindsSig()
+    {
+        var kinds = new List<(int Cfg, int Uses, int UsesMax)>();
+        CollectKindRows(HomeDrops(), new HashSet<(int, int, int)>(), kinds);
+        var sb = new System.Text.StringBuilder(32 + kinds.Count * 12).Append("|g[");
+        for (int i = 0; i < kinds.Count; i++)
+            sb.Append(kinds[i].Cfg).Append('|').Append(kinds[i].Uses).Append('/').Append(kinds[i].UsesMax).Append(';');
+        return sb.Append(']').ToString();
+    }
+
     /// <summary>
     /// 取物→背包：按物品 id（行 id=ItemData.InstanceId）反查家内 DropItem → 官方
     /// TryPickupItem(dropInstanceId, bagOwner)（silent）。firstOnly=JS all:false 语义——

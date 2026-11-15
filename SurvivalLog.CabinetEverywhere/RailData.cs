@@ -893,32 +893,40 @@ internal static class RailData
         return ids;
     }
 
-    /// <summary>背包+契约柜在场 cfg 全集（篮子救援 glist 禁入表候选；OwnerCache 白名单
-    /// 只读枚举——绝不 foreach OwnerCache 本身，CollectOwnerCfgIds 同纪律）。</summary>
+    /// <summary>背包+契约柜+地面在场 cfg 全集（篮子救援 glist 禁入表候选；OwnerCache 白名单
+    /// 只读枚举——绝不 foreach OwnerCache 本身，CollectOwnerCfgIds 同纪律；地面段独立枚举
+    /// DropItem 不挂 owner——篮子列表行含地面，缺此段=地面禁入物不置灰）。</summary>
     internal static List<int> BasketCfgIds()
     {
         var order = new List<int>();
         var seen = new HashSet<int>();
         var oc = ItemMgr()?.OwnerCache;
-        if (oc == null) return order;
-        CollectOwnerCfgIds(oc, ResolveBagOwner(null), seen, order);
-        var owners = CtnOwnerIds();
-        for (int i = 0; i < owners.Count; i++) CollectOwnerCfgIds(oc, owners[i], seen, order);
+        if (oc != null)
+        {
+            CollectOwnerCfgIds(oc, ResolveBagOwner(null), seen, order);
+            var owners = CtnOwnerIds();
+            for (int i = 0; i < owners.Count; i++) CollectOwnerCfgIds(oc, owners[i], seen, order);
+        }
+        RailGround.CollectCfgIds(RailGround.HomeDrops(), seen, order);
         return order;
     }
 
-    /// <summary>背包+契约柜在场（cfg,uses,usesMax) 去重三元组（篮子救援 glist 逐行边际分候选行
-    /// ——实机批改#1：多次使用物品剩余次数异=分值异=拆行，glistItemKey 合并键同口径；
-    /// uses/usesMax=Data_Item 原值，键口径在 BasketGlist.KindKey 归一）。</summary>
+    /// <summary>背包+契约柜+地面在场（cfg,uses,usesMax) 去重三元组（篮子救援 glist 逐行边际分
+    /// 候选行——实机批改#1：多次使用物品剩余次数异=分值异=拆行，glistItemKey 合并键同口径；
+    /// uses/usesMax=Data_Item 原值，键口径在 BasketGlist.KindKey 归一。地面段同入——篮子
+    /// 列表行含地面（fullHouse+RailGround.OwnerId 虚拟段），缺此段=地面行查无分值键）。</summary>
     internal static List<(int Cfg, int Uses, int UsesMax)> BasketKindRows()
     {
         var order = new List<(int, int, int)>();
         var seen = new HashSet<(int, int, int)>();
         var oc = ItemMgr()?.OwnerCache;
-        if (oc == null) return order;
-        var owners = CtnOwnerIds();
-        CollectKindRows(oc, ResolveBagOwner(null), seen, order);
-        for (int i = 0; i < owners.Count; i++) CollectKindRows(oc, owners[i], seen, order);
+        if (oc != null)
+        {
+            var owners = CtnOwnerIds();
+            CollectKindRows(oc, ResolveBagOwner(null), seen, order);
+            for (int i = 0; i < owners.Count; i++) CollectKindRows(oc, owners[i], seen, order);
+        }
+        RailGround.CollectKindRows(RailGround.HomeDrops(), seen, order);
         return order;
     }
 
