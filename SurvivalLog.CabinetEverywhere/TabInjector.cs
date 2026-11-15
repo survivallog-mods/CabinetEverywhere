@@ -9,10 +9,12 @@ using GameCore.HotUpdate.ReduxUI;
 namespace SurvivalLog.CabinetEverywhere;
 
 /// <summary>
-/// 页签注入：向 烹饪/老鼠笼/酿酒桶/颜料桶 的 Redux 状态 BagTabs（ObservableList）追加柜子页签。
-/// 四个界面的容器过滤是内联"冷链电器"判定（不走白名单），因此走状态层；
+/// 页签注入：向 烹饪页 的 Redux 状态 BagTabs（ObservableList）追加柜子页签。
+/// 界面的容器过滤是内联"冷链电器"判定（不走白名单），因此走状态层；
 /// 切换路径 ApplySwitchBag→GetBagData(ownerId) 已实证无类型过滤，Locked=false 即可切换。
 /// 轮询幂等：界面每次重推 tabs（打开/刷新）后若柜子页签缺失则自动补挂。
+/// 2026-11-16：老鼠笼/酿酒桶/颜料桶停注——三页已改造 glist（背包↔全局物品栏，作者令
+/// 「柜子页签是之前版本的方案，已被新方案替代」「必须启用」），数组留柜=隐形 A/D 切柜。
 /// 2026-11-02 四轮（作者#2 定案：拖拽同步官方序）：
 ///   ① 注入集=HomeInstances（柜子 c）∪ AllContainers 的冰箱（f）——官方 CollectFridges
 ///      漏收的冷链（大容量冰柜类）补进官方数组，否则不在数组=步进锚缺失（三轮案例根因）；
@@ -39,9 +41,6 @@ internal static class TabInjector
 
     // interop 侧的 UI 类型（IsUIActive/GetStateByUI 参数为 Il2CppSystem.Type）
     private static readonly Il2CppSystem.Type CookingType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Cooking));
-    private static readonly Il2CppSystem.Type RatCageType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_RatCage));
-    private static readonly Il2CppSystem.Type BrewType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Brew));
-    private static readonly Il2CppSystem.Type DyeType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Dye));
 
     /// <summary>JS 场景键（pinOrder cmd 的 key）→ 会话键（cerail_pinorder.json 与 Sessions 共用）。
     /// v1.8.7 T3：全十页拖拽排序接入（bag×4=本类轮询、DroneHub/cart×3=TabGate、ToolTable=Pruner、
@@ -94,12 +93,6 @@ internal static class TabInjector
 
             if (CabinetEverywherePlugin.EnableCooking.Value)
                 PollCooking(rus);
-            if (CabinetEverywherePlugin.EnableRatCage.Value)
-                PollRatCage(rus);
-            if (CabinetEverywherePlugin.EnableBrew.Value)
-                PollBrew(rus);
-            if (CabinetEverywherePlugin.EnableDye.Value)
-                PollDye(rus);
         }
         catch (Exception e)
         {
@@ -130,12 +123,6 @@ internal static class TabInjector
 
             if (CabinetEverywherePlugin.EnableCooking.Value && JustOpened(rus, CookingType, "cooking"))
                 PollCooking(rus);
-            if (CabinetEverywherePlugin.EnableRatCage.Value && JustOpened(rus, RatCageType, "ratcage"))
-                PollRatCage(rus);
-            if (CabinetEverywherePlugin.EnableBrew.Value && JustOpened(rus, BrewType, "brew"))
-                PollBrew(rus);
-            if (CabinetEverywherePlugin.EnableDye.Value && JustOpened(rus, DyeType, "dye"))
-                PollDye(rus);
         }
         catch (Exception e)
         {
@@ -183,96 +170,6 @@ internal static class TabInjector
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "cooking")) Repush(rus, CookingType);
     }
 
-    // ---- 老鼠笼 ----
-    private static void PollRatCage(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
-    {
-        var s = Session("ratcage");
-        bool active = SafeActive(rus, RatCageType);
-        if (!active) { s.WasActive = false; s.Pending = false; return; }
-
-        if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
-        var st = rus.GetStateByUI(RatCageType)?.TryCast<State_Web_RatCage>();
-        var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
-        s.Pending = false;
-
-        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewRatCage);
-        var ctx = TabGate.TagCtx.Build();
-        var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("老鼠笼", s, have, tabs.Count, Injectable(view, ctx),
-            (ownerId, name, index) =>
-            {
-                var tab = new Data_Web_RatCage_BagTab();
-                tab.Index = index;
-                tab.OwnerId = new R3.ReactiveProperty<long>(ownerId);
-                tab.Name = new R3.ReactiveProperty<string>(name);
-                tab.Locked = new R3.ReactiveProperty<bool>(false);
-                tabs.Add(tab);
-            });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
-        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "ratcage")) Repush(rus, RatCageType);
-    }
-
-    // ---- 酿酒桶 ----
-    private static void PollBrew(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
-    {
-        var s = Session("brew");
-        bool active = SafeActive(rus, BrewType);
-        if (!active) { s.WasActive = false; s.Pending = false; return; }
-
-        if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
-        var st = rus.GetStateByUI(BrewType)?.TryCast<State_Web_Brew>();
-        var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
-        s.Pending = false;
-
-        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewBrewPanel);
-        var ctx = TabGate.TagCtx.Build();
-        var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("酿酒", s, have, tabs.Count, Injectable(view, ctx),
-            (ownerId, name, index) =>
-            {
-                var tab = new Data_Web_Brew_BagTab();
-                tab.Index = index;
-                tab.OwnerId = new R3.ReactiveProperty<long>(ownerId);
-                tab.Name = new R3.ReactiveProperty<string>(name);
-                tab.Locked = new R3.ReactiveProperty<bool>(false);
-                tabs.Add(tab);
-            });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
-        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "brew")) Repush(rus, BrewType);
-    }
-
-    // ---- 颜料桶 ----
-    private static void PollDye(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
-    {
-        var s = Session("dye");
-        bool active = SafeActive(rus, DyeType);
-        if (!active) { s.WasActive = false; s.Pending = false; return; }
-
-        if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
-        var st = rus.GetStateByUI(DyeType)?.TryCast<State_Web_Dye>();
-        var tabs = st?.BagTabs;
-        if (tabs == null || tabs.Count == 0) { s.Pending = true; return; } /* 十三批：官方数组未建——FastPoll 每帧续查，0.5s 门闩不再是首注入延迟源 */
-        s.Pending = false;
-
-        string view = TabGate.ViewOfEntry(CabinetEverywherePlugin.ViewDyePanel);
-        var ctx = TabGate.TagCtx.Build();
-        var have = CollectOwners(tabs, t => t?.OwnerId?.Value ?? 0);
-        var added = AddMissing("颜料桶", s, have, tabs.Count, Injectable(view, ctx),
-            (ownerId, name, index) =>
-            {
-                var tab = new Data_Web_Dye_BagTab();
-                tab.Index = index;
-                tab.OwnerId = new R3.ReactiveProperty<long>(ownerId);
-                tab.Name = new R3.ReactiveProperty<string>(name);
-                tab.Locked = new R3.ReactiveProperty<bool>(false);
-                tabs.Add(tab);
-            });
-        int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
-        if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "dye")) Repush(rus, DyeType);
-    }
-
     // ---- 公共 ----
     private static bool SafeActive(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type t)
     {
@@ -280,11 +177,8 @@ internal static class TabInjector
         catch { return false; }
     }
 
-    // bag 族四状态同构（dump.cs：BagOwnerId=ReactiveProperty<long>，active 容器）——重载小面
+    // bag 族状态同构（dump.cs：BagOwnerId=ReactiveProperty<long>，active 容器）——重载小面
     private static long ActiveOwner(State_Web_Cooking st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
-    private static long ActiveOwner(State_Web_RatCage st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
-    private static long ActiveOwner(State_Web_Brew st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
-    private static long ActiveOwner(State_Web_Dye st) { try { return st?.BagOwnerId?.Value ?? 0; } catch { return 0; } }
 
     /// <summary>
     /// v1.8.7 T2：移出数组里视图不匹配的原生条目（活动页签跳过——防官方 active 错位，

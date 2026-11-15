@@ -31,7 +31,7 @@ internal static class TradeFx
 
     internal static void Poll()
     {
-        if (Disabled || !RailUi.Enabled) return;
+        if (Disabled) return;
         try
         {
             var rus = BaseSingleton<ReduxUISystem>.IsInstanceCreated ? BaseSingleton<ReduxUISystem>.Instance : null;

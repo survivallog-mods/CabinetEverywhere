@@ -50,14 +50,11 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> EnableCraftSource;
     internal static ConfigEntry<bool> EnableCooking;
     internal static ConfigEntry<bool> CookingFxEnable;
-    internal static ConfigEntry<bool> EnableRatCage;
-    internal static ConfigEntry<bool> EnableBrew;
-    internal static ConfigEntry<bool> EnableDye;
     internal static ConfigEntry<string> IncludeFurnitureIds;
     internal static ConfigEntry<string> ExcludeFurnitureIds;
     internal static ConfigEntry<string> ExcludeBagIds;
     internal static ConfigEntry<bool> FilterEnable;
-    internal static ConfigEntry<bool> RailEnable;   // CERail 侧栏总开关（T8，[Rail] 区，General 区后）
+    // [Rail] Enable 已退役（rail 恒开；绑定删除，老 cfg 残留值忽略）——同 Rail.UniformBagWidth 退役先例。
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
     // 宽度退役恒 12（Rail.UniformBagWidth 绑定删除，代码常量 RailUi.UniformWidth；老 cfg 残留值忽略）。
     // 高度 15 键逐包/逐组，全部默认 0=恢复原生；上限内建逐包/逐档夹（背包 30/柜子 100，2026-11-14 作者令 MaxHeight 键退役不可改）；缩高=越界物品官方掉落（ShrinkDrop）。
@@ -83,17 +80,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 场景视图（键=实测 iframe id，T1 report L203-214：Trade 不是 TradeUI、Brew 页 id=BrewPanel）
     internal static ConfigEntry<ScenarioView> ViewCooking, ViewRatCage, ViewBrewPanel, ViewDyePanel, ViewCompressor,
                                               ViewToolTable, ViewShredder, ViewGreenhouseBuild, ViewTrade, ViewDroneHub, ViewFuelGenerator, ViewHeater;
-    // 燃油发电机柜子页签总开关（2026-11-07 二十一批后新增页：bagtabs 装配，spec fuelgen-cabinet-tabs）
-    internal static ConfigEntry<bool> EnableFuelGen;
-    // 暖炉柜子页签总开关（暖炉移植批=bagtabs 族第二页：与 EnableFuelGen 同构独立开关，不联动）
-    internal static ConfigEntry<bool> EnableHeater;
-    // 竖版全局物品栏（v1.9.0 global-storage-list）：染料桶/暖炉两页先行——左背包区换列表态全局
-    // 物品栏（列表/格子单图标互切，格子态=现行视图原样）；与 bagtabs/rail 壳共存互不干扰
-    internal static ConfigEntry<bool> EnableGlistDye, EnableGlistHeater, EnableGlistFuelGen;
-    // 篮子救援 glist（basket spec 2026-11-09）：BackpackUI 篮子模式第四场景——背包侧换列表态
-    // 全局物品栏（需求类别单选筛选+救助贡献实时边际分排序+右键直放篮子；无许愿=固定9分类+
-    // 手动排序）；非篮子模式零扰动（glistOn 随篮子态门控）
-    internal static ConfigEntry<bool> EnableGlistBasket;
+    // EnableFuelGen/EnableHeater/EnableGlistDye/EnableGlistHeater/EnableGlistFuelGen/EnableGlistBasket
+    // 已退役（2026-11-16 作者令「glist 必须启用，不留开关不留回退面」）；glist 六页（染料桶/暖炉/
+    // 发电机/老鼠笼/酿酒桶/篮子）恒启用。老 cfg 残留值忽略（UniformBagWidth 退役先例）。
 
     internal static volatile bool Rerun = true;
 
@@ -106,12 +95,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Enabled.SettingChanged += (object s0, System.EventArgs e0) => { Rerun = true; };
         EnableMoveCoalescer = Config.Bind("Perf", "EnableMoveCoalescer", true,
             "批量搬运通知合并：搬运期间暂缓界面逐件刷新（每搬一件官方会整包重建一次界面 JSON——扩容后批量搬运秒级冻结的主因），搬运结束一次性整包同步。false=回原行为。重启生效。");
-        // [Rail] 区（T8，General 区后）：CERail 侧栏总开关。false=RailUi.Tick 首行 return——
-        // bootstrap 注入/数据推送/drain（含命令 Pump）全停；已注入界面的存量 rail 随界面重开
-        // 由原生重建清除（与 Filter 同策略，不主动清）。
-        RailEnable = Config.Bind("Rail", "Enable", true,
-            "CERail 储物侧栏总开关：false=不注入侧栏脚本、不推数据、不取命令（12 页官方面板恢复原样）。");
-        RailEnable.SettingChanged += (object s, System.EventArgs e) => { Rerun = true; };
         ClassicWebViewScrollbars = Config.Bind("Rail", "ClassicWebViewScrollbars", true,
             "v1.8.8 关闭 WebView2 fluent（悬浮式）滚动条：fluent 闲置自动淡出且无视页面 ::-webkit-scrollbar 自定义样式=「轨道常驻但滚动条切柜闪一下消失」的根因；经进程环境变量 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS 注入 --disable-features（只在游戏进程内生效、落盘零写，需重启游戏生效）。关闭后 railui.css 的 8px 自定义经典滚动条接管：恒久绘制、永不自动隐藏。");
         ApplyWebViewScrollbarEnv();
@@ -165,9 +148,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableCraftSource = Config.Bind("Access", "EnableCraftSource", true,
             "白名单注入：工作台/无人机交易/无人机站/粉碎机/温室 的柜子页签与自动取料。");
         EnableCooking = Config.Bind("Access", "EnableCooking", true, "烹饪界面注入柜子页签。");
-        EnableRatCage = Config.Bind("Access", "EnableRatCage", true, "老鼠笼界面注入柜子页签。");
-        EnableBrew = Config.Bind("Access", "EnableBrew", true, "酿酒桶界面注入柜子页签。");
-        EnableDye = Config.Bind("Access", "EnableDye", true, "颜料桶界面注入柜子页签。");
+        // EnableRatCage/EnableBrew/EnableDye 已退役（2026-11-16）：三页 glist 化后 TabInjector 停注；老 cfg 残留值忽略。
         CookingFxEnable = Config.Bind("CookingFx", "Enable", true,
             "烹饪界面改造：菜谱书属性排序标签（饱腹/心态/精力/生命）+这一锅产出属性区间。");
         IncludeFurnitureIds = Config.Bind("Access", "IncludeFurnitureIds", "",
@@ -197,22 +178,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // Fuel 视图（燃料标签 1013 柜）当前仅本页消费；Browser/其他视图照常可指派（spec §5.4）
         ViewFuelGenerator   = Config.Bind("Scenario", "View_FuelGenerator",   ScenarioView.Fuel,
             "燃油发电机（Fuel=只显示带「燃料」标签的柜子；spec 2026-11-06-fuelgen-cabinet-tabs）" + viewDesc);
-        EnableFuelGen = Config.Bind("Access", "EnableFuelGen", true,
-            "燃油发电机界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送发电机；false=界面还原官方。");
         // 暖炉（bagtabs 族第二页，暖炉移植批 2026-11-07）：Fuel 视图默认与发电机同视角（烧火同语义）
         ViewHeater          = Config.Bind("Scenario", "View_Heater",          ScenarioView.Fuel, "暖炉" + viewDesc);
-        EnableHeater = Config.Bind("Access", "EnableHeater", true,
-            "暖炉界面柜子页签：背包面板页签化（背包+燃料标签柜），点柜中燃料整组直送暖炉；false=界面还原官方（与燃油发电机同构、独立开关）。");
-        // 竖版全局物品栏（v1.9.0）：两页独立开关——进页默认列表态（跨背包+整屋柜子汇总/场景
-        // 预设筛选排序/右键移1件），单图标钮可切回格子态=现行视图；false=该页还原现行样式
-        EnableGlistDye = Config.Bind("Access", "EnableGlistDye", true,
-            "染料桶界面竖版全局物品栏：跨背包+整屋柜子的汇总列表（8色板筛选+主色点数排序+右键移1件入染料槽），单图标钮与格子样式互切；false=还原现行样式。");
-        EnableGlistHeater = Config.Bind("Access", "EnableGlistHeater", true,
-            "暖炉界面竖版全局物品栏：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入炉膛），单图标钮与格子样式互切；false=还原现行样式（与染料桶同构、独立开关）。");
-        EnableGlistFuelGen = Config.Bind("Access", "EnableGlistFuelGen", true,
-            "燃油发电机界面竖版全局物品栏（批改#8：复用暖炉同构）：跨背包+整屋柜子的汇总列表（固定仅可燃物+热值排序+右键移1件入燃料槽），单图标钮与格子样式互切；false=还原现行样式（独立开关）。");
-        EnableGlistBasket = Config.Bind("Access", "EnableGlistBasket", true,
-            "二楼篮子救援竖版全局物品栏（第四场景，仅篮子窗口生效）：跨背包+整屋柜子的汇总列表（今日许愿类别单选筛选+救助贡献实时分值排序+右键直放1件进篮子；无许愿时9分类筛选+手动排序），单图标钮与格子样式互切；false=篮子界面还原官方。");
+        // EnableFuelGen/EnableHeater/EnableGlistDye/EnableGlistHeater/EnableGlistFuelGen/EnableGlistBasket
+        // 已退役（2026-11-16 作者令「glist 必须启用，不留开关不留回退面」）：六 glist 页恒启用；老 cfg 残留值忽略。
 
         System.EventHandler reload = (object s, System.EventArgs e) => { Rerun = true; };
         IncludeFurnitureIds.SettingChanged += reload;
@@ -220,13 +189,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ExcludeBagIds.SettingChanged += reload;
         EnableCraftSource.SettingChanged += reload;
         EnableCooking.SettingChanged += reload;
-        EnableRatCage.SettingChanged += reload;
-        EnableBrew.SettingChanged += reload;
-        EnableDye.SettingChanged += reload;
-        EnableGlistDye.SettingChanged += reload;     /* v1.9.0 glist：门变更走慢道重收敛（拆装对称） */
-        EnableGlistHeater.SettingChanged += reload;
-        EnableGlistFuelGen.SettingChanged += reload; /* 批改#8：发电机页同构 */
-        EnableGlistBasket.SettingChanged += reload;  /* 篮子场景同款：门变更慢道重收敛（拆装对称） */
         ViewCooking.SettingChanged += reload;
         ViewRatCage.SettingChanged += reload;
         ViewBrewPanel.SettingChanged += reload;
@@ -238,9 +200,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         ViewTrade.SettingChanged += reload;
         ViewDroneHub.SettingChanged += reload;
         ViewFuelGenerator.SettingChanged += reload;
-        EnableFuelGen.SettingChanged += reload;
         ViewHeater.SettingChanged += reload;
-        EnableHeater.SettingChanged += reload;
 
         // General.Enabled=false：不启 Ticker/不装合并补丁，零日志零改写
         //（白名单本会话从未注入，无需移除；运行中关闭由 AccessTicker 首行门处理）
@@ -252,7 +212,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         Object.DontDestroyOnLoad(go);
         go.AddComponent<AccessTicker>();
         Log.LogInfo("[CabinetEverywhere] loaded：白名单注入=" + EnableCraftSource.Value +
-                    "，页签注入=烹饪/老鼠笼/酿酒/颜料桶(" + EnableCooking.Value + "/" + EnableRatCage.Value + "/" + EnableBrew.Value + "/" + EnableDye.Value + ")");
+                    "，页签注入=烹饪(" + EnableCooking.Value + ")，glist 六页恒开（鼠/酿/染/暖炉/发电机/篮子）");
         SurvivalLog.ModShared.WelcomeTip.Install(Log);
 
         // 袋刷新帧尾合并（一次做一次算）：默认行为
@@ -413,13 +373,8 @@ internal sealed class AccessTicker : MonoBehaviour
         // 在 BasketGlist.Poll 首行；产出 BasketJson/Dirty 由 RailData 契约（ctx.basket）携带推出，
         // 非独立通道；须先于 RailUi.Tick（同帧 BuildJson 取到新鲜值）
         BasketGlist.Poll();
-        // 筛选通道（§F 改造）：探活注入一次+名单变化才推数据——仅储物界面打开时跑（全关零注入
-        // 零推送；原「每 5s 重注 65KB 脚本+直推」退役）
-        if (CabinetEverywherePlugin.FilterEnable.Value && RailData.AnyRailSceneActiveCached())
-            TagFilter.Tick();
 
-        // CERail 数据推送（T8：cfg 门 [Rail] Enable 在 RailUi.Tick 首行——false 时不注入不推数
-        // 不 drain；T6 的 bootstrap 注入循环与探活 ForceRepublish 也已并入 Tick）：
+        // CERail 数据推送（T6 的 bootstrap 注入循环与探活 ForceRepublish 已并入 Tick）：
         // 门控在 RailUi.Tick 内（无场景/未脏不推），常态空转零开销
         RailUi.Tick();
 
@@ -458,17 +413,11 @@ internal sealed class AccessTicker : MonoBehaviour
                 CraftSourceInjector.RemoveAll();
         }
 
-        // 3) 统一容器扫描：单遍产出 AllContainers（全容器+标签，筛选用）+ HomeInstances（柜子子集，
-        //    直达注入用）；4) 筛选数据置脏（TagFilter.Tick 在界面开着时推）；5) 容器行/背包容量元数据
-        //    （cfg [Rail] Enable=false 时跳过——OpRename/OpSetTags 命令路径内的 RefreshMeta 直调不受此门影响）
+        // 3) 统一容器扫描：单遍产出 AllContainers（全容器+标签，页签/筛选用）+ HomeInstances（柜子子集，
+        //    直达注入用）；4) 容器行/背包容量元数据
         CabinetCatalog.RefreshHomeInstances();
-        if (CabinetEverywherePlugin.FilterEnable.Value)
-            TagFilter.NotifyScan();
-        if (RailUi.Enabled)
-        {
-            RailData.RefreshMeta();
-            if (full) RailData.ForceRepublish(); // cfg 视图/glist 门变更→推送范围变→强制重推一包
-        }
+        RailData.RefreshMeta();
+        if (full) RailData.ForceRepublish(); // cfg 视图/glist 门变更→推送范围变→强制重推一包
         return true;
     }
 }

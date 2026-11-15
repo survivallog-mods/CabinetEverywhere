@@ -67,10 +67,10 @@ internal static class BasketGlist
         return _liveCache;
     }
 
-    /// <summary>吊栏 glist 场景门（cfg × 篮子窗活**现值**）——RailData glistOn/行筛选/范围
-    /// 共用（原 BasketOn 消费位全量改读此门）。</summary>
+    /// <summary>吊栏 glist 场景门（篮子窗活**现值**；cfg 开关已退役恒启用）——RailData
+    /// glistOn/行筛选/范围共用（原 BasketOn 消费位全量改读此门）。</summary>
     internal static bool BasketSceneOn()
-        => CabinetEverywherePlugin.EnableGlistBasket?.Value != false && LiveFast();
+        => LiveFast();
 
     private static long _warnOwnerId;           // SelfCheck 告警按窗去重
     private static readonly HashSet<string> _warned = new();
@@ -79,12 +79,12 @@ internal static class BasketGlist
 
     internal static void Poll()
     {
-        if (Disabled || !RailUi.Enabled) return;
-        CfgOn = CabinetEverywherePlugin.EnableGlistBasket?.Value != false;
-        if (CfgOn && RailData.ActivePage() != "BackpackUI") { Retire(); return; } /* 终审 M4：窗活守卫兜底（state 残留 IsBasket_B 的首包闪挂面）——关窗沿在此退役陈旧态（RA_Close 不清 IsBasket_B，见 LiveFast 注） */
+        if (Disabled) return;
+        CfgOn = true; /* EnableGlistBasket 开关退役（2026-11-16）——篮子态即启用 */
+        if (RailData.ActivePage() != "BackpackUI") { Retire(); return; } /* 终审 M4：窗活守卫兜底（state 残留 IsBasket_B 的首包闪挂面）——关窗沿在此退役陈旧态（RA_Close 不清 IsBasket_B，见 LiveFast 注） */
         try
         {
-            if (!LiveFast() || !CfgOn) // 双信号判活（单袋背包 IsDualBag=false=残留 IsBasket_B 不作数）
+            if (!LiveFast()) // 篮子态判活（单袋背包 IsDualBag=false=残留 IsBasket_B 不作数）
             {
                 Retire();
                 return;

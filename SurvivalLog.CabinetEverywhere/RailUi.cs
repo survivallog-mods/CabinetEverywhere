@@ -71,10 +71,6 @@ internal static class RailUi
 
     // ---- v1.8.8 滚动条诊断（一次性：首个 rail 场景开到后量测并记一行日志，防盲改） ----
 
-    /// <summary>cfg [Rail] Enable（T8 裁定 4）：false=不注入/不推数/drain（含 Pump）全停。</summary>
-    internal static bool Enabled =>
-        CabinetEverywherePlugin.RailEnable == null || CabinetEverywherePlugin.RailEnable.Value;
-
     // ================= v1.8.4b SizeEngine：柜宽统一（作者 2026-11-01 缺陷#2 拍板 12 列、内建、不依赖套件） =================
     // 政策（v1.8.3「三道门」热修版的接续修订）：
     //   ① 目标=家中柜子子集 HomeInstances 的包（kind=='c' 且入柜名单；冰箱/材料架/材料堆不碰）——不变；
@@ -474,8 +470,6 @@ internal static class RailUi
 
     internal static void Tick()
     {
-        // cfg 门（T8）：首行判定，覆盖 bootstrap 注入/数据推送/drain/Pump 全部路径
-        if (!Enabled) return;
         // 立即生效硬验收（spec §2）：高度键 SettingChanged 置脏（线程不定禁直调 Il2Cpp）→
         // 此处主线程帧内消费——改键当帧重算落笔+立即生效链，不等 5s 慢通道
         if (SizeDirty)
@@ -589,20 +583,30 @@ internal static class RailUi
         bool pageChanged = !string.Equals(page, _lastPage, StringComparison.Ordinal);
         if (!pageChanged && !RailData.ItemsDirty()) return -1;
 
+        /* 开界面即时现扫（2026-11-16，storeAll 按需现扫 §F 同款先例）：柜子名单/容量元数据
+           原依赖 5s 慢通道缓存——换图/读档后缓存空窗内开界面，首包柜子列表残缺（页签注入
+           0.5s 轮询补挂同样迟到）。页面切换时先现扫一遍（单遍几 ms，页面切换低频），
+           首包即完整名单，开界面零等待。 */
+        if (pageChanged)
+        {
+            try { CabinetCatalog.RefreshHomeInstances(); RailData.RefreshMeta(); } catch { }
+        }
+
         var (json, rev) = RailData.BuildJson();
         if (json == null) return -1; // 背包 owner 不可得（findings §4 兜底③），等下一周期
 
-        /* 八追终案护栏（告警不拦发——字符串值内可合法含 ",,"（如柜子改名"a,,b"），盲拦会误伤；
-           严格校验由 JS 侧 commit 的 JSON.parse 把关）：合法 JSON 结构位严禁 ",,"（空值/双分隔）
-           与 "[,"（前导逗号）——tradePrefs（双重引号+悬空前导逗号）与 lib（行尾+行首双分隔）
-           两案的教训：坏包直推=整段脚本语法错误被 WebView 静默丢弃=「断流/概率性丢包」假象
-           （四~八追悬案的真正根因）。命中即带现场片段限频告警——拼装 bug 从静默死变一行日志。 */
-        int bad = json.IndexOf(",,", StringComparison.Ordinal);
-        if (bad < 0) bad = json.IndexOf("[,", StringComparison.Ordinal);
-        if (bad >= 0)
+        /* 出口强校验（2026-11-16 ctn 前导逗号案终修，接替八追 IndexOf 护栏）：拼装产物在离开
+           C# 前用自家 RailJson 全量 Parse 一次——非法 JSON 直接拦发（静默，零日志——作者纪律：
+           日志仅调试期临时加、用完即删）。坏包到 JS 被 commit 的 JSON.parse 拒收 = 数据永久丢
+           （C# 侧 rev 已前进，签名门不再补发=陈旧直到输入再变）；拦发则数据留门内，下轮重拼
+           重检，输入变化拼出合法包即送达。成本：62~130KB 纯托管解析 ~1-3ms/包（600ms 节流+
+           签名门下仅数据变化时发生）。ForceRepublish 置 force：BuildJson 组装完成处已清脏，
+           不置则下轮签名门静默不重试。 */
+        try { RailJson.Parse(json); }
+        catch (Exception)
         {
-            string spot = json.Substring(Math.Max(0, bad - 40), Math.Min(100, json.Length - Math.Max(0, bad - 40)));
-            WarnOnce("payload", "推送载荷疑似非法 JSON（,,/[, @" + bad + "，若为字符串值内出现则无害）——拼装 bug 现场核查：…" + spot + "…");
+            RailData.ForceRepublish();
+            return -1;
         }
 
         if (_pushAckCb == null)
@@ -650,7 +654,6 @@ internal static class RailUi
     /// </summary>
     internal static void FastPoll()
     {
-        if (!Enabled) return;
         SizeGuardFrame(); // 帧级尺寸守卫（读档掉物品修复）：表被官方异步洗回原生→当帧写回
         try
         {
@@ -858,8 +861,8 @@ internal static class RailUi
         return r.ReadToEnd();
     }
 
-    /// <summary>WebView 通道（TagFilter.GetWebView 同款：WebUILayer.canvasWebViewPrefab.WebView）。</summary>
-    private static Vuplex.WebView.IWebView GetWebView()
+    /// <summary>WebView 通道（WebUILayer.canvasWebViewPrefab.WebView；CookingFx/TabGate 共用）。</summary>
+    internal static Vuplex.WebView.IWebView GetWebView()
     {
         try
         {
@@ -943,12 +946,12 @@ internal static class RailUi
             return;
         }
         bool active =
-            (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
-            (CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false && GlistAnyPageActive(layer, _gkHeaterKeys)) ||
-            (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys)) ||
-            (CabinetEverywherePlugin.EnableGlistBasket?.Value != false && BasketGlist.LiveFast() && GlistAnyPageActive(layer, _gkBasketKeys)) ||
-            (GlistAnyPageActive(layer, _gkRatKeys)) || /* rat-brew：零配置键=页活即开（spec 裁定#7） */
-            (GlistAnyPageActive(layer, _gkBrewKeys));
+            GlistAnyPageActive(layer, _gkDyeKeys) ||
+            GlistAnyPageActive(layer, _gkHeaterKeys) ||
+            GlistAnyPageActive(layer, _gkFuelGenKeys) ||
+            (BasketGlist.LiveFast() && GlistAnyPageActive(layer, _gkBasketKeys)) ||
+            GlistAnyPageActive(layer, _gkRatKeys) ||
+            GlistAnyPageActive(layer, _gkBrewKeys); /* 六 glist 页恒开（2026-11-16 开关退役批）；篮子=篮子态直读 */
         if (active)
         {
             bool first = !_gkHanded;

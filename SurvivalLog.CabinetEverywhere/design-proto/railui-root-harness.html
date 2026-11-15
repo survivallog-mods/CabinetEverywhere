@@ -336,8 +336,6 @@ window.__HZ_READY__ = function () {
      契约字段在夹具侧的建模——默认 12，测试改 window.__HZ_UNIW__ 后 __HZ_PUSH__ 重推生效 */
   window.__HZ_UNIW__ = 12;
   window.__HZ_FEEDFAIL__ = ''; /* fuelgen：ctx.feedFail 测试旋钮（置码后 __HZ_PUSH__ 生效，一次性由 JS 消费侧清） */
-  window.__HZ_FGON__ = true;    /* fuelgen：ctx.fgOn 旋钮（C# EnableFuelGen 的夹具侧等价物，终审 Important1） */
-  window.__HZ_HTON__ = true;    /* heater：ctx.heaterOn 旋钮（C# EnableHeater 的夹具侧等价物，fgOn 同款） */
   /* fuelgen 实机修复批：__HZ_FGNUDGE__=ready 即投 BagMsg 开关（false=测试手动投——复现官方页
      渐进渲染竞态：默认 6×5 格先建、装配先于数据到达）；__HZ_FGROWS__=bagRows（真实玩家背包
      18 行；调大重载=实机「调整背包高度后重开」复现路）。均需重载 FuelGenerator 帧后生效。
@@ -361,14 +359,12 @@ window.__HZ_READY__ = function () {
       uniformWidth: window.__HZ_UNIW__,
       brewP1: window.__HZ_BREWP1__, brewP2: window.__HZ_BREWP2__
     };
-    if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.fgOn = window.__HZ_FGON__ !== false; }
-    /* glist（v1.9.0）：ctx.glistOn 页条件字段夹具钮——undefined=字段缺席（C# 缺席语义）、
-       true/false=显式门；正式门=C# EnableGlistDye/Heater（T7 接线），__HZ_GLIST__ 钮为覆盖位 */
-    if (key === 'DyePanel' || key === 'Heater' || key === 'FuelGenerator') { if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; }
-    /* rat-brew glist（spec 2026-11-09 裁定#7）：产线 C# 无条件恒 true（零配置键）——夹具走
-       dye 族三态钮（undefined=字段缺席/true/false 显式）：旧路径套件（brew-tier 测保留的
-       v14.1 DISP 径）缺省不设=glist 不进场零扰动；RB 系置 true 断言新径 */
-    if (key === 'RatCage' || key === 'BrewPanel') { if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; }
+    if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
+    /* glist 恒开（2026-11-16 开关退役批）：五 glist 页 ctx.glistOn 恒 true（C# 无条件下发，
+       EnableGlist*/EnableDye/EnableHeater/EnableFuelGen 开关已删）；fgOn/heaterOn 契约字段
+       随开关退役不再下发（JS 消费已删）。__HZ_GLIST__ 钮保留为 harness 覆盖位 */
+    if (key === 'DyePanel' || key === 'Heater' || key === 'FuelGenerator'
+      || key === 'RatCage' || key === 'BrewPanel') ctx.glistOn = true;
     /* rat-brew glist：brewIco 页条件字段（C# BrewPanel 页推 [劣15505,普15504,烈15506] WebIcon）。
        __HZ_BREWICO__：undefined=默认三假 URL / 数组=整段替换 / null=缺席（窗口期角标无图面） */
     if (key === 'BrewPanel') {
@@ -376,7 +372,7 @@ window.__HZ_READY__ = function () {
       else if (window.__HZ_BREWICO__ !== undefined) ctx.brewIco = window.__HZ_BREWICO__;
       else ctx.brewIco = ['hz-ico-lie', 'hz-ico-putong', 'hz-ico-liexing'];
     }
-    if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; ctx.heaterOn = window.__HZ_HTON__ !== false; }
+    if (key === 'Heater') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
     /* dye-pigment-sort：DyePanel 页条件字段 dyePal（C# ctx 页条件先例 tradePrefs 同源）。三态：
        undefined=默认板 / 数组=测试板 / null=模拟 C# 缺席（配置未就绪窗口——字段整个不下发） */
     if (key === 'DyePanel') {
@@ -389,7 +385,7 @@ window.__HZ_READY__ = function () {
        undefined=默认 wish 态 mock / 对象=整段替换 / null=模拟 C# 缺席（字段整个不下发）；
        __HZ_GLISTON__ 覆写门（false=cfg 关断言用） */
     if (key === 'BackpackUI' && window.__HZ_BASKETMODE__) {
-      if (window.__HZ_GLISTON__ !== undefined) ctx.glistOn = window.__HZ_GLISTON__; else ctx.glistOn = true;
+      ctx.glistOn = true;
       if (window.__HZ_BASKET__ === null) { /* 缺席：不设字段 */ }
       else if (window.__HZ_BASKET__ !== undefined) ctx.basket = window.__HZ_BASKET__;
       else ctx.basket = { mode: 'wish', chips: [{ id: 9, name: '材料', warn: false }, { id: 2, name: '药品', warn: true }],

@@ -236,8 +236,8 @@
     DroneHub:        { host: '#paneMine', inherit: '#paneMine',       family: 'bag',   bagOnly: false, duo: false, tabs: '#bagTabs', grid: 'bagGrid', rack: '#bagRackWrap', stubs: ['bagTitleBar', 'bagTitleText', 'sortBagBtn1', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'sortBagBtn2', 'bagGridWrap', 'bagCap', 'bagWeightLb', 'bagWeightBar', 'bagWeightNum', 'shiftHint'] },  /* section.pane.mine（@DroneHub.html @408）；tabs=#bagTabs（自带 padding 头+尾 sortBagBtn2 官方排序钮，随件还原）。rack=#bagRackWrap（内含 #bagRack）行视图宿主二十一批入壳——本页官方藏格写的是 bagGridWrap（**包格容器**，非格本体）：入壳的 #bagGrid 不在包内=官方藏格不达，壳侧 railui.css 按 #bagRackWrap.on 镜像藏 #bagGrid；bagGridWrap 桩保留吸官方写（原末项无尾逗号，fuelgen 条目插入补上）。inherit=groundDock 锚点 $('paneMine') 同源标记（id 形态→空 proxy，表头【inherit】段）*/
     /* 燃油发电机 bagtabs 页（spec 2026-11-06-fuelgen-cabinet-tabs）：glist 在场=格子态装 rail 壳
        （作者 2026-11-12 令「复用染料桶格子界面设计」——host 指官方左背包 .panel，mount 替换后
-       格子态=染料桶同款 srg-plain：官方金标题+信息条+官方格+页脚一键入库/一键整理，样式底色统一）；
-       glist 关（cfg 回退面）=卸 rail 还原官方 .panel，ensureBagtabs 装配 srfg 页签旧方案原路。
+       格子态=染料桶同款 srg-plain：官方金标题+信息条+官方格+页脚一键入库/一键整理，样式底色统一）。
+       （2026-11-16 开关退役批：glist 活恒开，srfg 旧方案整链删除，cfg 回退面不再存在）
        右侧发电机面板零改动（作者底线）；官方 DOM 只隐藏不 detach（#backpackGrid 柜页签
        display:none；title/info-bar/hint 由 .srfg-on 类隐藏——无燃料柜时全拆除=原版）。 */
     FuelGenerator:   { host: '.generator-system > .panel:not(.gen-panel)', bagtabs: true, family: 'fg', bagOnly: false, duo: false, grid: 'backpackGrid', stubs: ['bagInfoBar', 'bagPanelTitle', 'shiftHint'] },
@@ -1130,6 +1130,12 @@
   function goTidy(owner) {
     owner = parseInt(owner, 10);
     if (!ctnById(owner)) return; /* 柜已消失等：无从整理，静默 */
+    /* 连点防抖（2026-11-16 老鼠笼实机卡死）：在途 tidy（XFER 未被回推结算）且 <5s → 忽略。
+       推送丢弃态（回推永不到）下连点曾一次排进 34 条 tidy——每条批末各一次官方整包
+       SyncBothBags+全契约重推，WebView 整包渲染堆积=界面卡死；tidy 幂等，在途重复点击
+       无意义。5s 超时放行=丢弃态不永久锁按钮（过期 XFER 到包仍会结算，仅 toast 迟到）；
+       正常态回推 ~66ms 即结算解锁，连点逐条闭环不受影响。 */
+    if (XFER && XFER.kind === 'tidy' && Date.now() - XFER.t0 < 5000) return;
     var raw = owner === store.bag ? bagArr() : (store.items[String(owner)] || []);
     if (!raw.length) { toast(owner === store.bag ? '背包是空的' : '这里没有物品'); return; }
     /* 官方成本拦截（2026-11-14 spec §B）：官方 SORT 事件路（forgePost→RA_Sort=状态排序+2×
@@ -4334,335 +4340,25 @@
       if (t && !(t.closest && t.closest('#srp'))) { slot.appendChild(t); RACKEL[f.key] = t; }
     } catch (e) { }
   }
-  /* ================= 燃油发电机 bagtabs 装配（spec 2026-11-06-fuelgen-cabinet-tabs） =================
-     不替换宿主/无侧栏壳：官方左背包面板内装配 页签栏(#srfgTabs)+（九验收：柜签=官方格数据切换，
-     无自绘格）警示(#srfgWarn)+底行(#srfgFoot)。作者底线：右侧发电机面板零改动。
-     官方 DOM 只隐藏不 detach：#backpackGrid 柜页签 display:none；title/info-bar/hint 由面板
-     .srfg-on 类隐藏——无燃料柜（或 cfg 关）时三件 mod DOM 全拆+类清除=逐像素原版。
-     官方查询点清点（T9 纪律，FuelGenerator.html getElementById/$ 全量扫描）：backpackGrid/
-     bagInfoBar/generatorSystem/fuelQueueZone/warningBox/availText/totalBurnValue/genRunLine/
-     genRunText/genPerTickValue/fuelPerTickValue/generatorNameDisplay/recipeTooltip/auto 系——
-     全部原位保留（mod 只 append 自家节点+加隐藏类），官方渲染通道零影响。
-     面板尺寸锁（spec §5.1，实机修复批 2026-11-07 重做）：宽=CSS min-width 结构锁（.srfg-on
-     上 calc 官方 CSS 变量 12 列全宽——官方页渐进渲染：默认 6×5 格先建、BagMsg 后 resize 12×N，
-     一次性量取会锁进 6 列宽竞态=实机「重开页签栏不可见」根因）；高=右 .gen-panel 自然高
-     （fgLockHeight 每轮 settle 自愈复核，不再一次性）——格区超高改内部滚动不撑爆对话框。 */
-  var FG = { doc: null, panel: null, grid: null, scroll: null, page: 'FuelGenerator', current: 'bag', active: false, warnT: 0, lastKey: 0, rootBound: false, sig: '', tabSig: '', hRO: null, badgeMO: null, pushedOwner: null };
-  /* bagtabs 页族描述符（暖炉移植批=族第二页）：页差异全表驱动——sys/right=左面板宿主选择器
-     两件套（'.{sys} > .panel:not(.{right})'）；onKey=cfg 门 ctx 字段（fgOn/heaterOn，C# 页条件
-     字段）；fullText=料槽满红字（各页官方 warningFuelFull 同词）。 */
+  /* ================= 燃油发电机/暖炉 bagtabs =================
+     srfg 旧方案（官方左背包面板内自装 页签栏#srfgTabs/警示#srfgWarn/底行#srfgFoot，
+     spec 2026-11-06-fuelgen-cabinet-tabs）已整链删除（2026-11-16 开关退役批）：两页 glist
+     恒开——格子态=rail 壳 srg-plain（染料桶格子界面复用批 2026-11-12，页脚一键入库/一键
+     整理），列表态=glist 面板接管左列，778 高度锁由 glistApply 持有。右侧发电机/炉体面板
+     零改动（作者底线不变）。 */
+  /* bagtabs 页族描述符：页差异全表驱动——sys/right=左背包面板宿主选择器两件套
+     （'.{sys} > .panel:not(.{right})'）；fullText=料槽满红字（各页官方 warningFuelFull 同词）。
+     onKey=cfg 门 ctx 字段（fgOn/heaterOn）已随开关退役批删除（恒真不再下发）。 */
   var BAGTABS = {
-    FuelGenerator: { sys: 'generator-system', right: 'gen-panel', onKey: 'fgOn', fullText: '燃油槽已满' },
-    Heater:        { sys: 'heater-system',    right: 'heater-panel', onKey: 'heaterOn', fullText: '炉膛已满' },
+    FuelGenerator: { sys: 'generator-system', right: 'gen-panel', fullText: '燃油槽已满' },
+    Heater:        { sys: 'heater-system',    right: 'heater-panel', fullText: '炉膛已满' },
   };
   function btOf(page) { return BAGTABS[page] || null; }
-  /* 实机批改#9（2026-11-08 作者裁定：格子态=官方默认背包，「柜子页签是之前版本的方案，已被
-     新方案替代」）：glist 在场的 bagtabs 族页（Heater/FuelGenerator）srfg 旧方案整体退役——
-     列表态=glist 面板接管左列，格子态=fgTeardown 后的原版面板（标题/官方格/提示，无页签无
-     整理钮无 778 锁）。门=glistGate（cfg/页/knob 同一真源）；门关=旧方案原路复活（cfg 回退面）。
-     连带：778 高度锁所有权转移——fgSyncHeight 随退役停跑，列表态由 glistApply 自写同规则锁
-     （778 地板+视口钳，见 glistApply），格子态/拆净=解除还自然高（官方 _fit 缩放接管）。 */
+  /* 实机批改#9（2026-11-08 作者裁定：「柜子页签是之前版本的方案，已被新方案替代」）→
+     2026-11-16 开关退役批收口：glist 六页恒开（cfg 门全拆），本判定真源只剩 harness knob
+     （__HZ_GLIST__）与 ctx 页确认。 */
   function glistOwnsPage(key) { return !!GLIST[key] && glistGate(key); }
   var FG_FAIL_TEXT = { notfuel: '只能添加燃料', bagfull: '背包已满，无法转送', noitem: '物品已不在柜中', admit: '该物品不能放入目标仓', locked: '目标仓锁定或运行中', nomove: '移动失败，稍后再试' }; /* full=料槽满：文案页异（燃油槽/炉膛），走 BAGTABS[].fullText；admit/locked/nomove=slotFeed 3026 直发失败面（2026-11-14） */
-  var FG_TIDY_SVG = '<svg viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg>';
-
-  function fgFuelCtns() {
-    var bt = store.ctx && btOf(store.ctx.page);
-    if (!bt || store.ctx[bt.onKey] === false) return []; /* 非 bagtabs 页 / cfg 关（ctx.fgOn|heaterOn，C# 直推）——空表=拆除态=原版 */
-    var view = (store.ctx && store.ctx.view) || 'fuel';
-    return store.ctn.filter(function (c) { return viewAllowsCtn(c, view); });
-  }
-  function fgTabIds() { return ['bag'].concat(fgFuelCtns().map(function (c) { return String(c.id); })); }
-
-  function ensureBagtabs(f) {
-    var doc = f.doc;
-    /* 批改#11b（渲染进程猝死根治）：GLIST 页上旧方案只许在「ctx 确认本页且 glist 关」时挂载
-       ——ctx 未确认（开门首扫 ctx 还是上页的）也一律 hold：否则旧方案抢挂→glist 接管→
-       teardown/换包过渡机级联=观察器雪崩（实机实锤 bagtabs mounted: Heater 后页面冻死）。
-       hold 语义=本帧不建，等 ctx 到位（glistOn=压制 / 确认关=挂载）。 */
-    if (GLIST[f.key] && (glistOwnsPage(f.key) || !store.ctx || store.ctx.page !== f.key)) {
-      if (FG.doc === doc) { try { fgTeardown(); } catch (e) { } }
-      return;
-    }
-    if (!fgFuelCtns().length) return;        /* 无燃料柜=不建（拆后再建再拆=观察器乒乓暴毙，实机教训） */
-    var bt = btOf(f.key);                    /* bagtabs 帧页描述符（scanFrames 只以 SCENES[key].bagtabs 帧入此） */
-    if (!bt) return;
-    var panel = doc.querySelector('.' + bt.sys + ' > .panel:not(.' + bt.right + ')');
-    var grid = doc.getElementById('backpackGrid');
-    if (!panel || !grid) return;             /* 官方左面板未建：等下一轮 */
-    if (grid.children.length === 0) return;  /* 官方格未渲染（页面脚本未跑/BagMsg 未到）：等下一轮（默认 6×5 先建即可装配——宽度已无一次性锁，中间态无害） */
-    if (FG.doc === doc && doc.getElementById('srfgTabs') && doc.getElementById('srfgWarn') && doc.getElementById('srfgFoot')) { fgSettle(); return; } /* 在位（三件全查=防半装配快路径陷阱）：数据驱动更新 */
-    injectRailStyle(doc); /* srfg-* 样式随 railui.css 注入（本页此前无 rail=首次注入） */
-    fgTeardown(); /* 跨文档重建（iframe 重载）：清旧引用 */
-    FG.doc = doc; FG.panel = panel; FG.grid = grid; FG.page = f.key; FG.current = 'bag'; FG.pushedOwner = null;
-    /* 格区滚动视窗=v1.8.14 mod 包装层（BackpackUI v1.8.13 同案）：官方 webui-bag
-       getGridCoordinates/isMouseOver/落点全按 #backpackGrid rect 顶=行 0 对齐，格自己滚
-       （旧 .srfg-on>.grid-container overflow）=rect 变裁剪窗 → 滚动后拖拽落点整段偏上/
-       被拒（作者实报燃料页背包/柜子「无法移动物品、落地位置不对」）。把格包进
-       .srfg-gridscroll（railui.css 唯一 flex:1+overflow 子项，滚动槽样式随迁），格全高在
-       内滚=格 rect 恒全高内容矩形，官方坐标数学零改动自洽；拆除时拆包还原原版 DOM。 */
-    var wrap = grid.parentNode && grid.parentNode.id === 'srfgGridScroll' ? grid.parentNode : null;
-    if (!wrap) {
-      wrap = doc.createElement('div');
-      wrap.id = 'srfgGridScroll';
-      wrap.className = 'srfg-gridscroll';
-      grid.parentNode.insertBefore(wrap, grid);
-      wrap.appendChild(grid);
-    }
-    FG.scroll = wrap;
-    panel.classList.add('srfg-on'); /* 宽不锁（min-width 结构锁）；高由 fgSyncHeight 持有（778 地板+视口钳，见其注释） */
-    var tabs = doc.createElement('div');
-    tabs.id = 'srfgTabs'; tabs.setAttribute('data-interactive', '');
-    tabs.innerHTML = '<div class="srfg-pin"><div class="srfg-tab active" data-id="bag">背包</div></div>' +
-      '<button class="srfg-tabbtn srfg-tabbtn-l" type="button">‹</button>' +
-      '<div class="srfg-scroll" id="srfgScroll"></div>' +
-      '<button class="srfg-tabbtn srfg-tabbtn-r" type="button">›</button>';
-    panel.insertBefore(tabs, panel.firstChild);
-    var warn = doc.createElement('div');
-    warn.id = 'srfgWarn'; warn.className = 'srfg-warn'; warn.hidden = true;
-    panel.appendChild(warn);
-    var foot = doc.createElement('div');
-    foot.id = 'srfgFoot'; foot.className = 'srfg-foot'; tabs.setAttribute('data-interactive', '');
-    foot.innerHTML = '<button class="srfg-act" type="button">' + FG_TIDY_SVG + '<span>一键整理</span></button>';
-    panel.appendChild(foot);
-    /* 事件：页签点击/‹›/整理钮（委托）。物品层交互零自造——九验收架构：柜签=官方背包数据
-       切换（cmdOut switchBag→C# 注入官方形状 BagMsg，bagOwnerId=柜子），物品渲染/拖拽（含
-       拖到燃料槽=官方 FUEL_ADD）/左键 ITEM_CLICK 原生详情/悬浮热值 tooltip 全部官方代码路径
-       （烹饪/酿酒界面柜签同机制）。mod 侧仅保留：右键=整叠直送发电机（四验收作者定规）。 */
-    tabs.addEventListener('click', function (ev) {
-      var tb = ev.target.closest && ev.target.closest('.srfg-tab');
-      if (tb && tb.getAttribute('data-id')) { fgSwitch(tb.getAttribute('data-id')); return; }
-      if (ev.target.closest && ev.target.closest('.srfg-tabbtn-l')) { fgScrollBy(-160); return; }
-      if (ev.target.closest && ev.target.closest('.srfg-tabbtn-r')) { fgScrollBy(160); }
-    });
-    foot.addEventListener('click', function () { cmdOut('tidy', { owner: FG.current === 'bag' ? store.bag : Number(FG.current) }); });
-    /* 右键=整叠直送发电机（四验收作者定规「右键才是移动物品」；预检同口径：非燃料/满员红字）。
-       官方物品元素 id=itemId（webui-bag renderItems el.id=item.id）——零解析直取 */
-    panel.addEventListener('contextmenu', function (ev) {
-      var it = ev.target.closest && ev.target.closest('#backpackGrid .item');
-      if (!it || FG.current === 'bag') return;
-      var id = parseInt(it.id, 10) || 0;
-      if (id <= 0) return;
-      ev.preventDefault();
-      fgFeedCmd(id);
-    });
-    try { doc.getElementById('srfgScroll').addEventListener('scroll', fgBtnState, { passive: true }); } catch (e) { } /* 滚动中端点禁用即时更新（scroll 不冒泡，直挂滚动容器本体；sc 元素常驻，仅其 innerHTML 重建） */
-    /* 火苗角标观察器：官方 BagMsg 异步到达→官方格渲染后补类（settle 每轮复核双保险；只听 childList——补类写 className 不回触=零自激环） */
-    try {
-      if (FG.badgeMO) { try { FG.badgeMO.disconnect(); } catch (e2) { } }
-      FG.badgeMO = new MutationObserver(function () { fgBadgeFuel(); });
-      FG.badgeMO.observe(grid, { childList: true, subtree: true });
-    } catch (e) { }
-    /* A/D 双绑（S5 兜底先行）：iframe 文档级（随文档销毁自然解绑）+ Root window（常驻，
-       FG.active 守卫=燃料页不可见不动作，60ms 去重防双达双切） */
-    try { doc.addEventListener('keydown', fgKey, true); } catch (e) { }
-    if (!FG.rootBound) { FG.rootBound = true; try { window.addEventListener('keydown', fgKey, true); } catch (e) { } }
-    fgSettle();
-    try { console.log('[CERail] bagtabs mounted: ' + f.key); } catch (e) { }
-  }
-
-  function fgKey(e) {
-    if (!FG.active || !FG.doc) return;
-    /* 实机批改#3：输入语境不切页签（glist 搜索框打字 a/d；双绑两侧都查——iframe 绑定
-       e.target=输入框，Root 绑定 e.target=body 时查目标帧 activeElement；SEARCH_FOCUS
-       开键盘转发后打字键会真实到达） */
-    var tgt = e.target;
-    if (tgt && (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.isContentEditable)) return;
-    var ae = FG.doc.activeElement;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-    var k = e.key;
-    if (k !== 'a' && k !== 'A' && k !== 'd' && k !== 'D') return;
-    var t = Date.now();
-    if (t - FG.lastKey < 60) return; /* iframe+root 双绑去重 */
-    FG.lastKey = t;
-    var ids = fgTabIds(), i = ids.indexOf(String(FG.current));
-    var ni = (k === 'd' || k === 'D') ? i + 1 : i - 1;
-    if (ni >= 0 && ni < ids.length) fgSwitch(ids[ni]);
-  }
-  function fgScrollBy(dx) {
-    var sc = FG.doc && FG.doc.getElementById('srfgScroll');
-    if (sc) { try { sc.scrollLeft += dx; } catch (e) { } }
-  }
-  /* 六验收（储物体验红线：扩容不越界）：面板高=**778 地板+视口钳**——与侧栏 plainSlotSync
-     （railui 官方等高契约）同数同义：778=其他界面侧栏可见基准（作者实测「14 格半」口径）。
-     不做 gen 跟随（侧栏的 sib>778 分支）：本页面板是**驱动方**——gen 面板被 flex stretch 拉到
-     与本面板等高，量 gen=自激环（实测 24 行背包时锁进 1124px 实锤）；778 下 gen(自然 ~640)
-     随 stretch 对齐=官方等高原貌。视口硬钳同八轮教训（同空间 innerHeight，webview 带缩放）。
-     格区视窗=面板内 flex:1 滚动：背包 18 行/任意高柜一律视窗内滚（超高柜=同窗滚动到底）。
-     同值守卫幂等；settle 每轮复核。 */
-  function fgSyncHeight() {
-    if (!FG.doc || !FG.panel) return;
-    var wantH = 778;
-    var vhCap = (FG.doc.defaultView && FG.doc.defaultView.innerHeight) || 0;
-    if (vhCap > 400 && wantH > vhCap) wantH = vhCap;
-    var px = wantH + 'px';
-    if (FG.panel.style.height !== px) {
-      try { FG.panel.style.setProperty('height', px, 'important'); } catch (e) { }
-      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 促官方 _fit 复测（zoom 不滞留） */
-    }
-  }
-  /* ‹› 端点禁用（官方 Cooking .tab-scroll-btn:disabled 同式；实机修复①：按钮常驻可见，
-     不再 is-visible 溢出门——燃料柜少时永不显形=「按钮没有」）。同值守卫防观察器环。 */
-  function fgBtnState() {
-    if (!FG.doc) return;
-    var sc = FG.doc.getElementById('srfgScroll');
-    var bl = FG.doc.querySelector('#srfgTabs .srfg-tabbtn-l'), br = FG.doc.querySelector('#srfgTabs .srfg-tabbtn-r');
-    if (!sc || !bl || !br) return;
-    var dl = sc.scrollLeft <= 0;
-    var dr = sc.scrollLeft >= sc.scrollWidth - sc.clientWidth - 1;
-    if (bl.disabled !== dl) bl.disabled = dl;
-    if (br.disabled !== dr) br.disabled = dr;
-  }
-
-  function fgSwitch(id) {
-    FG.current = String(id);
-    var ids = fgTabIds();
-    if (ids.indexOf(FG.current) < 0) FG.current = 'bag'; /* 容器已消失：回背包 */
-    try { (FG.scroll || FG.grid).scrollTop = 0; } catch (e) { } /* 换容器滚动归顶（v1.8.14 滚动器=.srfg-gridscroll 包装层，旧格本体恒 0 兜底无害） */
-    fgSettle();
-  }
-
-  function fgSettle() {
-    if (!store.ctx || !btOf(store.ctx.page)) return; /* 页守卫：他页/非 bagtabs 页 setData 不得驱动本页（终审修复：切场景中途误拆+回装断链） */
-    if (glistOwnsPage(store.ctx.page)) { if (FG.doc) { try { fgTeardown(); } catch (e) { } } return; } /* 批改#9：glist 在场=退役（含 fgSyncHeight 778 锁停跑——锁所有权移交 glistApply） */
-    fgSyncHeight(); /* 等高契约每轮复核（同值守卫） */
-    if (!FG.doc || !FG.doc.getElementById('srfgTabs')) {
-      /* 自愈回装（实机二验收「二次打开页签栏不显示」加固）：页签不在而燃料柜数据在——可能是
-         空窗期瞬空拆除后残留态、或文档已换（FG.doc 陈旧）。直接找当前 bagtabs 帧走全装配
-         （ensureBagtabs 幂等：燃料空/官方格未建等门内自守；真无燃料柜=空表跳过=原版保持）。 */
-      for (var q = 0; q < FRAMES.length; q++) {
-        var fk = FRAMES[q].key;
-        if (SCENES[fk] && SCENES[fk].bagtabs && FRAMES[q].doc && FRAMES[q].doc.body) {
-          if (fgFuelCtns().length) { try { ensureBagtabs(FRAMES[q]); } catch (e) { } }
-          return;
-        }
-      }
-      return;
-    }
-    var fuel = fgFuelCtns();
-    if (!fuel.length) { fgTeardown(); return; } /* 无燃料柜=原版（Review Focus 1） */
-    /* 页签行——**清单签名守卫**（勿用 innerHTML 串比较：序列化含 active 类修正，与生成串
-       永不相等→重写丢 active→修正→再重写=观察器自激环，实机教训=渲染器 59 万写/秒暴毙） */
-    var sc = FG.doc.getElementById('srfgScroll');
-    if (sc) {
-      var listSig = '';
-      var html = '';
-      for (var i = 0; i < fuel.length; i++) {
-        html += '<div class="srfg-tab" data-id="' + fuel[i].id + '">' + nm(fuel[i]) + '</div>';
-        listSig += (i ? '|' : '') + fuel[i].id + ':' + nm(fuel[i]);
-      }
-      if (FG.tabSig !== listSig) { FG.tabSig = listSig; sc.innerHTML = html; }
-    }
-    var ids = fgTabIds();
-    if (ids.indexOf(String(FG.current)) < 0) FG.current = 'bag';
-    try {
-      var act = FG.doc.querySelectorAll('#srfgTabs .srfg-tab');
-      for (var a = 0; a < act.length; a++) {
-        var on = act[a].getAttribute('data-id') === String(FG.current);
-        var want = 'srfg-tab' + (on ? ' active' : '');
-        if (act[a].className !== want) {
-          act[a].className = want; /* 同值守卫：防观察器环 */
-          /* 仅真切换那一次滚动，且 instant：smooth scrollIntoView 在 overflow:hidden 滚动容器内
-             被观察器周期反复触发=headless 渲染器崩溃实测（bag 页签在 .srfg-pin 容器外故幸免） */
-          if (on) { try { act[a].scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' }); } catch (e) { } }
-        }
-      }
-      fgBtnState(); /* ‹› 常驻+端点禁用（原 is-visible 溢出门已退役） */
-    fgBadgeFuel(); /* 火苗角标每轮复核（ICFG/物品表随包更新；同值守卫幅零写） */
-    } catch (e) { }
-    /* 九验收 v2：格区恒=官方 #backpackGrid。页签 owner 变化→cmdOut switchBag（C# 直写官方
-       State_Web_FuelGenerator.BagOwnerId+官方刷新动作=游戏自己按新 owner 组包推送；视图与
-       权威状态恒一致——失配/闪烁/移动失效结构性不存在）。同值守卫防重发。 */
-    var wantOwner = FG.current === 'bag' ? store.bag : Number(FG.current);
-    if (FG.pushedOwner !== wantOwner) {
-      FG.pushedOwner = wantOwner;
-      cmdOut('switchBag', { owner: FG.current === 'bag' ? 0 : wantOwner });
-    }
-    /* ctx.feedFail 一次性消费（lastTidyFail 同款：本地清零，C# 推出即清双保险） */
-    var ff = store.ctx && store.ctx.feedFail;
-    if (ff) { fgWarn(ff === 'full' ? btOf(store.ctx.page).fullText : (FG_FAIL_TEXT[ff] || '')); store.ctx.feedFail = ''; }
-  }
-
-  /* 右键整叠直送（四验收作者定规；九验收：数据层已官方化，本函数只做预检+feed 命令） */
-  function fgFeedCmd(id) {
-    var own = itemsOf(Number(FG.current));
-    var st = null;
-    for (var i = 0; i < own.length; i++) if (own[i].id === id) { st = own[i]; break; }
-    var ic = ICFG[st ? st.cfgId : 0];
-    if (!ic || !ic.burn) { fgWarn('只能添加燃料'); return; }
-    if (fgQueueFull()) { fgWarn(btOf(FG.page).fullText); return; }
-    cmdOut('feed', { owner: Number(FG.current), item: id });
-  }
-
-  /* 燃料火苗角标（fuelgen 批作者验收件，UI-SPEC §0b；九验收自绘格退役时断供——官方 mapItem 只加
-     item+品质类，官方 .item.is-fuel::before 规则无类可配；规则由 railui.css 逐字注入、类由本函数补）：官方格渲染后按 ICFG 燃烧位
-     补类。物品 id=官方元素 id（webui-bag renderItems el.id=item.id）；id→cfgId 走当前视图物品表（bag/柜签切换即换源，
-     与 fgFeedCmd 同源）；渲染时机=官方 BagMsg 异步到达→观察器盯格树+settle 每轮复核；同值守卫零自激。 */
-  function fgBadgeFuel() {
-    if (!FG.doc || !FG.grid) return;
-    var own = FG.current === 'bag' ? store.bag : Number(FG.current);
-    var src = itemsOf(own);
-    var burn = {};
-    for (var i = 0; i < src.length; i++) {
-      var ic = ICFG[src[i] ? src[i].cfgId : 0];
-      if (ic && ic.burn) burn[src[i].id] = true;
-    }
-    var els = FG.grid.querySelectorAll('.item');
-    for (var j = 0; j < els.length; j++) {
-      var want = !!burn[parseInt(els[j].id, 10)];
-      if (want !== els[j].classList.contains('is-fuel')) els[j].classList.toggle('is-fuel', want);
-    }
-  }
-
-  function fgQueueFull() {
-    var z = FG.doc.getElementById('fuelQueueZone');
-    if (!z) return false;
-    var slots = z.querySelectorAll('.fuel-slot');
-    var used = z.querySelectorAll('.fuel-slot.queued-item, .fuel-slot.active-burn');
-    return slots.length > 0 && used.length >= slots.length;
-  }
-
-  function fgWarn(text) {
-    if (!FG.doc) return;
-    var w = FG.doc.getElementById('srfgWarn');
-    if (!w) return;
-    w.textContent = text || '';
-    w.hidden = !text;
-    if (FG.warnT) { try { clearTimeout(FG.warnT); } catch (e) { } }
-    if (text) FG.warnT = setTimeout(function () { try { w.hidden = true; } catch (e) { } }, 1800);
-  }
-
-  /* 拆除=原版：三件 mod DOM 移除、.srfg-on 与宽高 inline 清除、官方格显式恢复 display */
-  function fgTeardown() {
-    if (!FG.doc) return;
-    if (FG.current !== 'bag') { try { cmdOut('switchBag', { owner: 0 }); } catch (e) { } } /* 柜签在场拆除：还原官方背包视图 */
-    ['srfgTabs', 'srfgWarn', 'srfgFoot'].forEach(function (id) {
-      var el = FG.doc.getElementById(id);
-      if (el && el.parentNode) { try { el.parentNode.removeChild(el); } catch (e) { } }
-    });
-    var btT = btOf(FG.page);
-    var p = FG.panel || (btT && FG.doc.querySelector ? FG.doc.querySelector('.' + btT.sys + ' > .panel:not(.' + btT.right + ')') : null);
-    if (p) {
-      p.classList.remove('srfg-on');
-      p.style.width = ''; p.style.height = '';
-      try { FG.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } /* 高锁解除=系统复高，促官方 _fit 复测（vanilla 测量恢复） */
-    }
-    /* v1.8.14 拆包还原：#backpackGrid 移回包装层原位（包装层插在格原位=拆后 DOM 序与原版逐位
-       一致），包装层移除。半装配/异常态（FG.grid 空）也按 id 兜底扫残。 */
-    var w = FG.doc.getElementById('srfgGridScroll');
-    var gg = FG.grid || FG.doc.getElementById('backpackGrid');
-    if (w && gg && gg.parentNode === w) { try { w.parentNode.insertBefore(gg, w); } catch (e) { } }
-    if (w && w.parentNode) { try { w.parentNode.removeChild(w); } catch (e) { } }
-    if (FG.grid) FG.grid.style.display = '';
-    FG.doc = null; FG.panel = null; FG.grid = null; FG.scroll = null; FG.current = 'bag';
-    try { if (FG.hRO) { FG.hRO.disconnect(); } } catch (e) { } FG.hRO = null; /* 等高契约 RO 随拆 */
-    try { if (FG.badgeMO) { FG.badgeMO.disconnect(); } } catch (e) { } FG.badgeMO = null; /* 火苗角标观察器随拆 */
-    FG.pushedOwner = null; /* 官方数据切换态复位 */
-    /* 签名缓存随拆清零（实机三验收根因：重开=新 iframe，跨文档残留 tabSig/sig 与新文档清单
-       相同→fgSettle 签名门判「无变化」→新文档 #srfgScroll 永不首填=柜子页签全消失、柜格
-       永不渲染；只有首次打开（JS 状态全新）正常——与实机截图[页签栏在但仅背包]完全吻合） */
-    FG.tabSig = ''; FG.sig = '';
-  }
 
   function ensureMountedFrame(f) {
     var doc = f.doc, key = f.key, sc = SCENES[key];
@@ -4670,39 +4366,13 @@
     /* glist 全局物品栏（v1.9.0）：DyePanel/Heater 两页左面板接管——先于 bagtabs 分支跑
        （门关=拆净）；Heater 的 bagtabs 件在本轮稍后新增时由下方分支内二跑兜住（无闪帧） */
     if (GLIST[key]) { try { glistFrame(f); } catch (e) { try { console.warn('[CERail] glist 装配异常', e && (e.message || e)); } catch (e2) { } } }
-    /* 燃油发电机/暖炉 bagtabs（fuelgen spec；暖炉移植批=族第二页）：frameVisible 门**之前**——
-       隐帧也要翻 FG.active=false（Root A/D 守卫依赖它；隐藏后键不动作=不泄漏）。装配自身仍只
-       对可见帧。
-       v1.8.14 多页共存守卫：bagtabs 族同文档多帧隐藏共存（FuelGenerator+Heater），FG 单实例
-       只跟**可见帧**——可见者赢（ensureBagtabs 内 fgTeardown 换绑旧页）、隐帧仅当它是当前绑
-       定页（FG.page）才翻 false。旧写法无条件覆盖=DOM 序后到的隐帧把先到可见页翻死（实锤：
-       加 Heater 帧后 fuelgen ad 键全灭、heater 因排在末位幸免）。 */
+    /* bagtabs 页隐帧守卫（v1.8.14 多页共存：FuelGenerator+Heater 同文档多帧隐藏共存）：
+       装配只对可见帧；FG.active/srfg 路径已随旧方案删除（2026-11-16 开关退役批）。 */
     if (sc.bagtabs) {
-      var btVis = frameVisible(f.el);
-      if (!btVis) {
-        if (FG.page === f.key) FG.active = false; /* 本页隐藏：键守卫收口（他页隐帧不得碰） */
-        return; /* 隐帧不装配（rail/srfg 都只跟可见帧——v1.8.14 多帧共存） */
-      }
-      if (glistOwnsPage(key)) {
-        /* 批改#9：glist 在场=旧方案退役——FG.active 收口（a/d 键守卫不得残留真）+拆净。
-           拆净会清宿主 inline 高（fgTeardown 旧锁所有权），随后补跑一次 glistFrame 重申
-           glistApply 的新锁（同值守卫幂等；头序 glistFrame 先跑过，此补仅覆盖「本轮刚拆」面）。
-           染料桶格子界面复用批（2026-11-12）：不再 return——落入下方标准路给本页装 rail 壳
-           （mount 幂等/宿主复活重装均由标准路收口），格子态=染料桶同款 srg-plain；批改#11b
-           hold 天然成立：glistOwnsPage 已含 ctx.page===key（ctx 未确认=走 else 分支 srfg hold） */
-        FG.active = false;
-        if (FG.doc === f.doc) {
-          try { fgTeardown(); } catch (e) { }
-          try { glistFrame(f); } catch (e) { }
-        }
-      } else {
-        /* glist 关（cfg 回退面）：rail 若在位=卸载还原官方 .panel（srfg 装配前提），旧方案原路 */
-        FG.active = true;
-        if (doc.getElementById('srRail')) { try { unmountRail(f); } catch (e) { } }
-        try { ensureBagtabs(f); } catch (e) { try { console.warn('[CERail] bagtabs 装配异常', e && (e.message || e)); } catch (e2) { } }
-        if (GLIST[key]) { try { glistFrame(f); } catch (e) { try { console.warn('[CERail] glist 装配异常', e && (e.message || e)); } catch (e2) { } } } /* bagtabs 件新增后再对齐列表态隐藏（同轮兜住，无 500ms 闪帧） */
-        return;
-      }
+      /* glist 恒开（2026-11-16 开关退役批）：srfg 旧方案整链退役——本分支只剩隐帧守卫，
+         可见帧落入下方标准路装 rail 壳（格子态=染料桶同款 srg-plain；列表态已由上方
+         glistFrame 接管，mount 幂等/宿主复活重装均由标准路收口） */
+      if (!frameVisible(f.el)) return; /* 隐帧不装配（rail 只跟可见帧——v1.8.14 多帧共存） */
     }
     if (!frameVisible(f.el)) return;
     if (sc.native) { ensureNativeBp(f); nbMount(f); return; } /* v1.8.3 原生模式：注 CSS 不装配 rail；v1.8.4 加 mod 按钮对（幂等；iframe 重载换文档自然重注） */
@@ -4800,10 +4470,6 @@
     for (var j = FRAMES.length - 1; j >= 0; j--) { /* 已移除的 iframe：清状态防泄漏（tagfilter scanFrames 同款） */
       if (!FRAMES[j].el.isConnected) {
         if (FRAMES[j].mo) { try { FRAMES[j].mo.disconnect(); } catch (e) { } }
-        /* 终审 Minor7：帧移除复位（Root A/D 守卫收口，实机关界面形态）。v1.8.14 多页共存
-           守卫同款：只有被移除的帧是当前绑定页（FG.page）才翻 false——他页 bagtabs 帧移除
-           不得灭本页键。 */
-        if (SCENES[FRAMES[j].key] && SCENES[FRAMES[j].key].bagtabs && FG.page === FRAMES[j].key) FG.active = false;
         FRAMES.splice(j, 1);
       }
     }
@@ -4826,7 +4492,7 @@
   try {
     setInterval(function () {
       try {
-        if (!el.rail && !FG.active) return; /* 十四批心跳门扩 bagtabs 页（无 el.rail；FG.active=燃料页可见在装）——首包丢弃自愈不再缺位（终审 Important3） */
+        if (!el.rail) return; /* 心跳门=rail 在位（bagtabs 页 glist 恒开后也装 rail 壳，FG.active 门已随 srfg 删除）——首包丢弃自愈（终审 Important3） */
         var now = Date.now();
         var hungry = !store.ctx || (lastSetAt > 0 && now - lastSetAt > 60000);
         if (!hungry) return;
@@ -5113,7 +4779,7 @@
     var doc = f.doc, D = GLIST[f.key];
     if (!D || doc.getElementById('srgPanel')) return;
     /* 实机批改#10（2026-11-08 作者实报「几个页面全不能用了」=列表面板无样式文本流+大白块）：
-       bagtabs 两页（Heater/FuelGenerator）无 rail，railui.css 唯一注入路=ensureBagtabs 内
+       bagtabs 两页（Heater/FuelGenerator）历史上无 rail（srfg 时代 railui.css 唯一注入路在旧方案内
        injectRailStyle——#9 退役早退后 CSS 再无人注（暖炉 #7 前能看=当时旧路径还跑）。glist
        自保：建面板前自注（injectRailStyle 幂等，#srpRail 守卫；染料页 rail 已注=空过）。
        harness 测不出：夹具直链 ../railui.css，注入路是实机独有面（保真缺口记录在案）。 */
@@ -5829,7 +5495,7 @@
   /* 染料桶格子界面复用批（2026-11-12）：bagtabs 两页格子态 rail 化后火苗角标自持——
      fgBadgeFuel 的 FG 单实例随 srfg 退役断供，glist 侧按帧接管（源恒背包物品表：格子态=
      背包无柜签）。规则 CSS 仍由 railui.css 逐字注入，类由此补；MO 盯格树+每轮复核
-     双保险（fgSettle 模式），同值守卫零自激。 */
+     双保险（历史 fgSettle 模式），同值守卫零自激。 */
   function glBadgeFuel(f) {
     var grid = f.doc && f.doc.getElementById('backpackGrid');
     if (!grid) return;
@@ -5887,7 +5553,7 @@
     }
     if (p && p.parentNode) p.parentNode.removeChild(p);
     /* 批改#9+#11 拆净对称面：宿主还原——BAGTABS 页解除 glist 自持 778 锁+拆自持滚窗（格还原
-       原位，DOM 序原版——cfg 关=旧方案 fgSettle 自愈回装并上自己的锁与滚窗）；染料桶摘
+       原位，DOM 序原版；cfg 回退面已随开关退役批删除）；染料桶摘
        srg-plain（rail 回全功能态） */
     if (host) {
       if (BAGTABS[f.key] && host.style.height) { try { host.style.removeProperty('height'); if (!host.style.length) host.removeAttribute('style'); } catch (e) { } }
@@ -5910,10 +5576,9 @@
        ——同样补发 resize 促 _fit 复测（glistApply 入向同源） */
     try { doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { }
   }
-  function glistSettle() { /* setData 尾钩：随契约重驱两页装配/重渲染（幂等）+feedFail 优先面 */
-    /* 终审 I1/I2：glist 列表态在场时优先消费 ctx.feedFail→toast（fgSettle 的 #srfgWarn 在
-       列表态被隐=玩家瞎）；glist 不在场/格子态则让位 fgSettle 原路。setData 调用序在本函数
-       先于 fgSettle（一次性消费竞争）。 */
+  function glistSettle() { /* setData 尾钩：随契约重驱各页装配/重渲染（幂等）+feedFail 消费 */
+    /* 终审 I1/I2：glist 列表态在场时消费 ctx.feedFail→toast（历史 fgSettle 的 #srfgWarn 路
+       已随 srfg 旧方案删除，2026-11-16——本函数即唯一消费方）。 */
     try {
       var ff = store.ctx && store.ctx.feedFail;
       if (ff) {
@@ -5993,8 +5658,7 @@
       try { render(); } catch (e) { try { console.warn('[CERail] render 失败(兜底不炸通道)', e && (e.stack || e.message), e); } catch (e2) { } }
     }
     try { settleXfer(); } catch (e) { try { console.warn('[CERail] settleXfer 失败', e && (e.stack || e.message), e); } catch (e2) { } }
-    try { glistSettle(); } catch (e) { try { console.warn('[CERail] glistSettle 失败', e && (e.message || e)); } catch (e2) { } } /* glist：随契约重驱两页装配/重渲染（幂等）+feedFail 优先消费（须先于 fgSettle：一次性字段竞争，列表态 #srfgWarn 被隐） */
-    try { fgSettle(); } catch (e) { try { console.warn('[CERail] fgSettle 失败', e && (e.stack || e.message), e); } catch (e2) { } } /* fuelgen bagtabs：页签/格网/底行随数据更新 + ctx.feedFail 一次性消费 */
+    try { glistSettle(); } catch (e) { try { console.warn('[CERail] glistSettle 失败', e && (e.message || e)); } catch (e2) { } } /* glist：随契约重驱各页装配/重渲染（幂等）+feedFail 消费（srfg #srfgWarn 路已随旧方案删除） */
   }
 
   /* ---- TradeFx 批1（Task 4 消费壳；Task 5/6 填 chips/bar 渲染）----

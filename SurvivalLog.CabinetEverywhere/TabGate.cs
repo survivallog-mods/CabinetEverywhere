@@ -558,7 +558,7 @@ internal static class TabGate
             if (payload == _droneTabsPushed) return; // 幂等：数组未变不重推
             _droneTabsPushed = payload;
             _droneTabsRev++;
-            var web = TagFilter.GetWebView();
+            var web = RailUi.GetWebView();
             if (web == null) return;
             // rev 前置（payload 首段即 rev，避免拼串错位）：rev 变化保证 rail 侧消费一次
             web.ExecuteJavaScript("window.__CERAIL_TABS__=" + payload);

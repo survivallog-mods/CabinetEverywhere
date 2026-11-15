@@ -26,7 +26,7 @@ namespace SurvivalLog.CabinetEverywhere;
 ///   v1.9.0 起行尾追加 attrSig（string=原始 InstanceVD 随机词条签名，无实例掷值=""——
 ///   glist 合并键属性依据）、再尾 uses（v2 作者终案：原始剩余使用次数，仅 MaxUseTimes>0
 ///   物品携带，null=无该维度——合并键=物品名+uses+attrSig；右键取物 FEFO=行内 timeLeft 升序）。
-///   view=当前页场景视图（food/material/browser，TagFilter.ViewStr 同源）；tradePrefs=[[分类名,加成]…]；
+///   view=当前页场景视图（food/material/browser）；tradePrefs=[[分类名,加成]…]；
 ///
 /// 取证依据（docs/superpowers/plans/2026-10-30-cerail-spike-findings.md，字段语义以它为准）：
 ///   §1 VD_MAP  v1=饱食 v2=心态 v3=精力 v4=恒0 v5=生命；thirst 退役（不产出）。
@@ -346,16 +346,16 @@ internal static class RailData
         public HashSet<string> HiddenKinds;
     }
 
-    /// <summary>五列表页 glistOn（与 BuildJson ctx.glistOn 同源同值：RatCage/BrewPanel 零配置键恒开）。</summary>
+    /// <summary>五列表页 glistOn（与 BuildJson ctx.glistOn 同源同值：五页恒开，开关已退役）。</summary>
     private static bool GlistOnOf(string page)
     {
         switch (page)
         {
             case "RatCage":
-            case "BrewPanel": return true;
-            case "DyePanel": return CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false;
-            case "Heater": return CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false;
-            case "FuelGenerator": return CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false;
+            case "BrewPanel":
+            case "DyePanel":
+            case "Heater":
+            case "FuelGenerator": return true;
             default: return false;
         }
     }
@@ -578,7 +578,7 @@ internal static class RailData
     }
 
     /// <summary>
-    /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——TagFilter.ViewStr 同源同值：
+    /// 逐页场景视图（缺陷单#2：机器页页签按 v1.7.0 语义收窄——与已删 tagfilter 层 ViewStr 同值：
     /// cfg [Scenario] View_* → "food"/"material"/"browser"；未登记页=browser）。
     /// </summary>
     private static string ScenarioViewOf(string page)
@@ -675,24 +675,13 @@ internal static class RailData
         _storeResPending = null;
         // feed 失败码一次性标志（fuelgen bagtabs 页消费；空串=无失败。推出即清与 lastTidyFail 同点位）
         sb.Append(",\"feedFail\":\"").Append(EscapeJs(_feedFailPending ?? "")).Append('"');
-        // fgOn（终审 Important1）：cfg EnableFuelGen 的契约消费链——false=JS fgFuelCtns 空表=拆除态=原版
-        //（spec §5.4 对称拆装；仅本页带出=tradePrefs 页条件字段先例）
-        if (sc?.Page == "FuelGenerator")
-            sb.Append(",\"fgOn\":").Append(CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
-        // heaterOn（暖炉移植批）：EnableHeater 的契约消费链同 fgOn——false=JS fgFuelCtns 空表=拆除态=原版
-        //（仅本页带出=页条件字段先例同 fgOn/tradePrefs）
-        if (sc?.Page == "Heater")
-            sb.Append(",\"heaterOn\":").Append(CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
-        // glistOn（v1.9.0 global-storage-list）：竖版全局物品栏页条件门——染料桶/暖炉两页先行；
-        // 染料桶受 EnableDye 联动（柜子页签关则 glist 一并还原官方），暖炉同理挂 EnableHeater；
-        // false=JS 拆装对称还原（glistGate 消费，heaterOn 先例同构）
-        if (sc?.Page == "DyePanel")
-            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false ? "true" : "false");
-        if (sc?.Page == "Heater")
-            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false ? "true" : "false");
-        // 批改#8（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；同构挂 EnableFuelGen
-        if (sc?.Page == "FuelGenerator")
-            sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
+        // glistOn（v1.9.0 global-storage-list）：五 glist 页（染料桶/暖炉/发电机/老鼠笼/酿酒桶）
+        // 恒 true——作者令 2026-11-16「必须启用，不留开关不留回退面」（fgOn/heaterOn 契约字段与
+        // EnableGlist*/EnableDye/EnableHeater/EnableFuelGen 开关随批退役，老 cfg 残留值忽略）；
+        // JS 侧 glistGate 消费。
+        if (sc?.Page == "DyePanel" || sc?.Page == "Heater" || sc?.Page == "FuelGenerator"
+            || sc?.Page == "RatCage" || sc?.Page == "BrewPanel")
+            sb.Append(",\"glistOn\":true");
         // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式第四场景——glistOn=篮子态
         // **推送时直读**（BasketSceneOn：cfg×IsBasket_B×IsDualBag 双信号；旧 BasketOn 0.5s
         // 陈旧=开关窗沿闪挂/常挂两案根因）；ctx.basket 段随行且同门（缺省=键不在场，JS 判键
@@ -708,11 +697,7 @@ internal static class RailData
             if (bktLive && BasketGlist.BasketJson != null)
                 sb.Append(",\"basket\":").Append(BasketGlist.BasketJson);
         }
-        // rat-brew glist（rat-brew spec 2026-11-09 裁定#7）：第五/六场景——老鼠笼/酿酒桶。
-        // **零新增配置键**（作者令「安装了 mod 就默认启用」）：glistOn 恒 true；既有 EnableRatCage/
-        // EnableBrew 键不再作用于这两页（键保留兼容防配置文件报缺——JS 侧装配/退役门=glistGate 同源）。
-        if (sc?.Page == "RatCage" || sc?.Page == "BrewPanel")
-            sb.Append(",\"glistOn\":true");
+        // rat-brew glist 注释段已并入上方五页恒 true 块（2026-11-16 开关退役批）。
         // dyePal（染料桶色素排序批）：颜色板页条件字段——DyePaletteRules.PanelDyeItems（官方面板
         // 序，全颜色含未解锁）+ PanelDyeHex（平行 hex）+ 染料物品本地化名（ItemDict）。spike v3
         // 实证：ColorCount=8（20363-20370），名称走染料物品自身（ColorShowKeys=StateXX 非显示名）。
@@ -736,12 +721,19 @@ internal static class RailData
         sb.Append(",\"bag\":").Append(bagOwner);
 
         // ---- ctn：背包不入列（JS 虚拟首位）；行 [ownerId,"名",kind,cap,tagId...] ----
+        /* 2026-11-16 终修（ctn 前导逗号案）：柜子段与地面段统一「首元素不加逗号」——旧码地面段
+           无条件前置 ",["，隐含假设「ctn 必有柜子条目」；柜子名单 5s 慢通道空窗 × 地面 0.5s 动态
+           即时有物（开档/进家初期）= _ctn 空时地面条目成了首元素 → "ctn":[,[-101,… 非法 JSON
+           → JS 严格校验拒收 → 界面断更（实机 LogOutput 护栏告警实证）。同型：八追 tradePrefs
+           悬空逗号案后的又一处发作（出口强校验见 RailUi.PushIfDue）。 */
         sb.Append(",\"ctn\":[");
         var ctn = _ctn;
+        bool ctnAny = false;
         for (int i = 0; i < ctn.Count; i++)
         {
             var m = ctn[i];
-            if (i > 0) sb.Append(',');
+            if (ctnAny) sb.Append(',');
+            ctnAny = true;
             sb.Append('[').Append(m.OwnerId).Append(",\"").Append(EscapeJs(m.Name))
               .Append("\",\"").Append(m.Kind).Append("\",").Append(Math.Max(0, m.Cap));
             for (int t = 0; t < m.TagIds.Length; t++) sb.Append(',').Append(m.TagIds[t]);
@@ -752,7 +744,9 @@ internal static class RailData
         // _ctn 5s 元数据通道=掉落/拾取即时跟页）；kind 'g'/cap 0（地面无格语义，件数看行）
         if (gdrops.Count > 0)
         {
-            sb.Append(",[").Append(RailGround.OwnerId).Append(",\"").Append(EscapeJs(RailGround.CtnName))
+            if (ctnAny) sb.Append(',');
+            ctnAny = true;
+            sb.Append('[').Append(RailGround.OwnerId).Append(",\"").Append(EscapeJs(RailGround.CtnName))
               .Append("\",\"g\",0]");
         }
         sb.Append(']');
@@ -1521,11 +1515,11 @@ internal static class RailData
     /// <summary>ItemManager 实例（官方转移 API 载体：TryQuickMoveItems/TryMoveBagAll/SplitItem/Sort...）。</summary>
     internal static GameCore.HotUpdate.Battle.Logic.ItemManager ItemMgr() => LogicWorld()?._ItemManager;
 
-    // ================= lib（标签库，透传 TagFilter 同源数据，数组行契约） =================
+    // ================= lib（标签库，源=Config_FurnitureTag 官方标签库，数组行契约） =================
 
     /// <summary>
-    /// lib 行：[tagId,"名",dim,order,"iconKey","color"]——与 TagFilter.BuildDataJson 的 lib 同源
-    /// （Config_FurnitureTag），形状按契约 v4 数组行（dim 在 order 前）。JS 按 dim 分组（T4 已接），
+    /// lib 行：[tagId,"名",dim,order,"iconKey","color"]——源=Config_FurnitureTag 官方标签库，
+    /// 形状按契约 v4 数组行（dim 在 order 前）。JS 按 dim 分组（T4 已接），
     /// C# 不分组只透传（T6 裁定 3）。
     /// </summary>
     private static void AppendLib(StringBuilder sb, GameCore.HotUpdate.ConfigManager cm)

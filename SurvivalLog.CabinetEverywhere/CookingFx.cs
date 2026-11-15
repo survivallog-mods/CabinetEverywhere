@@ -59,7 +59,7 @@ internal static class CookingFx
         {
             if (CabinetEverywherePlugin.CookingFxEnable is not { Value: true }) return;
             if (!_alive) return; // 未注入/重建期：交给 0.5s Poll 重建
-            var web = TagFilter.GetWebView();
+            var web = RailUi.GetWebView();
             if (web == null) return;
             if (_tablePushed) PollPred(web);
         }
@@ -76,7 +76,7 @@ internal static class CookingFx
             var rus = GameCore.HotUpdate.BaseSingleton<ReduxUISystem>.Instance;
             if (rus == null || !SafeActive(rus, CookingUiType)) return;
 
-            var web = TagFilter.GetWebView();
+            var web = RailUi.GetWebView();
             if (web == null) return;
 
             if (_probeCb == null)

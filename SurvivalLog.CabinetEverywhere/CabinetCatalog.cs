@@ -99,7 +99,7 @@ internal static class CabinetCatalog
     /// 统一容器扫描（5s 一遍，原直达/筛选两个 5s 扫描合一）：**单遍直扫 AgentManager.agentList**
     /// （与原生 GetFurnituresWithBag 同一数据源，但不走其"主角当前楼层"过滤；也不再用
     /// GetFurnituresByConfigId 逐配置反查——833 配置×每次调用性能不可接受）。同一次遍历产出两份名单：
-    /// AllContainers——家中全部储物容器（柜子/冰箱/材料架+标签，TagFilter 筛选用）；
+    /// AllContainers——家中全部储物容器（柜子/冰箱/材料架+标签，ToolTablePruner/RailData 消费）；
     /// HomeInstances——其中的柜子子集（kind=='c' 且 ConfigIds 名单命中，TabInjector 直达注入用，
     /// 语义与合并前一致；冰箱走原生冰箱页签、材料架有专属界面，均不注入）。全楼层收录。
     /// 顺序即性能：TryCast → 配置查包/名单（廉价，滤掉 ~90% 家具）→ 主图严格相等短路 →
@@ -358,7 +358,7 @@ internal static class CabinetCatalog
 
     private static bool _instanceLogged;
 
-    /// <summary>家中全部储物容器（柜子/冰箱/材料架+标签，同一次遍历产出）——TagFilter 筛选用。</summary>
+    /// <summary>家中全部储物容器（柜子/冰箱/材料架+标签，同一次遍历产出）——ToolTablePruner/RailData 消费。</summary>
     internal static IReadOnlyList<ContainerInst> AllContainers => _allContainers;
 
     /// <summary>柜子子集（kind=='c' 且 ConfigIds 名单命中，同一次遍历产出）——直达注入用，语义与合并前一致。</summary>

@@ -10,7 +10,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// 背景：原生开台（RA_Open←AE_OpenHandMade.Run）从 CraftSourceFurnitureIds（类型集合）
 /// 全量重建 CabinetTabs，每次重算按该列表逐容器取物品扫描（G12：成本=Σ容器物品行）。
 /// 类型集合表达不了实例标签，故此前实现为"全量进列表 + JS 藏显示"——显示收窄了，扫描没收窄。
-/// 本组件在开台后按视图谓词修剪列表（与 tagfilter.page.js viewAllows 同语义），标签数据
+/// 本组件在开台后按视图谓词修剪列表（语义承自 v1.7.0 tagfilter viewAllows，该层已删），标签数据
 /// 变化时对账（移出新隐藏、按登记加回新可见）。
 ///
 /// 索引语义（JS TAB_SWITCH{j+2} / activeLeftTab&lt;2 实证）：activeLeftTab 0/1=背包/抽屉
@@ -249,7 +249,7 @@ internal static class ToolTablePruner
         };
     }
 
-    /// <summary>与 tagfilter.page.js viewAllows 同语义：Browser 全留；Material=材料/工具/燃料标签+材料架；
+    /// <summary>视图谓词（语义承自 v1.7.0 tagfilter viewAllows，该层已删）：Browser 全留；Material=材料/工具/燃料标签+材料架；
     /// Food=食物域(dim1-4)。ownerId 不在容器表（背包/抽屉/未知）→ 留（JS 对 undefined 同样放行）。
     /// v1.9.1 批改：筛选下拉撤出工作台（作者令「只有交易界面、调度机队显示」），sel 接线随撤。
     /// 燃料标签放行（2026-11-14）：工作台 Material 视图剪燃料柜=燃烧瓶等燃料配方取不到料

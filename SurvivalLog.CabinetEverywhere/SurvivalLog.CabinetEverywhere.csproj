@@ -23,7 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="tagfilter.page.js" LogicalName="SurvivalLog.CabinetEverywhere.tagfilter.page.js" />
     <EmbeddedResource Include="railui.page.js" LogicalName="SurvivalLog.CabinetEverywhere.railui.page.js" />
     <EmbeddedResource Include="railui.css" LogicalName="SurvivalLog.CabinetEverywhere.railui.css" />
     <EmbeddedResource Include="cookingfx.page.js" LogicalName="SurvivalLog.CabinetEverywhere.cookingfx.page.js" />
