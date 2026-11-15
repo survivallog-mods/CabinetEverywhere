@@ -2178,6 +2178,10 @@
       function () {
         /* Bug4 三段计时：整理后官方格首改=官方排序落地（首见盖戳，50ms 防抖粒度） */
         if (XFER && XFER.kind === 'tidy' && XFER.t0 && !XFER.tMO) XFER.tMO = Date.now();
+        /* 壳宽跟随前置（首开裁格批 2026-11-15）：syncRailWidth 原排链尾，链上任何一步
+           （unlock/dispApply/applyBadges）抛异常都会阻断本拍宽度自愈=壳冻旧宽裁格；前置
+           一份独立量测（官方 sizeLock margin 未清时 offset+margins 外沿宽同值，无序依赖） */
+        syncRailWidth();
         unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth();
       });
   }
@@ -2281,6 +2285,24 @@
       } catch (e) { }
     }
     if (SB_IND) SB_IND.repaint(); /* v1.8.8：壳宽/格重排后指示轨几何跟随 */
+  }
+
+  /* 首开裁格自愈拍（2026-11-15 作者实报：工作台/无人机交易开页背包左右两列各裁半格，切页签
+     才恢复）。壳宽跟随原只有两路触发——render 主路（契约包到达）+ badge MO 路（官方格
+     subtree style/childList 变更，50ms 防抖）：开页首帧存在两路都不达的窗口（契约包先到、
+     官方 BagMsg 后到格变宽，或 MO 链上异常断路，或官方重排不写 style 属性），壳冻在旧宽 →
+     .sr-gridhost flex 居中 + sr-body overflow-x:hidden = 格区两侧各溢出半格被裁；切页签
+     官方重渲染触发 MO 才恢复（症状吻合）。本拍=第三路兜底：500ms 对当前绑定帧纯跟随重测
+     （syncRailWidth 幂等——宽没变零 style 写入，量测成本一次 getComputedStyle+offsetWidth）。
+     跳过：glist 页（srg-plain 自持宽度）、列表/全库态（格区隐藏量测早退同义，显式跳过省布局）、
+     rail/宿主不在文档（换帧/重访瞬态）。 */
+  function widthFollowTick() {
+    try {
+      if (!el.rail || !el.rail.isConnected || !el.srGridHost || !el.srGridHost.isConnected) return;
+      if (st.scene && GLIST[st.scene] && glistOwnsPage(st.scene)) return;
+      if (st.mode !== 'grid' || st.global) return;
+      syncRailWidth();
+    } catch (e) { }
   }
 
   /* ---- v1.8.8 恒显滚动指示轨（终案）----
@@ -4800,7 +4822,7 @@
       }
     }
   }
-  try { setInterval(function () { scanFrames(); tabBridgeTick(); }, 500); } catch (e) { } /* 兜底轮询（裁定 2：观察器+interval 双保险）+页签渲染桥消费拍 */
+  try { setInterval(function () { scanFrames(); tabBridgeTick(); widthFollowTick(); }, 500); } catch (e) { } /* 兜底轮询（裁定 2：观察器+interval 双保险）+页签渲染桥消费拍+壳宽跟随自愈拍（首开裁格批） */
   try { setTimeout(scanFrames, 0); } catch (e) { }           /* 首扫错开一拍：bootstrap 在本 IIFE 返回后才写 __CERAIL_CSS__ */
   /* ---- v1.8.10 十三批四追：首包丢失自愈心跳（八追扩陈旧态） ----
      实机实锤（2026-11-05 作者重启后全界面 rail 裸骨架：排序钮全隐/格区布局残留）：
