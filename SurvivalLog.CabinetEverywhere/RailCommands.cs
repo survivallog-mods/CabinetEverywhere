@@ -971,8 +971,9 @@ internal static class RailCommands
     /// TryQuickMoveItem 单件减量（官方右键「移 1 件」正身，无需 mod 拆件）——**物品全程不落背包**，
     /// 背包满不再是失败面（一改「柜→包→ItemClick」在背包满时 bagfull 拒）。准入+锁在 C# 保守
     /// 复刻（直发绕过 Reducer 必须自带）：准入=RailGlistRule.Keep 同谓词（与 glist 可见行 100%
-    /// 同口径——能看到的行必过、不可入物必拒）；锁=Brew.Locked/BrewState==1、Dye.Locked、
-    /// RatCage.IsRunning（各页 RA_ItemClick PopLocked 同字段）。mouse 路径（RatCage 活鼠入笼）=
+    /// 同口径——能看到的行必过、不可入物必拒）；锁=Brew.Locked/BrewState==1、Dye.Locked
+    /// （RatCage 两路反汇编均无锁检查——RA_ItemClick 只 CheckFoodAdmission+3026、RA_MouseAdd 只
+    /// IsIntactLiveMouseById+NotifyInstance，IsRunning 中照常右键，不设锁）。mouse 路径（RatCage 活鼠入笼）=
     /// 官方 MouseAdd→NotifyInstance 特殊链，物品须在包：保留拆1件柜→包（silent）+落包定位+
     /// Ac_RatCage_MouseAdd（OpBasketPut 同款）。地面源=官方拾取进包后 3026(bag→to)。
     /// 失败 MarkFeedFail（noitem/bagfull/nomove/admit/locked → ctx.feedFail 一次性回执）。
@@ -1096,8 +1097,9 @@ internal static class RailCommands
         }
     }
 
-    /// <summary>按页读目标槽 owner+锁态（三页 RA_ItemClick 终拍 to 参数/PopLocked 同源字段）。
-    /// unlocked=false=锁定或状态不可读（保守拒）。</summary>
+    /// <summary>按页读目标槽 owner+锁态（三页 RA_ItemClick 终拍 to 参数/PopLocked 同源字段；
+    /// RatCage 例外——RA_ItemClick/RA_MouseAdd 反汇编均无锁检查，IsRunning 中官方照常右键，
+    /// 故不设锁，state 可读即 true）。unlocked=false=锁定或状态不可读（保守拒）。</summary>
     private static (long owner, bool unlocked) SlotTarget(string page)
     {
         try
@@ -1122,7 +1124,7 @@ internal static class RailCommands
             var stR = rus.GetStateByUI(Il2CppType.From(typeof(GameCore.HotUpdate.ReduxUI.WebUI_RatCage)))
                 ?.TryCast<GameCore.HotUpdate.ReduxUI.State_Web_RatCage>();
             if (stR == null) return (0, false);
-            return (stR.FoodOwnerId?.Value ?? 0, stR.IsRunning?.Value != true);
+            return (stR.FoodOwnerId?.Value ?? 0, true);
         }
         catch { return (0, false); }
     }
