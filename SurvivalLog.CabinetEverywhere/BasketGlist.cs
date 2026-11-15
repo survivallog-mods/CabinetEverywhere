@@ -185,7 +185,12 @@ internal static class BasketGlist
             int hitPerCat = snap.hitPerCategory;
 
             var baseCats = ToIl(snap.wishCats);
-            int modSum = CalcSend(basket.cats, basket.vals, baseCats, hitPerCat, hitRate, missRate);
+            int sendBase = CalcSend(basket.cats, basket.vals, baseCats, hitPerCat, hitRate, missRate);
+            // 官方 gain 组合口径（RecomputeBasketPreview 反汇编 @0x2b06580-0x2b065d4）：
+            // gain = CalcSend(篮内) + [crisisActive] CalcCrisisResolve(篮内 counts)——只对 send
+            // 对账时危机物品一入篮即超差，SelfCheck 误杀整窗分值（实机批改#2）
+            int modSum = sendBase;
+            if (snap.crisisActive) modSum += CalcCrisis(basket.cats, basket.counts, snap);
 
             // 候选行=（cfg,uses,usesMax) 三元组（实机批改#1：多次使用物品剩余次数异=分值异=拆行，
             // glist 合并键同口径）；行键=无 uses 纯 cfg / 有 uses "cfg|u<uses>/<usesMax>"（JS 行同构）
@@ -204,19 +209,21 @@ internal static class BasketGlist
                 int marginal;
                 if (snap.crisisActive && cat == snap.crisisCat)
                 {
-                    // 危机差分：CalcCrisisResolveProgress(categories+counts 逐叠) 假想加 1 件叠取差
+                    // 危机差分：官方 +N 边际=Δsend+Δcrisis（危机类别不在 wishCats，send 侧按 miss
+                    // 折算仍涨——实机批改#2 与官方预览对拍补齐，spec 验收「行分值=官方 +N 增量」）
                     int before = CalcCrisis(basket.cats, basket.counts, snap);
-                    basket.cats.Add(cat); basket.counts.Add(1);
+                    basket.cats.Add(cat); basket.counts.Add(1); basket.vals.Add(pieceVal);
                     int after = CalcCrisis(basket.cats, basket.counts, snap);
-                    basket.cats.RemoveAt(basket.cats.Count - 1); basket.counts.RemoveAt(basket.counts.Count - 1);
-                    marginal = after - before;
+                    int withSend = CalcSend(basket.cats, basket.vals, baseCats, hitPerCat, hitRate, missRate);
+                    basket.cats.RemoveAt(basket.cats.Count - 1); basket.counts.RemoveAt(basket.counts.Count - 1); basket.vals.RemoveAt(basket.vals.Count - 1);
+                    marginal = after - before + withSend - sendBase;
                 }
                 else
                 {
                     basket.cats.Add(cat); basket.vals.Add(pieceVal);
                     int with = CalcSend(basket.cats, basket.vals, baseCats, hitPerCat, hitRate, missRate);
                     basket.cats.RemoveAt(basket.cats.Count - 1); basket.vals.RemoveAt(basket.vals.Count - 1);
-                    marginal = with - modSum;
+                    marginal = with - sendBase;
                 }
                 if (marginal != 0 || snap.crisisActive) scores[KindKey(kind)] = marginal; // 0 分也进表（危机态明示 0 比缺行好）
             }
