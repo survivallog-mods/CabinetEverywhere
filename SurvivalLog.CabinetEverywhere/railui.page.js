@@ -2160,12 +2160,25 @@
     disp: DISP, dx: 0, dy: 0, skipHide: true, removeOnClear: false
   });
   /* 格观察器 prefab（ensureBadgeObserver/nbEnsureGridMO 挂 MO 段共用）：marker 幂等，
-     50ms 防抖回调（settling 窗口校准同源——v1.8.5 定版节拍） */
-  function watchGrid(target, marker, opts, cb) {
+     50ms 防抖回调（settling 窗口校准同源——v1.8.5 定版节拍）。
+     syncPre（可选，2026-11-15 闪烁批）：MO 回调=微任务**先于绘制**——排序激活时在官方重建
+     帧落地前同步把显示层排序重抹回去=官方序一帧不可见（tagfilter applyFrame 防闪同款教训：
+     防抖窗=闪烁根因）。门=childList 批次（物品增删/整格重建——右键移入货仓=物品离包必带
+     childList）；style-only 批次（拖拽跟手逐帧写 style）不走同步路（排序重装 O(n log n)+pack
+     逐帧跑费，防抖路兜底不变） */
+  function watchGrid(target, marker, opts, cb, syncPre) {
     if (!target || target[marker]) return;
     try {
       var V = target.ownerDocument.defaultView.MutationObserver;
-      target[marker] = new V(function () { setTimeout(cb, 50); });
+      target[marker] = new V(function (rs) {
+        if (syncPre) {
+          try {
+            for (var i = 0; i < rs.length; i++)
+              if (rs[i].addedNodes.length || rs[i].removedNodes.length) { syncPre(); break; }
+          } catch (e) { }
+        }
+        setTimeout(cb, 50);
+      });
       target[marker].observe(target, opts);
     } catch (e) { }
   }
@@ -2183,6 +2196,9 @@
            一份独立量测（官方 sizeLock margin 未清时 offset+margins 外沿宽同值，无序依赖） */
         syncRailWidth();
         unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth();
+      },
+      function () { /* 同步快路：物品增删（右键移入货仓/移入移出）→ 官方序帧绘制前重抹排序 */
+        if (DISP.choice && DISP.choice !== 'official') dispApply(DISP);
       });
   }
   /* v1.8.4c 作者缺陷「柜子滚动条」：官方 createGridSizeLock（webui-bag.js@1211）的
@@ -4227,7 +4243,12 @@
         if (home.doc !== doc) return;
         if (!nbSidePanel(doc, side)) return;
         D.settling = false; dispApply(D); badgeFn();
-      }); /* v1.8.5：官方重渲染→重抹显示层排序 */
+      }, /* v1.8.5：官方重渲染→重抹显示层排序；同步快路=同双门+排序激活（闪烁批 2026-11-15） */
+      function () {
+        if (home.doc !== doc) return;
+        if (!nbSidePanel(doc, side)) return;
+        if (D.choice && D.choice !== 'official') dispApply(D);
+      });
     /* 2026-11-01 第十三轮：详情弹窗开/关在面板/祖先层切 class 驱动格区压扁(162²→218×50)/
        复原——纯 CSS 回流不动格内联样式，格子观察器静默 → 角标钉旧坐标（关弹窗也不回来，
        点别的物品才触发类变更恢复——作者实锤）。补观察面板级 class/style（角标重算只读
