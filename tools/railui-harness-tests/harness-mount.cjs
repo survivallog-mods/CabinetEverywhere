@@ -86,7 +86,7 @@ for (const key of SCENE_KEYS) {
         nativeCss: !!st,
         scroll: /\.grid-wrapper\{[^}]*max-height:560px/.test(css) && /scrollbar-gutter:stable/.test(css),
         scrollOnWrapper: /\.grid-wrapper\{[^}]*overflow-y:scroll/.test(css) && !/\.grid-container\{[^}]*overflow-y:scroll/.test(css),
-        noCover: /box-sizing:content-box;padding-right:12px/.test(css),
+        noCover: /box-sizing:content-box;padding-right:4px/.test(css),
         weightHide: /\.bag-panel\.is-storage \.weight-section\{display:none/.test(css),
         noRail: !document.getElementById('srRail'),
         noWrap: !document.getElementById('srp')

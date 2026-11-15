@@ -50,13 +50,13 @@ function check(name, ok, detail) {
     };
   });
   check('nw:style-injected', snap.uw !== '(missing)' && snap.css.indexOf('max-height') >= 0, 'srNativeBp 在场');
-  check('nw:data-uw-2', snap.uw === '2', 'data-uw=' + snap.uw + '（v1.8.13 滚动器迁移版）');
+  check('nw:data-uw-3', snap.uw === '3', 'data-uw=' + snap.uw + '（v1.9.2 滚动槽收窄版）');
   check('nw:no-min-width-rule', snap.css.indexOf('min-width') < 0, (snap.css.match(/min-width[^;}]*/) || ['（无）'])[0]);
   check('nw:grid-min-auto', snap.minW === 'auto' || snap.minW === '0px', 'computed min-width=' + snap.minW);
   check('nw:grid-not-floored', snap.w > 500 && snap.w < 690, 'offsetWidth=' + snap.w + '（690=旧地板基准，应低于）');
 
-  /* 活迁移：种回旧版注入体（'690'+min-width 行）→ ensureNativeBp 周期重写清除（v1.8.13 版
-     标 '2'：旧 '0'/'690' 活体同路一次换新=滚动器迁移也送达已注入页） */
+  /* 活迁移：种回旧版注入体（'690'+min-width 行）→ ensureNativeBp 周期重写清除（v1.9.2 版
+     标 '3'：旧 '0'/'2'/'690' 活体同路一次换新=收窄/滚动器迁移都送达已注入页） */
   await frame().evaluate(() => {
     const st = document.getElementById('srNativeBp');
     st.setAttribute('data-uw', '690');
@@ -64,9 +64,9 @@ function check(name, ok, detail) {
   });
   await frame().waitForFunction(() => {
     const st = document.getElementById('srNativeBp');
-    return st && st.getAttribute('data-uw') === '2' && st.textContent.indexOf('min-width') < 0;
+    return st && st.getAttribute('data-uw') === '3' && st.textContent.indexOf('min-width') < 0;
   }, null, { timeout: 8000 }).then(
-    () => check('nw:legacy-migration', true, '旧 690 注入体已重写清除并升到 v2'),
+    () => check('nw:legacy-migration', true, '旧 690 注入体已重写清除并升到 v3'),
     () => check('nw:legacy-migration', false, '8s 内未清除（对账路退役？）'));
 
   check('nw:console-zero-errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join('；'));

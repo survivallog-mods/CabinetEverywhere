@@ -127,11 +127,11 @@ function check(name, ok, detail) {
           const st = document.getElementById('srNativeBp');
           if (!st) {
             const s = document.createElement('style');
-            s.id = 'srNativeBp'; s.setAttribute('data-uw', '2'); s.textContent = css;
+            s.id = 'srNativeBp'; s.setAttribute('data-uw', '3'); s.textContent = css;
             document.head.appendChild(s);
           } else if (!st.textContent) { st.textContent = css; }
           window.dispatchEvent(new Event('resize'));
-        }, '.grid-wrapper{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:12px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto}'
+        }, '.grid-wrapper{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:4px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto}'
          + '.grid-wrapper::-webkit-scrollbar{width:8px}.grid-wrapper::-webkit-scrollbar-track{background:transparent}.grid-wrapper::-webkit-scrollbar-thumb{background:transparent}'
          + '.bag-panel.is-storage .weight-section{display:none !important}');
       }

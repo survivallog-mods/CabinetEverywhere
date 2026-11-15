@@ -3551,12 +3551,14 @@
        整段偏上、目标行被判占用=放不下回弹（无法移动）。迁到父层后格 rect 恢复全高内容矩形
        （行 0 恒在 rect.top），官方坐标数学零改动自洽——与壳侧机器页 sr-body 祖先滚动同案
        （该路 webui-bag.js getGridCoordinates 一直正确的原因）。几何不改口径：content-box+
-       padding-right:12px 滚动槽仍在官方 inline 宽之外（wrapper 宽=max-content=格宽+12，篮子
+       padding-right 滚动槽仍在官方 inline 宽之外（wrapper 宽=max-content=格宽+padding，篮子
        固定宽面板下 margin:auto 居中=槽仍贴格不贴板缘）。
        v1.8.8 第五轮（与壳同案=自绘恒显指示轨）：原生滚动条透明占位（槽宽恒 8px + gutter
        stable），指示轨几何/颜色由 sbMakeIndicator 在 nbMount 里自绘（srnSbTrack，thumb 与
-       壳侧同色=白 32%）——v1.8.13 起自绑 .grid-wrapper（滚动事件/scrollTop 在新滚动器上） */
-    + '.grid-wrapper{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:12px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto}'
+       壳侧同色=白 32%）——v1.8.13 起自绑 .grid-wrapper（滚动事件/scrollTop 在新滚动器上）。
+       v1.9.2（作者 2026-11-16 令「物品栏右侧滚动条区域太宽」）：padding-right 12→4px——
+       原 12px 留白+8px 透明槽=20px 条带显胖，收窄后 4+8=12px，物品与指示轨仍有 ~5px 间隙 */
+    + '.grid-wrapper{max-height:560px;overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:4px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto}'
     + '.grid-wrapper::-webkit-scrollbar{width:8px}'
     + '.grid-wrapper::-webkit-scrollbar-track{background:transparent}'
     + '.grid-wrapper::-webkit-scrollbar-thumb{background:transparent}'
@@ -3574,9 +3576,10 @@
        data-uw 对账保留：旧版已注入 '690' 的活页一次重写清除（幂等零写）。 */
     var want = NATIVE_BP_CSS;
     /* data-uw 注入体版本：'0'=v1.8.12 宽地板退役（690→清除）；'2'=v1.8.13 滚动器迁移
-       （.grid-container→.grid-wrapper 四规则整迁，活页旧注入体一次重写换新——拖拽坐标病）。
+       （.grid-container→.grid-wrapper 四规则整迁，活页旧注入体一次重写换新——拖拽坐标病）；
+       '3'=v1.9.2 滚动槽留白 12→4px（活页 '2' 注入体同路一次换新）。
        缺 attr/旧值=重写；等值=幂等零写早退（harness-native-width 活迁移路同测） */
-    var UW_VER = '2';
+    var UW_VER = '3';
     var cur = doc.getElementById('srNativeBp');
     if (cur) {
       if ((cur.getAttribute('data-uw') || '') !== UW_VER) { cur.setAttribute('data-uw', UW_VER); cur.textContent = want; }
