@@ -280,6 +280,9 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 交易页 A/D 切页签补偿（官方 1.1.21271 回归兜底——postfix 挂 RA_SwitchTabByKey，
         // 拒切时改发点击路 Ac_TradeUI_SwitchBag；官方修复即自动零动作退役。取证见 TradeTabKeyFix.cs）
         TradeTabKeyFix.Install();
+        // 交易页货舱物品表护持（2026-11-15）：筛选收窄页签后，给出柜物品表补回 TabItems
+        // ——货舱栏物品不随筛选消失（postfix 挂官方 RebuildBagTabs；取证见 TabGate.cs 尾类）
+        TradeTabItemsFix.Install();
         // 尺寸抢写钩（读档掉物品修复 2026-11-12）：读档表回原生+物品按原生校验越界官方掉落
         // ——ItemManager 启动族 prefix 抢写 + 帧级 SizeGuard 守卫（RailUi.FastPoll）
         SizeGuardHook.Install();
