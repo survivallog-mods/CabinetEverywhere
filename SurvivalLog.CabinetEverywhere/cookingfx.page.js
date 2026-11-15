@@ -303,13 +303,17 @@
      * 先全清旧 chips 再按包重挂（空包=全清；hint 由官方重渲染重建，下轮有包再删） */
     if (host.querySelector('.pot-card')) {
       host.querySelectorAll('.cefx-pred').forEach(function (x) { x.remove(); });
+      /* 名→卡队列：单独烹饪模式一锅同菜多份=官方逐份建同名单卡，键唯一会让前几份漏挂区间
+       * （实测：三份只有最后一份有 chips）——按包序逐张 shift 消费，包与官方行同源同序恒对齐 */
       var byName = {};
       Array.prototype.forEach.call(host.querySelectorAll('.pot-card'), function (card) {
         var nm = card.querySelector('.pot-nm');
-        if (nm) byName[(nm.textContent || '').trim()] = card;
+        if (!nm) return;
+        var k = (nm.textContent || '').trim();
+        (byName[k] = byName[k] || []).push(card);
       });
       (predPack && predPack.entries || []).forEach(function (e) {
-        var card = byName[e.name];
+        var card = byName[e.name] && byName[e.name].shift();
         if (!card) return;
         var bd = card.querySelector('.pot-bd') || card;
         var html = chipsHtml(e);
