@@ -384,6 +384,9 @@ internal static class RailSortMath
     {
         public bool IsExpired, IsRotten, HasNumber;
         public float Days;
+        /// <summary>已过期天数（=-初始剩余天；DaysKey 过期段存的是距腐败倒计时，推不出已过时长
+        /// ——吊栏保质徽章「已过期X天」专用，批改#13）。</summary>
+        public float? ExpiredDays;
     }
 
     internal static DaysLeft DaysLeftOf(GameCore.HotUpdate.Config_Item cfg, GameCore.HotUpdate.Battle.Logic.ItemData it, float now)
@@ -405,6 +408,7 @@ internal static class RailSortMath
             float left = (timeLeft + startTime) - now;
             float days = left * scale / 24f;
             if (days > 0f) { d.HasNumber = true; d.Days = days; return d; }
+            d.ExpiredDays = -days; // 过期即记已过时长（腐败分支同样适用；下方 toRot 改写 d.Days 不碰本值）
             if (rot <= 1f) { d.IsExpired = true; return d; }
             float full = orig >= 1 ? orig : life * 24f;
             float gone = full <= 0f ? 0f : (full - left * timeScale) / full;
@@ -445,6 +449,7 @@ internal static class RailSortMath
         public int? Trade;                  // 整叠计算后交易价值（≤0→null）
         public float? DaysKey;
         public string DaysText;
+        public float? ExpiredDays;          // 已过期天数（批改#13：吊栏保质徽章「已过期X天」）
     }
 
 
@@ -546,6 +551,7 @@ internal static class RailSortMath
             var days = DaysLeftOf(cfg, it, now);
             n.DaysKey = DaysKey(days);
             n.DaysText = DaysText(days);
+            n.ExpiredDays = days.ExpiredDays;
         }
         catch { }
         return n;

@@ -330,7 +330,7 @@ internal static class RailData
         long bag = _bagOwner > 0 ? _bagOwner : ResolveBagOwner(null);
         bool fullHouse = sc != null && (sc.Page == "GreenhouseBuild"
             || GlistOnOf(sc.Page)                       // 五列表页：全屋按页筛后的子集（spec §C）
-            || (sc.Page == "BackpackUI" && BasketGlist.BasketOn)); // 吊栏窗：全屋按需求类别筛（spec §D）
+            || (sc.Page == "BackpackUI" && BasketGlist.BasketSceneOn())); // 吊栏窗：全屋按需求类别筛（spec §D；直读门治 BasketOn 开关窗沿陈旧）
         long cur = CurrentOwnerOf(sc);
         RailScope.Compose(bag, cur, _ctnOwnerIds, false, fullHouse, fill);
     }
@@ -363,7 +363,7 @@ internal static class RailData
     private static RowFilterCtx BuildRowFilter(SceneDef sc, HashSet<string> hiddenKinds)
     {
         if (sc?.Page == null) return null;
-        if (sc.Page == "BackpackUI" && BasketGlist.BasketOn)
+        if (sc.Page == "BackpackUI" && BasketGlist.BasketSceneOn())
             return new RowFilterCtx
             {
                 Page = "basket",
@@ -694,14 +694,19 @@ internal static class RailData
         // 批改#8（2026-11-08 作者令：暖炉界面复用到燃油发电机——两页同构可燃物→料槽）；同构挂 EnableFuelGen
         if (sc?.Page == "FuelGenerator")
             sb.Append(",\"glistOn\":").Append(CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false ? "true" : "false");
-        // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式第四场景——glistOn 由篮子态门控
-        //（BasketOn 已含 cfg+窗活+IsBasket_B，此处不重复 AND）；ctx.basket 段随行（缺省=键不在场，
-        // JS 判键存在性=篮子数据就绪与否的唯一口径，dyePal 先例）。愿望/危机变化而物品不变时
-        // 由 BasketGlist.Dirty 并入 ItemsDirty 触发重推（推出即清）
+        // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式第四场景——glistOn=篮子态
+        // **推送时直读**（BasketSceneOn：cfg×IsBasket_B×IsDualBag 双信号；旧 BasketOn 0.5s
+        // 陈旧=开关窗沿闪挂/常挂两案根因）；ctx.basket 段随行且同门（缺省=键不在场，JS 判键
+        // 存在性=篮子数据就绪与否的唯一口径，dyePal 先例——陈旧 JSON 不泄入普通背包）。
+        // 愿望/危机变化而物品不变时由 BasketGlist.Dirty 并入 ItemsDirty 触发重推（推出即清）
         if (sc?.Page == "BackpackUI")
         {
-            sb.Append(",\"glistOn\":").Append(BasketGlist.BasketOn ? "true" : "false");
-            if (BasketGlist.BasketJson != null)
+            // 首包同步取数（批改#6：原 0.5s 轮询产出 BasketJson+600ms 余波节流=chips 迟到约
+            // 1s——Poll 幂等（sig 门+静置早退），在此直调=开窗首包即带 ctx.basket 零等待）
+            BasketGlist.Poll();
+            bool bktLive = BasketGlist.BasketSceneOn();
+            sb.Append(",\"glistOn\":").Append(bktLive ? "true" : "false");
+            if (bktLive && BasketGlist.BasketJson != null)
                 sb.Append(",\"basket\":").Append(BasketGlist.BasketJson);
         }
         // rat-brew glist（rat-brew spec 2026-11-09 裁定#7）：第五/六场景——老鼠笼/酿酒桶。
@@ -1241,6 +1246,7 @@ internal static class RailData
                   .Append(",\"").Append(attrSig).Append("\"") /* v1.9.0：attrSig（glist 合并键属性依据） */
                   .Append(',').Append(usesVal.HasValue ? usesVal.Value.ToString(CultureInfo.InvariantCulture) : "null") /* v2：uses（glist 合并键+徽章） */
                   .Append(',').Append(usesMaxVal.HasValue ? usesMaxVal.Value.ToString(CultureInfo.InvariantCulture) : "null") /* v2：useMax（徽章「剩余/最大」+键） */
+                  .Append(nums.ExpiredDays.HasValue ? "," + nums.ExpiredDays.Value.ToString("0.###", CultureInfo.InvariantCulture) : "") /* v3 尾列：已过期天数（批改#13——days 键过期段=距腐败倒计时推不出已过时长；仅过期行携带，短行 JS 按长度判缺省 */
                   .Append(']');
                 rows++;
         }

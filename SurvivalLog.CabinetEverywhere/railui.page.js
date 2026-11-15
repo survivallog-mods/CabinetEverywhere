@@ -4992,14 +4992,26 @@
            仍各行。行 key 与 glistItemKey 同构（取件/回放匹配同口径）。 */
         var mk = glistItemKey(r, sceneKey);
         var g = byKey[mk];
-        if (!g) { g = byKey[mk] = { key: mk, cfg: r[1], name: '', ico: '', total: 0, srcs: [], ord: groups.length, uses: r.length > 16 ? r[16] : null, usesMax: r.length > 17 ? r[17] : null, tl: 0 }; groups.push(g); }
+        if (!g) { g = byKey[mk] = { key: mk, cfg: r[1], name: '', ico: '', total: 0, srcs: [], ord: groups.length, uses: r.length > 16 ? r[16] : null, usesMax: r.length > 17 ? r[17] : null, tl: 0, days: null, exd: null }; groups.push(g); }
         /* rat-brew：行捕获实例 s1/s2（拆行键已保证组内同值，首叠即代表；badge/排序/Tier 全源此） */
         if (D.badge === 'sat' || D.badge === 'brew') {
           if (g.s1 === undefined) { g.s1 = (r.length > 9 ? r[9] : null); g.s2 = (r.length > 10 ? r[10] : null); }
+        } else if (D.badge === 'aid') {
+          /* 篮子（批改#9）：s1..s4=实例总量（单次×剩余次数，C# RailSortMath 口径）——饱腹等
+             排序值/徽章按实例走（旧读 ICFG v 系=配置值，同名异质/异次数行全显同一虚值） */
+          if (g.s1 === undefined) { g.s1 = (r.length > 9 ? r[9] : null); g.s2 = (r.length > 10 ? r[10] : null); g.s3 = (r.length > 11 ? r[11] : null); g.s4 = (r.length > 12 ? r[12] : null); }
         }
         var n = r[2] || 0; g.total += n;
         var ttl = r[3] || 0; /* 篮子 nowish「保质期」排序键=行内最快到期（basket spec §8 实现裁定4） */
         if (ttl > 0 && (g.tl === 0 || ttl < g.tl)) g.tl = ttl;
+        /* 保质排序键（天，r[14]：>0 剩余天数/负=腐败过期态/null 不腐）——行内取最急（批改#12：
+           旧用 r[3] 小时=徽章显示成小时数；天键与官方 DaysKey 同源含腐败/过期序）；
+           r[18]=已过期天数（批改#13，随最急叠走——过期段键=距腐败倒计时非已过时长） */
+        var dl = (r.length > 14 && r[14] != null) ? r[14] : null;
+        if (dl != null && (g.days == null || dl < g.days)) {
+          g.days = dl;
+          g.exd = (r.length > 18 && r[18] != null) ? r[18] : null;
+        }
         g.val = (g.val || 0) + (r.length > 13 && r[13] != null ? r[13] : 0); /* 终审 M2：交易价值=Σ逐叠 tradeV（含使用次数折算）；短行回退 icfg.trade×total（排序侧） */
         var hit = null;
         for (var s = 0; s < g.srcs.length; s++) if (g.srcs[s][0] === ck) { hit = g.srcs[s]; break; }
@@ -5151,12 +5163,12 @@
       qi.addEventListener('input', function () { GLQ[f.key] = this.value; try { glistRender(f); } catch (e) { } });
     }
     var chipsEl = p.querySelector('#srgChips'); /* 预设 chips 点击（委托，chips 随签名重写） */
+    if (GLIST[f.key] && GLIST[f.key].feed === 'basket') GLBSORT[f.key] = ''; /* 批改#10：篮子排序不记忆——面板（重）建=开窗，回默认 */
     if (chipsEl) chipsEl.addEventListener('click', function (e) {
       /* 篮子 nowish 手动排序：菜单项=选定键（localStorage 持久）；排序牌=开合菜单 */
       var opt = e.target && e.target.closest ? e.target.closest('.srg-sortopt') : null;
       if (opt) {
-        GLBSORT[f.key] = opt.getAttribute('data-k') || '';
-        try { localStorage.setItem('srp_glist_sort_' + f.key, GLBSORT[f.key]); } catch (e2) { }
+        GLBSORT[f.key] = opt.getAttribute('data-k') || ''; /* 批改#10：不持久（开窗重置） */
         glistRender(f);
         return;
       }
@@ -5453,11 +5465,18 @@
   }
   function glistBadgeHtml(key, r) {
     if (GLIST[key].badge === 'aid') { /* 篮子：分值徽章=ctx.basket.scores（渲染层接，篮子内容变化即联动 21→6）——
-       先于 !r.badge 守卫：aid 行聚合无 badge（分值属场景态非物品属性） */
+       先于 !r.badge 守卫：aid 行聚合无 badge（分值属场景态非物品属性）；nowish 无分值时
+       降级显示手动排序键行值（实机批改#4：排序时行右无值） */
       var bkt = store.ctx && store.ctx.basket;
       var sc = glistAidScore(bkt, r);
-      if (sc == null) return '';
-      return '<span class="srg-badge srg-aid" title="救助贡献 +' + sc + ' · ' + esc(glistAidLabel(bkt, r)) + '">+' + sc + '</span>';
+      if (sc != null) return '<span class="srg-badge srg-aid" title="救助贡献 +' + sc + ' · ' + esc(glistAidLabel(bkt, r)) + '">+' + sc + '</span>';
+      var sv = glistAidSortVal(key, r);
+      if (sv != null) {
+        var skn = '';
+        for (var sk = 0; sk < GLB_SORT_KEYS.length; sk++) if (GLB_SORT_KEYS[sk][0] === glistBSort(key)) skn = GLB_SORT_KEYS[sk][1];
+        return '<span class="srg-badge srg-sortv" title="按' + esc(skn) + '排序">' + sv + '</span>';
+      }
+      return '';
     }
     if (!r.badge) return '';
     if (GLIST[key].badge === 'pig') return '<span class="srg-badge srg-pig" style="color:' + esc(r.badge.hex || '#fff') + '">' + dyeDropSvg(r.badge.hex || '#fff') + r.badge.v + '</span>';
@@ -5477,8 +5496,9 @@
   }
   /* ---- 篮子救援 glist 三态 chips/排序（basket spec §5.2；作者裁定 2026-11-09：
      有许愿=许愿类别单选+贡献排序牌常驻；无许愿=9 固定分类+手动排序六键；垂危=食物+饱腹）---- */
-  var GLBSORT = {}; /* sceneKey -> nowish 手动排序键（''=原始序；localStorage srp_glist_sort_<scene> 持久） */
-  var GLB_SORT_KEYS = [['sat', '饱腹'], ['mind', '心态'], ['en', '精力'], ['hp', '生命'], ['shelf', '保质期'], ['value', '交易价值']];
+  var GLBSORT = {}; /* sceneKey -> nowish 手动排序键（''=默认原始序）。批改#10 作者令：**不记忆**
+     ——开窗（glistBuild 重挂）即回默认，localStorage srp_glist_sort_* 持久退役 */
+  var GLB_SORT_KEYS = [['', '默认', '⊞'], ['sat', '饱腹', '🍗'], ['mind', '心态', '🧠'], ['en', '精力', '⚡'], ['hp', '生命', '❤️'], ['shelf', '保质期', '🕐'], ['value', '交易价值', '💲']]; /* 含默认枚+图标，FSORTS 同源逐字复用（批改#7/#10） */
   var GLB_NOWISH_CATS = [[0, '全部'], [1, '食物'], [9, '材料'], [5, '日用品'], [13, '燃料'], [2, '药品'], [3, '书刊'], [6, '工具'], [10, '种子']];
   function glistBasketChips(f) {
     var b = store.ctx && store.ctx.basket;
@@ -5493,9 +5513,13 @@
       }
       var k = glistBSort(f.key), kn = '';
       for (i = 0; i < GLB_SORT_KEYS.length; i++) if (GLB_SORT_KEYS[i][0] === k) kn = GLB_SORT_KEYS[i][1];
-      h += '<span class="srg-plaque srg-sortbtn" data-k="' + k + '" title="选择排序方式">' + (kn ? kn + ' ↓' : '排序 ▾') + '</span>';
+      /* 触发钮=sr-sortbtn 形（rail 工具行同款：⇅ 图标+标签+▾ 插页；默认态=「⇅ 排序」，选中=键名+金 on） */
+      h += '<button type="button" class="srg-sortbtn' + (k ? ' on' : '') + '" data-k="' + k + '" title="选择排序方式"><span class="sb-ico" aria-hidden="true">⇅</span><span class="sb-lbl">' + (k ? kn : '排序') + '</span><span class="sb-caret">▾</span></button>';
+      /* 菜单观感复用 sr-popfsort/sr-fsopt（设施排序弹层同款：近黑容器+独立小圆角钮+图标——
+         批改#5→#7 定稿：与 mod 内既有排序菜单逐字同源，f-ico+makeSortMenu 结构镜像；
+         批改#10：补默认枚（FSORTS[0] ⊞） */
       h += '<span class="srg-sortmenu" id="srgSortMenu">';
-      for (i = 0; i < GLB_SORT_KEYS.length; i++) h += '<span class="srg-sortopt" data-k="' + GLB_SORT_KEYS[i][0] + '">' + GLB_SORT_KEYS[i][1] + '</span>';
+      for (i = 0; i < GLB_SORT_KEYS.length; i++) h += '<button type="button" class="srg-sortopt' + (GLB_SORT_KEYS[i][0] === k ? ' active' : '') + '" data-k="' + GLB_SORT_KEYS[i][0] + '"><span class="f-ico" aria-hidden="true">' + GLB_SORT_KEYS[i][2] + '</span>' + GLB_SORT_KEYS[i][1] + '</button>';
       return h + '</span>';
     }
     /* wish/dying：chips=ctx（wish=今日许愿+⚠危机枚；dying=C# 给的食物枚）；单选再点同枚取消回全部 */
@@ -5523,20 +5547,43 @@
     for (var j = 0; j < chips.length; j++) if (chips[j].id === sel) return sel;
     return null;
   }
-  function glistBSort(key) {
-    if (GLBSORT[key] === undefined) {
-      var v = '';
-      try { v = localStorage.getItem('srp_glist_sort_' + key) || ''; } catch (e) { }
-      GLBSORT[key] = v;
-    }
-    return GLBSORT[key];
-  }
+  function glistBSort(key) { return GLBSORT[key] || ''; } /* 批改#10：不记忆（默认 ''=原始序） */
   /* 行分值键（实机批改#1）：无 uses=纯 cfgId；有 uses="cfg|u<uses>/<usesMax>"——多次使用物品
      剩余次数异=分值异=拆行（glistItemKey 合并键同口径，C# BasketGlist.KindKey 同构） */
   function glistAidScoreKey(r) {
     return (r.uses != null && r.uses > 0) ? r.cfg + '|u' + r.uses + '/' + (r.usesMax != null ? r.usesMax : 0) : String(r.cfg);
   }
   function glistAidScore(bkt, r) { return bkt && bkt.scores ? bkt.scores[glistAidScoreKey(r)] : null; }
+  /* nowish 手动排序键行值（实机批改#4：排序时行右无值=排了个寂寞）：sat/mind/en/hp=物品固有
+     stat（v1/v2/v3/v5，glistBasketRows 排序同源）、shelf=行内最快到期天数、value=**单件**
+     交易价值（批改#8 作者令：不乘数量、保留使用次数折算——Σ逐叠 tradeV/Σ件数，回退 icfg.trade）。
+     键未选/无值=null 不显（「无值不显」惯例）。 */
+  function glistAidPieceVal(r) {
+    var v = r.val > 0 && r.total > 0 ? Math.round(r.val / r.total) : (ICFG[r.cfg] ? ICFG[r.cfg].trade : 0);
+    return v > 0 ? v : null;
+  }
+  /* 保质徽章文本（官方详情页/ProjectCook DaysText 同式，批改#13）：>0=「X天」（≥1 取整、
+     <1 一位小数 0.1 粒度）；过期=「已过期X天」（r[18 已过期天数）；腐败=「已腐败」 */
+  function glistDayNum(v) { return v >= 1 ? String(Math.floor(v)) : Math.max(0.1, Math.round(v * 10) / 10).toFixed(1); }
+  function glistShelfText(g) {
+    var d = g.days;
+    if (d == null) return null;
+    if (d <= -100000.5) return '已腐败';
+    if (d < 0) return (g.exd != null && g.exd > 0) ? '已过期' + glistDayNum(g.exd) + '天' : '已过期';
+    return glistDayNum(d) + '天';
+  }
+  function glistAidSortVal(key, r) {
+    var b = store.ctx && store.ctx.basket;
+    if (!b || b.mode !== 'nowish') return null;
+    var k = glistBSort(key);
+    if (!k) return null;
+    if (k === 'shelf') return glistShelfText(r);
+    if (k === 'value') return glistAidPieceVal(r);
+    /* sat/mind/en/hp=行实例总量 s1..s4（单次×剩余次数——批改#9：同菜异质/异次数各行其值） */
+    var si = { sat: 's1', mind: 's2', en: 's3', hp: 's4' }[k];
+    var n = si ? r[si] : 0;
+    return n > 0 ? n : null;
+  }
   /* 贡献说明（徽章/悬停共用）：命中今日许愿/危机枚/非想要折算三档口径 */
   function glistAidLabel(bkt, r) {
     var ic = ICFG[r.cfg], cat = ic ? ic.catId : 0, chips = (bkt && bkt.chips) || [];
@@ -5558,17 +5605,18 @@
     if (b.mode === 'wish' && Object.keys(scores).length) {
       out.sort(function (a, c) { return ((glistAidScore(b, c) != null ? glistAidScore(b, c) : -1) - (glistAidScore(b, a) != null ? glistAidScore(b, a) : -1)) || glistTie(a, c); });
     } else if (b.mode === 'dying') {
-      out.sort(function (a, c) { var va = ICFG[a.cfg] ? ICFG[a.cfg].v1 : 0, vc = ICFG[c.cfg] ? ICFG[c.cfg].v1 : 0; return (vc - va) || glistTie(a, c); });
+      out.sort(function (a, c) { return ((c.s1 || 0) - (a.s1 || 0)) || glistTie(a, c); }); /* 饱腹=实例总量 s1（批改#9 同源） */
     } else if (b.mode === 'nowish') {
       var k = glistBSort(f.key);
-      if (k === 'shelf') out.sort(function (a, c) { var va = a.tl || Infinity, vc = c.tl || Infinity; return (va - vc) || glistTie(a, c); });
+      if (k === 'shelf') out.sort(function (a, c) { /* 保质=行内最快到期天数升序（r[14] 天键：腐败/过期负值最前，不腐垫底——批改#12） */
+        var va = a.days == null ? Infinity : a.days, vc = c.days == null ? Infinity : c.days;
+        return (va - vc) || glistTie(a, c);
+      });
       else if (k) {
-        var vi = { sat: 'v1', mind: 'v2', en: 'v3', hp: 'v5' }[k];
-        if (vi) out.sort(function (a, c) { var va = ICFG[a.cfg] ? ICFG[a.cfg][vi] : 0, vc = ICFG[c.cfg] ? ICFG[c.cfg][vi] : 0; return (vc - va) || glistTie(a, c); });
-        else if (k === 'value') out.sort(function (a, c) {
-          var va = a.val > 0 ? a.val : (ICFG[a.cfg] ? ICFG[a.cfg].trade : 0) * a.total;
-          var vc = c.val > 0 ? c.val : (ICFG[c.cfg] ? ICFG[c.cfg].trade : 0) * c.total;
-          return (vc - va) || glistTie(a, c);
+        var si2 = { sat: 's1', mind: 's2', en: 's3', hp: 's4' }[k];
+        if (si2) out.sort(function (a, c) { return ((c[si2] || 0) - (a[si2] || 0)) || glistTie(a, c); }); /* 实例总量（批改#9） */
+        else if (k === 'value') out.sort(function (a, c) { /* 单件交易价值（批改#8：不乘数量、保留使用次数折算——与徽章 glistAidPieceVal 同源） */
+          return ((glistAidPieceVal(c) || 0) - (glistAidPieceVal(a) || 0)) || glistTie(a, c);
         });
       }
     }

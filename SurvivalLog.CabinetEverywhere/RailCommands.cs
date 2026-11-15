@@ -569,11 +569,15 @@ internal static class RailCommands
     /// SourceFurnitureId/SourceRect×4）。</summary>
     private static void OpIDetail(Cmd c)
     {
-        if (c.Item <= 0 || c.Owner < 0) return;
+        if (c.Item <= 0) return;
+        /* 地面行（批改#11）：地面物品实例已被 3005 从 State_Data_Item 逐出（官方地面坞本就
+           无详情路径）——Owner 传地面虚拟键（负）时归一为 0：官方弹窗 SafeGetBag(0)=null
+           空兜底=配置级详情（名/图标/基础值；随机词条等实例维缺席），优于旧 Owner<0 整单静默丢弃 */
+        long owner = c.Owner < 0 ? 0 : c.Owner;
         try
         {
             GameCore.HotUpdate.ReduxUI.Ac_ItemDetailPopup_OpenUI.SendAction(
-                c.Item, c.Owner, (int)c.Cat, 1f, (GameCore.HotUpdate.TipsType)0, -1, 1f, 0, 0L, 0f, 0f, 0f, 0f);
+                c.Item, owner, (int)c.Cat, 1f, (GameCore.HotUpdate.TipsType)0, -1, 1f, 0, 0L, 0f, 0f, 0f, 0f);
         }
         catch (Exception e) { WarnOnce("g:idetail", "[CERail] glist 官方详情弹窗失败: " + e.Message); }
     }

@@ -24,7 +24,8 @@ internal static class BasketGlist
 {
     /// <summary>cfg 门（Task 2 接 EnableGlistBasket；本壳先恒 true 保持独立可编译）。</summary>
     internal static bool CfgOn = true;
-    /// <summary>门结果：篮子窗在场且可服务（RailData glistOn@BackpackUI 消费）。</summary>
+    /// <summary>门结果：篮子窗在场且可服务（0.5s Poll 内部态——glistOn/行筛选/键盘门已改读
+    /// BasketSceneOn/LiveFast 推送时直读，治开关窗沿陈旧；本值仅余诊断口径）。</summary>
     internal static bool BasketOn;
     /// <summary>ctx.basket 段 JSON（null=整字段缺省，JS 判键在场）。</summary>
     internal static string BasketJson;
@@ -41,6 +42,37 @@ internal static class BasketGlist
 
     private static string _lastSig;
     private static bool _wasLive;
+
+    /// <summary>篮子窗活直读（Time.frameCount 帧级缓存）：IsBasket_B × IsDualBag 双信号。
+    /// 官方 RA_Close 不清 IsBasket_B（残留 true 到下次开窗），而 RA_OpenUI 仅 IsDualBag=true
+    /// 才跑 InitSide_B 重算它——B 键单袋背包两值错位（残留 true × false）。双袋开窗必经
+    /// InitSide_B 重算=无残留，单袋形态 IsDualBag=false 直接判非篮子。glistOn/行筛选/键盘门
+    /// 改读本值=与官方状态恒同拍（0.5s Poll 的 BasketOn 在开关窗沿陈旧=闪挂/常挂两案根因）。</summary>
+    private static int _liveFrame = -1;
+    private static bool _liveCache;
+    internal static bool LiveFast()
+    {
+        int f = UnityEngine.Time.frameCount;
+        if (f != _liveFrame)
+        {
+            _liveFrame = f;
+            bool v = false;
+            try
+            {
+                var st = State();
+                v = st != null && st.IsDualBag && st.IsBasket_B != null && st.IsBasket_B.Value;
+            }
+            catch { }
+            _liveCache = v;
+        }
+        return _liveCache;
+    }
+
+    /// <summary>吊栏 glist 场景门（cfg × 篮子窗活**现值**）——RailData glistOn/行筛选/范围
+    /// 共用（原 BasketOn 消费位全量改读此门）。</summary>
+    internal static bool BasketSceneOn()
+        => CabinetEverywherePlugin.EnableGlistBasket?.Value != false && LiveFast();
+
     private static long _warnOwnerId;           // SelfCheck 告警按窗去重
     private static readonly HashSet<string> _warned = new();
     private static readonly Dictionary<int, bool> _forbidCache = new();
@@ -50,33 +82,25 @@ internal static class BasketGlist
     {
         if (Disabled || !RailUi.Enabled) return;
         CfgOn = CabinetEverywherePlugin.EnableGlistBasket?.Value != false;
-        if (CfgOn && RailData.ActivePage() != "BackpackUI") return; /* 终审 M4：窗活守卫兜底（state 残留 IsBasket_B 的首包闪挂面） */
+        if (CfgOn && RailData.ActivePage() != "BackpackUI") { Retire(); return; } /* 终审 M4：窗活守卫兜底（state 残留 IsBasket_B 的首包闪挂面）——关窗沿在此退役陈旧态（RA_Close 不清 IsBasket_B，见 LiveFast 注） */
         try
         {
-            var st = State();
-            bool live;
-            try { live = st != null && st.IsBasket_B != null && st.IsBasket_B.Value; }
-            catch { live = false; }
-            if (!live || !CfgOn)
+            if (!LiveFast() || !CfgOn) // 双信号判活（单袋背包 IsDualBag=false=残留 IsBasket_B 不作数）
             {
-                if (_wasLive)
-                {
-                    _wasLive = false;
-                    BasketOn = false;
-                    BasketJson = null;
-                    Mode = null; // 行筛选随窗关退役（BuildRowFilter 判 BasketOn 兜底）
-                    Dirty = true; // 关窗沿：让契约再推一包（glistOn=false）拆装对称
-                }
+                Retire();
                 return;
             }
+            var st = State();
 
             string sig = Sig(st);
             if (_wasLive && sig == _lastSig) return; // 静置零重算零推送
             bool first = !_wasLive;
+            bool wasOn = BasketOn;
 
             var sw = Stopwatch.StartNew();
             BasketOn = true;
             BasketJson = Build(st);
+            if (!wasOn) Dirty = true; // 开窗沿即推：glistOn=true 先行（basket 段未就绪=键缺省，JS 容错）——无需求满篮开窗首包也必带出（批改#1：否则钮要等一次物品事件才显）
             if (BasketJson == null) return; // 终审 M1：snap 未就绪=不提交签名（sig 不含 active，提交=翻转沿同 sig 早退卡死）
             _wasLive = true;
             _lastSig = sig;
@@ -90,6 +114,22 @@ internal static class BasketGlist
             WarnOnce("BasketGlist poll failed: " + e.Message);
             Disabled = true;
         }
+    }
+
+    /// <summary>关窗/失活退役：在场标志任一为真即全清+Dirty 推一包 glistOn=false（拆装对称）。
+    /// 旧门=_wasLive——无需求会话 Build 恒 null 致其永假，退役永不触发=BasketOn 常驻泄进
+    /// 普通背包（批改#3）；现 BasketOn 在场即退役。</summary>
+    private static void Retire()
+    {
+        if (!BasketOn && !_wasLive) return;
+        BasketOn = false;
+        BasketJson = null;
+        Mode = null; // 行筛选随窗关退役（BuildRowFilter 判 BasketSceneOn 兜底）
+        WishCats = Array.Empty<int>();
+        CrisisCat = 0;
+        _wasLive = false;
+        _lastSig = null;
+        Dirty = true; // 关窗沿：让契约再推一包（glistOn=false）拆装对称
     }
 
     internal static State_Web_BackpackUI State()
@@ -140,7 +180,21 @@ internal static class BasketGlist
     private static string Build(State_Web_BackpackUI st)
     {
         var snap = st.NeighborWishSnap;
-        if (snap == null || !snap.active) return null; // 快照未就绪：字段缺省，下轮再试
+        if (snap == null) return null; // 快照未就绪：字段缺省，下轮再试
+        bool snapActive = false;
+        try { snapActive = snap.active; } catch { }
+        if (!snapActive)
+        {
+            // 无需求（官方 RecomputeBasketPreview 同口径：!active=无许愿可算，愿望条整段不渲）→
+            // nowish 三态：chips/scores 空（JS 渲 9 固定分类+手动排序，GLB_NOWISH_CATS 现成），
+            // 禁入段照发行置灰。旧实现整段 return null=ctx.basket 永缺（批改#2：筛选标签不显）。
+            Mode = "nowish";
+            WishCats = Array.Empty<int>();
+            CrisisCat = 0;
+            var none = new BktModel { Mode = "nowish" };
+            FillForbid(none);
+            return BasketAid.BuildJson(none);
+        }
 
         int wishCount = 0;
         try { wishCount = snap.wishCats?.Count ?? 0; } catch { }
@@ -259,6 +313,13 @@ internal static class BasketGlist
         }
 
         // ---- 禁入（IsBasketForbidItem，cfg 级缓存）----
+        FillForbid(model);
+        return BasketAid.BuildJson(model);
+    }
+
+    /// <summary>禁入段（IsBasketForbidItem，cfg 级缓存）——三态共用（nowish 无需求同样置灰行）。</summary>
+    private static void FillForbid(BktModel model)
+    {
         foreach (int cfg in RailData.BasketCfgIds())
         {
             bool bad;
@@ -270,7 +331,6 @@ internal static class BasketGlist
             }
             if (bad) model.Forbid.Add(cfg);
         }
-        return BasketAid.BuildJson(model);
     }
 
     /// <summary>官方叠值（实机批改#1 反汇编定谳 RecomputeBasketPreview@0x2af04b0-0x2af0558）：

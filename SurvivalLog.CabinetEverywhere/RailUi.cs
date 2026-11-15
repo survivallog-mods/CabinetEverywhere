@@ -133,23 +133,29 @@ internal static class RailUi
     /// ——收窄=砍每行件数容量，SizeEnginePoll 宽度段对它跳过。</summary>
     internal const int RackBagId = 110009;
 
-    /// <summary>不常用柜子高度批白名单（2026-11-15 修正版，面板下拉数据源同源）：玩家实际认识/
-    /// 使用的家用储物柜。1003=主力包（橱柜×6/储物柜×10/保险箱/书架/收纳架3——2026-11-15 作者令
-    /// 收回，原 2026-11-07 摘除系误判：玩家家用柜正是它；共包半径=另有 74 探索场景件随变，宽度
-    /// 统一 12 早已同半径接受）。金属柜族 10002/10005/10006/10008/10009 已移除——其家具条目
-    /// （380/383/409/435 等）Name/Des 键借用其他家具=内部变体，商店不可见（作者实机证）。
-    /// 与 ModCenter panel.js UNCOMMON_CABS 同源同步（游戏更新加新柜子两处一起改）。</summary>
+    /// <summary>不常用柜子高度批白名单（2026-11-15 二批扩容 17 包，正源=modcenter.json cabs）：
+    /// 玩家实际认识/使用的家用储物柜。二批补漏（作者实机报）：10002/10005/10006=仓管角色初始
+    /// 金属柜族（商店不可见但仓管家在场）；10008/10009=专属变体（女大学生储物柜原生高 4）；
+    /// 1001/1002=箱子·家中收纳架1/大储物柜·家中收纳架2（混 25/1 探索场景件，与 1003 同半径——
+    /// 宽度统一 12 早已接受）；5010=工作台抽屉基准（三档=H/H+1/H+2 在 ResolveTargetHeight 展开，
+    /// 下拉为主入口、旧 DrawerHeight 键兜底读）。与 modcenter.json cabs 同源同步（游戏更新加
+    /// 新柜子两处一起改）。</summary>
     internal static readonly int[] UncommonBagIds =
     {
         1003,                                              // 橱柜/储物柜/保险箱/书架/收纳架3（原生 8x10）
         1006,                                              // 抽屉柜（原生 6x6）
         110003, 110004, 110005, 110006,                    // 床头柜/大衣柜/玄关台/小衣柜
+        1001, 1002,                                        // 箱子·家中收纳架1 / 大储物柜·家中收纳架2
+        10002, 10005, 10006,                               // 金属柜族（仓管角色初始家具）
+        10008, 10009,                                      // 专属金属柜变体 / 女大学生储物柜（原生高 4）
         10003, 2002, 3003,                                 // 工具箱/啤酒箱/纸箱堆·手推车·小拖车
+        5010,                                              // 工作台抽屉基准（5012/5013=H+1/H+2 联动）
     };
 
     /// <summary>UncommonHeights 解析缓存（"bagId:h,…"）：SizeEnginePoll 每轮头重建（5s 幂等）+
     /// SettingChanged 置脏帧级重算（与 15 键同通道）。白名单外 id 忽略（WarnOnce）；h 夹 0..100，
-    /// 0=恢复原生。空串/空 map=13 包照进高度名单但目标全 0=原生（幂等零写，与 15 键语义一致）。</summary>
+    /// 0=恢复原生。空串/空 map=白名单包照进高度名单但目标全 0=原生（幂等零写，与 15 键语义一致）。
+    /// 5010 走抽屉链展开（5012/5013 手输被白名单拒——只收基准键）。</summary>
     private static readonly Dictionary<int, int> _uncommonH = new();
     private static readonly HashSet<int> _uncommonWarned = new();
 
@@ -169,7 +175,7 @@ internal static class RailUi
             if (Array.IndexOf(UncommonBagIds, id) < 0)
             {
                 if (_uncommonWarned.Add(id))
-                    CabinetEverywherePlugin.Log.LogWarning($"[CERail] UncommonHeights：{id} 不在白名单（可购纯家用储物柜 13 包），已忽略");
+                    CabinetEverywherePlugin.Log.LogWarning($"[CERail] UncommonHeights：{id} 不在白名单（家用储物柜 17 包），已忽略");
                 continue;
             }
             if (h < 0) h = 0;
@@ -323,7 +329,7 @@ internal static class RailUi
     }
 
     /// <summary>高度段静态名单（spec §4.1 + 2026-11-12 材料架批 + 2026-11-15 不常用柜子批）：
-    /// 背包链 9 + 单包键 13（含材料架 110009）+ 抽屉三档 3 + 不常用柜子白名单 13（恒列——
+    /// 背包链 9 + 单包键 13（含材料架 110009）+ 抽屉三档 3 + 不常用柜子白名单 17（恒列——
     /// 删行/清串后仍需在列才能把已改高的包写回原生，见 ResolveTargetHeight）。</summary>
     private static IEnumerable<int> HeightTargetBags()
     {
@@ -332,7 +338,8 @@ internal static class RailUi
         if (byBag != null)
             foreach (var id in byBag.Keys) yield return id;
         foreach (var id in DrawerBagIds) yield return id;
-        foreach (var id in UncommonBagIds) yield return id;
+        foreach (var id in UncommonBagIds) // 5010 抽屉基准已在上行（DrawerBagIds），跳过防重复枚举
+            if (Array.IndexOf(DrawerBagIds, id) < 0) yield return id;
     }
 
     /// <summary>包的目标行数：单包键/背包链直值；抽屉三档=H/H+1/H+2（升级链递进保留，spec §7）；
@@ -344,7 +351,10 @@ internal static class RailUi
         {
             if (bagId == 5010 || bagId == 5012 || bagId == 5013)
             {
-                int h = CabinetEverywherePlugin.DrawerHeight?.Value ?? 0;
+                // 二批：下拉「工作台抽屉」（UncommonHeights 5010）为主入口，旧 DrawerHeight 键兜底
+                // （老 cfg 值继续生效，直到用户在下拉里设置；两处都 0=原生链三档各自还原）
+                _uncommonH.TryGetValue(5010, out int uh);
+                int h = uh > 0 ? uh : (CabinetEverywherePlugin.DrawerHeight?.Value ?? 0);
                 if (h <= 0) return 0; // 0=原生链（三档各自还原）
                 want = h + (bagId == 5012 ? 1 : bagId == 5013 ? 2 : 0);
             }
@@ -946,8 +956,8 @@ internal static class RailUi
     private static readonly string[] _gkHeaterKeys = { "Heater", "UI_Heater", "WebUI_Heater" };
     private static readonly string[] _gkFuelGenKeys = { "FuelGenerator", "UI_FuelGenerator", "WebUI_FuelGenerator" }; // 批改#8：燃油发电机复用暖炉（搜索框键盘门同开）
     // 篮子救援 glist（basket spec）：BackpackUI 篮子模式——iframe id 实测 'Backpack'（ID_ALIAS
-    // 归一，findings §6），真名置首旧变体兜底；**门=篮子态在场（BasketGlist.BasketOn，含
-    // cfg+IsBasket_B），普通背包页不开键盘门**（与 ctx.glistOn 同口径）
+    // 归一，findings §6），真名置首旧变体兜底；**门=篮子态在场直读（BasketGlist.LiveFast，
+    // IsBasket_B×IsDualBag 双信号治官方残留），普通背包页不开键盘门**（与 ctx.glistOn 同口径）
     private static readonly string[] _gkBasketKeys = { "Backpack", "BackpackUI", "UI_Backpack", "WebUI_BackpackUI" };
     // rat-brew glist（rat-brew spec 裁定#7 零配置键）：第五/六场景——老鼠笼/酿酒桶，页活即开
     // （无 cfg 门）。真名置首（批改#12f 定谳：官方页 id=场景名本体），旧变体兜底；实机 30s
@@ -1036,7 +1046,7 @@ internal static class RailUi
             (CabinetEverywherePlugin.EnableGlistDye?.Value != false && CabinetEverywherePlugin.EnableDye?.Value != false && GlistAnyPageActive(layer, _gkDyeKeys)) ||
             (CabinetEverywherePlugin.EnableGlistHeater?.Value != false && CabinetEverywherePlugin.EnableHeater?.Value != false && GlistAnyPageActive(layer, _gkHeaterKeys)) ||
             (CabinetEverywherePlugin.EnableGlistFuelGen?.Value != false && CabinetEverywherePlugin.EnableFuelGen?.Value != false && GlistAnyPageActive(layer, _gkFuelGenKeys)) ||
-            (CabinetEverywherePlugin.EnableGlistBasket?.Value != false && BasketGlist.BasketOn && GlistAnyPageActive(layer, _gkBasketKeys)) ||
+            (CabinetEverywherePlugin.EnableGlistBasket?.Value != false && BasketGlist.LiveFast() && GlistAnyPageActive(layer, _gkBasketKeys)) ||
             (GlistAnyPageActive(layer, _gkRatKeys)) || /* rat-brew：零配置键=页活即开（spec 裁定#7） */
             (GlistAnyPageActive(layer, _gkBrewKeys));
         if (active)
