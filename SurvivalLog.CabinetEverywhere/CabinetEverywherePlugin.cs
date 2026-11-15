@@ -73,7 +73,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // 柜宽白名单（十六批）：Access 双名单（ExcludeBagIds/NonStorageBagIds）挡的是页签/筛选语义，
     // 不应连带挡宽度——名单内包的格子是真储物格、宽度照 12 统一（默认 1009 中控台）。
     internal static ConfigEntry<string> SizeIncludeBagIds;
-    // ==== 不常用柜子高度批（2026-11-15）：下拉添加的柜子行数（整串序列化，解析在 RailUi）====
+    // ==== 不常用柜子高度批（2026-11-15 二批 17 包）：下拉添加的柜子行数（整串序列化，解析在 RailUi）====
     internal static ConfigEntry<string> UncommonHeights;
     // ==== 负重批（2026-11-07 作者令：背包负重调整新增 + 原独立 mod CabinetBurden 并回）====
     internal static ConfigEntry<int> BackpackBurden;   // 背包负重上限（公斤，0=官方原值，0~1000，写表=kg×1000）
@@ -162,11 +162,11 @@ public sealed class CabinetEverywherePlugin : BasePlugin
             hb.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         SizeIncludeBagIds = Config.Bind("Rail", "SizeIncludeBagIds", "1009",
             "柜宽统一的功能包白名单（逗号分隔 BagId）。这些包在 [Access] ExcludeBagIds/代码 NonStorageBagIds 双名单里（页签/筛选语义：不注入不筛选=页签常显，该语义不动），但其格子是真储物格、宽度应随恒定 12 列统一——默认 1009 无人机中控台（2026-11-05 作者复测「宽度不是 12」：Access 排除连带把宽度挡了，同冰箱漏网同病根）。无人机货舱 1008 等也要统一请自行追加；空=不追加。");
-        // 不常用柜子高度批（2026-11-15 修正）：面板下拉添加/删除=恢复原生（ModCenter ucb 渲染，整串提交）。
-        // 白名单 9 包见 RailUi.UncommonBagIds（橱柜系 1003 主力 + 抽屉柜/床头柜/衣柜/玄关台/工具箱等
-        // 真实家用家具；金属柜族变体条目已移除；白名单外 id 解析时忽略）。
+        // 不常用柜子高度批（2026-11-15 二批）：面板下拉添加/删除=恢复原生（modcenter.json cabs 正源）。
+        // 白名单 17 包见 RailUi.UncommonBagIds（含仓管金属柜族/女大学生储物柜等角色初始家具与
+        // 工作台抽屉基准 5010）；白名单外 id 解析时忽略。
         UncommonHeights = Config.Bind("Rail", "UncommonHeights", "",
-            "不常用柜子行数清单（\"BagId:行数\" 逗号分隔，如 \"1003:12,110004:16\"；只收白名单 9 包：1003 橱柜/储物柜/保险箱/书架（原生10）、1006 抽屉柜、110003 床头柜、110004 大衣柜、110005 玄关台、110006 小衣柜、10003 工具箱、2002 啤酒箱、3003 纸箱堆/手推车；0=恢复原生，上限 100；宽恒 12）。1003 与探索场景储物柜共用包（改高全族一起变，宽度统一早已同半径）。ModCenter 面板提供下拉添加，改此值与 15 键同通道帧级生效。");
+            "不常用柜子行数清单（\"BagId:行数\" 逗号分隔，如 \"1003:12,5010:10\"）。只收白名单 17 包：1003 橱柜/储物柜/保险箱/书架（原生10）、1006 抽屉柜、110003 床头柜、110004 大衣柜、110005 玄关台、110006 小衣柜、1001 箱子/家中收纳架1（原生6）、1002 大储物柜/家中收纳架2（原生10）、10002/10005/10006 仓管金属柜族、10008 专属金属柜、10009 女大学生储物柜（原生4）、10003 工具箱、2002 啤酒箱、3003 纸箱堆/手推车、5010 工作台抽屉基准（三档=H/H+1/H+2，与旧 DrawerHeight 键二选一、此处优先）；0=恢复原生；上限 100；宽恒 12。1001/1002/1003 与探索场景储物柜共用包（改高全族一起变）。ModCenter 面板提供下拉添加，改此值与 15 键同通道帧级生效。");
         UncommonHeights.SettingChanged += (object s, System.EventArgs e) => RailUi.SizeDirty = true;
         // ==== 负重批（[Burden] 区，Rail 区后 Access 区前；Burden 是 OnInit 快照→读档后对已存在容器/已穿背包生效）====
         BackpackBurden = Config.Bind("Burden", "BackpackBurden", 0,
