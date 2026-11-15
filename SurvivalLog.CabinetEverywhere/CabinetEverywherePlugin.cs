@@ -49,6 +49,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     internal static ConfigEntry<bool> Enabled;
     internal static ConfigEntry<bool> EnableCraftSource;
     internal static ConfigEntry<bool> EnableCooking;
+    internal static ConfigEntry<bool> CookingFxEnable;
     internal static ConfigEntry<bool> EnableRatCage;
     internal static ConfigEntry<bool> EnableBrew;
     internal static ConfigEntry<bool> EnableDye;
@@ -181,6 +182,8 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         EnableRatCage = Config.Bind("Access", "EnableRatCage", true, "老鼠笼界面注入柜子页签。");
         EnableBrew = Config.Bind("Access", "EnableBrew", true, "酿酒桶界面注入柜子页签。");
         EnableDye = Config.Bind("Access", "EnableDye", true, "颜料桶界面注入柜子页签。");
+        CookingFxEnable = Config.Bind("CookingFx", "Enable", true,
+            "烹饪界面改造：菜谱书属性排序标签（饱腹/心态/精力/生命）+这一锅产出属性区间。");
         IncludeFurnitureIds = Config.Bind("Access", "IncludeFurnitureIds", "",
             "追加的家具 ConfigId（逗号分隔，强制加入）。");
         ExcludeFurnitureIds = Config.Bind("Access", "ExcludeFurnitureIds", "313,80033,80164,1026,42033,66196,330,384,389,9126",
@@ -291,6 +294,10 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // 交易页货舱物品表护持（2026-11-15）：筛选收窄页签后，给出柜物品表补回 TabItems
         // ——货舱栏物品不随筛选消失（postfix 挂官方 RebuildBagTabs；取证见 TabGate.cs 尾类）
         TradeTabItemsFix.Install();
+        // CookingFx 官方刷新沿（2026-11-15 批改9②）：Reducer_Web_Cooking.RefreshRecipeList postfix
+        // 置事件位，AccessTicker.Update 每帧 CookingFx.FastPoll 消费——开界面/换食材后区间与排序
+        // 数值帧级推送（治 0.5s 轮询可感延迟；TradeFxRefreshHook 同款架构）
+        CookingFxRefreshHook.Install();
         // 尺寸抢写钩（读档掉物品修复 2026-11-12）：读档表回原生+物品按原生校验越界官方掉落
         // ——ItemManager 启动族 prefix 抢写 + 帧级 SizeGuard 守卫（RailUi.FastPoll）
         SizeGuardHook.Install();
@@ -387,6 +394,8 @@ internal sealed class AccessTicker : MonoBehaviour
             // v1.8.9 Bug4 帧级快通道：官方排序/搬运改叠数 ≤1 帧检出并重推（替代 0.5s 泵量化等待，
             // 「一键整理响应 2s+」排查修复）；空闲≈零开销，重活仍在 0.5s Tick
             RailUi.FastPoll();
+            // CookingFx 批改9②：官方刷新沿当帧推（事件位消费，空闲零开销）
+            CookingFx.FastPoll();
             // glist 键盘门（实机批改#5）：Dye/Heater 页激活期间 SetKeyboardEnabled+IME On
             //（搜索框可输入+中文——PlanPick 装机实证方案同款，内部 0.3s 节流）
             RailUi.GlistKeyboardTick();
@@ -456,6 +465,9 @@ internal sealed class AccessTicker : MonoBehaviour
         // TradeFx 批1：交易页数值（A3 chips/A4 天平数字）0.5s 轮询——签名门控在 TradeFx.Poll
         // 首行（RailUi.Enabled 门+静置零重算；推送=TabGate 式独立通道 __CERAIL_TRADEFX__）
         TradeFx.Poll();
+        // CookingFx 批1/批2：烹饪页排序 chips+这一锅区间——探活注入+静态表/图标包一次性推
+        // （门控在 CookingFx.Poll 首行：[CookingFx] Enable+烹饪 UI 活跃，全关零注入零推送）
+        CookingFx.Poll();
         // 篮子救援 glist（basket spec §5.1）：BackpackUI 篮子模式 0.5s 轮询——篮子态门+签名门控
         // 在 BasketGlist.Poll 首行；产出 BasketJson/Dirty 由 RailData 契约（ctx.basket）携带推出，
         // 非独立通道；须先于 RailUi.Tick（同帧 BuildJson 取到新鲜值）

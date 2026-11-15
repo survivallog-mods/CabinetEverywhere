@@ -1050,3 +1050,29 @@ spec=docs/superpowers/specs/2026-11-07-bag-height-design.md；计划=docs/superp
   （DyePanel 挂 EnableDye、Heater 挂 EnableHeater 联动；heaterOn 先例）；零新命令。
 - **验证**：harness-glist 80 断言全绿；维护中十套件回归绿；mount/regression/store-all/tidy 四套件
   主基线既有红（26/3/3/8）逐套持平零回归（基线工作树对账 2026-11-08）。
+
+## 15. 烹饪界面改造 CookingFx（2026-11-15 批1+批2；批3 另案）
+
+设计 spec：docs/superpowers/specs/2026-11-15-cooking-recipe-fx-design.md（含反汇编级取证与
+批改史）；实施计划=docs/superpowers/plans/2026-11-15-cookingfx-batch12.md；原型与断言床=
+design-proto/cookfx/（harness 引 shipping 源，Playwright 14 断言）。
+
+- **批1 菜谱排序 chips**：菜谱书头部 `默认|饱腹|心态|精力|生命`；排序=DOM 节点稳定重排
+  （数值降序→同值菜谱 ID 升序→无键垫底→craftLocked 垫尾），"默认"按官方序快照还原，
+  选择记忆 localStorage `cefx_sort_v1`。三条重排硬约束（原型实测定版）：观察器自触发环
+  防线（重入门卫+序未变零操作）、`applying` 经 queueMicrotask 复位（防官方序快照被自身
+  移动污染）、验收断言必须让观察器微任务先跑（同步读是重挂前假象）。
+- **批2 这一锅区间 chips**：已知菜谱（Level===2）行内 `图标+min~max`（单值收敛、全 0 维
+  隐藏）。精确配方=4 档产物配置区间（档内精确）；标签配方=Σ食材×tier 系数括号×品质系数
+  两端（角点 min/max 负值安全）+vd2/3 取产物 4 档。图标=官方原生字形（运行时读
+  `State_Web_CoreUI1.AttrList` 的 AttrIcon 随包下发；缺=内联 SVG 回退）。
+- **通道**：`CookingFx.cs` 探活状态机（TagFilter 同款）注 `cookingfx.page.js`（Root 执行，
+  Cooking iframe 同源 contentDocument 装配）；`setRecipes`（静态表一次）/`setIcons`/
+  `setPred`（0.5s 轮询、同串免重推）；门=`[CookingFx] Enable`+烹饪 UI 活跃（全关零开销）。
+  纯变换=CookingFxData（tools/cookfx-math-test 31 断言）；区间公式=CookingFxMath 同源。
+- **工程防线**：design-proto 自本批起含 .cs spike——主 csproj `Compile Remove="design-proto/**"`
+  （否则被 **/*.cs 全局 glob 吞入→CS0579 特性重复，实锤一次）；ObservableList interop
+  foreach 不可用走索引器（TabInjector 同款）。
+- **待实机校准（spec §6 T0）**：SEL 实机选择器（cookingfx.page.js 注释留校准点）、
+  GlobalSetting 四系数实值与 tier→High/Mid/Low 映射（现用括号区间）、baseBonus 键名（现
+  v1=0）、AttrIcon 字形实值 log。批3（可见集对齐/hook）另出计划。

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>CookingFx 原型测试床（官方类名 1:1）· 菜谱排序 + 这一锅属性区间</title>
+<style>
+  body { margin:0; background:#151210; color:#d8cfc0; font:13px/1.5 "Microsoft YaHei",sans-serif; display:flex; gap:18px; padding:18px; }
+  .panel { background:#221c17; border:1px solid #3a3128; border-radius:8px; padding:12px; }
+  .fx-col { width:340px; }
+  .pred-col { width:300px; }
+  .ctl-col { width:250px; }
+  h3 { margin:0 0 8px; font-size:14px; color:#e8a24b; }
+  .book-head { display:flex; justify-content:space-between; align-items:center; color:#9a8d78; font-size:12px; margin-bottom:6px; }
+  /* 以下官方形态类（.book-item/.book-nm/.pot-card/.pot-nm 等）与游戏 Cooking.html 同名同构——
+     cefx-* 样式由 shipping cookingfx.page.js 注入（CSS 自足性随 harness 验证） */
+  .book-list { display:flex; flex-direction:column; gap:4px; }
+  .book-item { display:flex; align-items:center; gap:8px; background:#2b241d; border:1px solid #3a3128; border-radius:6px; padding:5px 8px; }
+  .book-item .ic { width:28px; height:28px; border-radius:6px; background:#4a3d2f; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .book-item .book-nm { color:#e8a24b; width:96px; }
+  .book-item .cost { color:#8d8272; font-size:12px; flex:1; }
+  .book-item .grp { color:#7d9ab0; font-size:11px; }
+  .book-item .st { font-size:12px; padding:1px 8px; border-radius:8px; }
+  .st-ready { background:#2d4425; color:#a8d49a; }
+  .st-fill { background:#5a3d1a; color:#ffd9a0; cursor:pointer; }
+  .st-insuff { background:#3a2a2a; color:#a08888; }
+  .book-item.craft-locked { opacity:.45; }
+  .pred-tabs { display:flex; gap:6px; margin-bottom:8px; }
+  .pred-tabs span { padding:2px 12px; border-radius:8px; background:#332a22; color:#bfae92; }
+  .pred-tabs span.on { background:#5a3d1a; color:#ffd9a0; }
+  .pot-card { background:#2b241d; border:1px solid #3a3128; border-radius:6px; padding:6px 8px; margin-bottom:5px; display:flex; gap:8px; }
+  .pot-bd { flex:1; }
+  .pot-nm { color:#e8a24b; }
+  .pot-hint { color:#8d8272; font-size:11px; }
+  .ctl-col button { display:block; width:100%; margin-bottom:8px; padding:6px; background:#332a22; border:1px solid #4a3d2f; color:#d8cfc0; border-radius:6px; cursor:pointer; }
+  .ctl-col button:hover { background:#4a3d2f; }
+  #hlog { font-size:11px; color:#8d8272; white-space:pre-wrap; max-height:300px; overflow:auto; }
+</style>
+</head>
+<body>
+  <div class="panel fx-col">
+    <div class="book-head" id="recipePanelTitle"><span>菜谱书</span><span>已解锁 200/495</span></div>
+    <div class="book-list" id="bookList"></div>
+  </div>
+  <div class="panel pred-col">
+    <h3>这一锅</h3>
+    <div class="pred-tabs"><span class="on">混合烹饪</span><span>单独烹饪</span></div>
+    <div id="predList"></div>
+  </div>
+  <div class="panel ctl-col">
+    <h3>测试床控制</h3>
+    <button id="btnReshuffle">模拟官方重渲染（打乱回官方序）</button>
+    <button id="btnPred">模拟官方渲染预测 + C# 推区间包</button>
+    <button id="btnIcons">模拟 C# 推官方图标包（实机真值 🍖🧠⚡）</button>
+    <button id="btnIconsOff">清图标包（回退 SVG）</button>
+    <button id="btnClearPred">清空预测（官方清行）</button>
+    <div id="hlog"></div>
+  </div>
+  <script src="cookfx.fixtures.js"></script>
+  <!-- harness 直引 shipping 源（serve.cjs MODROOT 三级解析） -->
+  <script src="../../cookingfx.page.js"></script>
+  <script>
+    hlog('测试床就绪（官方类名 1:1 形态）。');
+    document.getElementById('btnReshuffle').onclick = function () {
+      var list = document.getElementById('bookList');
+      var items = COOKFX_FIXTURES官方序();
+      list.innerHTML = '';
+      items.forEach(function (it) { list.appendChild(buildBookItem(it)); });
+      hlog('官方重渲染：' + items.length + ' 条（观察排序自动重挂）');
+    };
+    document.getElementById('btnPred').onclick = function () {
+      // 官方 renderPredictionList 同构：清旧 .pot-card → 按 entries 造行（.pot-nm=菜名）
+      var host = document.getElementById('predList');
+      host.querySelectorAll('.pot-card').forEach(function (e) { e.remove(); });
+      COOKFX_FIXTURES预测包().entries.forEach(function (e) {
+        var card = document.createElement('div');
+        card.className = 'pot-card';
+        card.innerHTML = '<div class="ic">🍲</div><div class="pot-bd"><div class="pot-nm">' + e.name + '</div>' +
+          '<div class="pot-hint">' + (e.recipeId === 0 ? '没做过的组合 · 出锅才揭晓' : '已知菜谱 · 必出') + '</div></div>';
+        host.appendChild(card);
+      });
+      window.__CEFX__.setPred(COOKFX_FIXTURES预测包());
+      hlog('官方预测渲染 + C# 区间包（append 模式挂 chips）');
+    };
+    document.getElementById('btnIcons').onclick = function () {
+      // 实机真值（LogOutput.log 实录）：d0🍖 d1🧠 d2⚡ d4❤️（d3 Health 缺——借用 d4 兜底是待办，先原样）
+      window.__CEFX__.setIcons({ d0: '🍖', d1: '🧠', d2: '⚡', d4: '❤️' });
+      hlog('推官方图标包（实机真值）');
+    };
+    document.getElementById('btnIconsOff').onclick = function () {
+      window.__CEFX__.setIcons(null);
+      hlog('清图标包 → 回退内联 SVG');
+    };
+    document.getElementById('btnClearPred').onclick = function () {
+      document.getElementById('predList').innerHTML = '';
+      window.__CEFX__.setPred('{"entries":[]}');
+      hlog('官方清行 + C# 清空包');
+    };
+    function hlog(s) {
+      var el = document.getElementById('hlog');
+      el.textContent = '[' + new Date().toTimeString().slice(0, 8) + '] ' + s + '\n' + el.textContent;
+    }
+    function buildBookItem(it) {
+      var el = document.createElement('div');
+      // 官方行级状态类（renderRecipeListFromData 同款）：ready/fillable/insuff/craft-locked——可制作分层排序的判据
+      el.className = 'book-item' + (it.locked ? ' craft-locked' : it.status === 2 ? ' ready' : it.status === 1 ? ' fillable' : ' insuff');
+      var stMap = { 2: ['st-ready', '✓ 就绪'], 1: ['st-fill', '填装'] };
+      var stHtml = '';
+      if (it.locked) stHtml = '<div class="st st-insuff">🔒 未解锁</div>';
+      else if (stMap[it.status]) stHtml = '<div class="st ' + stMap[it.status][0] + '">' + stMap[it.status][1] + '</div>';
+      // 官方同构：材料不足(status 0)无状态徽章（stHtml=''，行尾=book-bd）
+      el.innerHTML =
+        '<div class="ic">' + it.icon + '</div>' +
+        '<div class="book-nm">' + it.name + '</div>' +
+        '<div class="cost">' + it.cost + (it.group ? ' <span class="grp">' + it.group + '</span>' : '') + '</div>' +
+        stHtml;
+      return el;
+    }
+    document.getElementById('btnReshuffle').onclick(); // 首载即渲染官方序
+  </script>
+</body>
+</html>

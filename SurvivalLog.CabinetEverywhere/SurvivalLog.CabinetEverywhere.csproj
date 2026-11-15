@@ -17,12 +17,16 @@
   <ItemGroup>
     <Compile Include="../ModShared/BagTableRw.cs" />
     <Compile Include="../ModShared/WelcomeTip.cs" />
+    <!-- design-proto 原型区自 2026-11-15 cookfx 起含 .cs spike（含其 obj 生成物），防被本工程
+         **/*.cs 全局 glob 吞入编译（CS0579 特性重复实锤）——原型区永不入主工程编译 -->
+    <Compile Remove="design-proto/**" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="tagfilter.page.js" LogicalName="SurvivalLog.CabinetEverywhere.tagfilter.page.js" />
     <EmbeddedResource Include="railui.page.js" LogicalName="SurvivalLog.CabinetEverywhere.railui.page.js" />
     <EmbeddedResource Include="railui.css" LogicalName="SurvivalLog.CabinetEverywhere.railui.css" />
+    <EmbeddedResource Include="cookingfx.page.js" LogicalName="SurvivalLog.CabinetEverywhere.cookingfx.page.js" />
   </ItemGroup>
 
   <ItemGroup>
