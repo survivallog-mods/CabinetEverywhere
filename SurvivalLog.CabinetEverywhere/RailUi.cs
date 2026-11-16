@@ -126,6 +126,15 @@ internal static class RailUi
     /// ——收窄=砍每行件数容量，SizeEnginePoll 宽度段对它跳过。</summary>
     internal const int RackBagId = 110009;
 
+    /// <summary>工作台备料区包（配置级共包，2026-11-01 实锤）：工作台族家具（工具台 405/80158/
+    /// 自制工具台 313/80033/80164/工具桌 322/323/414/436/444/445/448）与纸箱 307-309、染料桶
+    /// 66196 共用——改宽=机器备料槽 UI 变形，纸箱连带丢原生宽。v1.8.4 拍板「共包柜子维持原宽」，
+    /// 宽度段恒跳过（与材料架 RackBagId 同规则，include 白名单不覆盖）。十八批原方案「工作台族
+    /// 9 配置入 ExcludeFurnitureIds」仅落文档未落代码，共包守卫只认自制工具台/染料桶家中在场——
+    /// 未摆者 1010 失防被改 12 列（2026-11-16 他玩家复报「工作台材料容器偶发 12 列」）。包级直跳
+    /// 不依赖各家家具构成；纸箱页签照常（ExcludeBagIds 双语义路会踢纸箱出页签，不可走）。</summary>
+    internal const int PrepBagId = 1010;
+
     /// <summary>不常用柜子高度批白名单（2026-11-15 二批扩容 17 包，正源=modcenter.json cabs）：
     /// 玩家实际认识/使用的家用储物柜。二批补漏（作者实机报）：10002/10005/10006=仓管角色初始
     /// 金属柜族（商店不可见但仓管家在场）；10008/10009=专属变体（女大学生储物柜原生高 4）；
@@ -222,6 +231,7 @@ internal static class RailUi
             var skipped = new List<string>();
             foreach (var bagId in ids)
             {
+                if (bagId == PrepBagId) { skipped.Add(bagId + "(工作台备料区共包，维持原宽)"); continue; }
                 if (skip.Contains(bagId) && !include.Contains(bagId)) { skipped.Add(bagId + "(排除共包)"); continue; }
                 targets.Add(bagId);
             }
