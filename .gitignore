@@ -3,3 +3,6 @@ obj/
 release/
 .worktrees/
 .superpowers/
+.live-monitor.log
+.playwright-mcp/
+coscli_output/
