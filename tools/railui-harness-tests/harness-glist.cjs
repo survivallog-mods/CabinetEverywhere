@@ -1088,8 +1088,12 @@ function check(name, ok, detail) {
         subD: getComputedStyle(sub).display, subH: Math.round(sub.getBoundingClientRect().height),
         storeBtn: !!store, tidyBtn: !!tidy };
     }).catch(() => null);
+    /* 2026-11-17 断言对齐等高跟随契约（作者裁定「左侧与右侧面板高度对齐」）：rail 持续
+       跟随兄弟面板高（>816 场景）→ 官方 _fit 缩 body.zoom 适配视口=合法终态，rect 视觉
+       px 随 zoom 缩小——subH 下限从 28（rail 冻结 816 时代定值）放宽到「在场可见」。
+       12j 批改本意=标题/信息条/双按钮在场与对齐，不断言绝对像素。 */
     check('GE-12j-btn-align-info', !!gja && gja.title === '角色背包' && /^空间： \d+ \/ \d+$/.test(gja.sub) &&
-      gja.subD !== 'none' && gja.subH >= 28 && gja.storeBtn && gja.tidyBtn, JSON.stringify(gja));
+      gja.subD !== 'none' && gja.subH >= 15 && gja.storeBtn && gja.tidyBtn, JSON.stringify(gja));
     await d.click('#srgToggle'); await page.waitForTimeout(60);
   }
 
@@ -1310,9 +1314,11 @@ function check(name, ok, detail) {
      小/大两套数据同盒（随内容不变）+ 大数据真滚（scrollHeight>clientHeight）+ 格子态塌缩不回归。 */
   const boxOf = (KEY) => frameDoc(KEY).evaluate(() => {
     const p = document.getElementById('srgPanel'), l = document.getElementById('srgList');
+    const rail = document.getElementById('srRail');
     if (!p || !l) return null;
     return {
       w: p.offsetWidth, h: p.offsetHeight,
+      railH: rail ? parseInt(rail.style.height, 10) || 0 : 0,
       listOvY: getComputedStyle(l).overflowY,
       listScroll: l.scrollHeight - l.clientHeight,
       rows: document.querySelectorAll('.srg-row').length,
@@ -1322,7 +1328,10 @@ function check(name, ok, detail) {
   await page.evaluate((base) => window.__HZ_MOCKSET__(base), BASE_MOCK); /* U 系列残底复位 */
   await showScene('DyePanel'); await glistReady('DyePanel');
   const small = await boxOf('DyePanel');
-  check('L1-dye-fixed-box-small', !!small && !small.gridmode && small.w === 616 && small.h === 816,
+  /* 2026-11-17 断言对齐等高跟随契约（作者裁定「左侧与右侧面板高度对齐」）：列表态盒高
+     =壳行内高（plainSlotSync 同拍同步）——从定值 816 改联动壳高；宽 616 定值不变 */
+  check('L1-dye-fixed-box-small', !!small && !small.gridmode && small.w === 616 &&
+    small.railH >= 300 && small.h === small.railH,
     JSON.stringify(small));
   /* A6 同源 320 色素 cfg → 300 行渲染，同盒对照 */
   await page.evaluate(() => {
@@ -1337,7 +1346,7 @@ function check(name, ok, detail) {
   });
   await pushCtx('DyePanel'); await scan(); await page.waitForTimeout(80);
   const many = await boxOf('DyePanel');
-  check('L2-dye-fixed-box-many', !!many && many.rows === 300 && many.w === 616 && many.h === 816,
+  check('L2-dye-fixed-box-many', !!many && many.rows === 300 && many.w === 616 && many.h === many.railH,
     JSON.stringify(many));
   check('L3-box-content-invariant', !!small && !!many && small.w === many.w && small.h === many.h,
     'small=' + small.w + 'x' + small.h + ' many=' + many.w + 'x' + many.h);

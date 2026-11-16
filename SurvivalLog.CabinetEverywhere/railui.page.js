@@ -3289,15 +3289,37 @@
         if (h > sibMax) sibMax = h;
       }
       var wantH = Math.max(778, sibMax);
-      /* 跑飞钳=**视口高**（与量高同空间）：界面不可能高过视口，防反馈跑飞等价；
-         八轮实锤教训：钳数不能拿夹具空间的常数（816）——游戏 webview 带缩放（实测 0.932），
-         官方面板 css 高可到 839 > 816，硬钳把壳截短 23css≈半格=左侧底边与右侧错位。 */
-      var vhCap = doc.defaultView.innerHeight || 0;
-      if (vhCap > 400 && wantH > vhCap) wantH = vhCap;
+      /* 视口钳退役（2026-11-17 实机 CDP 取证定谳 _ingame-probe：右侧面板 css 高 957>视口 864
+         是 vanilla 原生形态——整页 zoom 0.82 由官方 _fit 既定，页面总高由右侧决定，左列壳
+         跟到 957 不引入新高度、zoom 不变；钳视口恰是左列底部 93css 空白的根因（wrap 被
+         stretch 到 957 而壳被钳 864）。滚窗=#srBody 随壳高伸缩（722→815 显示更多行）。
+         污染硬顶 2000：面板 css 高物理上限（60 格食物仓+16 鼠全平铺≈1900 封顶）——
+         超值必是 stretch 反馈污染（切换脏窗残留/未知脏窗），按 778 基线回退（宁矮不爆）。 */
+      if (wantH > 2000) wantH = 778;
       var wantHPx = wantH + 'px';
       if (rail.style.height !== wantHPx) {
         rail.style.setProperty('height', wantHPx, 'important');
         rail.style.setProperty('max-height', 'none', 'important');
+      }
+      /* 2026-11-17 作者裁定「左侧背包/全局物品栏区域本身就应该与右侧面板高度对齐」：
+         #srgPanel 列表态行内高=壳高恒写（覆盖 816 铁约束——816 降为 plainSlotSync 未跑/
+         夹具兜底盒）。格子态折叠层（srg-gridmode）/bagtabs 自持盒（srg-fill）清残留行内
+         （挂着会顶开折叠层=切换拍 wrap 超高→官方 _fit 缩 zoom→RO 清后又放大=整页抖动，
+         2026-11-16 实报）。RO 盯 wrap 自身尺寸——列表态 glist 定高后 wrap 恒定，兄弟晚长高
+         传导不到（超大鼠笼空白根治不生效的根因）——跟随写点=本函数三路（挂载/render 尾/
+         槽位 RO）+ glistApply/glistRender 尾两补点（切换拍/数据推送拍同步，无脏窗口）。 */
+      var gp = doc.getElementById('srgPanel');
+      if (gp) {
+        var gpFit = !gp.classList.contains('srg-gridmode') && !gp.classList.contains('srg-fill');
+        if (gpFit && gp.style.height !== wantHPx) {
+          gp.style.setProperty('height', wantHPx, 'important');
+          gp.style.setProperty('min-height', wantHPx, 'important');
+          gp.style.setProperty('max-height', wantHPx, 'important');
+        } else if (!gpFit && gp.style.height) {
+          gp.style.removeProperty('height');
+          gp.style.removeProperty('min-height');
+          gp.style.removeProperty('max-height');
+        }
       }
       /* margin 目标：行外层=body 直接子级（官方形态页：行即页面居中根）才打；Vue 包裹页不打 */
       var sys = row;
@@ -5413,6 +5435,17 @@
        整隐会让切换钮自身不可点=回不了列表（B2 实测缺陷）。类名比对无序列化歧义。 */
     var wantCls = 'srg-panel' + ((BAGTABS[f.key] && !f.doc.getElementById('srRail')) ? ' srg-fill' : '') + (isList ? '' : ' srg-gridmode');
     if (p.className !== wantCls) { p.className = wantCls; glW(); dirty = true; }
+    /* 2026-11-17 双倍高度死环根治（实机 CDP 解剖定谳）：切格子态瞬间 gp 的行内高
+       （height:Npx!important 高于一切 CSS）在 gridmode 折叠类下仍占高——与 rail 同显
+       纵向叠加（957+957=1914）→ 官方 stretch 把右侧面板拉到同高 → 下拍量高量到被拉
+       高的右侧 → rail 写双倍值 → **永久卡死**（zoom 0.417 整页缩小变窄）。行内高
+       清除必须**赶在任何量高（本函数尾 plainSlotSync / RO / 轮询）之前、挂类同拍**。 */
+    if (!isList && p.style.height) {
+      p.style.removeProperty('height');
+      p.style.removeProperty('min-height');
+      p.style.removeProperty('max-height');
+      glW();
+    }
     var tg = f.doc.getElementById('srgToggle');
     var wantIcon = isList ? SRG_ICON_GRID : SRG_ICON_LIST;
     var wantTitle = isList ? '切换为格子样式' : '切换为列表样式';
@@ -5502,6 +5535,14 @@
        BagMsg 之后，816 面板顶高系统卡时无人复测=zoom 滞留旧值→左列伸出屏幕外。官方杠杆
        零伪造：状态实变后补发一次 resize 促 _fit.apply 复测（3645/3791 高锁同源先例）；
        染料页无 _fit 监听=空放无副作用。幂等：稳态零写不触发（无 resize 风暴）。 */
+    /* 2026-11-17 切换拍同步（必须先于 resize 派发：高度先到终态，_fit 复测一次到位不抖动）：
+       类已切、gp 行内清/写与 rail 高同帧收敛——不留「折叠层被残留行内顶开→wrap 超高→
+       _fit 缩 zoom→RO 清后又放大」脏窗口（2026-11-16 实报整页抖动机理，见 plainSlotSync
+       注释）。篮子页（BackpackUI）无 #srp 壳=querySelector miss 零动作。 */
+    try {
+      var railEl = f.doc.querySelector('#srp .sr-rail');
+      if (railEl && railEl.parentElement) plainSlotSync(railEl.parentElement, railEl);
+    } catch (e) { }
     if (dirty) { try { f.doc.defaultView.dispatchEvent(new Event('resize')); } catch (e) { } }
   }
   function railHeadSub(f) { /* rail 标题信息条节点（sr-headtxt>sr-sub；批改#12g 静态空间条改写目标） */
