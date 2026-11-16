@@ -346,7 +346,8 @@ function check(name, ok, detail) {
 
     /* B5 拆净（责任面断言：无 srg 节点 + 被 glist 隐过的元素全还原 + 格网视图恢复；
        innerHTML 全等被 bagtabs 高度守护/rail stubs 周期写污染，不属 glist 责任面——ruling） */
-    await glistOn(KEY, false); await scan(); await page.waitForTimeout(60);
+    await glistOn(KEY, false); /* 清钮（前块残留会顶住门）——ctx 离页才是拆净触发 */
+    await pushCtx('Cooking'); await scan(); await page.waitForTimeout(80);
     const torn = await d.evaluate((k) => {
       let host = null;
       if (k === 'Heater') host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
@@ -359,8 +360,8 @@ function check(name, ok, detail) {
     check('B5-' + KEY + '-teardown-clean', torn.noPanel && torn.noMark, JSON.stringify(torn));
     check('B5-' + KEY + '-grid-restored', torn.curShown, '');
 
-    /* B6 三开三关循环无残留（同 B5 责任面断言） */
-    for (let i = 0; i < 3; i++) { await glistOn(KEY, true); await scan(); await gwait(KEY); await glistOn(KEY, false); await scan(); await page.waitForTimeout(40); }
+    /* B6 三往三返循环无残留（开关退役批改写：触发=ctx 往返离页，同 B5 责任面） */
+    for (let i = 0; i < 3; i++) { await pushCtx(KEY); await scan(); await gwait(KEY); await pushCtx('Cooking'); await scan(); await page.waitForTimeout(40); } /* 钮已在 B5 清，ctx 往返即装卸 */
     const cycled = await d.evaluate((k) => {
       let host = null;
       if (k === 'Heater') host = document.querySelector('.heater-system > .panel:not(.heater-panel)');
@@ -749,8 +750,9 @@ function check(name, ok, detail) {
     check('RB-E2-grid-plain-foot', gridState.gridmode && gridState.plain && gridState.sortHidden && gridState.storeShown && gridState.railShown,
       JSON.stringify(gridState));
     await d.click('#srgToggle'); await page.waitForTimeout(80);
-    /* 拆净（harness 钮反向门=产线无此态，退役门回退面）：panel 摘除+排序钮复原+rail 复显 */
-    await glistOn('BrewPanel', false); await scan(); await pushCtx('BrewPanel'); await page.waitForTimeout(80);
+    /* 拆净（开关退役批改写）：触发=ctx 离页——panel 摘除+排序钮复原+rail 复显 */
+    await glistOn('BrewPanel', false); /* 清钮防门被顶 */
+    await pushCtx('Cooking'); await scan(); await page.waitForTimeout(80);
     const tornState = await d.evaluate(() => {
       const sortBtn = document.getElementById('srFoodSort');
       return {
@@ -969,23 +971,19 @@ function check(name, ok, detail) {
   await pushCtx('DyePanel');
   await showScene('DyePanel');
   const hasPanel = async () => !!(await frameDoc('DyePanel').evaluate(() => document.getElementById('srgPanel')).catch(() => null));
-  /* G1 ctx 显式关 + 钮关 → 不装配 */
-  await page.evaluate(() => { window.__HZ_GLISTON__ = false; });
-  await pushCtx('DyePanel'); await scan(); await page.waitForTimeout(60);
-  check('G1-ctx-off-no-panel', (await hasPanel()) === false, '');
-  /* G2 ctx 关 + 钮开 → 装配（覆盖门） */
+  /* G1 恒开缺省（开关退役批改写）：无任何钮 → 装配（ctx.glistOn 恒 true） */
+  await pushCtx('DyePanel'); await scan(); await gwait('DyePanel');
+  check('G1-always-on-default', (await hasPanel()) === true, '');
+  /* G2 钮开覆盖 → 装配（覆盖门） */
   await glistOn('DyePanel', true); await scan(); await gwait('DyePanel');
   check('G2-knob-override', (await hasPanel()) === true, '');
   await glistOn('DyePanel', false); await scan(); await page.waitForTimeout(60);
-  /* G3 ctx 开 + 钮关 → 装配（真门路径） */
-  await page.evaluate(() => { window.__HZ_GLISTON__ = true; });
+  /* G3 钮关+ctx 在页 → 装配（真门路径） */
   await pushCtx('DyePanel'); await scan(); await gwait('DyePanel');
   check('G3-ctx-on-mounts', (await hasPanel()) === true, '');
-  /* G4 ctx 翻关 → 拆净（ctx 驱动 teardown） */
-  await page.evaluate(() => { window.__HZ_GLISTON__ = false; });
-  await pushCtx('DyePanel'); await scan(); await page.waitForTimeout(60);
-  check('G4-ctx-off-teardown', (await hasPanel()) === false, '');
-  await page.evaluate(() => { delete window.__HZ_GLISTON__; });
+  /* G4 离页拆净（开关退役批改写）：ctx 离页 → 拆净（产线唯一 teardown 路） */
+  await pushCtx('Cooking'); await scan(); await page.waitForTimeout(60);
+  check('G4-ctx-leave-teardown', (await hasPanel()) === false, '');
 
   /* ---- §终审修复 FD1-FD7（I1/I2/M1/M2/M3/M7 对应）---- */
   await setMockItems({
@@ -1015,11 +1013,12 @@ function check(name, ok, detail) {
     await d.evaluate(() => { const r = document.querySelectorAll('.srg-row')[0]; if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } });
     await page.waitForTimeout(50);
     const hadNodes = await d.evaluate(() => !!document.getElementById('srgTip') && !!document.getElementById('srgToast')).catch(() => false);
-    await glistOn('Heater', false); await scan(); await page.waitForTimeout(60);
+    await glistOn('Heater', false); /* 清钮防门被顶 */
+    await pushCtx('Cooking'); await scan(); await page.waitForTimeout(60);
     const residue = await d.evaluate(() => ['srgTip', 'srgDetail', 'srgToast', 'srgPanel'].filter((id) => !!document.getElementById(id))).catch(() => ['ERR']);
     check('FD4-teardown-nodes', hadNodes === true && residue.length === 0, 'had=' + hadNodes + ' residue=' + JSON.stringify(residue));
     /* FD5 GLQ 复挂回填：搜索→拆→装 → 输入框与列表过滤一致 */
-    await glistOn('Heater', true); await scan(); await gwait('Heater'); await page.waitForTimeout(50);
+    await pushCtx('Heater'); await scan(); await gwait('Heater'); await page.waitForTimeout(50);
     await d.fill('#srgQ', '木柴'); await page.waitForTimeout(60);
     await glistOn('Heater', false); await scan(); await page.waitForTimeout(40);
     await glistOn('Heater', true); await scan(); await gwait('Heater'); await page.waitForTimeout(60);
@@ -1241,9 +1240,7 @@ function check(name, ok, detail) {
       return rows;
     })();
     check('S3-ime-commit', s3.length === 1 && s3[0] === '木柴', JSON.stringify(s3));
-    /* S4：a/d 热键双语境（批改#9 后契约更新）——①glist 在场=页签退役，a/d 全语境 0 切页
-       （FG.active 收口）；②glist 关=旧方案复活（cfg 回退面），输入聚焦守卫原样有效：
-       聚焦打字 0 切页、失焦恰 1 次 */
+    /* S4：a/d 热键（开关退役批后契约）——glist 恒在场=页签/srfg 已删，a/d 全语境 0 切页 */
     const p1 = await cmdSpy(async () => {
       await d.click('#srgQ'); await page.waitForTimeout(30);
       await page.keyboard.press('d'); await page.waitForTimeout(60); /* 聚焦中按 d */
@@ -1253,16 +1250,8 @@ function check(name, ok, detail) {
     });
     const swOwned = (p1.calls || []).filter((c) => c[0] === 'switchBag').length;
     check('S4-ad-dead-when-owned', swOwned === 0, 'ownedSw=' + swOwned);
-    await glistOn('Heater', false); await scan(); await page.waitForTimeout(120); /* 旧方案复活（srfg 回装+FG.active=true） */
-    const oldBack = await d.evaluate(() => !!document.getElementById('srfgTabs')).catch(() => false);
-    const p2 = await cmdSpy(async () => {
-      await d.evaluate(() => { const q = document.getElementById('srgQ'); if (q) q.blur(); }); /* glist 面板已拆，保险失焦 */
-      await page.keyboard.press('d'); await page.waitForTimeout(60);
-      return true;
-    });
-    const swOld = (p2.calls || []).filter((c) => c[0] === 'switchBag').length;
-    check('S4-ad-guard-old-scheme', oldBack && swOld === 1, 'srfgBack=' + oldBack + ' oldSw=' + swOld);
-    await glistOn('Heater', true); await scan(); await gwait('Heater'); await page.waitForTimeout(80); /* 复位=glist 在场 */
+    const noSrfg = await d.evaluate(() => !document.getElementById('srfgTabs')).catch(() => false);
+    check('S4-old-scheme-never-back', noSrfg, 'srfgBack=' + !noSrfg);
   }
   await page.evaluate(() => { window.__HZ_GLIST__ = {}; });
 
@@ -1436,7 +1425,8 @@ function check(name, ok, detail) {
     check('L6-steady-no-resize-storm', steady === 0, 'steady=' + steady);
     check('L6-toggle-fires-resize', afterGrid - steady >= 1 && afterList - afterGrid >= 1,
       'grid=+' + (afterGrid - steady) + ' list=+' + (afterList - afterGrid));
-    await glistOn('Heater', false); await scan(); await page.waitForTimeout(60);
+    await glistOn('Heater', false); /* 清钮防门被顶 */
+    await pushCtx('Cooking'); await scan(); await page.waitForTimeout(60);
     const afterTeardown = await d.evaluate(() => window.__HZ_RSZ__);
     check('L6-teardown-fires-resize', afterTeardown - afterList >= 1, 'teardown=+' + (afterTeardown - afterList));
   }
@@ -1500,19 +1490,21 @@ function check(name, ok, detail) {
       gv.gridInRail && gv.gridShown && /srg-gridmode/.test(gv.gridmode),
       JSON.stringify({ rb: !!rbk, gv }));
     await d.click('#srgToggle'); await page.waitForTimeout(60);
-    /* GF7 拆净：glist 面板移除+rail 卸载（官方 .panel 还原、格搬回原位）+旧方案按设计复活
-       （fgSettle 自愈回装 srfg 并自上 778 锁——门关=柜子页签方案原路回归，作者批改#9 的 cfg 回退面） */
-    await glistOn('FuelGenerator', false); await scan(); await page.waitForTimeout(80);
-    const td = await d.evaluate(() => {
-      const host = document.querySelector('.generator-system > .panel:not(.gen-panel)');
-      const grid = document.getElementById('backpackGrid');
-      return { panel: !!document.getElementById('srgPanel'), railGone: !document.getElementById('srp'),
-        hostBack: !!host, gridHome: !!(host && grid && host.contains(grid)), /* srfg 复活按 v1.8.14 设计把格包进自持滚窗——宿主子树内即归位 */
-        srfgBack: !!document.getElementById('srfgTabs'),
-        lock: host ? (host.style.height || '(none)') : 'NOHOST' };
-    }).catch(() => null);
-    check('GF7-teardown-restores', !!td && td.panel === false && td.railGone && td.hostBack && td.gridHome &&
-      (td.lock === '(none)' || (td.srfgBack && /778/.test(td.lock))),
+    /* GF7（开关退役批改写）：拆净回退面已不存在（cfg 门全删）——改为场景往返：切走再回
+       =glist 面板/rail 壳干净重装，srfg 绝不复活 */
+    await page.getByRole('button', { name: 'Cooking', exact: true }).click();
+    await page.waitForTimeout(200);
+    await page.getByRole('button', { name: 'FuelGenerator', exact: true }).click();
+    await gwait('FuelGenerator');
+    await page.waitForTimeout(200);
+    const dR = frameDoc('FuelGenerator');
+    const td = await dR.evaluate(() => ({
+      panel: !!document.getElementById('srgPanel'),
+      srp: !!document.getElementById('srp'),
+      srfgBack: !!document.getElementById('srfgTabs'),
+      footer: (() => { const s = document.getElementById('srStoreAll'); return !!s; })(),
+    })).catch(() => null);
+    check('GF7-scene-roundtrip-clean', !!td && td.panel && td.srp && !td.srfgBack && td.footer,
       JSON.stringify(td));
   }
   await page.evaluate(() => { window.__HZ_GLIST__ = {}; });

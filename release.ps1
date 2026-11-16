@@ -1,4 +1,4 @@
-# ============ Per-mod release pipeline (self-contained) ============
+﻿# ============ Per-mod release pipeline (self-contained) ============
 # Usage: .\release.ps1 [-Yes] [-PackageOnly]
 #   -PackageOnly  build+package+update.json only (suite publish uses this); no gate/tag/release
 # Version authority: csproj <Version> (author-edited); Plugin.cs const must match.

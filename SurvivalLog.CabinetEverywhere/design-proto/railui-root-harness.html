@@ -361,8 +361,8 @@ window.__HZ_READY__ = function () {
     };
     if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
     /* glist 恒开（2026-11-16 开关退役批）：五 glist 页 ctx.glistOn 恒 true（C# 无条件下发，
-       EnableGlist*/EnableDye/EnableHeater/EnableFuelGen 开关已删）；fgOn/heaterOn 契约字段
-       随开关退役不再下发（JS 消费已删）。__HZ_GLIST__ 钮保留为 harness 覆盖位 */
+       EnableGlist 系列、EnableDye、EnableHeater、EnableFuelGen 开关已删）；fgOn/heaterOn 契约
+       字段随开关退役不再下发（JS 消费已删）。__HZ_GLIST__ 钮保留为 harness 覆盖位 */
     if (key === 'DyePanel' || key === 'Heater' || key === 'FuelGenerator'
       || key === 'RatCage' || key === 'BrewPanel') ctx.glistOn = true;
     /* rat-brew glist：brewIco 页条件字段（C# BrewPanel 页推 [劣15505,普15504,烈15506] WebIcon）。

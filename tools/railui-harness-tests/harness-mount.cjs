@@ -33,6 +33,14 @@ await page.goto(BASE + '/railui-root-harness.html', { waitUntil: 'domcontentload
 await page.evaluate(() => {
   window.__CERAIL_SCENES_FOR_TEST__ = () => window.__CERAIL__.scenes;
 });
+/* glist 页恒开（2026-11-16 开关退役批）：尺寸/可见性断言按格子态量——预置视图记忆 grid，
+   列表态默认会把 rail 壳/页签区隐藏（本套不测列表态形态，glist 套件负责） */
+const GLIST_KEYS = ['DyePanel', 'Heater', 'FuelGenerator', 'RatCage', 'BrewPanel'];
+await page.evaluate((keys) => {
+  keys.forEach((k) => {
+    try { localStorage.setItem('srp_glist_view_' + k, 'grid'); } catch (e) { }
+  });
+}, GLIST_KEYS);
 
 function frameOf(key) {
   return page.frames().find((f) => f.url().includes('/fixtures/' + key + '.html'));
@@ -269,7 +277,13 @@ for (const key of TAB_PAGES) {
   }, tabsSel);
   check('tabs:slot:' + key, t.slotInRail && t.rowInSlot && t.rowIsReal,
     `官方页签栏(${tabsSel})在 #srTabs 槽内=${t.rowInSlot} 非桩=${t.rowIsReal} 槽在壳内=${t.slotInRail}`);
-  check('tabs:visible:' + key, t.rowVisible, `页签栏可见宽>0=${t.rowVisible}（A/D 宽度守卫判据）`);
+  if (GLIST_KEYS.indexOf(key) >= 0) {
+    /* glist 页（开关退役批）：格子态 srg-plain 按设计隐藏柜子页签区——只验页签栏真实入槽，
+       不验可见宽（页签形态已退役，可见宽断言只对页签页有意义） */
+    check('tabs:visible:' + key, true, 'glist 页页签区按设计隐藏（srg-plain）');
+  } else {
+    check('tabs:visible:' + key, t.rowVisible, `页签栏可见宽>0=${t.rowVisible}（A/D 宽度守卫判据）`);
+  }
   check('tabs:rendered:' + key, t.tabsInSlot >= 4, `官方 BagMsg 渲染落槽：槽内页签元素 ${t.tabsInSlot} 个（fakeTabs=5，pin 位占 1）`);
   check('tabs:no-selfrow:' + key, t.oldPins === 0, `自绘页签行已退役（.sr-pin=${t.oldPins}）`);
   /* 二十一批：rack 行视图宿主入壳 + DOM 序 + DroneHub 镜像 CSS 在场 */

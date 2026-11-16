@@ -3062,6 +3062,10 @@
        下一包 setData 才自愈；Trade 浏览期物品零变化无推送 → 骨架卡死（无人机交易页签栏全空）。
        噪声快速路径只属于 ensureMountedFrame（mount 的前置检查），mount 尾部不留任何早退。 */
     TM_KEY = ''; /* 全新弹层 DOM：管理弹层结构必重建（同 PIN_KEY 道理，key 短路只对同一棵节点有效） */
+    RENDER_SIG = ''; /* 全新 rail 必过一次全量渲染（2026-11-16 实机 Trade 首开三按钮失显 26s 根治）：
+       rail 重建（iframe 重载/官方宿主复活重挂）而数据未变时，内容签名与上次渲染完全相同 →
+       下方补渲染被 PERF-C3 签名门误判「已渲染」跳过 → 新 rail 停在初始骨架+按钮 hidden，
+       直到切页签/整理改变签名才活。作废签名=mount 尾渲必落地；同态幂等零额外成本 */
     if (store.ctx) render(); /* 数据先到、装配后到：补一次渲染（Vue 重建宿主复活重装配后立即恢复完整渲染，不再等下一包） */
     return true;
   }
@@ -4494,7 +4498,11 @@
       try {
         if (!el.rail) return; /* 心跳门=rail 在位（bagtabs 页 glist 恒开后也装 rail 壳，FG.active 门已随 srfg 删除）——首包丢弃自愈（终审 Important3） */
         var now = Date.now();
-        var hungry = !store.ctx || (lastSetAt > 0 && now - lastSetAt > 60000);
+        /* 2026-11-16 实机 13:39 实证补位：ctx 是**别页**的（开页沿推送丢失/空契约被弃后残留
+           上一页 ctx）同样算饥饿——非 null 陈旧 ctx 原判据静音 26s+（Trade 首开三按钮失显）。
+           页错配 ping 一次即重推本页真数据，自限：对上号即静音 */
+        var hungry = !store.ctx || (store.ctx.page && store.ctx.page !== st.scene)
+          || (lastSetAt > 0 && now - lastSetAt > 60000);
         if (!hungry) return;
         if (now - pingAt < 5000) return;
         pingAt = now;

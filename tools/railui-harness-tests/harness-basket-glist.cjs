@@ -337,21 +337,27 @@ function check(name, ok, detail) {
       JSON.stringify(r));
   }
 
-  /* ---- §S7 显式 glistOn=false（cfg 关真实路径=键在场值为假）：面板拆除零进场 ---- */
+  /* ---- §S7 退出篮子模式（开关退役批改写：cfg 关路径已删，产线唯一拆净路=篮子态结束）：
+       换回常规背包夹具 → 面板拆除零进场 ---- */
   {
     await pushBasket(undefined);
-    await page.evaluate(() => { window.__HZ_GLISTON__ = false; });
+    await page.evaluate(() => { window.__HZ_BASKETMODE__ = false; });
     await page.evaluate(() => window.__HZ_PUSH__('BackpackUI'));
+    await page.getByRole('button', { name: 'Cooking', exact: true }).click();
+    await page.waitForTimeout(200);
+    await page.getByRole('button', { name: 'BackpackUI', exact: true }).click(); /* 重开=换回常规夹具（show 内换 src） */
     await page.waitForTimeout(900);
     const s7 = await page.evaluate(() => {
       var d = window.__HZ_FRAME__('BackpackUI').contentDocument;
       return { panel: !!d.getElementById('srgPanel'), grid: d.querySelector('.bag-panel:not(.is-basket-panel) .grid-container') };
     });
     const gridShown = s7.grid && s7.grid.offsetParent !== null;
-    check('S7-glistOn=false拆除', !s7.panel && !!gridShown, JSON.stringify({ panel: s7.panel, gridShown: !!gridShown }));
-    await page.evaluate(() => { window.__HZ_GLISTON__ = undefined; });
-    await page.evaluate(() => window.__HZ_PUSH__('BackpackUI'));
-    await page.waitForTimeout(600);
+    check('S7-basket-exit-teardown', !s7.panel && !!gridShown, JSON.stringify({ panel: s7.panel, gridShown: !!gridShown }));
+    await page.evaluate(() => { window.__HZ_BASKETMODE__ = true; });
+    await page.getByRole('button', { name: 'Cooking', exact: true }).click();
+    await page.waitForTimeout(200);
+    await page.getByRole('button', { name: 'BackpackUI', exact: true }).click(); /* 复位=回篮子夹具 */
+    await page.waitForTimeout(900);
   }
 
   /* ---- §U 多次使用物品拆行分值（实机批改#1：维修零件场景——剩余次数异=分值异=拆行）---- */
