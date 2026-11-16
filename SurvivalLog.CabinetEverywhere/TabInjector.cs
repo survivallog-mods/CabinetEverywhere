@@ -15,6 +15,12 @@ namespace SurvivalLog.CabinetEverywhere;
 /// 轮询幂等：界面每次重推 tabs（打开/刷新）后若柜子页签缺失则自动补挂。
 /// 2026-11-16：老鼠笼/酿酒桶/颜料桶停注——三页已改造 glist（背包↔全局物品栏，作者令
 /// 「柜子页签是之前版本的方案，已被新方案替代」「必须启用」），数组留柜=隐形 A/D 切柜。
+/// 同日二次（作者实报停注后 A/D 仍可隐形切柜）：停注只删了本 mod 注入的柜子条目，官方
+/// Ac_RatCage/Brew/Dye_Open 自带 FridgeBags 收集（dump@136093/116737/125343）——原生数组
+/// =背包+冰箱，glist 列表态页签栏隐藏而 A/D 步进（数组邻居制）照常。终案=数组收窄到只剩
+/// 背包条目（数组=可见集收尾）：官方 RA_SwitchTabByKey 守卫 Count&gt;1 才切 → 单背包天然
+/// 拒切，键盘/点击双路堵死；格子态页签栏只剩「背包」（冰箱取物由 glist 全局物品栏覆盖）。
+/// active 已被切走（病态残留）先发官方 SwitchBag 切回背包，下轮再剪——渐近收敛无死锁。
 /// 2026-11-02 四轮（作者#2 定案：拖拽同步官方序）：
 ///   ① 注入集=HomeInstances（柜子 c）∪ AllContainers 的冰箱（f）——官方 CollectFridges
 ///      漏收的冷链（大容量冰柜类）补进官方数组，否则不在数组=步进锚缺失（三轮案例根因）；
@@ -41,6 +47,9 @@ internal static class TabInjector
 
     // interop 侧的 UI 类型（IsUIActive/GetStateByUI 参数为 Il2CppSystem.Type）
     private static readonly Il2CppSystem.Type CookingType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Cooking));
+    private static readonly Il2CppSystem.Type RatCageType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_RatCage));
+    private static readonly Il2CppSystem.Type BrewType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Brew));
+    private static readonly Il2CppSystem.Type DyeType = Il2CppInterop.Runtime.Il2CppType.From(typeof(WebUI_Dye));
 
     /// <summary>JS 场景键（pinOrder cmd 的 key）→ 会话键（cerail_pinorder.json 与 Sessions 共用）。
     /// v1.8.7 T3：全十页拖拽排序接入（bag×4=本类轮询、DroneHub/cart×3=TabGate、ToolTable=Pruner、
@@ -93,6 +102,7 @@ internal static class TabInjector
 
             if (CabinetEverywherePlugin.EnableCooking.Value)
                 PollCooking(rus);
+            PollGlistTrim(rus); /* glist 三页收窄不受 EnableCooking 门（页签退役收尾，恒跑） */
         }
         catch (Exception e)
         {
@@ -123,6 +133,9 @@ internal static class TabInjector
 
             if (CabinetEverywherePlugin.EnableCooking.Value && JustOpened(rus, CookingType, "cooking"))
                 PollCooking(rus);
+            if (JustOpened(rus, RatCageType, "ratcage")) PollGlistTrimOne(rus, RatCageType, "ratcage", "老鼠笼");
+            if (JustOpened(rus, BrewType, "brew")) PollGlistTrimOne(rus, BrewType, "brew", "酿酒桶");
+            if (JustOpened(rus, DyeType, "dye")) PollGlistTrimOne(rus, DyeType, "dye", "染料桶");
         }
         catch (Exception e)
         {
@@ -168,6 +181,78 @@ internal static class TabInjector
             });
         int removed = RemoveUndesired(s, tabs, t => t?.OwnerId?.Value ?? 0, ActiveOwner(st), view, ctx);
         if (added > 0 | removed > 0 | ApplyOrder(tabs, t => t?.OwnerId?.Value ?? 0, "cooking")) Repush(rus, CookingType);
+    }
+
+    // ---- glist 三页数组收窄（2026-11-16 页签退役收尾；类头注释二次段取证）----
+    private static void PollGlistTrim(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus)
+    {
+        PollGlistTrimOne(rus, RatCageType, "ratcage", "老鼠笼");
+        PollGlistTrimOne(rus, BrewType, "brew", "酿酒桶");
+        PollGlistTrimOne(rus, DyeType, "dye", "染料桶");
+    }
+
+    private static void PollGlistTrimOne(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus,
+        Il2CppSystem.Type t, string key, string uiName)
+    {
+        var s = Session(key);
+        bool active = SafeActive(rus, t);
+        if (!active) { s.WasActive = false; s.Pending = false; return; }
+        if (!s.WasActive) { s.WasActive = true; s.Injected.Clear(); }
+
+        bool built = true;
+        if (t == RatCageType)
+        {
+            var st = rus.GetStateByUI(t)?.TryCast<State_Web_RatCage>();
+            built = TrimToBagOnly(rus, t, uiName, st?.BagTabs, tab => tab?.OwnerId?.Value ?? 0,
+                st?.BagOwnerId?.Value ?? 0,
+                o => GameCore.HotUpdate.ReduxUI.Ac_RatCage_SwitchBag.SendAction("{\"ownerId\":" + o + "}"));
+        }
+        else if (t == BrewType)
+        {
+            var st = rus.GetStateByUI(t)?.TryCast<State_Web_Brew>();
+            built = TrimToBagOnly(rus, t, uiName, st?.BagTabs, tab => tab?.OwnerId?.Value ?? 0,
+                st?.BagOwnerId?.Value ?? 0,
+                o => GameCore.HotUpdate.ReduxUI.Ac_Brew_SwitchBag.SendAction("{\"ownerId\":" + o + "}"));
+        }
+        else
+        {
+            var st = rus.GetStateByUI(t)?.TryCast<State_Web_Dye>();
+            built = TrimToBagOnly(rus, t, uiName, st?.BagTabs, tab => tab?.OwnerId?.Value ?? 0,
+                st?.BagOwnerId?.Value ?? 0,
+                o => GameCore.HotUpdate.ReduxUI.Ac_Dye_SwitchBag.SendAction("{\"ownerId\":" + o + "}"));
+        }
+        s.Pending = !built; /* 官方数组未建——FastPoll 每帧续查，开页帧抢剪早于用户按键 */
+    }
+
+    /// <summary>数组收窄到只剩背包条目：A/D 官方步进（数组邻居制）与页签点击双路同灭（Count==1 官方拒切）。
+    /// active 非背包（病态残留）=先官方 SwitchBag 切回、下轮再剪（渐近收敛）；数组无背包条目=零动作（宁可不剪不错剪）。</summary>
+    private static bool TrimToBagOnly<T>(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type uiType,
+        string uiName, ObservableCollections.ObservableList<T> tabs, Func<T, long> ownerOf,
+        long activeOwner, Action<long> switchBag)
+    {
+        if (tabs == null || tabs.Count == 0) return false;
+        long bag = RailData.BagOwner();
+        if (bag == 0) return true;
+
+        bool hasBag = false;
+        for (int i = 0; i < tabs.Count && !hasBag; i++) hasBag = ownerOf(tabs[i]) == bag;
+        if (activeOwner != bag)
+        {
+            if (hasBag) switchBag(bag);
+            return true;
+        }
+
+        int removed = 0;
+        for (int i = tabs.Count - 1; i >= 0; i--)
+        {
+            if (ownerOf(tabs[i]) != bag) { try { tabs.RemoveAt(i); removed++; } catch { } }
+        }
+        if (removed > 0)
+        {
+            Repush(rus, uiType);
+            CabinetEverywherePlugin.Log.LogInfo($"[CabinetEverywhere] {uiName} 页签收窄：移出 {removed} 条（数组=背包单页，A/D 拒切）");
+        }
+        return true;
     }
 
     // ---- 公共 ----
