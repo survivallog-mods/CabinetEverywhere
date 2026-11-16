@@ -100,8 +100,8 @@ function check(name, ok, detail) {
   }, null);
   await pushCtx('DyePanel');
   a = await agg('DyePanel');
-  check('V2-uses-merge-split', a.rows.length === 2 && a.rows[0].total === 3 && a.rows[1].total === 1,
-    'rows=' + JSON.stringify(a.rows.map((r) => [r.name, r.total]))); /* 同名同 u3 并 x3；u1 拆 */
+  check('V2-uses-merge-split', a.rows.length === 2 && a.rows[0].total === 1 && a.rows[1].total === 3,
+    'rows=' + JSON.stringify(a.rows.map((r) => [r.name, r.total]))); /* 同名同 u3 并 x3；u1 拆；排序固定 glistTie=行 key 序（u1 键<u3 键，a66b0d5） */
 
   /* V3：料理=uses+attrSig 双维（同双并/任一异拆） */
   await setMockItems({
@@ -635,21 +635,22 @@ function check(name, ok, detail) {
     check('D4-dye-bag-replay', r4.r === true && sent4.length === 1 && sent4[0][1].itemId === 901 && sent4[0][1].rightClick === true && take4.length === 0,
       'r=' + r4.r + ' sent=' + JSON.stringify(sent4) + ' take=' + take4.length);
 
-    /* root harness 自带 take 命令模拟器（drain→搬运新叠 950xxx→回推）——右键后等模拟器走完
-       双跳全程：take 先行、原柜叠 id(915) 不直回放、回放的是推送落包后的背包新实例(≥950000) */
+    /* 柜源一步直达（a66b0d5 2026-11-14「不经背包中转」）：右键即发 slotFeed{owner,item,ev}，
+       C# 同拍拆件+直发官方动作——JS 零本地回放（旧 take+GLPEND 双跳断言随协议退役） */
     const r5 = await cmdSpy(() => wrapSent(async () => {
       const sel = await rowSelOf('咖啡'); if (!sel) return 'NOROW';
-      await d.click(sel, { button: 'right' }); await page.waitForTimeout(900);
+      await d.click(sel, { button: 'right' }); await page.waitForTimeout(60);
       const sentAfter = (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK');
       return { sentAfter };
     }));
-    const take5 = (r5.calls || []).filter((c) => c[0] === 'take').pop();
+    const sf5 = (r5.calls || []).filter((c) => c[0] === 'slotFeed').pop();
     const v5 = r5.r;
     const sent5 = v5 && v5.sentAfter ? v5.sentAfter : [];
-    check('D5-dye-take-first', v5 && !!take5 && take5[1].from === 900102 && take5[1].all === false && JSON.stringify(take5[1].ids) === '[915]' && sent5.every((c) => c[1].itemId !== 915),
-      'take=' + JSON.stringify(take5) + ' sentIds=' + JSON.stringify(sent5.map((c) => c[1].itemId)));
-    check('D5-dye-replay-after-push', sent5.length === 1 && sent5[0][1].itemId >= 950000 && sent5[0][1].rightClick === true,
-      'after=' + JSON.stringify(sent5));
+    const toast5 = await d.evaluate(() => { const e = document.getElementById('srgToast'); return e ? e.textContent : ''; }).catch(() => '');
+    check('D5-dye-slotfeed-cmd', v5 && !!sf5 && sf5[1].owner === 900102 && sf5[1].item === 915 && sf5[1].ev === 'item',
+      'slotFeed=' + JSON.stringify(sf5) + ' sentIds=' + JSON.stringify(sent5.map((c) => c[1].itemId)));
+    check('D5-dye-cmd-only', sent5.length === 0 && toast5.indexOf('已移 1 件') >= 0,
+      'sent=' + JSON.stringify(sent5) + ' toast=' + toast5);
   }
 
   /* ---- §交互 RB-D（rat-brew glist Task4）：feed='click'=dye 同款回放径——bag 源直回放（RatCage）/
@@ -692,35 +693,37 @@ function check(name, ok, detail) {
     }).then(fn).finally(() => d.evaluate(() => window.__HZ_SENT_RESTORE__()));
     const sentNow = () => d.evaluate(() => window.__HZ_SENT__ || []).catch(() => []);
     const rd = await cmdSpy(() => wrapSent(async () => {
-      await d.click('.srg-row', { button: 'right' }); await page.waitForTimeout(900);
+      await d.click('.srg-row', { button: 'right' }); await page.waitForTimeout(60);
       return { sentAfter: (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') };
     }));
     const v = rd.r && rd.r.sentAfter ? rd.r.sentAfter : [];
-    const takeD = (rd.calls || []).filter((c) => c[0] === 'take').pop();
-    check('RB-D2-brew-take-first', !!takeD && takeD[1].from === 900102 && takeD[1].all === false && JSON.stringify(takeD[1].ids) === '[915]' && v.every((c) => c[1].itemId !== 915),
-      'take=' + JSON.stringify(takeD) + ' sentIds=' + JSON.stringify(v.map((c) => c[1].itemId)));
-    check('RB-D3-brew-replay-after-push', v.length === 1 && v[0][1].itemId >= 950000 && v[0][1].rightClick === true,
+    const sfD = (rd.calls || []).filter((c) => c[0] === 'slotFeed').pop();
+    check('RB-D2-brew-slotfeed', !!sfD && sfD[1].owner === 900102 && sfD[1].item === 915 && sfD[1].ev === 'item' && v.every((c) => c[1].itemId !== 915),
+      'slotFeed=' + JSON.stringify(sfD) + ' sentIds=' + JSON.stringify(v.map((c) => c[1].itemId)));
+    check('RB-D3-brew-cmd-only', v.length === 0,
       'after=' + JSON.stringify(v));
 
-    /* RB-D4（终审 Important#1）：双跳**扩展键精确匹配**甄别同名异值变体——bag 已有同名另一档
-       （cfg2 s2=2=普），柜中右键 s2=30（烈）那行：take 落包新叠须保留 s1/s2（键 |38/30 命中）
-       回放新实例；若模拟器剥列→键 |null/null 失配→同名兜底命中 bag 首个 901（错误变体）。
-       修前 RED=回放 901，修后 GREEN=回放 ≥950000。 */
+    /* RB-D4（终审 Important#1 同目的·slotFeed 口径）：同名异值变体甄别——bag 已有同名另一档
+       （cfg2 s2=2=普），柜中右键 s2=30（烈）那行：slotFeed.item 必须传柜中烈变体叠 915
+       （C# 按 id 拆件=取错件即错变体）；误传 bag 的 901=旧键失配兜底同款病。 */
     await setMockItems({
       bag: [[901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2]],
       '900102': [[915, 2, 3, 36000, 0, 0, 1, 1, 0, 38, 30]]
     }, [900102]);
     await pushCtx('BrewPanel');
+    /* 等在途窗过（D2 刚右键同一叠 915：glInflightSweep 需 rev 变且 age>600 才清——
+       新叠同 id 复用在途登记键，窗口内右键=「上一件还在转移中」零命令） */
+    await page.waitForTimeout(650);
     const rowIdx = await d.evaluate(() => Array.from(document.querySelectorAll('.srg-row'))
       .findIndex((r) => r.textContent.indexOf('烈') >= 0 || (r.querySelector('.srg-badge') && /255,\s*112,\s*134/.test(getComputedStyle(r.querySelector('.srg-badge')).color))));
     const rd4 = rowIdx >= 0 ? await cmdSpy(() => wrapSent(async () => {
       await d.click('.srg-row:nth-child(' + (rowIdx + 1) + ')', { button: 'right' });
-      await page.waitForTimeout(900);
+      await page.waitForTimeout(60);
       return { sentAfter: (await sentNow()).filter((c) => c[0] === 'ITEM_CLICK') };
     })) : null;
-    const v4 = rd4 && rd4.r && rd4.r.sentAfter ? rd4.r.sentAfter : [];
-    check('RB-D4-brew-key-variant-replay', rowIdx >= 0 && v4.length === 1 && v4[0][1].itemId >= 950000 && v4[0][1].rightClick === true,
-      'rowIdx=' + rowIdx + ' after=' + JSON.stringify(v4) + '（甄别：键失配兜底会回放 bag 同名 901）');
+    const sf4 = rd4 ? (rd4.calls || []).filter((c) => c[0] === 'slotFeed').pop() : null;
+    check('RB-D4-brew-key-variant-slotfeed', rowIdx >= 0 && !!sf4 && sf4[1].owner === 900102 && sf4[1].item === 915 && sf4[1].ev === 'item',
+      'rowIdx=' + rowIdx + ' slotFeed=' + JSON.stringify(sf4) + '（甄别：须传柜中烈变体叠 915）');
   }
 
   /* ---- §装配 RB-E（rat-brew glist Task4）：rail 页宿主接管/格子态 srg-plain（页脚三件保留+
@@ -838,21 +841,21 @@ function check(name, ok, detail) {
     check('RB-F5-live-slotfull-food', sent5.length === 1 && sent5[0][1].rightClick === true,
       'sent=' + JSON.stringify(sent5) + '（笼位满=ITEM_CLICK 落食物仓）');
     await d.evaluate(() => { try { window.State.mice = []; } catch (e) { } });
-    /* F6 柜源双跳：活猎物 take+GLPEND ev=mouse 落包后 MOUSE_ADD 回放新实例 */
+    /* F6 柜源活猎物（slotFeed 口径）：JS 判定活体+笼位空 → ev='mouse'，C# 直发 MOUSE_ADD——
+       JS 零本地 MOUSE_ADD（旧 take+GLPEND ev=mouse 双跳断言随协议退役） */
     await setMockItems({ bag: [[901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2]], '900102': [[924, 23, 1, 36000, 0, 0, 1, 1, 0, 7, -4]] }, [900102]);
     await pushCtx('RatCage');
     await page.waitForTimeout(60);
     const f6 = await cmdSpy(() => wrapSent(async () => {
       const i = await rowIdxOf('小家鼠'); if (i < 0) return 'NOROW';
       await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' });
-      await page.waitForTimeout(900);
+      await page.waitForTimeout(60);
       return { sentAfter: (await sentNow()).filter((c) => c[0] === 'MOUSE_ADD') };
     }));
     const v6 = f6.r && f6.r.sentAfter ? f6.r.sentAfter : [];
-    const take6 = (f6.calls || []).filter((c) => c[0] === 'take').pop();
-    check('RB-F6-prey-take-doublehop', !!take6 && take6[1].from === 900102 && JSON.stringify(take6[1].ids) === '[924]' &&
-      v6.length === 1 && v6[0][1].itemId >= 950000,
-      'take=' + JSON.stringify(take6) + ' mouseAdd=' + JSON.stringify(v6));
+    const sf6 = (f6.calls || []).filter((c) => c[0] === 'slotFeed').pop();
+    check('RB-F6-prey-slotfeed-mouse', !!sf6 && sf6[1].owner === 900102 && sf6[1].item === 924 && sf6[1].ev === 'mouse' && v6.length === 0,
+      'slotFeed=' + JSON.stringify(sf6) + ' mouseAdd=' + JSON.stringify(v6));
     /* F7 切回食物 tab 右键回归 ITEM_CLICK */
     await d.evaluate(() => { Array.from(document.querySelectorAll('#srgChips .srg-chip')).find((c) => c.textContent === '食物').click(); });
     await page.waitForTimeout(60);
@@ -1162,7 +1165,7 @@ function check(name, ok, detail) {
     })());
     check('V4-bag-fefo', r4f.r !== 'NOROW' && r4f.r.length === 1 && r4f.r[0][1].itemId === 909,
       'sent=' + JSON.stringify(r4f.r));
-    /* V5：跨柜 FEFO——袋叠 tl=100 / 柜叠 tl=5 同键 → 右键走柜源 take{ids:[tl5]}，不回放 */
+    /* V5：跨柜 FEFO——袋叠 tl=100 / 柜叠 tl=5 同键 → 右键走柜源 slotFeed{item:tl5 叠}，JS 零回放 */
     await setMockItems({
       bag: [[901, 1, 3, 100, 0, 0, 1, 1, 0]],
       '900101': [[915, 1, 2, 5, 0, 0, 1, 1, 0]]
@@ -1184,9 +1187,9 @@ function check(name, ok, detail) {
       await d.evaluate(() => window.__HZ_SENT_RESTORE__());
       return { sent };
     })());
-    const take5 = (r5f.calls || []).filter((c) => c[0] === 'take').pop();
-    check('V5-crossctn-fefo-take', r5f.r !== 'NOROW' && !!take5 && take5[1].from === 900101 && JSON.stringify(take5[1].ids) === '[915]' && (r5f.r.sent.length === 0 || r5f.r.sent[0][1].itemId >= 950000),
-      'take=' + JSON.stringify(take5) + ' sent=' + r5f.r.sent.length);
+    const sf5f = (r5f.calls || []).filter((c) => c[0] === 'slotFeed').pop();
+    check('V5-crossctn-fefo-slotfeed', r5f.r !== 'NOROW' && !!sf5f && sf5f[1].owner === 900101 && sf5f[1].item === 915 && sf5f[1].ev === 'item' && r5f.r.sent.length === 0,
+      'slotFeed=' + JSON.stringify(sf5f) + ' sent=' + r5f.r.sent.length);
   }
   await page.evaluate(() => { window.__HZ_GLIST__ = {}; });
 
@@ -1282,7 +1285,7 @@ function check(name, ok, detail) {
     check('U3-nouses-nobadge', rowsInfo.every((r) => r.use !== null || r.name === '草药'), JSON.stringify(rowsInfo.filter((r) => r.use === null)));
     /* U4 悬停含使用次数行（v2.2.1：详情弹窗改道官方 ItemDetailPopup——左键半截改断言 idetail
        实例级命令；官方弹窗内容官方渲染非 harness 面） */
-    const u4r = await cmdSpy(() => d.evaluate(() => { const r = Array.from(document.querySelectorAll('.srg-row')).find((x) => x.querySelector('.srg-use')); if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } return true; }));
+    const u4r = await cmdSpy(() => d.evaluate(() => { const r = Array.from(document.querySelectorAll('.srg-row')).find((x) => { const u = x.querySelector('.srg-use'); return u && u.textContent === '3/5'; }); if (r) { r.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); r.click(); } return true; }));
     await page.waitForTimeout(50);
     const tipTxt = await d.evaluate(() => { const e = document.getElementById('srgTip'); return e ? e.textContent : ''; }).catch(() => '');
     const u4c = (u4r.calls || []).filter((c) => c[0] === 'idetail').pop();

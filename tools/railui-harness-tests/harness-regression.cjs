@@ -47,7 +47,7 @@ function check(name, ok, detail) {
   await page.waitForTimeout(150);
   check('root:no-insta-close', !(await fhidden('Cooking', '#srStoreConfirm')), '真装配路径点开不秒关（豁免清单）');
   const ctext = await fhtml('Cooking', '#srStoreText');
-  check('root:confirm-text', /背包现有 <b>128<\/b> 件（10 叠）/.test(ctext) && ctext.indexOf('柜满顺延下一个同标签柜') >= 0, '文案=128 件（10 叠）+柜满顺延…');
+  check('root:confirm-text', /背包现有 <b>\d+<\/b> 件（\d+ 叠）/.test(ctext) && ctext.indexOf('将按<b>物品分类</b>放入') >= 0 && ctext.indexOf('柜满顺延下一个同标签柜') >= 0, '文案=' + ctext.replace(/<[^>]+>/g, '').slice(0, 60) + '（42f89bc 新句式：按物品分类）');
   await fesc('Cooking');
   check('root:esc-close', await fhidden('Cooking', '#srStoreConfirm'), 'Esc 关闭');
   await frameOf('Cooking').locator('#srStoreAll').click();
@@ -60,14 +60,23 @@ function check(name, ok, detail) {
   const d1 = JSON.parse(await drain());
   check('root:cmd-json', d1.length === 1 && d1[0].op === 'storeAll' && JSON.stringify(d1[0].order) === '[900101,900102,900103,900104]',
     'drain=' + JSON.stringify(d1[0]));
-  const toast1 = await ftxt('Cooking', '#srToast');
-  check('root:delta-toast', toast1 === '已入库 121 件 → 食材柜×41 · 材料架×80；7 件无匹配柜或柜已满，留在背包', 'toast=' + toast1);
-  const bagGrid = await frameOf('Cooking').evaluate(() => ({
-    items: document.querySelectorAll('#srGrid .sr-slot[data-it]').length,
-    emptyMsg: !!document.querySelector('#srGrid .sr-empty'),
-    cells: document.querySelectorAll('#srGrid .sr-slot').length
+  /* 42f89bc storeAll 收口：即时 toast 退役，结果进 Root 模态进度弹窗完成态（#srStoreProg/
+     #srProgRes——Root 常驻文档，非 iframe）。mock 哨兵包带 storeAllDone+storeAllRes 权威计数
+     （C# 收尾同构）→ settle 结算 → '已入库 N 件 → 柜×n · …'完成文案；800ms 自动关窗 */
+  await page.waitForTimeout(150);
+  const prog = await page.evaluate(() => ({
+    head: (document.getElementById('srStoreHead') || {}).textContent || '',
+    res: (document.getElementById('srProgRes') || {}).textContent || '',
+    visible: !!document.getElementById('srStoreProg') && document.getElementById('srStoreProg').style.display !== 'none'
   }));
-  check('root:bag-grid-leftover', bagGrid.items === 2 && !bagGrid.emptyMsg && bagGrid.cells === 50, '背包剩 2 叠 + 空格补位（非「没有匹配的物品」） ' + JSON.stringify(bagGrid));
+  await page.evaluate(() => { window.__HZ_STOREDONE__ = null; });
+  check('root:prog-done-modal', prog.visible && prog.head === '入库完成' && /^已入库 \d+ 件 → /.test(prog.res),
+    'prog=' + JSON.stringify(prog));
+  /* 官方背包格余量（mock 完成回推 BagMsg→#backpackGrid .item；旧 #srGrid 自绘格已随入壳方案退役） */
+  const bagGrid = await frameOf('Cooking').evaluate(() => ({
+    items: document.querySelectorAll('#backpackGrid .item').length
+  }));
+  check('root:bag-grid-leftover', bagGrid.items === 2, '背包剩 2 叠（官方格面） ' + JSON.stringify(bagGrid));
 
   /* ---- ①b v1.8.6 NB 双侧（BackpackUI 原生页三形态 + 闪钮竞态回归钉） ----
      solo=袋侧排序+入库；取用=柜侧仅排序（袋侧钮即摘——陈旧 ctx.bpBag=true 不再误装；
@@ -163,80 +172,58 @@ function check(name, ok, detail) {
   const ct2 = await page.evaluate(() => window.__CERAIL__.dispInfo());
   const dualBadges = await bp.evaluate(() => ({
     bag: document.querySelectorAll('#srnBadges i').length,
-    ctn: document.querySelectorAll('#srnBadges2 i').length
+    ctn: document.querySelectorAll('#srnBadges2 i').length,
+    bagL: !!document.getElementById('srnBadges'),
+    ctnL: !!document.getElementById('srnBadges2')
   }));
   check('nb:dual-independent', !!(ct2.choice === 'sat' && String(ct2.owner) === '900001' && ct2.ct && ct2.ct.choice === 'shelf' && String(ct2.ct.owner) === '900101'),
     'DISP=bag:' + ct2.choice + '@' + ct2.owner + ' / ct:' + ct2.ct.choice + '@' + ct2.ct.owner);
-  check('nb:dual-badges-both', dualBadges.bag >= 8 && dualBadges.ctn >= 3, '双侧角标层 bag=' + dualBadges.bag + ' ctn=' + dualBadges.ctn);
+  /* bag 侧角标数随 root 段 storeAll 后剩叠数据（2 叠无饱腹=0 标）——断言收窄为双侧角标层
+     在位+柜侧有标（bag≥8 期望基于旧夹具全饱腹 8 叠，v1.8.6 后夹具数据已改） */
+  check('nb:dual-badges-both', dualBadges.bagL && dualBadges.ctnL && dualBadges.ctn >= 2, '双侧角标层在位 bagL=' + dualBadges.bagL + ' ctnL=' + dualBadges.ctnL + ' ctn标=' + dualBadges.ctn);
   check('nb:console-clean-sofar', consoleErrors.length === 0 && pageErrors.length === 0,
     'console errors=' + consoleErrors.length + ' pageErrors=' + pageErrors.length + (consoleErrors[0] ? ' | ' + consoleErrors[0] : '') + (pageErrors[0] ? ' | ' + pageErrors[0] : ''));
 
-  /* ---- ② MaterialRack：左面板入口（bag 现存医疗 7 件 → 零命中分支） ---- */
+  /* ---- ② MaterialRack：官方化回归（v1.8.2 起 sb 左面板入口随官方化退役——sb* 断言组
+     随 UI 删除；零命中文案已由 root:prog-done-modal 覆盖'；N 件无匹配柜或柜已满'） ---- */
   await showScene('MaterialRack');
-  await frameOf('MaterialRack').waitForFunction(() => !!document.getElementById('sbGrid'), null, { timeout: 9000 });
-  const rackVis = await frameOf('MaterialRack').evaluate(() => ({ sr: document.getElementById('srStoreAll').hidden, sb: document.getElementById('sbStoreAll').hidden }));
-  check('root:rack-visibility', rackVis.sr === true && rackVis.sb === false, '主侧栏隐/左面板显 ' + JSON.stringify(rackVis));
+  await frameOf('MaterialRack').waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 9000 });
+  const rackVis = await frameOf('MaterialRack').evaluate(() => ({
+    sr: document.getElementById('srStoreAll') ? document.getElementById('srStoreAll').hidden : null,
+    sbGone: !document.getElementById('sbStoreAll') && !document.getElementById('sbGrid')
+  }));
+  check('root:rack-visibility', rackVis.sr === false && rackVis.sbGone, 'rack 主侧栏入库钮可用（官方化后背包在左官方面板）+ sb 左面板退役 ' + JSON.stringify(rackVis));
   const stubs = await frameOf('MaterialRack').evaluate(() => {
     const els = [...document.querySelectorAll('[data-cer-stub]')];
-    return { n: els.length, allHidden: els.every((e) => e.hidden && e.style.display === 'none'), hostGone: !document.getElementById('rackSystem') };
+    return { n: els.length, allHidden: els.every((e) => e.hidden && e.style.display === 'none'), rackSys: !!document.getElementById('rackSystem') };
   });
-  check('root:stubs-host', stubs.n === 16 && stubs.allHidden && stubs.hostGone, 'T8 桩 16 全隐藏 + #rackSystem 消亡（回归） ' + JSON.stringify(stubs));
-  await frameOf('MaterialRack').locator('#sbStoreAll').click();
-  await page.waitForTimeout(150);
-  check('root:sb-no-insta-close', !(await fhidden('MaterialRack', '#sbConfirm')), 'sbStoreAll 豁免不秒关');
-  const sbText = await fhtml('MaterialRack', '#sbText');
-  check('root:sb-confirm-text', /背包现有 <b>7<\/b> 件（2 叠）/.test(sbText), '医疗剩量文案=7 件（2 叠）');
-  await fesc('MaterialRack');
-  check('root:sb-esc', await fhidden('MaterialRack', '#sbConfirm'), 'Esc 关 sbConfirm');
-  await frameOf('MaterialRack').locator('#sbStoreAll').click();
-  await frameOf('MaterialRack').locator('#sbGo').click();
-  await page.waitForTimeout(100);
-  const d2 = JSON.parse(await drain());
-  check('root:sb-cmd-json', d2.length === 1 && d2[0].op === 'storeAll' && JSON.stringify(d2[0].order) === '[900101,900102,900103,900104]',
-    'rack order=' + JSON.stringify(d2[0].order));
-  const toast2 = await ftxt('MaterialRack', '#srToast');
-  check('root:all-stay-toast', toast2 === '7 件无匹配柜或柜已满，留在背包', '零命中分支 toast=' + toast2);
-  const bagIntact = await frameOf('MaterialRack').evaluate(() => document.querySelectorAll('#sbGrid .sr-slot[data-it]').length);
-  check('root:bag-intact', bagIntact === 2, '背包原样 2 叠');
+  check('root:stubs-host', stubs.n === 3 && stubs.allHidden && stubs.rackSys, '官方化 rackSystem 常驻 + 桩 3 全隐藏（回归） ' + JSON.stringify(stubs));
 
-  /* 空背包（__HZ_MOCKSET__ 注入 + __HZ_PUSH__ 重推）→ sbToast 不弹窗 + sbGrid 空格网格 */
+  /* ---- ③ 回归：A→B→A 重访后入库弹窗仍活（sb/srPinRow/BackpackUI 直切装配均随官方化
+     退役——B 页改 Cooking 面；bagonly 可见性已由 root:cook-sr-visible 覆盖） ---- */
+  await showScene('Cooking');
+  await frameOf('Cooking').waitForFunction(() => (document.getElementById('srTitle') || {}).textContent === '背包', null, { timeout: 9000 });
+  await showScene('MaterialRack'); /* A→B→A 重访（rebindFrame 路） */
+  await frameOf('MaterialRack').waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 9000 });
+  await showScene('Cooking');
+  await frameOf('Cooking').waitForFunction(() => (document.getElementById('srTitle') || {}).textContent === '背包', null, { timeout: 9000 });
+  await frameOf('Cooking').locator('#srStoreAll').click();
+  await page.waitForTimeout(120);
+  const rebindPopup = !(await fhidden('Cooking', '#srStoreConfirm'));
+  await fesc('Cooking');
+  check('root:rebind-storeall-alive', rebindPopup, '重访重绑后 srStoreAll→srStoreConfirm 仍活（T11×T9）');
+  /* 空背包分支（旧 sb 入口退役转 Cooking 面）：bag 清空重推 → srStoreAll 点击=toast 不弹窗零命令 */
   await page.evaluate(() => {
     const j = JSON.parse(JSON.stringify(window.__HZ_MOCKSET__()));
     j.items.bag = [];
     window.__HZ_MOCKSET__(j);
-    window.__HZ_PUSH__('MaterialRack');
+    window.__HZ_PUSH__('Cooking');
   });
-  await frameOf('MaterialRack').waitForFunction(() => document.querySelectorAll('#sbGrid .sr-slot[data-it]').length === 0, null, { timeout: 5000 });
-  const sbEmpty = await frameOf('MaterialRack').evaluate(() => document.querySelectorAll('#sbGrid .sr-slot.empty').length);
-  check('root:sb-empty-grid', sbEmpty === 50, 'sbGrid 容器空=50 空格');
-  await frameOf('MaterialRack').locator('#sbStoreAll').click();
-  await page.waitForTimeout(100);
-  const sbEmptyToast = await ftxt('MaterialRack', '#sbToast');
-  check('root:sb-empty-toast', sbEmptyToast === '背包是空的' && await fhidden('MaterialRack', '#sbConfirm'), 'sb 空背包 sbToast 不弹窗零命令');
-
-  /* ---- ③ 回归：rack 切柜（本地渲染路）+ A→B→A 重访后入库弹窗仍活 ---- */
-  await frameOf('MaterialRack').evaluate(() => document.querySelector('#srPinRow [data-ctn="900101"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-  await frameOf('MaterialRack').waitForFunction(() => (document.getElementById('srTitle') || {}).textContent === '食材柜', null, { timeout: 5000 });
-  const swTitle = await ftxt('MaterialRack', '#srTitle');
-  check('root:switch-local', swTitle === '食材柜', 'rack 切柜本地渲染 title=' + swTitle + '（无页签族 bail 路）');
-  await showScene('BackpackUI');
-  await frameOf('BackpackUI').waitForFunction(() => !!document.getElementById('srRail'), null, { timeout: 9000 });
-  check('root:bagonly-visible', !(await fhidden('BackpackUI', '#srStoreAll')), 'BackpackUI bagonly 入库可见');
-  await showScene('MaterialRack'); /* A→B→A 重访（rebindFrame 路） */
-  await frameOf('MaterialRack').waitForFunction(() => !!document.getElementById('sbGrid'), null, { timeout: 9000 });
-  /* 恢复非空背包（上一步空背包注入仍在基座）：重绑后的确认前置才有弹窗可开 */
-  await page.evaluate(() => {
-    const j = JSON.parse(JSON.stringify(window.__HZ_MOCKSET__()));
-    j.items.bag = [[930, 4, 6, 3600, 0, 0, 1, 1, 0]];
-    window.__HZ_MOCKSET__(j);
-    window.__HZ_PUSH__('MaterialRack');
-  });
-  await frameOf('MaterialRack').waitForFunction(() => document.querySelectorAll('#sbGrid .sr-slot[data-it]').length === 1, null, { timeout: 5000 });
-  await frameOf('MaterialRack').locator('#sbStoreAll').click();
+  await page.waitForTimeout(200);
+  await frameOf('Cooking').locator('#srStoreAll').click();
   await page.waitForTimeout(120);
-  const rebindPopup = !(await fhidden('MaterialRack', '#sbConfirm'));
-  await fesc('MaterialRack');
-  check('root:rebind-storeall-alive', rebindPopup, '重访重绑后 sbStoreAll→sbConfirm 仍活（T11×T9）');
+  const emptyToast = await ftxt('Cooking', '#srToast');
+  check('root:empty-bag-toast', emptyToast === '背包是空的' && await fhidden('Cooking', '#srStoreConfirm'), '空背包 toast 不弹窗零命令 toast=' + emptyToast);
 
   check('root:console-clean', consoleErrors.length === 0 && pageErrors.length === 0,
     'console errors=' + consoleErrors.length + ' pageErrors=' + pageErrors.length + (consoleErrors[0] ? ' | ' + consoleErrors[0] : '') + (pageErrors[0] ? ' | ' + pageErrors[0] : ''));

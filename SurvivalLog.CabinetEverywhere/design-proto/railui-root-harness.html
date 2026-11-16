@@ -177,42 +177,79 @@ window.__HZ_READY__ = function () {
       if (current) pushCtx(current);
     }
     if (op === 'storeAll' && payload && Array.isArray(payload.order)) {
-      function cfgOf(j, cfgId) {
-        for (var i = 0; i < j.icfg.length; i++) if (j.icfg[i][0] === cfgId) return [j.icfg[i][5], j.icfg[i][7]];
-        return [0, ''];
-      }
-      function moveStack(j, stack, n, toArr, toCap) {
-        if (n <= 0) return false;
-        for (var b = 0; b < toArr.length; b++) if (toArr[b][1] === stack[1]) { toArr[b][2] += n; return true; }
-        if (toArr.length >= toCap) return false;
-        var cp = stack.slice(); cp[2] = n; cp[0] = 950000 + Math.floor(Math.random() * 40000) + 500000;
-        toArr.push(cp);
-        return true;
-      }
-      function tagNamesOfCtn(row) {
-        var names = [];
-        for (var ti = 4; ti < row.length; ti++) for (var tk = 0; tk < MOCK.lib.length; tk++) if (MOCK.lib[tk][0] === row[ti]) names.push(MOCK.lib[tk][1]);
-        return names;
-      }
-      var bagSnap = MOCK.items.bag.slice();
-      for (var si = 0; si < bagSnap.length; si++) {
-        var st4 = bagSnap[si], cfg4 = cfgOf(MOCK, st4[1]), placed = false;
-        for (var oi = 0; oi < payload.order.length && !placed; oi++) {
-          for (var ci = 0; ci < MOCK.ctn.length; ci++) {
-            if (MOCK.ctn[ci][0] !== payload.order[oi]) continue;
-            if (tagNamesOfCtn(MOCK.ctn[ci]).indexOf(cfg4[1]) < 0) break;
-            var toArr = MOCK.items[String(payload.order[oi])] || (MOCK.items[String(payload.order[oi])] = []);
-            if (moveStack(MOCK, st4, st4[2], toArr, MOCK.ctn[ci][3])) {
-              var bi = MOCK.items.bag.indexOf(st4);
-              if (bi >= 0) MOCK.items.bag.splice(bi, 1);
-              placed = true;
+      /* 异步化（时序保真）：真实 C#=drain 轮询取走命令再回推（至少晚一拍）；同步 mock 会在
+         armStoreAll 的 storeProgShow() 之前把哨兵包怼进 setData——settle 结算时 PROG 尚未创建
+         （storeProgDone 走 toast 分支=完成文案丢、进度弹窗后建永挂无 800ms 自动关）。
+         setTimeout 0 复刻"晚一拍"，cmdOut 返回后 storeProgShow 先落地。 */
+      var curSA = current, paySA = payload;
+      setTimeout(function () {
+        function cfgOf(j, cfgId) {
+          for (var i = 0; i < j.icfg.length; i++) if (j.icfg[i][0] === cfgId) return [j.icfg[i][5], j.icfg[i][7]];
+          return [0, ''];
+        }
+        function moveStack(j, stack, n, toArr, toCap) {
+          if (n <= 0) return false;
+          for (var b = 0; b < toArr.length; b++) if (toArr[b][1] === stack[1]) { toArr[b][2] += n; return true; }
+          if (toArr.length >= toCap) return false;
+          var cp = stack.slice(); cp[2] = n; cp[0] = 950000 + Math.floor(Math.random() * 40000) + 500000;
+          toArr.push(cp);
+          return true;
+        }
+        function tagNamesOfCtn(row) {
+          var names = [];
+          for (var ti = 4; ti < row.length; ti++) for (var tk = 0; tk < MOCK.lib.length; tk++) if (MOCK.lib[tk][0] === row[ti]) names.push(MOCK.lib[tk][1]);
+          return names;
+        }
+        var bagSnap = MOCK.items.bag.slice();
+        var pieces0 = {};
+        for (var oi0 = 0; oi0 < paySA.order.length; oi0++) {
+          var arr0 = MOCK.items[String(paySA.order[oi0])] || [];
+          var p0 = 0; for (var q0 = 0; q0 < arr0.length; q0++) p0 += arr0[q0][2] || 0;
+          pieces0[paySA.order[oi0]] = p0;
+        }
+        for (var si = 0; si < bagSnap.length; si++) {
+          var st4 = bagSnap[si], cfg4 = cfgOf(MOCK, st4[1]), placed = false;
+          for (var oi = 0; oi < paySA.order.length && !placed; oi++) {
+            for (var ci = 0; ci < MOCK.ctn.length; ci++) {
+              if (MOCK.ctn[ci][0] !== paySA.order[oi]) continue;
+              if (tagNamesOfCtn(MOCK.ctn[ci]).indexOf(cfg4[1]) < 0) break;
+              var toArr = MOCK.items[String(paySA.order[oi])] || (MOCK.items[String(paySA.order[oi])] = []);
+              if (moveStack(MOCK, st4, st4[2], toArr, MOCK.ctn[ci][3])) {
+                var bi = MOCK.items.bag.indexOf(st4);
+                if (bi >= 0) MOCK.items.bag.splice(bi, 1);
+                placed = true;
+              }
+              break;
             }
-            break;
           }
         }
-      }
-      log('mock C# 回推（storeAll 已生效）');
-      if (current) pushCtx(current);
+        /* 完成哨兵包保真（C# 收尾同构）：storeAllDone+storeAllRes=逐柜件数（order 序）+留背包
+           件数——settleXfer hold 门与'已入库 N 件 → …'完成文案的权威数据源（__HZ_STOREDONE__
+           覆盖位经 ctxFor 进包；断言侧消费后清 null 防污染后续场景） */
+        var cabsR = [], leftR = 0;
+        for (var oi1 = 0; oi1 < paySA.order.length; oi1++) {
+          var arr1 = MOCK.items[String(paySA.order[oi1])] || [];
+          var p1 = 0; for (var q1 = 0; q1 < arr1.length; q1++) p1 += arr1[q1][2] || 0;
+          var d1c = p1 - pieces0[paySA.order[oi1]];
+          if (d1c > 0) cabsR.push([paySA.order[oi1], d1c]);
+        }
+        for (var q2 = 0; q2 < MOCK.items.bag.length; q2++) leftR += MOCK.items.bag[q2][2] || 0;
+        window.__HZ_STOREDONE__ = { cabs: cabsR, left: leftR };
+        log('mock C# 回推（storeAll 已生效）');
+        if (curSA) pushCtx(curSA);
+        /* storeAll 完成后官方整包重推背包 BagMsg（真实 C# 任务收尾同构；bagtabs 族 feed/switchBag
+           两跳同款口径）——夹具官方背包格（#backpackGrid .item）随刷新，regression 入库余量断言面。
+           仅 Cooking 面（本断言消费方）。 */
+        if (curSA === 'Cooking') {
+          var jSA = JSON.parse(JSON.stringify(MOCK));
+          var icfgSA = {}; for (var sa = 0; sa < jSA.icfg.length; sa++) icfgSA[jSA.icfg[sa][0]] = jSA.icfg[sa];
+          window.__HZ_POST__(curSA, { type: 'WebUI_Cooking_BagMsg', data: {
+            bagOwnerId: MOCK.bag, bagCols: 10, bagRows: 6,
+            bagItems: MOCK.items.bag.map(function (r) { var ic = icfgSA[r[1]] || []; return { itemId: r[0], x: r[4], y: r[5], w: r[6] || 1, h: r[7] || 1, count: r[2], name: ic[1] || '', icon: ic[2] || '', burnable: false, burnValue: 0 }; }),
+            workbenchOwnerId: 0, workbenchCols: 6, workbenchRows: 4, workbenchItems: [] } });
+          log('mock C# 回推（storeAll 完成 BagMsg→官方背包格刷新 items=' + MOCK.items.bag.length + ' 叠）');
+        }
+      }, 0);
     }
     if (op === 'take' && payload && payload.from != null && Array.isArray(payload.ids)) {
       /* 终审建议-4（Review Focus 1 JS 侧落点）：take 就地 MOCK（C# OpTake 保真）——
@@ -360,6 +397,13 @@ window.__HZ_READY__ = function () {
       brewP1: window.__HZ_BREWP1__, brewP2: window.__HZ_BREWP2__
     };
     if (key === 'FuelGenerator') { ctx.view = 'fuel'; ctx.feedFail = window.__HZ_FEEDFAIL__ || ''; }
+    /* storeAll 完成哨兵（真实 C# 任务收尾包形状：ctx.storeAllDone+storeAllRes 权威计数——
+       settleXfer hold 门与完成文案都吃它）。__HZ_STOREDONE__ 覆盖位：drain 的 storeAll mock
+       算完置值，regression 断言后清 null */
+    if (window.__HZ_STOREDONE__) {
+      ctx.storeAllDone = true;
+      ctx.storeAllRes = window.__HZ_STOREDONE__;
+    }
     /* glist 恒开（2026-11-16 开关退役批）：五 glist 页 ctx.glistOn 恒 true（C# 无条件下发，
        EnableGlist 系列、EnableDye、EnableHeater、EnableFuelGen 开关已删）；fgOn/heaterOn 契约
        字段随开关退役不再下发（JS 消费已删）。__HZ_GLIST__ 钮保留为 harness 覆盖位 */
