@@ -5102,8 +5102,14 @@
       glistToast(f, '已放 1 件 ' + r.name + ' → 篮子（取自 ' + srcName + '）');
     } else if (pick.srcKey === 'bag') {
       /* v2.2.5 三单#2：官方路由逐字（RatCage.html onItemClick）——活猎物+笼位有空=MOUSE_ADD
-         入笼位；笼位满/死猎物=ITEM_CLICK rightClick 落食物仓（官方侧自校验飘字）；食物行同径 */
+         入笼位；笼位满/死猎物=ITEM_CLICK rightClick 落食物仓（官方侧自校验飘字）；食物行同径
+         2026-11-17 连点往返根治（实报：酿酒/染料快速点西瓜=过去又回来）：bag 源回放落地前
+         store.items 仍旧（A 仍在背包数组），第 2 发 FEFO 又挑 A——官方对已入槽实例的
+         ITEM_CLICK/MOUSE_ADD=「槽侧点击取回」语义，把 A 弹回背包。登记 GLINF（挑件自动
+         避开在途实例，同 fuel/basket/slotFeed 三路；rev 推进/600ms/2500ms 超时解锁健壮，
+         RB-F6 教训的是解锁时机而非登记本身）。背包仅剩在途一件时 pick=null → busy 文案。 */
       var livePreyBag = glistRowIsLivePrey(f, r) && glistRatSlotFree(f);
+      inf.ids[pick.id] = 1; inf.at = Date.now(); inf.rev = store.rev;
       if (livePreyBag) { glistMouseReplay(f, pick.id); glistToast(f, '已移 1 件 ' + r.name + ' → 笼位（取自 背包）'); }
       else { glistDyeReplay(f, pick.id); glistToast(f, '已送出 1 件 ' + r.name + ' → ' + D.target + '（取自 背包）'); }
     } else {

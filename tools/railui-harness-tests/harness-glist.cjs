@@ -833,6 +833,9 @@ function check(name, ok, detail) {
     check('RB-F4-live-slotfree-add', sent4.length === 1 && sent4[0][1].itemId === 923,
       'sent=' + JSON.stringify(sent4) + '（笼位 4 空=MOUSE_ADD）');
     await d.evaluate(() => { try { window.State.mice = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }]; } catch (e) { } });
+    /* 2026-11-17 bag 源在途登记（连点往返根治）随行：F4 的 923 在途（夹具无 Unity 无 rev 推进），
+       2500ms 超时解锁后再点（FD6 超时兜底同款）；实机 rev 推进 600ms 即解锁 */
+    await page.waitForTimeout(2600); await scan(); await page.waitForTimeout(80);
     const f5 = await cmdSpy(() => wrapSent(async () => {
       const i = await rowIdxOf('小家鼠'); if (i < 0) return 'NOROW';
       await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' }); await page.waitForTimeout(60); return true;
@@ -842,12 +845,15 @@ function check(name, ok, detail) {
       'sent=' + JSON.stringify(sent5) + '（笼位满=ITEM_CLICK 落食物仓）');
     await d.evaluate(() => { try { window.State.mice = []; } catch (e) { } });
     /* F6 柜源活猎物（slotFeed 口径）：JS 判定活体+笼位空 → ev='mouse'，C# 直发 MOUSE_ADD——
-       JS 零本地 MOUSE_ADD（旧 take+GLPEND ev=mouse 双跳断言随协议退役） */
+       JS 零本地 MOUSE_ADD（旧 take+GLPEND ev=mouse 双跳断言随协议退役）。
+       2026-11-17：行匹配精确到活体行（排「（死）」——老鼠 tab 先见序下死体行 901 可能在前，
+       indexOf('小家鼠') 会命中死体行走了 bag 回放路=slotFeed 不发） */
     await setMockItems({ bag: [[901, 2, 1, 0, 0, 0, 1, 1, 0, 38, 2]], '900102': [[924, 23, 1, 36000, 0, 0, 1, 1, 0, 7, -4]] }, [900102]);
     await pushCtx('RatCage');
     await page.waitForTimeout(60);
     const f6 = await cmdSpy(() => wrapSent(async () => {
-      const i = await rowIdxOf('小家鼠'); if (i < 0) return 'NOROW';
+      const i = await d.evaluate(() => Array.from(document.querySelectorAll('.srg-row')).findIndex((r) => r.textContent.indexOf('小家鼠') >= 0 && r.textContent.indexOf('（死）') < 0));
+      if (i < 0) return 'NOROW';
       await d.click('.srg-row:nth-child(' + (i + 1) + ')', { button: 'right' });
       await page.waitForTimeout(60);
       return { sentAfter: (await sentNow()).filter((c) => c[0] === 'MOUSE_ADD') };
