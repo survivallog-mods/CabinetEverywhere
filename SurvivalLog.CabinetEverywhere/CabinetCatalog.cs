@@ -87,7 +87,7 @@ internal static class CabinetCatalog
             // 配置层与运行时门槛（RefreshHomeInstances）同查双名单：cfg 默认值改了也盖不掉
             // 老配置文件里的旧值（BepInEx 已有键不重写）——只查 cfg 时 115002 堆肥箱经
             // CraftSourceInjector 进原生制作源白名单，工作台/粉碎机把它当柜子出页签（2026-11-16）
-            else if (excludeCfg.Contains(pair.Key)) want = false;
+            else if (excludeCfg.Contains(pair.Key) || NonStorageFurnitureIds.Contains(pair.Key)) want = false;
             else want = bagId > 0 && !coldChain && !excludeBag.Contains(bagId) && !NonStorageBagIds.Contains(bagId);
 
             if (want) result.Add(pair.Key);
@@ -96,6 +96,18 @@ internal static class CabinetCatalog
         ConfigIds = result;
         return result;
     }
+
+    /// <summary>非储物功能家具（家具级排除，与 cfg ExcludeFurnitureIds 默认名单同源同维护；游戏更新加新
+    /// 功能家具时两处同步）。代码兜底原因与 NonStorageBagIds 同款：BepInEx 老配置文件不重写默认值，
+    /// 默认名单后补的条目（如 66196 染料桶曾于 2026-10-17 补入）在老 cfg 上不生效——染料桶原料槽
+    /// 物品混进全局物品栏（2026-11-17 实报）。这些家具与普通柜共用包，BagId 级排除会误伤，只能家具级。</summary>
+    private static readonly HashSet<int> NonStorageFurnitureIds = new()
+    {
+        66196,                                    // 染料桶（与纸箱共用包）
+        330, 384, 389, 9126,                      // 材料堆四变体（角色专属）
+        313, 80033, 80164,                        // 自制工具台三变体（非储物同名）
+        1026, 42033,                              // 载具：自行车/旧SUV
+    };
 
     /// <summary>日志用：全部候选家具的 id/名称/BagId（含被默认排除的置物架提示）。</summary>
     /// <summary>
@@ -156,11 +168,14 @@ internal static class CabinetCatalog
                 // 廉价门槛（顺序即性能）：配置查包 bagId>0，且不在 cfg ExcludeBagIds（用户可调）与
                 // NonStorageBagIds（随游戏版本维护）任一名单——先滤掉绝大多数家具，再做地图判定
                 // （IsHomeMap 较重，且用严格相等短路——绝大多数家具就在主图上），最后才读其余字段。
+                // NonStorageFurnitureIds 家具级兜底（2026-11-17）：66196 染料桶与纸箱共用 BagId，
+                // BagId 级挡不住不误伤；老 cfg ExcludeFurnitureIds 缺条目时由代码名单兜住。
                 GameCore.HotUpdate.Config_Furniture cfg = null;
                 try { dict?.TryGetValue(cfgId, out cfg); } catch { }
                 int bagId = 0;
                 try { if (cfg != null) bagId = cfg.BagId; } catch { }
-                if (bagId <= 0 || excludeBagCfg.Contains(bagId) || NonStorageBagIds.Contains(bagId))
+                if (bagId <= 0 || excludeBagCfg.Contains(bagId) || NonStorageBagIds.Contains(bagId)
+                    || NonStorageFurnitureIds.Contains(cfgId))
                     continue;
 
                 int furnMap = 0;
