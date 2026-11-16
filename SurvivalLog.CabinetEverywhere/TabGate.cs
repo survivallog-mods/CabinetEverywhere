@@ -15,7 +15,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// 零弹回、零闪烁；拖物到页签（webui-tabdrop）同样原生。
 ///
 /// 视图谓词（JS viewAllows / ToolTablePruner.Allows 同语义合一，补 Kind 规则）：
-/// - Food：冰箱（kind 'f'）全显 + 任一标签落食物域（dim1-4）的柜子；
+/// - Food：冰箱（kind 'f'）全显 + 任一标签落食物域（dim1-4）的柜子 + 燃料标签柜（2026-11-16）；
 /// - Material：材料/工具标签柜 + 材料架显；冰箱藏；未打标签柜藏；
 /// - Browser：全显。v1.9.1 页脚筛选下拉回归（批改后=Trade/DroneHub 两页，本类收口；工作台撤钮）：
 ///   选中态 sel（"other"=未打标签/tagId=该标签柜，材料架补"材料"伪标签）由 SelMatch 接管
@@ -49,11 +49,12 @@ internal static class TabGate
 
     internal enum Verdict { Keep, Remove }
 
-    /// <summary>标签上下文（材料/工具标签 id + 食物域判定 + 下拉分类标签集）：标签库极小，每轮重建（pruner TagContext 同款）。</summary>
+    /// <summary>标签上下文（材料/工具/燃料标签 id + 食物域判定 + 下拉分类标签集）：标签库极小，每轮重建（pruner TagContext 同款）。</summary>
     internal sealed class TagCtx
     {
         public int MatTagId;
         public int ToolTagId;
+        public int FuelTagId;
         private HashSet<int> _food;
         private HashSet<int> _catTags;
 
@@ -81,6 +82,7 @@ internal static class TabGate
                         {
                             if (t.IconKey == "material") ctx.MatTagId = t.ID;
                             if (t.IconKey == "tool") ctx.ToolTagId = t.ID;
+                            if (t.IconKey == "fuel") ctx.FuelTagId = t.ID;
                             if (t.Dim >= 1 && t.Dim <= 4) food.Add(t.ID);
                             if (Array.IndexOf(CatIconKeys, t.IconKey) >= 0) cats.Add(t.ID);
                         }
@@ -98,7 +100,8 @@ internal static class TabGate
         public bool IsCat(int tagId) => _catTags != null && _catTags.Contains(tagId);
     }
 
-    /// <summary>容器实例判定（JS viewAllows 同语义；Food=冰箱全显+食物域柜、Material=材料/工具柜+架/冰箱藏、Browser 全显）。</summary>
+    /// <summary>容器实例判定（JS viewAllows 同语义；Food=冰箱全显+食物域柜+燃料柜、Material=材料/工具柜+架/冰箱藏、Browser 全显）。
+    /// Food 放行燃料柜（2026-11-16 作者令：燃气灶/燃料炉加燃料需在烹饪族界面可达燃料柜）。</summary>
     internal static Verdict JudgeInst(CabinetCatalog.ContainerInst inst, string view, TagCtx ctx)
     {
         if (inst == null || view == "Browser") return Verdict.Keep;
@@ -107,6 +110,7 @@ internal static class TabGate
             if (inst.Kind == 'f') return Verdict.Keep;
             foreach (var tid in inst.TagIds)
                 if (ctx.IsFood(tid)) return Verdict.Keep;
+            if (ctx.FuelTagId != 0 && Array.IndexOf(inst.TagIds, ctx.FuelTagId) >= 0) return Verdict.Keep;
             return Verdict.Remove;
         }
         if (view == "Material")

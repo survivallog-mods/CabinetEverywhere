@@ -546,7 +546,7 @@
      2026-11-01 缺陷单#2：机器页（plain 9 页）按 **v1.7.0 逐页语义**收窄（v1.8.3 全量容器
      上栏=「显示错误」根源——材料架/载具混进食品页、不可切柜占栏）：
        ① ctx.view（C# View_* cfg 同源）视图谓词（tagfilter viewAllows 移植）：
-          food=冰箱(kind f)全显 + 柜子/架子按食物域标签（dim1-4）；material=材料/工具标签柜
+          food=冰箱(kind f)全显 + 柜子/架子按食物域标签（dim1-4）+燃料标签柜（2026-11-16）；material=材料/工具标签柜
           +架子显、冰箱藏、无标签柜不进；browser=全显；
        ② TABS[scene] 成员过滤（官方页签数组缓存**已到**才启用）：tt/cart/cart0 索引族切换
           依赖官方数组下标（buildSwitchEvent indexOf），不在数组里的容器点了不切——
@@ -566,10 +566,18 @@
     }
     return [mat, tool];
   }
+  function fuelTagId() {
+    for (var i = 0; i < store.lib.length; i++) { var t = store.lib[i]; if (t && t.icon === 'fuel') return t.id; }
+    return 0;
+  }
   function viewAllowsCtn(c, view) {
     if (view === 'food') {
       if (c.kind === 'f') return true;
-      return matchesFoodTags(c.tags || []);
+      if (matchesFoodTags(c.tags || [])) return true;
+      /* 燃料柜放行（2026-11-16 作者令：燃气灶/燃料炉加燃料需烹饪族界面可达燃料柜；
+         C# TabGate.JudgeInst Food 分支同源） */
+      var ft = fuelTagId();
+      return !!ft && (c.tags || []).indexOf(ft) >= 0;
     }
     if (view === 'material') {
       if (c.kind === 'r') return true;
