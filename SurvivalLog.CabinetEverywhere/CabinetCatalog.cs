@@ -35,7 +35,7 @@ internal static class CabinetCatalog
     private static readonly HashSet<int> NonStorageBagIds = new()
     {
         5001, 5002, 5003, 5004, 5005, 5006, 5011, // 厨房电器：燃料炉/电烤箱/微波炉/燃气灶/榨汁机/咖啡机/电火锅
-        5007, 5008, 5009, 5014, 5015, 5017, 5020, 115002, 115004, // 机器功能槽/老鼠笼/粉碎机/口粮压制机/暖房工程台/堆肥箱/酿酒桶
+        5007, 5008, 5009, 5014, 5015, 5017, 5020, 115002, 115004, // 老鼠笼(5007小/5008中/5009大/5014超大型)/粉碎机(5015)/口粮压制机(5017)/暖房工程台(5020)/堆肥箱(115002，普通/中级/高级三变体共用)/酿酒桶(115004)
         3001, 1050, 1008, 1009, 1060, 1014, 10001, 10004, // 围栏/吊篮/无人机货舱/无人机中控台(2026-10-17 补，与 1008 同语义)/门/窗/床/垃圾桶
     };
 
@@ -84,8 +84,11 @@ internal static class CabinetCatalog
             bool coldChain = isElec && elecType == 1 && cold > 0f; // 与原生 CollectFridges 同判定
             bool want;
             if (includeCfg.Contains(pair.Key)) want = true;
+            // 配置层与运行时门槛（RefreshHomeInstances）同查双名单：cfg 默认值改了也盖不掉
+            // 老配置文件里的旧值（BepInEx 已有键不重写）——只查 cfg 时 115002 堆肥箱经
+            // CraftSourceInjector 进原生制作源白名单，工作台/粉碎机把它当柜子出页签（2026-11-16）
             else if (excludeCfg.Contains(pair.Key)) want = false;
-            else want = bagId > 0 && !coldChain && !excludeBag.Contains(bagId);
+            else want = bagId > 0 && !coldChain && !excludeBag.Contains(bagId) && !NonStorageBagIds.Contains(bagId);
 
             if (want) result.Add(pair.Key);
         }
