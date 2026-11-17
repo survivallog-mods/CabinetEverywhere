@@ -3285,8 +3285,19 @@
       var sibMax = 0;
       for (var i = 0; i < row.children.length; i++) {
         if (row.children[i] === wrap) continue;
-        var h = row.children[i].offsetHeight || 0;
-        if (h > sibMax) sibMax = h;
+        var ch = row.children[i];
+        var h = ch.offsetHeight || 0;
+        if (h <= sibMax) continue;
+        /* 离流兄弟不量（2026-11-17 新档首开引导弹跳根因）：Cooking 行内第 4 子
+           #cookGuideOverlay 为 absolute+height:100%（跟随 .cooking-system 行高）——
+           量进 sibMax 即「rail←overlay 高→行长高→overlay 跟高→下拍量更高」每拍
+           +96 自增死环，>2000 污染顶回 778 再重长=整页锯齿弹跳、引导卡点不中
+           （root-harness 实证 812→1932 十二拍）。等高契约只覆盖在流面板（官方
+           .cooking-system > * 仅覆盖 relative），absolute/fixed 一律跳过。 */
+        var sibPos = '';
+        try { sibPos = doc.defaultView.getComputedStyle(ch).position || ''; } catch (e) { }
+        if (sibPos === 'absolute' || sibPos === 'fixed') continue;
+        sibMax = h;
       }
       var wantH = Math.max(778, sibMax);
       /* 视口钳退役（2026-11-17 实机 CDP 取证定谳 _ingame-probe：右侧面板 css 高 957>视口 864
