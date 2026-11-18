@@ -564,8 +564,11 @@ img.cfx-dicon{width:14px;height:14px;object-fit:contain;margin-right:3px;vertica
   font-weight:600;line-height:11px;color:#fff;background:rgba(0,0,0,.72)}
 .cfx-med{font-size:10px;font-weight:600;color:#ef9a9a;white-space:nowrap}
 .cfx-cell-badge.cfx-t-d{display:none}
-/* 无该属性置灰（作者 2026-11-08 令：排序时无值物品置灰不显「-」；sr-brewdim 同视觉） */
-#srp #srBadgeLayer .sr-nodim,.srn-badges .sr-nodim{position:absolute;border-radius:4px;background:rgba(8,9,12,.60)}
+/* 无该属性置灰（作者 2026-11-08 令：排序时无值物品置灰不显「-」；sr-brewdim 同视觉；
+   2026-11-18 对齐 brewdim/dyedim 同规格（补内描边+pe:none）。NB 文档不注本表——
+   .srn-badges .sr-nodim 半条在此为死码，NB 侧同款规则在 page.js NB_STYLE 内联 */
+#srp #srBadgeLayer .sr-nodim,.srn-badges .sr-nodim{position:absolute;border-radius:4px;background:rgba(8,9,12,.60);
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.35);pointer-events:none}
 /* 实机批改十一批：回报条带换行到行下方（行=flex 横排，裸追加会挤到右侧） */
 .sup-row[data-cfx-bars]{flex-wrap:wrap}
 .sup-row[data-cfx-bars] .cfx-rewards{flex-basis:100%;width:100%;order:99;box-sizing:border-box}

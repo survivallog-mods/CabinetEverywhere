@@ -490,6 +490,7 @@
       s1: r[9] == null ? null : r[9], s2: r[10] == null ? null : r[10],
       s3: r[11] == null ? null : r[11], s4: r[12] == null ? null : r[12],
       tradeV: r[13] == null ? null : r[13], days: r[14] == null ? null : r[14],
+      exd: r.length > 18 && r[18] != null ? r[18] : null, /* 已过期天数（v3 尾列，仅过期行携带）：保质序负值角标/排序键用 */
       name: cfg.n, icon: cfg.icon, cat: cfg.cat, catId: cfg.catId, value: cfg.trade,
       sat: cfg.v1, mind: cfg.v2, en: cfg.v3, hp: cfg.v5,
       src: c ? nm(c) : '?', ctnId: ownerId
@@ -526,14 +527,18 @@
   }
   function catColor(catId) { return CAT_RING[((catId % CAT_RING.length) + CAT_RING.length) % CAT_RING.length]; }
   /* 保质键 → 角标文本（缺陷单#1：单位定案=游戏小时；days=排序键编码——-100001 腐败/
-     -100000 过期无计/(-100000,0) 过期计天(距腐败)/>0 剩余天；文本口径=ProjectCook DaysText） */
-  function daysText(k) {
+     -100000 过期无计/(-100000,0) 过期计天(距腐败)/>0 剩余天）。
+     2026-11-18 作者令：过期段改显**负值已过天数**（exd=r[18]，过期1天=-1天、10天=-10天；
+     距腐败正数旧显法与未过期无法区分，退役）；exd 缺席兜底「已过期」 */
+  function daysText(k, exd) {
     if (k == null) return '-';
     if (k <= -100001) return '已腐败';
-    if (k <= -100000) return '已过期';
-    var d = k < 0 ? k + 100000 : k;
-    if (d >= 1) return Math.floor(d) + '天';
-    return Math.max(0.1, Math.round(d * 10) / 10) + '天';
+    if (k < 0) {
+      if (exd == null) return '已过期';
+      return '-' + (exd >= 1 ? Math.floor(exd) : Math.max(0.1, Math.round(exd * 10) / 10)) + '天';
+    }
+    if (k >= 1) return Math.floor(k) + '天';
+    return Math.max(0.1, Math.round(k * 10) / 10) + '天';
   }
   function totalCap() {
     var s = BAG_CAP; /* 全库口径含背包（rail.js CTN 同款） */
@@ -1616,14 +1621,24 @@
         s3: row && row.s3 != null ? row.s3 : null,
         s4: row && row.s4 != null ? row.s4 : null,
         trade: row && row.tradeV != null ? row.tradeV : null,
-        days: row && row.days != null ? row.days : null /* 不腐/无保质=null → '-' + 排尾（C# DaysLeftOf：life<1 → null） */
+        days: row && row.days != null ? row.days : null, /* 不腐/无保质=null → 置灰 + 排尾（C# DaysLeftOf：life<1 → null） */
+        exd: row && row.exd != null ? row.exd : null /* 已过期天数（r[18]）：保质序 -N天 角标/排序键 */
       });
     }
     return out;
   }
+  /* 保质序键（作者 2026-11-18 令：过期在前→短在前→无保质垫后）：腐败=-100001 原键最前；
+     过期=-已过期天数（-10<-1，过期越久越前；exd 缺席回退 DaysKey 原值仍居过期段）；
+     未过期=剩余天数原值。配合 dispApply 的 shelf 升序得 -10、-1、2、5 序 */
+  function shelfKeyOf(row) {
+    if (!row || row.days == null) return null;
+    if (row.days <= -100001) return row.days;
+    if (row.days < 0) return row.exd != null ? -row.exd : row.days;
+    return row.days;
+  }
   function dispKeyOf(row, k) {
     if (!row) return null;
-    if (k === 'shelf') return row.days == null ? null : row.days;
+    if (k === 'shelf') return shelfKeyOf(row);
     if (k === 'value' || k === 'tvalue') return row.trade == null ? null : row.trade;
     var v = k === 'sat' ? row.s1 : k === 'mind' ? row.s2 : k === 'en' ? row.s3 : k === 'hp' ? row.s4 : null;
     return v == null ? null : v;
@@ -1669,7 +1684,9 @@
     var rows = dispRows(D, model);
     var pairs = [];
     for (var i = 0; i < rows.length; i++) pairs.push({ row: rows[i], it: model.items[i], i: i });
-    var key = D.choice, sign = -1; /* 全键降序=高在前（作者 2026-11-01 口径：保质期=保质长的在前；PC 快坏在前不采） */
+    /* 作者 2026-11-18 令（翻转 2026-11-01 口径）：保质期=升序（腐败→过期久→过期短→快到期→
+       无保质垫后+置灰，shelfKeyOf 编码）；其余键降序=高在前 */
+    var key = D.choice, sign = key === 'shelf' ? 1 : -1;
     pairs.sort(function (a, b) {
       var ka = dispKeyOf(a.row, key), kb = dispKeyOf(b.row, key);
       if (ka == null || kb == null) return ((ka == null ? 1 : 0) - (kb == null ? 1 : 0)) || (a.i - b.i);
@@ -2025,7 +2042,7 @@
      （String 自带负号，如 -2）、无属性/0=「-」；交易价值=金额不带符号、保质期=daysText
      文本——两键不进 +／- 规则（与列表模式 DYN 列同口径）。C# 契约 0 已折 null
      （RailSortMath「v!=0 才落值」），v===0 分支仅为防御旧契约/mock。 */
-    if (k === 'shelf') return daysText(it ? it.days : null);
+    if (k === 'shelf') return daysText(it ? it.days : null, it ? it.exd : null); /* 2026-11-18：过期段显 -N天（exd） */
     if (k === 'value' || k === 'tvalue') return it && it.trade != null ? String(it.trade) : '-';
     /* dye-pigment-sort：所排色点数=裸数字（不带 +/-，0/无=理论上已被角标层 suppress，此处防御） */
     if (String(k).indexOf('pig:') === 0) { var dpt = it ? pigPointsOf(it, parseInt(String(k).slice(4), 10)) : 0; return dpt > 0 ? String(dpt) : '-'; }
@@ -3693,6 +3710,7 @@
     + '#srnConfirm .srn-cf-go{border:1px solid rgba(240,176,60,.5);background:rgba(240,176,60,.14);color:#ffe1a0}'
     + '.srn-badges{position:absolute;inset:0;pointer-events:none;z-index:50}'
     + '.srn-badges i{position:absolute;transform:translateX(-100%);min-width:10px;padding:0 2px;border-radius:2px;background:rgba(0,0,0,.8);font-size:9.5px;line-height:12px;text-align:center;font-family:Consolas,monospace;font-style:normal;white-space:nowrap}'
+    + '.srn-badges .sr-nodim{position:absolute;border-radius:4px;background:rgba(8,9,12,.60);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}' /* 2026-11-18：NB 文档不注 railui.css（.srn-badges .sr-nodim 半条在此是死码）——保质序无保质置灰在袋/柜侧页不可见的根治 */
     + '#srnToast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:99;padding:7px 14px;border-radius:9px;background:rgba(20,24,36,.94);border:1px solid rgba(240,176,60,.5);color:#ffe1a0;font-size:12.5px}'
     + '#srnToast[hidden]{display:none !important}';
   /* 契约白名单柜判定（v1.8.6 装配判据核心）：命中=储物柜（取用/柜侧装配对象）。不能走
