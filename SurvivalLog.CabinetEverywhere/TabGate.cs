@@ -587,11 +587,13 @@ internal static class TabGate
 
     /// <summary>cart 族对账收拢（三页状态/条目类型互异、无公共 interop 基类——owner/下标存取
     /// 与 ActiveTab 读写全部经委托传入，调用点对具体类型解析重载）。T3 增序对齐
-    /// （pinOrder 文件无本页键=ApplyOrder 恒 false 零开销）。</summary>
+    /// （pinOrder 文件无本页键=ApplyOrder 恒 false 零开销）。
+    /// 2026-11-18：inject 可选注入回调（AddMissing 前置——先补全再对账/排序；null=不注入，
+    /// 粉碎机/温室保持 v1.7.0 原语义）。</summary>
     private static void ReconcileCart<T>(GameCore.HotUpdate.ReduxUI.ReduxUISystem rus, Il2CppSystem.Type uiType,
         ObservableCollections.ObservableList<T> tabs, string pageName, string pageKey, string view,
         Func<T, long> ownerOf, Action<T, int> setIndex,
-        Func<int> getActive, Action<int> setActive)
+        Func<int> getActive, Action<int> setActive, Func<int> inject = null)
     {
         int active = 0;
         try { active = getActive(); } catch { }
@@ -600,9 +602,11 @@ internal static class TabGate
         {
             try { activeOwner = ownerOf(tabs[active]); } catch { }
         }
+        int added = 0;
+        if (inject != null) { try { added = inject(); } catch (Exception e) { WarnOnce("cartinject_" + pageKey, pageName + "柜子注入异常: " + e.Message); } }
         int removed = RemoveUndesired(tabs, ownerOf, activeOwner, view, null, TagCtx.Build()); /* sel=null：cart 三页不在筛选下拉范围 */
         bool reordered = TabInjector.ApplyOrder(tabs, ownerOf, pageKey); /* T3 拖拽序 */
-        if (removed == 0 && !reordered) return;
+        if (added == 0 && removed == 0 && !reordered) return;
 
         for (int i = 0; i < tabs.Count; i++)
         {
@@ -661,7 +665,37 @@ internal static class TabGate
             ReconcileCart(rus, CompressorType, tabs, "口粮压制机", "compressor", ViewOf(CabinetEverywherePlugin.ViewCompressor),
                 OwnerOf, SetTabIndex,
                 () => { try { return st.ActiveTab?.Value ?? 0; } catch { return 0; } },
-                v => { try { st.ActiveTab.Value = v; } catch { } });
+                v => { try { st.ActiveTab.Value = v; } catch { } },
+                /* 2026-11-18 作者令：口粮压制机页签栏补挂食物域柜子（原生数组只有冰箱族——
+                   cart0 索引切换按数组下标走，数组没有=mod 侧栏 ∩ 门也不显示；注入后官方数组
+                   即含柜子，JS ∩ 门自然放行）。注入集=Injectable(view) 厨饪页口径**剔除燃料柜**
+                   （作者实机报障：Fuel 放行是 2026-11-16 烹饪族加燃料用的，本页不收燃料）；
+                   条目形状 dump@165602（Index/OwnerId/Name/IsNew/Locked，构造照 PollCooking）。 */
+                () =>
+                {
+                    var ctx = TagCtx.Build();
+                    var view = ViewOf(CabinetEverywherePlugin.ViewCompressor);
+                    IEnumerable<CabinetCatalog.ContainerInst> NoFuel()
+                    {
+                        foreach (var c in TabInjector.Injectable(view, ctx))
+                        {
+                            if (ctx.FuelTagId != 0 && Array.IndexOf(c.TagIds, ctx.FuelTagId) >= 0) continue;
+                            yield return c;
+                        }
+                    }
+                    return TabInjector.AddMissing("口粮压制机", TabInjector.Session("compressor"),
+                        TabInjector.CollectOwners(tabs, OwnerOf), tabs.Count, NoFuel(),
+                        (ownerId, name, index) =>
+                        {
+                            var tab = new Data_Web_Compressor_Tab();
+                            tab.Index = index;
+                            tab.OwnerId = new R3.ReactiveProperty<long>(ownerId);
+                            tab.Name = new R3.ReactiveProperty<string>(name);
+                            tab.IsNew = new R3.ReactiveProperty<bool>(false);
+                            tab.Locked = new R3.ReactiveProperty<bool>(false);
+                            tabs.Add(tab);
+                        });
+                });
         }
         catch (Exception e) { WarnOnce("compressor", "口粮压制机视图对账异常: " + e.Message); }
     }

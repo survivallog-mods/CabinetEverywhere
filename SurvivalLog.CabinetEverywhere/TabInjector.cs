@@ -36,7 +36,7 @@ namespace SurvivalLog.CabinetEverywhere;
 /// </summary>
 internal static class TabInjector
 {
-    private sealed class UiSession
+    internal sealed class UiSession
     {
         public readonly HashSet<long> Injected = new(); // 本轮会话已注入的 ownerId（防重复/防刷屏）
         public bool WasActive;
@@ -69,7 +69,7 @@ internal static class TabInjector
         _ => null,
     };
 
-    private static UiSession Session(string key) => Sessions.TryGetValue(key, out var s) ? s : Sessions[key] = new UiSession();
+    internal static UiSession Session(string key) => Sessions.TryGetValue(key, out var s) ? s : Sessions[key] = new UiSession();
 
     /// <summary>
     /// 注入集（四轮① + v1.8.7 T2 视图过滤）：柜子子集 HomeInstances + 全容器里的冰箱（f），
@@ -77,7 +77,7 @@ internal static class TabInjector
     /// tabs（CollectFridges 收录的）——have 集去重，实际补进的是漏收的（大容量冰柜类）。
     /// v1.8.9：T4 Browser 下拉选中（sel）随「全部柜子」按钮退役，注入集只按视图过滤。
     /// </summary>
-    private static IEnumerable<CabinetCatalog.ContainerInst> Injectable(string view, TabGate.TagCtx ctx)
+    internal static IEnumerable<CabinetCatalog.ContainerInst> Injectable(string view, TabGate.TagCtx ctx)
     {
         foreach (var c in CabinetCatalog.HomeInstances)
             if (TabGate.JudgeInst(c, view, ctx) == TabGate.Verdict.Keep) yield return c;
@@ -284,7 +284,7 @@ internal static class TabInjector
         return removed;
     }
 
-    private static HashSet<long> CollectOwners<T>(ObservableCollections.ObservableList<T> tabs, Func<T, long> getOwner)
+    internal static HashSet<long> CollectOwners<T>(ObservableCollections.ObservableList<T> tabs, Func<T, long> getOwner)
     {
         var set = new HashSet<long>();
         // interop 集合的 GetEnumerator 不可直接 foreach，走索引器
@@ -316,7 +316,7 @@ internal static class TabInjector
         catch (Exception e) { WarnOnce("repush", "UI 重推失败: " + e.Message); }
     }
 
-    private static int AddMissing(string uiName, UiSession s, HashSet<long> have, int currentCount,
+    internal static int AddMissing(string uiName, UiSession s, HashSet<long> have, int currentCount,
         IEnumerable<CabinetCatalog.ContainerInst> cabinets,
         Action<long, string, int> create)
     {

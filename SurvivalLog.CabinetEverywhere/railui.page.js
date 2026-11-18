@@ -228,7 +228,7 @@
     BrewPanel:       { host: "#bagTabs.closest('.col')",         family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* 第 1 个 .col（@BrewPanel.html @263）；injTabs 同 Cooking；tabs 同 Cooking */
     RatCage:         { host: "#bagTabs.closest('.panel')",       family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'backpackGrid', stubs: ['bagTitleText', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight', 'bagInfo', 'fillAllBtn', 'fillAllText', 'fillAllCnt', 'fillFoodBtn', 'fillFoodText', 'fillFoodCnt'] }, /* 第 1 个 .panel（@RatCage.html @251）；injTabs/tabs 同 Cooking */
     DyePanel:        { host: "#bagTabs.closest('.col.bag-col')", family: 'bag',      bagOnly: false, duo: false, injTabs: true, tabs: '#bagTabs', grid: 'bagGrid', stubs: ['bagTitleText', 'bagInfo', 'bagTabs', 'bagTabPinned', 'tabScrollLeft', 'bagTabsScroll', 'tabScrollRight'] }, /* @DyePanel.html @317；injTabs/tabs 同 Cooking */
-    Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, tabs: '#tabs', grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs）；tabs=#tabs 平铺无 pin */
+    Compressor:      { host: '.cart',     family: 'cart0', bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', stubs: ['tabs', 'weightSection', 'wfill', 'wtext', 'btnSortBag'] }, /* 唯一 .cart（@Compressor.html @440）；首抛 $('tabs')（renderTabs）。tabs=.left-tabs 整件（2026-11-18 修：新版官方页签栏=.left-tabs>tabScrollLeft+#tabs(.left-tabs-scroll)+tabScrollRight——旧配置 '#tabs' 只搬滚动内芯，<> 滚动钮=兄弟节点留在原位=缺失+active 滚动跟随失效；对齐 Shredder/Greenhouse 同款整件 reparent，#tabs 真件在场 stubs 'tabs' 自愈不建桩） */
     Shredder:        { host: '.cart',     family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', rack: '#cartRack', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightText', 'weightFill', 'btnSortBag', 'btnQuickLoad'] }, /* 唯一 .cart（@Shredder.html @304）；首抛 $('tabPinned')；tabs=.left-tabs（pin+scroll 整件）。rack=#cartRack 官方行视图宿主（二十一批入壳——材料架页签 renderCartView 直写两件 inline display，官方自切）；官方 renderCartView 另读 $('weightSection') 无守卫=桩保留 */
     GreenhouseBuild: { host: '#cartPane', family: 'cart',  bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'cartGrid', rack: '#cartRack', stubs: ['tabPinned', 'tabLeft', 'tabsScroll', 'tabRight', 'weightSection', 'weightLabel', 'weightText', 'weightFill', 'btnSort', 'btnQuick', 'sideHint'] }, /* section.pane.cart（@GreenhouseBuild.html @267）；首抛 $('tabPinned')；tabs 同 Shredder；rack 同 Shredder（二十一批入壳） */
     ToolTable:       { host: '.backpack-panel', inherit: '.backpack-panel', family: 'tt',    bagOnly: false, duo: false, tabs: '.left-tabs', grid: 'backpack-grid', rack: '#rack-rows', stubs: ['tab-bag', 'tabScrollLeft', 'leftTabsScroll', 'tab-drawer', 'tabScrollRight', 'cabinetGuide', 'cabinetGuideBtn', 'bagToolbar', 'btn-sort-bag', '.weight-text', '.weight-fill'] }, /* 内含 .left-tabs 页签列（@ToolTable.html @1947）；首抛 applyLeftGrid 的 getElementById('backpack-grid')（@2610 无守卫 .style 解引用）；类桩 '.weight-text'/'.weight-fill'=StatusMsg 无守卫解引用（markup L1968/L1971 仅类名无 id）；tabs=.left-tabs 整列（pin #tab-bag/滚动钮/#leftTabsScroll(含 #tab-drawer)/cabinetGuide；官方 document.querySelector('.left-tabs')/'.left-tabs .cabinet-tab' 同文档照常命中）。rack=#rack-rows 行视图宿主（二十一批入壳——cabinetTab.isRack 分支直写 grid/rack 两件 inline display）。inherit=groundDock 锚点+syncPanelHeight 面板高同步同源标记（表头【inherit】段） */
@@ -555,7 +555,9 @@
           +架子显、冰箱藏、无标签柜不进；browser=全显；
        ② TABS[scene] 成员过滤（官方页签数组缓存**已到**才启用）：tt/cart/cart0 索引族切换
           依赖官方数组下标（buildSwitchEvent indexOf），不在数组里的容器点了不切——
-          宁可不显示不错显（Compressor 原生页签=冰箱族，食物柜即被此条收敛=v1.7.0 原状）。
+          宁可不显示不错显。Compressor 2026-11-18 起官方数组由 C# 注入食物域柜子
+          （TabGate.PollCompressor→AddMissing，同烹饪页口径）——数组含柜=∩门自然放行，
+          「原生页签=冰箱族、食物柜被裁」的 v1.7.0 旧状退役。
      BackpackUI（browser 全量+原生页签）与 MaterialRack（rack 语义）不受影响。 */
   function matchesFoodTags(tags) {
     for (var i = 0; i < tags.length; i++) { var e = LIB[tags[i]]; if (e && e.dim >= 1 && e.dim <= 4) return true; }
@@ -2192,7 +2194,10 @@
         syncRailWidth();
         unlockGridSize(); DISP.settling = false; dispApply(DISP); applyBadges(); syncRailWidth();
       },
-      function () { /* 同步快路：物品增删（右键移入货仓/移入移出）→ 官方序帧绘制前重抹排序 */
+      function () { /* 同步快路：物品增删/整格重建（切柜异列数）→ 官方序帧绘制前重抹排序；
+         壳宽跟随同帧前置（2026-11-19 作者报障「切页签格区闪」帧采样实锤：格先变宽、#srp 壳
+         宽晚 50ms 防抖拍跟上=肉眼闪；量测兼容官方 sizeLock margin 未清，先量→清 margin→再量） */
+        try { syncRailWidth(); unlockGridSize(); syncRailWidth(); } catch (e) { }
         if (DISP.choice && DISP.choice !== 'official') dispApply(DISP);
       });
   }
@@ -4357,6 +4362,55 @@
     } catch (e) { }
   }
 
+  /* 口粮压制机背包钉栏（2026-11-18 作者实机报障「背包没有固定住」）：官方 cart 族页签栏
+     本有 pin 设计（Shredder/温室 .left-tabs 首位 #tabPinned 钉背包），Compressor 官方页
+     没做 pin——背包条目在 cartTabs 数组内参与横向滚动；mod 注入柜子后页签变多、<> 出现，
+     背包即被滚走（官方少量页签时 need=false 看不出）。修=对齐官方 cart 族布局：wrap 官方
+     renderTabs，渲染后把首项背包钮挪出滚动区钉到 .left-tabs 首位（[背包][<][滚动区][>]），
+     并补调官方 updateTabScrollButtons（背包出区后 need 按新宽度重算）。数组/下标/TAB_SWITCH/
+     active 滚动跟随全走官方原生（官方 onclick 闭包 i 随节点走，挪动不脱钩；钉出后
+     box.children[0]=第二项，官方重建才重排——wrap 每轮先官方后钉，时序自洽）。 */
+  function cpPinBagTab(doc) {
+    var lt = doc.querySelector('.left-tabs'), box = doc.getElementById('tabs');
+    if (!lt || !box || !box.children.length) return;
+    if (lt === box || !box.classList.contains('left-tabs-scroll')) return; /* 旧版基线（#tabs=.left-tabs 同节点平铺）：无外层可钉，no-op */
+    var win = doc.defaultView;
+    var bagTitle = win && win.i18nText ? String(win.i18nText.bagTitle || '') : '';
+    var first = box.children[0];
+    var firstIsBag = bagTitle ? (first.textContent === bagTitle) : true; /* i18n 不可达退化=视首项为背包（官方数组背包恒首） */
+    /* 既有钉件（.left-tabs 直下的 .left-tab——官方结构里 .left-tab 只会在 #tabs 内）。
+       2026-11-19 双背包根修：官方每包都 renderTabs 重建（滚动区再冒新背包钮），钉件在区外
+       不被清——**钉件在场≠健康**，必须看滚动区首项：非背包=重建间隙健康态 no-op；
+       又是背包=官方刚重建，摘旧钉后钉新（摘旧防双背包） */
+    var pinned = null;
+    for (var q = 0; q < lt.children.length; q++) {
+      var c0 = lt.children[q];
+      if (c0 !== box && c0.classList && c0.classList.contains('left-tab')) { pinned = c0; break; }
+    }
+    if (pinned && !firstIsBag) return; /* 健康态：钉件在场+滚动区首项=柜子 */
+    if (!firstIsBag) return; /* 首项非背包且无钉件：非背包位不钉（宁缺勿错） */
+    if (pinned) { try { lt.removeChild(pinned); } catch (e) { } }
+    var w = first.offsetWidth; /* 钉出前量宽：官方 keep/active 滚动按含背包的内容算，背包出区后
+       整体左移 w——不校准则切换页签瞬间页签行跳一格（作者实机报障「切换闪一下」） */
+    first.style.flexShrink = '0';
+    lt.insertBefore(first, lt.firstChild); /* .left-tabs 首位（tabScrollLeft 之前）=Shredder pin 位 */
+    if (box.scrollLeft > 0) { try { box.scrollLeft = Math.max(0, box.scrollLeft - w); } catch (e) { } }
+  }
+  function ensureCpPin(doc) {
+    var win = doc.defaultView;
+    if (!win) return;
+    if (win.__srCpPin) { try { cpPinBagTab(doc); } catch (e) { } return; } /* 已 wrap：只补钉（重建后首项回滚动区） */
+    if (typeof win.renderTabs !== 'function' || typeof win.updateTabScrollButtons !== 'function') return;
+    win.__srCpPin = true;
+    var orig = win.renderTabs;
+    win.renderTabs = function () {
+      var r = orig.apply(this, arguments);
+      try { cpPinBagTab(doc); } catch (e) { }
+      try { win.updateTabScrollButtons(); } catch (e) { }
+      return r;
+    };
+    cpPinBagTab(doc);
+  }
   function ensureTabsInSlot(f) {
     try {
       var sc = SCENES[f.key], doc = f.doc;
@@ -4364,6 +4418,7 @@
       var slot = doc.getElementById('srTabs');
       if (!slot) return;
       armTabScrollFollow(slot); /* 十二批：官方重建→rAF 回滚活动页签（真件在槽的早退路同样要布防） */
+      if (f.key === 'Compressor') ensureCpPin(doc); /* 背包钉栏（wrap 幂等，win.__srCpPin 守卫；iframe 重载=新 win 自然重挂） */
       /* Trade 零命中守卫先于槽检查（真栏在场即拆占位让位；占位在场=真栏必不在，槽检查早退无害） */
       if (f.key === 'Trade') tradeTabsGuard(f.key, doc, slot);
       if (slot.querySelector(sc.tabs)) return; /* 真件已在槽内（#bagTabs/.left-tabs/.bag-tabs 均容器内可查） */
