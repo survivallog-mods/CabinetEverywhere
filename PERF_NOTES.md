@@ -166,15 +166,13 @@ RA_DiscardAll(0x2B023A0)：只弹确认框（V1.1 窗误包在此——执行在
 
 ## A. 热点地图
 
-### Harmony 补丁（7 个）
+### Harmony 补丁（6 个，2026-11-19 移除 TradeTabKeyFix 双补丁：官方已修复交易页 A/D 切页签回归）
 
 | # | 目标方法 | 补丁类型 | 安装处 | 调用频率估计 |
 |---|---|---|---|---|
-| P1 | `HotKeyManager.Update` | prefix | TradeTabKeyFix.cs:64 | **每帧**（游戏主循环） |
 | P2 | `WebUILayer.SetKeyboardEnabled` | postfix | RailUi.cs:1006 | 官方键盘管理调用频率，**推测每帧级** |
 | P3 | `Reducer_Web_TradeUI.Refresh` | postfix | TradeFxRefreshHook.cs:32 | 交易页打开期间高频（官方 reducer 刷新路径） |
 | P4 | `Ac_ToolTable_RefreshBag.SendAction()` | prefix | RefreshCoalescer.cs:40 | 工作台制作时高频（实测 10 件=53 次），已被本补丁合并 |
-| P5 | `Reducer_Web_TradeUI.RA_SwitchTabByKey` | prefix+postfix | TradeTabKeyFix.cs:61 | 低频（A/D 按键） |
 | P6 | `ItemManager.StartBattle` | prefix | SizeGuardHook.cs:41 | 一次性（读档），但 prefix 内做全量重扫 |
 | P7 | `RefreshRecipeList` / `TryCreateItem` | prefix+postfix×2 | ToolTableProbe.cs:47,57 | 仅 `Debug.Verbose=true` 时安装；工作台打开期间高频 |
 
@@ -202,7 +200,6 @@ RA_DiscardAll(0x2B023A0)：只弹确认框（V1.1 窗误包在此——执行在
 | R1 | RailUi.cs:351-389, 397-407 | **SizeGuard 帧级写回拉锯**：官方异步表重载把包尺寸洗回原生 → mod 当帧写回 + `InvalidateBagSizeIndex` + `RefreshActivePage`（官方 Ra_RefreshBag 整页重建）+ ForceRepublish。若官方周期性洗表，则**每帧写回+每帧官方整页重建** | 洗表期间每帧 | 高（与两个症状均吻合） | 卡顿+掉帧；界面变形/错位（网格尺寸反复伸缩） | 日志 grep `SizeGuard：官方表重载`（60s 节流，出现即实锤）；再看其相邻时间戳密度 |
 | R2 | CabinetEverywherePlugin.cs:383 及全线 try/catch | **静默吞异常风暴**：Update 及各 FastPoll 大量空 catch。任一 interop 调用（GetStateByUI/TryCast/IsUIActive 等）若稳定抛异常，每帧构造+捕获数十次——IL2CPP 异常单次开销远高于 Mono（数百 μs 级），且零日志=完全不可见 | 每帧（若被触发） | 高（推测，但与「不知道原因」形态吻合） | 持续卡顿掉帧 | 临时在每个空 catch 加计数器打点；或 IL2CPP 下用 `--enable-console` 看首帧异常后统计；最快的验证：注释 Update 内逐段调用做二分 |
 | R3 | RailUi.cs:604-618 | **每帧 drain IPC**：rail 场景活跃时每帧向 WebView2 发 `ExecuteJavaScript("window.__CERAIL__&&...drain()")`。WebView2 ExecuteJavaScript 是跨进程 COM IPC，60 次/s 持续唤醒浏览器进程 | 每帧（场景打开时） | 高 | 开任一容器界面即卡、关界面缓解 | 临时跳过 FastPoll 内 drain（保留 0.5s Tick 路）对比帧率；CDP 观察脚本执行频率 |
-| R4 | TradeTabKeyFix.cs:64, 81-82 | **补丁挂在极高频方法**：`HotKeyManager.Update` prefix 每帧走 HarmonyX detour（IL2CPP 跳板+`__instance` 封送）+ 2 次 `Input.GetKeyDown` interop。官方已修复该 bug 时补丁仍在空转 | 每帧 | 中高 | 全局帧率下降（与界面开关无关） | `harmony.Unpatch` 该补丁对比帧率；游戏版本≥修复版可直接验证 |
 | R5 | RailUi.cs:895, 1012-1028 | **键盘门拉锯**：Dye/Heater/篮子等页打开期间每帧 `SetKeyboardEnabled(true)`（interop+过 P2 跳板），postfix 再读 getter；若官方每帧压关则形成每帧 2-3 次往返振荡 | 每帧（相关页打开时） | 中高（推测） | 相关界面打开时卡顿 | 日志看「glist 键盘标志位采样=」翻转频率（每 0.3s 一行，频繁翻转=振荡实锤）；对比开/关染料桶页帧率 |
 | R6 | RailData.cs:444-656, 958-1021; RailSortMath.cs:442 | **BuildJson 全量重推**：33 容器×数百物品行，每行 ~30 次 interop 属性读（含 RailSortMath.Of）+130KB StringBuilder+大量临时分配（GC），分片后 ~18 次 IPC；JS 侧同相位全量渲染。600ms 节流限制下，物品频繁变化期（整理/腐烂）仍连续触发 | 结构变化时（≥600ms 间隔） | 中高 | 「一键整理/入库后慢动作数秒」（代码注释已自证此症状） | 日志 grep `快通道重推`（>150ms 常驻打印）与 `命令泵本帧执行`；开 Verbose 看 payload KB |
 | R7 | TabGate.cs:692-795; TabInjector.cs:183; DrawerTabs/TradeTabs | **状态数组对账振荡残留风险**：四组件写同一批官方数组+Repush。PollTrade 注释记录过「移出 19 条无限重复+ping 风暴」自持振荡（已修根因，但同构路径仍在：源名单重写↔DrawerTabs 补挂↔TradeTabs 补挂互为对端） | 0.5s（若振荡） | 中 | 交易页打开时周期性卡顿+页签闪烁 | 日志 grep `视图=` `页签已补` `移出` 是否同秒重复出现 |
@@ -244,13 +241,13 @@ RA_DiscardAll(0x2B023A0)：只弹确认框（V1.1 窗误包在此——执行在
 
 - **R5 键盘门拉锯**：本会话门从未开过（`门开`/`门关`/`标志位采样`/`守卫拦截` 均 0 次）——需要打开染料桶/暖炉/篮子页才有数据；门未开期间每 30s 打 3 行遥测 Warning（59 轮/178 行，常驻噪声）。
 - R2 吞异常风暴：空 catch 吞掉的异常不会进日志，日志干净 ≠ 不存在，仍需插桩验证。
-- R3 每帧 drain IPC、R4 HotKeyManager.Update 跳板：需 A/B 对比。
+- R3 每帧 drain IPC：需 A/B 对比（R4 已随 TradeTabKeyFix 退役消除）。
 - R10 UI 变形：需复现现场 + 当时日志。
 
 ### 下一步优先级
 
 1. cfg 改 `Verbose = false` 重启对比帧率（零成本，可能直接解决探针+刷屏两项）。
-2. 仍卡 → 按注释 FastPoll 内 drain（R3）做 A/B → Update 链二分（R2）→ Unpatch TradeTabKeyFix（R4）。
+2. 仍卡 → 按注释 FastPoll 内 drain（R3）做 A/B → Update 链二分（R2）。
 
 ## 第 1 轮基线结果（2026-11-13，Verbose=false + 开关全默认 + 新 dll，~15.6 分钟 / 94 窗口）
 

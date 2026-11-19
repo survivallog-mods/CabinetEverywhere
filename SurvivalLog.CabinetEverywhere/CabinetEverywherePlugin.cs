@@ -221,9 +221,6 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // postfix 置事件位，AccessTicker.Update 每帧 TradeFx.FastPoll 消费——官方状态落定即推，
         // 治 0.5s 轮询落在官方 DOM 半渲染瞬间的竞态（BT ValuesOnRefresh 同款事件驱动）
         TradeFxRefreshHook.Install();
-        // 交易页 A/D 切页签补偿（官方 1.1.21271 回归兜底——postfix 挂 RA_SwitchTabByKey，
-        // 拒切时改发点击路 Ac_TradeUI_SwitchBag；官方修复即自动零动作退役。取证见 TradeTabKeyFix.cs）
-        TradeTabKeyFix.Install();
         // 交易页货舱物品表护持（2026-11-15）：筛选收窄页签后，给出柜物品表补回 TabItems
         // ——货舱栏物品不随筛选消失（postfix 挂官方 RebuildBagTabs；取证见 TabGate.cs 尾类）
         TradeTabItemsFix.Install();
