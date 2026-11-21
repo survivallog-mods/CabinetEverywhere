@@ -1,5 +1,6 @@
 {
   "mcSpec": 2,
+  "suite": true,
   "id": "com.local.survivallog.cabineteverywhere",
   "display": "更好的储物柜",
   "en": "CabinetEverywhere",
