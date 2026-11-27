@@ -40,7 +40,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
 {
     public const string Guid = "com.local.survivallog.cabineteverywhere";
     public const string Name = "更好的储物系统";  // 2026-11-07 作者令正式更名（原 CabinetEverywhere/储藏柜直达）；GUID/dll/cfg 文件名保持稳定=配置与套件管线零迁移
-    public const string Version = "2.2.4";
+    public const string Version = "2.2.5";
 
     internal static new ManualLogSource Log;
 
@@ -57,7 +57,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
     // [Rail] Enable 已退役（rail 恒开；绑定删除，老 cfg 残留值忽略）——同 Rail.UniformBagWidth 退役先例。
     // ==== 高度修改批（2026-11-07，spec 2026-11-07-bag-height-design §4.1）====
     // 宽度退役恒 12（Rail.UniformBagWidth 绑定删除，代码常量 RailUi.UniformWidth；老 cfg 残留值忽略）。
-    // 高度 15 键逐包/逐组，全部默认 0=恢复原生；上限内建逐包/逐档夹（背包 30/柜子 100，2026-11-14 作者令 MaxHeight 键退役不可改）；缩高=越界物品官方掉落（ShrinkDrop）。
+    // 高度 15 键逐包/逐组，全部默认 0=恢复原生；上限内建逐包/逐档夹（背包 100（面板仍 30）/柜子 100，2026-11-14 作者令 MaxHeight 键退役不可改；2026-11-27 背包硬上限 30→100）；缩高=越界物品官方掉落（ShrinkDrop）。
     // SettingChanged→RailUi.SizeDirty（帧内主线程重算=立即生效硬验收，勿直调 Il2Cpp）。
     internal static ConfigEntry<int> BackpackHeight;   // 背包链 9 包统一行数（天赋换包链必须同高，spec §7）
     internal static ConfigEntry<int> DrawerHeight;     // 工作台抽屉基准行数：三档=H/H+1/H+2（升级链保留）
@@ -101,7 +101,7 @@ public sealed class CabinetEverywherePlugin : BasePlugin
         // ==== 高度修改批 15 键（spec §4.1 逐字；全部默认 0=恢复原生；宽度恒 12 不可改——
         // 材料架 110009 例外：2026-11-12 作者令开高度，宽保持原生 20=每行件数，不进宽度统一）====
         BackpackHeight = Config.Bind("Rail", "BackpackHeight", 0,
-            "背包行数（普通背包/野外登山包/仓管背包，含天赋加行链共 9 包统一——换包逻辑要求链上同高；原生 18；0=恢复原生）。宽度恒 12。");
+            "背包行数（普通背包/野外登山包/仓管背包，含天赋加行链共 9 包统一——换包逻辑要求链上同高；原生 18；0=恢复原生；手改 cfg 最高 100（ModCenter 面板仍限 30；直接改文件须关游戏改、启动生效）；超过 30 行背包界面会明显变卡）。宽度恒 12。");
         HeightByBag = new Dictionary<int, ConfigEntry<int>>
         {
             { 110002, Config.Bind("Rail", "Height_110002", 0, "小型置物架行数（原生 8；0=恢复原生）。宽恒 12。") },

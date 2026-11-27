@@ -37,7 +37,7 @@
 
 ## 五、配置说明
 
-配置文件：`BepInEx\config\com.local.survivallog.cabineteverywhere.cfg`（游戏运行中改完保存，多数键约 5 秒内自动生效，无需重启；已打开的界面重开一次即恢复注入）。用记事本可改。
+配置文件：`BepInEx\config\com.local.survivallog.cabineteverywhere.cfg`（用记事本可改。经 ModCenter 面板改值约 5 秒内自动生效；直接改 cfg 文件须关游戏后改、下次启动生效；已打开的界面重开一次即恢复注入）。
 
 | 节.键 | 默认 | 说明（人话） |
 |---|---|---|
@@ -48,7 +48,7 @@
 | Access.EnableBrew | true | 酿酒桶界面注入柜子页签 |
 | Access.EnableDye | true | 颜料桶界面注入柜子页签 |
 | Access.IncludeFurnitureIds | （空） | 追加的家具 ConfigId（逗号分隔，强制加入） |
-| Rail.BackpackHeight 等 15 个高度键 | `0` | **高度修改（2026-11-07 起）**：背包/置物架四档/工具柜/冰箱四包/载具三包/工作台抽屉行数逐键可调；**材料架行数（2026-11-12 起，宽恒 20）**（0=恢复原生，上限内建夹持：背包 30/柜子 100；其余宽度恒 12 不可改）——完整清单见 SurvivalLog.CabinetEverywhere/README.md「五、配置说明」 |
+| Rail.BackpackHeight 等 15 个高度键 | `0` | **高度修改（2026-11-07 起）**：背包/置物架四档/工具柜/冰箱四包/载具三包/工作台抽屉行数逐键可调；**材料架行数（2026-11-12 起，宽恒 20）**（0=恢复原生，上限内建夹持：背包 100（ModCenter 面板仍限 30，手改 cfg 才可超过）、柜子 100；其余宽度恒 12 不可改）——完整清单见 SurvivalLog.CabinetEverywhere/README.md「五、配置说明」 |
 | Burden.BackpackBurden | `0` | **背包负重上限（公斤，2026-11-07 起）**：0=官方原值；范围 0~1000。背包共 9 包统一，天赋加成照常叠加；改后重新读档生效 |
 | Burden.CabinetUnburden | true | **柜子负重解放（2026-11-07 起，原独立 mod 并入）**：true=储物家具包负重清零（官方无负重语义，柜子界面负重条整行隐藏）；false=恢复官方原值。默认排除购物车/轿车；改后重进存档生效 |
 | ~~Rail.UniformBagWidth~~ | ~~`12`~~ | **已退役**：柜宽恒 12 列，行为不变（壳宽地板照常，值恒 12） |
