@@ -248,6 +248,10 @@
        页描述符；右侧炉体面板零改动。stubs：bagInfoBar=官方 BagMsg 无守卫解引用目标；
        bagPanelTitle/shiftHint=harness 遥测 id（官方无 id，夹具启动补——建桩保断言可达）。 */
     Heater:          { host: '.heater-system > .panel:not(.heater-panel)', bagtabs: true, family: 'ht', bagOnly: false, duo: false, grid: 'backpackGrid', stubs: ['bagInfoBar', 'bagPanelTitle', 'shiftHint'] },
+    /* 灾前商店页（2026-11-28）：官方 Vue 背包格内嵌页，native+shop=不装 rail、不装 mod 钮，只做格区滚动钳
+       （shopEnsure，见「灾前商店页背包格区滚动钳」段）。iframe id='Shop'（官方页 createWebUICore('Shop')，
+       ID_ALIAS 归一；未实机校准——frameKey 另按文档地址兜底归一） */
+    ShopUI:          { host: '.shop-container', family: 'shop', bagOnly: true, duo: false, native: true, shop: true, grid: '.grid-container', stubs: [] },
   };
 
   /* 侧栏 DOM 常量（每次切场景重建后重绑；控件入口各只有一个）——原样拷自 rail.js。 */
@@ -1525,7 +1529,7 @@
   function dispFrame() {
     for (var i = 0; i < FRAMES.length; i++) {
       var f = FRAMES[i];
-      if (f && f.el && f.doc && frameVisible(f.el)) return f;
+      if (f && f.el && f.doc && frameVisible(f.el) && !(SCENES[f.key] && SCENES[f.key].shop)) return f; /* shop 页无 DISP 模型，不占可见帧名额 */
     }
     return null;
   }
@@ -3543,13 +3547,16 @@
         body 噪声在 O(1) 检查后早退，比逐 record 子树比对更不会漏跨容器重建）。
      harness 兼容：旧 railui-harness.html 无 #iframe-container → 扫描早退，mount(document,
      key) 直调路径不变；root harness（railui-root-harness.html）与游戏同走本循环。 */
-  var ID_ALIAS = { Backpack: 'BackpackUI' }; /* findings §6：Backpack 页 iframe id 静态默认 'Backpack'（SCENES 键=BackpackUI），实装后 T8 校准 */
+  var ID_ALIAS = { Backpack: 'BackpackUI', Shop: 'ShopUI' }; /* findings §6：Backpack 页 iframe id 静态默认 'Backpack'（SCENES 键=BackpackUI），实装后 T8 校准；Shop=灾前商店页（官方页 createWebUICore('Shop')→PAGE_READY 按此 id 找 iframe，故 iframe id='Shop' 非 'ShopUI'；frameKey 另按文档地址兜底） */
   var FRAMES = [];                            /* { el, key, doc, mo }——tagfilter S.frames 同构 */
   var MOUNT_LOGGED = {};                      /* 场景键 → 已打首装日志（iframe id 校准点） */
 
   function frameKey(el) {
     if (SCENES[el.id]) return el.id;
-    return ID_ALIAS[el.id] || null;
+    var k = ID_ALIAS[el.id];
+    if (k) return k;
+    if (/\/ShopUI\.html/.test(el.src || '')) return 'ShopUI'; /* 商店页 iframe id 未实机校准：按文档地址兜底归一 */
+    return null;
   }
   function findFrame(el) {
     for (var i = 0; i < FRAMES.length; i++) if (FRAMES[i].el === el) return FRAMES[i];
@@ -4080,6 +4087,185 @@
       }
     } catch (e) { }
   }
+  /* ================= 灾前商店页（ShopUI）背包格区滚动钳（2026-11-28 作者实报「灾前打开商店界面，背包
+     滚动条未生效，导致背包超出屏幕之外」） =================
+     根因：商店页是 BackpackUI 之外唯一内嵌官方 Vue 背包格的页面（.grid-wrapper>.grid-container），
+     此前不在 SCENES=mod 零接管；官方对背包格零高度钳（body/#app 双层 flex 垂直居中，.left-slot
+     整列高=格全高+购物车面板）——背包行数一经调高即溢出视口上下各半：上半格负向溢出永久不可达、
+     右货架被官方 syncSlotHeight「货架中线对齐格内容中线」的 margin-top 推到屏外、结账面板沉底，
+     只剩文档根滚动条贴屏幕最右缘（实机 BackpackHeight=100：slot 5881px、货架 margin-top 2640px；
+     原生 18 行 1289px 在 864 高视口同样放不下）。
+     修=BackpackUI 原生页同款格区滚动视窗（NATIVE_BP_CSS 四规则同值）+ 钳后跟校，全在 iframe 文档内：
+     ① 滚动器=官方父层 .grid-wrapper（格本体自滚会让官方拖拽坐标的格 rect 变裁剪窗——v1.8.13 同案）；
+        max-height=min(560px, 视口高−非格 chrome−24)：本页整列垂直居中于视口，定值帽在 864 高视口
+        只余 11px、再矮即根溢出——CSS 变量 --sr-shop-cap 由 tick 按实测 chrome 写；
+     ② 官方 syncSlotHeight 每轮之后的四项内联（slot.height/column.top/slot.marginTop/right.marginTop）
+        按「钳后可见高」重推：官方同式里 rows*CELL→min(rows*CELL, cap)，后备箱页签同算——两页签都
+        不超帽时逐字坍缩回官方原值=零写零扰动（nbTabAlignSettle 同款观察器+0.5px 幂等写）；
+     ③ 格 getBoundingClientRect 改报可见窗（上下夹到 wrapper；横向/内容原点不动）：官方 runShopHover
+        的 outside=「预购商品拖出背包格松手=取消购买」——滚过后格内容矩形上下都伸出可见窗，按内容
+        矩形判=拖到标题/结账面板上松手不算出格。连带：官方光标格 cc/cr 按 rect.top 算=相对可见窗的
+        行 → 包 window.planBagDrop 换回内容坐标真光标，回包 plan.cursor 换存取器吃掉官方回写的错行
+        （DRAG_ITEM 的 cursorRow 回正）；
+     ④ 拖拽中的物品 position:fixed（margin 吃格内容原点变量）：滚动器裁剪会让拖出格区的物品在视窗
+        边消失，官方「物品跟手到格外」的取消手势观感靠它保留；
+     ⑤ 恒显滚动指示轨（sbMakeIndicator fixed 模式，袋侧同色白 32%）。 */
+  var SHOP_CAP = 560; /* 格区视窗帽上限（BackpackUI 原生页 NATIVE_BP_CSS 同值） */
+  var SHOP_VER = '1';
+  var SHOP_W = { writes: 0 };
+  var SHOP_CSS = ''
+    + '.left-panel>.grid-wrapper{max-height:var(--sr-shop-cap,560px);overflow-y:scroll;scrollbar-gutter:stable;box-sizing:content-box;padding-right:4px;overscroll-behavior:contain;width:max-content;margin-left:auto;margin-right:auto;align-items:flex-start}'
+    + '.left-panel>.grid-wrapper::-webkit-scrollbar{width:8px}'
+    + '.left-panel>.grid-wrapper::-webkit-scrollbar-track{background:transparent}'
+    + '.left-panel>.grid-wrapper::-webkit-scrollbar-thumb{background:transparent}'
+    + '.left-panel .grid-container>.item.dragging{position:fixed;margin-left:var(--sr-shop-ox,0px);margin-top:var(--sr-shop-oy,0px)}';
+  function shopOrigin(doc) { /* 格内容原点（视口 px）→ 拖拽幽灵 fixed 定位的 margin 变量；差>0.5px 才写 */
+    var S = doc.__srShop;
+    if (!S || !S.grid || !S.grid.isConnected) return;
+    var r = S.rc.call(S.grid), root = doc.documentElement;
+    if (Math.abs((S.ox || 0) - r.left) > 0.5) { S.ox = r.left; root.style.setProperty('--sr-shop-ox', r.left + 'px'); }
+    if (Math.abs((S.oy || 0) - r.top) > 0.5) { S.oy = r.top; root.style.setProperty('--sr-shop-oy', r.top + 'px'); }
+  }
+  function shopCursor(doc) { /* 拖拽光标所在格（内容坐标）：官方 cc/cr 相对可见窗，滚过后偏行 */
+    var S = doc.__srShop;
+    if (!S || !S.grid || !S.cell || S.mx == null) return null;
+    var su = nbVueSu(doc), ds = su && su.dragState;
+    if (!ds || !ds.dragging || !ds.movedEnough) return null;
+    var r = S.rc.call(S.grid), z = parseFloat(doc.defaultView.getComputedStyle(doc.body).zoom) || 1;
+    return { c: Math.floor(((S.mx - r.left) / z - 3) / S.cell), r: Math.floor(((S.my - r.top) / z - 3) / S.cell) };
+  }
+  function shopAlignTick(doc) {
+    try {
+      var S = doc.__srShop;
+      if (!S || !S.grid || !S.wrap) return 0;
+      var su = nbVueSu(doc), bag = su && su.bag, curTab = su ? refVal(su.curTab) : null;
+      if (!bag || curTab == null) return 0;
+      var panel = doc.querySelector('.left-panel'), slot = doc.querySelector('.left-slot'), column = doc.querySelector('.left-column');
+      var right = doc.querySelector('.right-panel'), list = doc.querySelector('.shop-list');
+      if (!panel || !slot || !column || !right || !list) return 0;
+      var wrap = S.wrap, grid = S.grid, win = doc.defaultView;
+      if (!win) return 0;
+      var cols = curTab === 1 ? +bag.trunkGridCols : +bag.gridCols, gw = parseFloat(grid.style.width);
+      var cell = (cols > 0 && isFinite(gw) && gw > 0) ? gw / cols : 56;
+      S.cell = cell;
+      var cRect = column.getBoundingClientRect(), wRect = wrap.getBoundingClientRect();
+      if (curTab === 0) {
+        var wrow = panel.querySelector('.info-row');
+        if (wrow) { var wbx = wRect.top - wrow.getBoundingClientRect().top; if (wbx > 0) S.wbh = wbx; }
+      }
+      var wbh = S.wbh || 0, h = column.offsetHeight;
+      if (!h) return 0;
+      /* 帽随视口收缩：非格 chrome=整列高−格视窗高（与帽无关=无反馈环）；取两页签 chrome 的历史最大
+         （后备箱页签无负重块 chrome 偏小——按当页签量会放大帽，回背包页签时 slot 高跳一拍） */
+      var chrome = h - wrap.offsetHeight;
+      if (bag.hasTrunkTab && curTab === 1) chrome += wbh;
+      if (!(S.chrome >= chrome)) S.chrome = chrome;
+      var cap = Math.min(SHOP_CAP, Math.floor(win.innerHeight - S.chrome - 24));
+      if (!(cap >= cell)) cap = cell;
+      if (cap !== S.cap) {
+        S.cap = cap;
+        doc.documentElement.style.setProperty('--sr-shop-cap', cap + 'px');
+        h = column.offsetHeight; cRect = column.getBoundingClientRect(); wRect = wrap.getBoundingClientRect();
+      }
+      var visOf = function (tab) { return Math.min((tab === 1 ? +bag.trunkGridRows : +bag.gridRows) * cell, cap); };
+      var topBase = wRect.top - cRect.top - (curTab === 0 ? wbh : 0);
+      var botPart = h - (wRect.top - cRect.top) - visOf(curTab);
+      var extraOf = function (tab) { return tab === 0 ? wbh : 0; };
+      var heightOf = function (tab) { return topBase + extraOf(tab) + visOf(tab) + botPart; };
+      var midOf = function (tab) { return topBase + extraOf(tab) + visOf(tab) / 2; };
+      var tallTab = (bag.hasTrunkTab && heightOf(1) > heightOf(0)) ? 1 : 0;
+      var anchorMid = midOf(tallTab);
+      var lRect = list.getBoundingClientRect(), rRect = right.getBoundingClientRect();
+      var delta = lRect.top + lRect.height / 2 - rRect.top - anchorMid;
+      var want = [[slot, 'height', heightOf(tallTab)], [column, 'top', anchorMid - midOf(curTab)],
+        [slot, 'marginTop', Math.max(0, delta)], [right, 'marginTop', Math.max(0, -delta)]];
+      var writes = 0;
+      for (var i = 0; i < want.length; i++) {
+        if (Math.abs((parseFloat(want[i][0].style[want[i][1]]) || 0) - want[i][2]) > 0.5) { want[i][0].style[want[i][1]] = want[i][2] + 'px'; writes++; }
+      }
+      shopOrigin(doc);
+      SHOP_W.writes += writes;
+      return writes;
+    } catch (e) { return 0; }
+  }
+  function shopAlignSettle(doc) {
+    try {
+      if (!doc || !doc.body) return;
+      var S = doc.__srShop;
+      if (!S) return;
+      for (var i = 0; i < 3 && shopAlignTick(doc) > 0; i++) { }
+      var slot = doc.querySelector('.left-slot'), column = doc.querySelector('.left-column'), right = doc.querySelector('.right-panel');
+      if (!slot || !column || !right) return;
+      if (S.mo && S.a === slot && S.b === column && S.c === right) return;
+      if (S.mo) { try { S.mo.disconnect(); } catch (e) { } }
+      var mo = new doc.defaultView.MutationObserver(function () {
+        if (S.pend) return;
+        S.pend = true;
+        Promise.resolve().then(function () { S.pend = false; try { for (var k = 0; k < 3 && shopAlignTick(doc) > 0; k++) { } } catch (e) { } });
+      });
+      mo.observe(slot, { attributes: true, attributeFilter: ['style'] });
+      mo.observe(column, { attributes: true, attributeFilter: ['style'] });
+      mo.observe(right, { attributes: true, attributeFilter: ['style'] });
+      S.mo = mo; S.a = slot; S.b = column; S.c = right;
+    } catch (e) { }
+  }
+  function shopPatchGrid(doc, S) { /* 格节点级：rect 改报可见窗（Vue 整树重建换格节点时重挂） */
+    var win = doc.defaultView, grid = S.grid, wrap = S.wrap, rc = S.rc;
+    if (grid.__srShopVis) return;
+    grid.__srShopVis = true;
+    grid.getBoundingClientRect = function () {
+      var r = rc.call(grid), w = rc.call(wrap), top = Math.max(r.top, w.top);
+      try { return new win.DOMRect(r.left, top, r.width, Math.max(0, Math.min(r.bottom, w.bottom) - top)); }
+      catch (e) { return r; } /* DOMRect 构造不可得（极端旧核）=回退内容矩形，官方逻辑照常 */
+    };
+  }
+  function shopBind(doc, S) { /* 文档级一次性接线：planBagDrop 真光标 / 监听 */
+    var win = doc.defaultView;
+    if (!S.plan && typeof win.planBagDrop === 'function') {
+      var orig = win.planBagDrop;
+      S.plan = orig;
+      win.planBagDrop = function (cols, rows, items, dw, dh, px, py, cx, cy, swap, push, maxPush) {
+        var cur = shopCursor(doc);
+        if (cur) { cx = cur.c; cy = cur.r; }
+        var plan = orig.call(this, cols, rows, items, dw, dh, px, py, cx, cy, swap, push, maxPush);
+        if (cur && plan && typeof plan === 'object') {
+          var fixed = { col: cx, row: cy };
+          Object.defineProperty(plan, 'cursor', { configurable: true, get: function () { return fixed; }, set: function () { } });
+        }
+        return plan;
+      };
+    }
+    win.addEventListener('resize', function () { shopAlignSettle(doc); });
+    win.addEventListener('scroll', function () { shopOrigin(doc); }, true);
+    win.addEventListener('mousemove', function (ev) { S.mx = ev.clientX; S.my = ev.clientY; }, true);
+    win.addEventListener('mousedown', function (ev) { S.mx = ev.clientX; S.my = ev.clientY; shopOrigin(doc); }, true);
+  }
+  function shopEnsure(f) {
+    try {
+      var doc = f.doc;
+      if (!doc || !doc.head || !doc.body) return;
+      var st = doc.getElementById('srShopNative');
+      if (!st) {
+        st = doc.createElement('style');
+        st.id = 'srShopNative';
+        st.setAttribute('data-cer-native', '1');
+        st.setAttribute('data-uw', SHOP_VER);
+        st.textContent = SHOP_CSS;
+        doc.head.appendChild(st);
+      } else if ((st.getAttribute('data-uw') || '') !== SHOP_VER) {
+        st.setAttribute('data-uw', SHOP_VER);
+        st.textContent = SHOP_CSS;
+      }
+      var panel = doc.querySelector('.left-panel');
+      var wrap = panel && panel.querySelector('.grid-wrapper'), grid = panel && panel.querySelector('.grid-container');
+      if (!wrap || !grid) return;
+      var S = doc.__srShop || (doc.__srShop = { rc: doc.defaultView.Element.prototype.getBoundingClientRect, mx: null, my: null });
+      if (S.grid !== grid || S.wrap !== wrap) { S.grid = grid; S.wrap = wrap; shopPatchGrid(doc, S); }
+      if (!S.bound) { S.bound = true; shopBind(doc, S); }
+      sbMakeIndicator(doc, doc.body, wrap, 'background:rgba(255,255,255,.32)', 'srShopSbTrack', true);
+      shopAlignSettle(doc);
+    } catch (e) { try { console.warn('[CERail] shopEnsure 失败', e && (e.message || e)); } catch (e2) { } }
+  }
   /* ================= 2026-11-15 ② 脚边横排 CSS 常驻钉底（作者实报两轮：探险野外地图悬屏中；
      取出物资界面屏中，拾取/丢弃一拍闪中又回底） =================
      根因：官方 webui-grounddock place() 锚=gridRefs.A.closest('.panel')——袋未开（野外态
@@ -4493,7 +4679,7 @@
       if (!frameVisible(f.el)) return; /* 隐帧不装配（rail 只跟可见帧——v1.8.14 多帧共存） */
     }
     if (!frameVisible(f.el)) return;
-    if (sc.native) { ensureNativeBp(f); nbMount(f); return; } /* v1.8.3 原生模式：注 CSS 不装配 rail；v1.8.4 加 mod 按钮对（幂等；iframe 重载换文档自然重注） */
+    if (sc.native) { if (sc.shop) { shopEnsure(f); return; } ensureNativeBp(f); nbMount(f); return; } /* v1.8.3 原生模式：注 CSS 不装配 rail；v1.8.4 加 mod 按钮对（幂等；iframe 重载换文档自然重注）；shop 页=仅格区滚动钳 */
     /* T9 宿主复活先撤桩（裁定 2）：rail 在位而宿主重现=官方重建——真节点已回文档，此刻
        桩的重复 id 会让官方 $() 命中桩而非真节点；撤桩后 mount 重替换并重建新桩。
        （官方格引用在 mount 内先于摘除取得，复活重装配不丢格。） */
